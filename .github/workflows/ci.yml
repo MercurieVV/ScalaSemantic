@@ -6,6 +6,7 @@ on:
     tags: ['v*']
   pull_request:
     branches: ['**']
+  workflow_dispatch: # manual dry-run: builds, then publishes a -SNAPSHOT (exercises creds + signing)
 
 concurrency:
   group: ${{ github.workflow }} @ ${{ github.ref }}
@@ -33,8 +34,11 @@ jobs:
   publish:
     name: Publish to Sonatype Central
     needs: [build]
-    # Only on a vX.Y.Z tag push — sbt-dynver turns the tag into the release version.
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    # On a vX.Y.Z tag push (release), or a manual run (workflow_dispatch) which publishes a
+    # -SNAPSHOT to dry-run credentials + signing without cutting a release.
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

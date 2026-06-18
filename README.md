@@ -130,6 +130,10 @@ Required GitHub Actions **secrets** (Settings → Secrets and variables → Acti
 Publish the matching **public** key to a keyserver (e.g. `keys.openpgp.org`) so Central can verify
 signatures. The Central namespace `io.github.mercurievv` must be verified once under your account.
 
+**Dry run:** trigger the workflow manually (Actions → CI → *Run workflow*, i.e. `workflow_dispatch`)
+to build and publish a `-SNAPSHOT` — this exercises the secrets, signing, and upload without cutting
+a release.
+
 ## Project status
 
 Phases 0–4 complete; see [PLAN.md](PLAN.md) for the execution tracker and design decisions.
