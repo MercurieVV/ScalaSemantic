@@ -13,7 +13,10 @@ class AnalyzerSuite extends munit.FunSuite:
   private val Animal = "scalasemantic/fixtures/Animal#"
   private val Dog = "scalasemantic/fixtures/Dog#"
   private val Fish = "scalasemantic/fixtures/Fish#"
+  private val Robot = "scalasemantic/fixtures/Robot#"
+  private val Greeter = "scalasemantic/fixtures/Greeter#"
   private val Render = "scalasemantic/fixtures/Sample.render()."
+  private val Over = "scalasemantic/fixtures/Sample.over()."
 
   test("findUsages reports the definition and cross-type references of a trait") {
     val u = az.findUsages(Animal)
@@ -47,4 +50,37 @@ class AnalyzerSuite extends munit.FunSuite:
   test("classHierarchy finds known subtypes across the index (beyond a single-symbol query)") {
     val h = az.classHierarchy(Animal).getOrElse(fail("Animal should have a class signature"))
     assertEquals(h.knownSubtypes.map(_.symbol), List(Dog, Fish))
+  }
+
+  test("findOverloads groups all methods sharing an owner and name") {
+    val o = az.findOverloads(Over)
+    assertEquals(o.name, "over")
+    assertEquals(
+      o.overloads.map(_.rendered).toSet,
+      Set("def over(x: Int): Int", "def over(x: String): String")
+    )
+  }
+
+  test("members separates locally declared from inherited (non-overridden) members") {
+    val dog = az.members(Dog).getOrElse(fail("Dog should have members"))
+    assert(dog.declared.map(_.displayName).contains("fetch"), dog.declared.toString)
+    // Dog overrides `name`, so nothing concrete is left to inherit from Animal.
+    assertEquals(dog.inherited, Nil)
+
+    val robot = az.members(Robot).getOrElse(fail("Robot should have members"))
+    assertEquals(robot.inherited.map(_.displayName), List("greet"))
+    assertEquals(robot.inherited.head.declaredIn.symbol, Greeter)
+  }
+
+  test("typeAtPosition resolves the symbol at a definition's own location") {
+    val defLoc = az.findUsages(Dog).definitions.headOption.getOrElse(fail("Dog needs a definition"))
+    val at = az
+      .typeAtPosition(defLoc.uri, defLoc.range.start.line, defLoc.range.start.character)
+      .getOrElse(fail("expected a symbol at Dog's definition position"))
+    assertEquals(at.symbol, Dog)
+    assertEquals(at.displayName, "Dog")
+  }
+
+  test("typeAtPosition returns None for an unknown document") {
+    assertEquals(az.typeAtPosition("file:///does/not/exist.scala", 0, 0), None)
   }

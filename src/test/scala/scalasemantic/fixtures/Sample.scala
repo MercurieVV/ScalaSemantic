@@ -16,6 +16,12 @@ class Dog(val name: String) extends Animal:
 class Fish(val name: String) extends Animal, Swimmer:
   def swim(): Unit = ()
 
+trait Greeter:
+  def greet(): String = "hi"
+
+/** Inherits `greet` without overriding — exercises inherited-vs-declared members. */
+class Robot extends Greeter
+
 trait Show[A]:
   def show(a: A): String
 

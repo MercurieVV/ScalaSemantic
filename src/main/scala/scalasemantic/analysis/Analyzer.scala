@@ -84,7 +84,88 @@ final class Analyzer(index: SemanticIndex):
       .toList
       .sorted
 
+  // --- find-overloads -------------------------------------------------------
+
+  /** All methods sharing the owner and simple name of `symbol` (overloads differ only by the `(+N)`
+    * disambiguator in their symbol string). Works given any one of the overloads.
+    */
+  def findOverloads(symbol: String): OverloadsResult =
+    val name = index.displayName(symbol)
+    val own = index.owner(symbol)
+    val overloads = index.symbols.values
+      .collect {
+        case si
+            if index
+              .isMethod(si.symbol) && index.owner(si.symbol) == own && si.displayName == name =>
+          si.symbol
+      }
+      .toList
+      .sorted
+      .flatMap(methodSignature)
+    OverloadsResult(name, overloads)
+
+  // --- trait-vs-local members -----------------------------------------------
+
+  /** Members declared directly on a class/trait versus those inherited from its linearization. An
+    * inherited member that is re-declared locally (overridden) is reported only as declared.
+    */
+  def members(symbol: String): Option[MembersResult] =
+    index.info(symbol).map(_.signature).collect { case _: s.ClassSignature =>
+      val declared = declarationSymbols(symbol).map(memberInfo(_, symbol))
+      val declaredNames = declared.map(_.displayName).toSet
+      val inherited = linearize(symbol)
+        .flatMap(parent => declarationSymbols(parent).map(memberInfo(_, parent)))
+        .filterNot(m => declaredNames.contains(m.displayName))
+        .distinctBy(_.displayName)
+      MembersResult(symbol, index.displayName(symbol), declared, inherited)
+    }
+
+  // --- type-at-position -----------------------------------------------------
+
+  /** The most specific symbol whose occurrence range covers the given 0-based position. */
+  def typeAtPosition(uri: String, line: Int, character: Int): Option[TypeAtPosition] =
+    index
+      .document(uri)
+      .toSeq
+      .flatMap(_.occurrences)
+      .filter(occ => occ.range.exists(rangeContains(_, line, character)))
+      .minByOption(occ => occ.range.map(rangeSpan).getOrElse(Int.MaxValue))
+      .map { occ =>
+        TypeAtPosition(
+          location(uri, occ.range),
+          occ.symbol,
+          index.displayName(occ.symbol),
+          typeString(occ.symbol)
+        )
+      }
+
   // --- shared helpers -------------------------------------------------------
+
+  /** Member symbols declared in a type's `ClassSignature.declarations` scope. */
+  private def declarationSymbols(symbol: String): List[String] =
+    index
+      .info(symbol)
+      .map(_.signature)
+      .collect { case c: s.ClassSignature => scopeInfos(c.declarations).map(_.symbol).toList }
+      .getOrElse(Nil)
+
+  private def memberInfo(member: String, declaredIn: String): MemberInfo =
+    MemberInfo(member, index.displayName(member), kindName(member), symbolRef(declaredIn))
+
+  private def rangeContains(r: s.Range, line: Int, character: Int): Boolean =
+    val afterStart = line > r.startLine || (line == r.startLine && character >= r.startCharacter)
+    val beforeEnd = line < r.endLine || (line == r.endLine && character < r.endCharacter)
+    afterStart && beforeEnd
+
+  private def rangeSpan(r: s.Range): Int =
+    (r.endLine - r.startLine) * 10000 + (r.endCharacter - r.startCharacter)
+
+  /** A symbol's type as text: a method's return, a value's type, else the symbol's own name. */
+  private def typeString(symbol: String): String =
+    index.info(symbol).map(_.signature) match
+      case Some(m: s.MethodSignature) => renderType(m.returnType)
+      case Some(v: s.ValueSignature)  => renderType(v.tpe)
+      case _                          => index.displayName(symbol)
 
   private def location(uri: String, range: Option[s.Range]): Location =
     val r = range.getOrElse(s.Range.defaultInstance)
