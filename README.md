@@ -1,27 +1,46 @@
 # ScalaSemantic
 
-An MCP server that performs deep semantic analysis of Scala projects from compiler-emitted
-**SemanticDB**, exposing relationship and implicit-resolution queries that go beyond cursor-based
-LSP tooling. See [docs/COMPARISON.md](docs/COMPARISON.md) for the capability comparison vs Metals.
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.mercurievv/scalasemantic-core_3?label=Maven%20Central)](https://central.sonatype.com/namespace/io.github.mercurievv)
+[![CI](https://github.com/mercurievv/ScalaSemantic/actions/workflows/ci.yml/badge.svg)](https://github.com/mercurievv/ScalaSemantic/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## How it works
+Deep semantic analysis of Scala projects, exposed over [MCP](https://modelcontextprotocol.io) so an
+AI agent (e.g. Claude Code) can ask precise questions about **symbols, types, implicits, and call
+paths**. It reads compiler-emitted **SemanticDB**, so answers reflect what the compiler actually
+resolved — not text matching.
 
-Three sbt modules, one per architectural layer:
+## Why, vs `grep`
 
+`grep` matches characters; ScalaSemantic understands the compiled program.
+
+| You want to know… | `grep` | ScalaSemantic |
+|---|---|---|
+| Who extends `Animal`? | every line containing "Animal" | exact subtypes — `class_hierarchy` |
+| All usages of method `foo` | every "foo", unrelated included | exact symbol references — `find_usages` |
+| Which `given`s produce `Show[Int]`? | — not possible | `resolve_implicits` |
+| Call path from `a` to `c`? | — not possible | `call_path` |
+
+Every capability is backed by a test that runs against this repo's own SemanticDB →
+[`AnalyzerSuite`](analysis/src/test/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerSuite.scala).
+Full comparison incl. Metals/LSP: [docs/COMPARISON.md](docs/COMPARISON.md).
+
+## Quickstart
+
+The server is spawned by your MCP client over stdio. Generate a launcher and register it:
+
+```sh
+git clone https://github.com/mercurievv/ScalaSemantic && cd ScalaSemantic
+sbt "mcp/mcpLauncher"        # builds the server, writes a standalone launch script
+sbt "mcp/mcpClientConfig"    # prints the .mcp.json entry — paste it into your MCP client
 ```
-mcp        stdio JSON-RPC server + entrypoint   (com.github.mercurievv.scalasemantic.mcp)
-  └─ analysis   query engine + result models    (…​.analysis, …​.model)
-       └─ core    load + index SemanticDB        (…​.semanticdb)
-```
 
-`core` knows nothing about JSON or MCP; `analysis` adds upickle result models; `mcp` is the only
-module that speaks the protocol. The analyzer reads every `*.semanticdb` file under a project root
-and answers queries against the whole symbol/occurrence index. Each module emits its own SemanticDB
-(`semanticdbEnabled := true`), so all 33 tests run against this codebase itself.
+Set the entry's `args` to the Scala project you want to analyze (it must be compiled with SemanticDB
+enabled). Your client launches it on demand. For an in-project sbt plugin, Mill/Gradle/CLI, and the
+lifecycle rationale, see **[docs/INTEGRATION.md](docs/INTEGRATION.md)**.
 
 ## Tools
 
-| Tool | Purpose |
+| Tool | Answers |
 |------|---------|
 | `find_usages` | references to a symbol, def/ref split, paged |
 | `method_signature` | full signature incl. implicit/using parameter lists |
@@ -29,111 +48,21 @@ and answers queries against the whole symbol/occurrence index. Each module emits
 | `find_overloads` | all overloads sharing a name and owner |
 | `members` | declared vs inherited members (override-aware) |
 | `type_at_position` | symbol + type at a 0-based position |
-| `resolve_implicits` | given definitions that produce a type |
+| `resolve_implicits` | `given` definitions that produce a type |
 | `trace_implicit_chain` | a given's transitive implicit dependencies |
 | `call_path` | shortest call path between two methods |
 
-**Token discipline:** results are lean by default (locations as `uri:line:col`, signatures as one
-line, related symbols as display names, empty fields omitted). Pass `"detailed": true` to expand
-structured data; `find_usages` is paged via `limit`/`offset`.
+Results are **lean by default** (locations as `uri:line:col`, signatures as one line, empty fields
+omitted) to keep token use low; pass `"detailed": true` to expand, and `find_usages` is paged.
 
-## Build & test
+## Docs
 
-```
-sbt compile     # also (re)emits this project's SemanticDB
-sbt test        # 33 tests, dogfooded on this project
-sbt prePush     # scalafmt + scalafix + full test suite (run before pushing)
-```
+- [Integration](docs/INTEGRATION.md) — register with a client, sbt plugin, other build tools
+- [Comparison](docs/COMPARISON.md) — capability comparison vs Metals/LSP, with evidence
+- [Development](docs/DEVELOPMENT.md) — module layout, build & test
+- [Releasing](docs/RELEASING.md) — Sonatype Central release process
+- [PLAN.md](PLAN.md) — design decisions & execution tracker
 
-## Running the server
+## License
 
-The server speaks newline-delimited JSON-RPC 2.0 on **stdout** and logs to **stderr**. Point it at
-a directory that contains emitted `*.semanticdb` files (the target project must be compiled with
-SemanticDB enabled):
-
-```
-sbt "mcp/runMain com.github.mercurievv.scalasemantic.mcpServer <semanticdbRoot>"   # root defaults to "."
-```
-
-> Note: a bare `sbt runMain` is fine for development but writes its own build logs to stdout, which
-> corrupts the JSON-RPC stream. For integration as an MCP server (e.g. in Claude Code), launch the
-> compiled application directly so stdout carries only protocol messages — package a runnable jar
-> from the `mcp` module (e.g. add `sbt-assembly`) and invoke `java -jar scalasemantic-mcp.jar
-> <root>`, then register that command as the MCP server.
-
-## Integrating with a build tool
-
-An MCP **stdio** server is spawned by the MCP client (e.g. Claude Code), which owns its lifecycle —
-you don't run it as a daemon. So integrating means two things: make the project emit SemanticDB, and
-register a launch command scoped to that project's root. Because the unit is a plain process, the
-same approach works from any build tool.
-
-### Standalone launcher (any build tool / bare shell)
-
-```
-sbt "mcp/mcpLauncher"        # writes target/.../scalasemantic-mcp (clean-stdout java launcher)
-sbt "mcp/mcpClientConfig"    # prints the ready-to-paste .mcp.json entry for this repo
-```
-
-Register the printed entry with your MCP client; it will spawn `scalasemantic-mcp <root>` on demand.
-Equivalent for Mill/Gradle/CLI: enable SemanticDB in that tool, then point the client at the same
-launcher (or `java -jar`) with the project root as the argument.
-
-### sbt plugin (convenience)
-
-The `sbt-plugin` module publishes `io.github.mercurievv:sbt-scalasemantic-mcp` (built for sbt 2 here;
-cross-publish for sbt 1 with `^`). In a host build:
-
-```scala
-// project/plugins.sbt
-addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "0.1.0")
-// build.sbt
-enablePlugins(ScalaSemanticMcpPlugin)
-mcpServerCommand := Seq("/abs/path/to/scalasemantic-mcp") // or Seq("java","-jar","scalasemantic-mcp.jar")
-```
-
-Then `sbt mcpClientConfig` prints the `.mcp.json` entry (SemanticDB root = the project's base dir) and
-`sbt mcpRun` runs the server in the foreground for manual testing. The plugin only enables SemanticDB
-and shells out to the launch command — it never links against the Scala 3.8.4 server, which is why it
-is sbt-1/2 and build-tool portable.
-
-### Quick manual check (dev loop, stderr discarded)
-
-```
-printf '%s\n' \
- '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
- '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
- '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"class_hierarchy","arguments":{"symbol":"com/github/mercurievv/scalasemantic/fixtures/Animal#"}}}'
-```
-
-Feed those lines to the running server's stdin; expect three JSON-RPC responses on stdout.
-
-## Releasing
-
-CI (`.github/workflows/ci.yml`) builds and tests every push/PR, and **publishes to Sonatype Central
-on a `vX.Y.Z` tag** via `sbt ci-release` (sbt-dynver derives the version from the tag; sbt-ci-release
-signs and uploads). Artifacts publish under `io.github.mercurievv`.
-
-Cut a release:
-```
-scripts/bump-version.sh patch --push   # or minor / major — tags vX.Y.Z and pushes (triggers publish)
-scripts/retry-last-tag.sh --push       # move the tag to HEAD to retry a failed release
-```
-
-Required GitHub Actions **secrets** (Settings → Secrets and variables → Actions):
-| Secret | What |
-|--------|------|
-| `SONATYPE_USERNAME` / `SONATYPE_PASSWORD` | Central Portal user token (central.sonatype.com → Account → Generate User Token) |
-| `PGP_SECRET` | base64 of your armored secret key: `gpg --armor --export-secret-keys <KEYID> \| base64` |
-| `PGP_PASSPHRASE` | passphrase for that key |
-
-Publish the matching **public** key to a keyserver (e.g. `keys.openpgp.org`) so Central can verify
-signatures. The Central namespace `io.github.mercurievv` must be verified once under your account.
-
-**Dry run:** trigger the workflow manually (Actions → CI → *Run workflow*, i.e. `workflow_dispatch`)
-to build and publish a `-SNAPSHOT` — this exercises the secrets, signing, and upload without cutting
-a release.
-
-## Project status
-
-Phases 0–4 complete; see [PLAN.md](PLAN.md) for the execution tracker and design decisions.
+[MIT](LICENSE)
