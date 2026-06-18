@@ -22,6 +22,13 @@ MAVEN_METADATA_URL="${MAVEN_METADATA_URL:-https://repo1.maven.org/maven2/io/gith
 # (SONATYPE_CREDENTIAL_HOST is passed as a workflow env in ci.yml, so it isn't required as a secret.)
 RELEASE_SECRETS=(PGP_PASSPHRASE PGP_SECRET SONATYPE_USERNAME SONATYPE_PASSWORD)
 
+# Optional 1Password item refs for setup-gh-repo.sh (op://VAULT/ITEM). Leave empty to use env vars
+# or CLI flags. OP_GPG_ITEM supplies the PGP_* secrets, OP_SONATYPE_ITEM the SONATYPE_* secrets;
+# OP_ITEM is a single fallback item for all of them. Each derives op://…/ITEM/<SECRET_NAME>.
+OP_ITEM="${OP_ITEM:-}"
+OP_GPG_ITEM="${OP_GPG_ITEM:-}"
+OP_SONATYPE_ITEM="${OP_SONATYPE_ITEM:-}"
+
 # sbt-ci-release imports the key via `base64 --decode | gpg --import`, so PGP_SECRET must be base64.
 # If true, setup-gh-repo.sh base64-encodes the PGP_SECRET value before posting — i.e. you supply the
 # raw armored key (`gpg --armor --export-secret-keys ...`) and the script encodes it. Set false if

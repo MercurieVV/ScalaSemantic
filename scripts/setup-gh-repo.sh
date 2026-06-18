@@ -7,20 +7,22 @@
 # Secret values are resolved, in order, from:
 #   1. a plain environment variable of the same name (e.g. PGP_SECRET=...)
 #   2. an explicit 1Password ref env var OP_<NAME>_REF (e.g. OP_PGP_SECRET_REF=op://Vault/Item/PGP_SECRET)
-#   3. a single 1Password item base via --op-item op://VAULT/ITEM, deriving op://VAULT/ITEM/<NAME>
+#   3. a per-group 1Password item: --op-gpg-item (PGP_*) / --op-sonatype-item (SONATYPE_*)
+#   4. a single 1Password item base via --op-item, deriving op://VAULT/ITEM/<NAME>
+# Item refs also default from scripts/config.sh (OP_ITEM / OP_GPG_ITEM / OP_SONATYPE_ITEM).
 #
 # Usage:
-#   scripts/setup-gh-repo.sh [--repo OWNER/REPO] [--op-item op://VAULT/ITEM]
-# REPO defaults to scripts/config.sh.
+#   scripts/setup-gh-repo.sh [--repo OWNER/REPO] [--op-item REF] [--op-gpg-item REF] [--op-sonatype-item REF]
 
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/config.sh"
 
-op_item=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --repo) REPO="${2:-}"; shift 2 ;;
-    --op-item) op_item="${2:-}"; shift 2 ;;
+    --op-item) OP_ITEM="${2:-}"; shift 2 ;;
+    --op-gpg-item) OP_GPG_ITEM="${2:-}"; shift 2 ;;
+    --op-sonatype-item) OP_SONATYPE_ITEM="${2:-}"; shift 2 ;;
     -h|--help) sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
@@ -32,17 +34,23 @@ require_cmd git
 [[ -n "$REPO" ]] || { echo "REPO is empty — set it in config.sh or pass --repo." >&2; exit 1; }
 
 resolve_value() {
-  local name="$1" op_ref_name="OP_${1}_REF"
+  local name="$1" op_ref_name="OP_${1}_REF" item_base=""
   if [[ -n "${!name:-}" ]]; then
-    printf '%s' "${!name}"
-  elif [[ -n "${!op_ref_name:-}" ]]; then
-    require_cmd op; op read "${!op_ref_name}"
-  elif [[ -n "$op_item" ]]; then
-    require_cmd op; op read "${op_item}/${name}"
-  else
-    echo "Missing value for $name. Set \$$name, \$$op_ref_name, or pass --op-item." >&2
-    exit 1
+    printf '%s' "${!name}"; return 0
   fi
+  if [[ -n "${!op_ref_name:-}" ]]; then
+    require_cmd op; op read "${!op_ref_name}"; return 0
+  fi
+  case "$name" in
+    PGP_*) item_base="$OP_GPG_ITEM" ;;
+    SONATYPE_*) item_base="$OP_SONATYPE_ITEM" ;;
+  esac
+  [[ -n "$item_base" ]] || item_base="$OP_ITEM"
+  if [[ -n "$item_base" ]]; then
+    require_cmd op; op read "${item_base}/${name}"; return 0
+  fi
+  echo "Missing value for $name. Set \$$name, \$$op_ref_name, --op-item, or --op-gpg-item/--op-sonatype-item." >&2
+  exit 1
 }
 
 for secret in "${RELEASE_SECRETS[@]}"; do

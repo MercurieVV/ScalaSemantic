@@ -17,8 +17,10 @@ env var of the same name, so the scripts are reusable across projects.
 PGP_SECRET="$(gpg --armor --export-secret-keys <KEYID>)" PGP_PASSPHRASE=... \
 SONATYPE_USERNAME=... SONATYPE_PASSWORD=... \
   scripts/setup-gh-repo.sh                 # sets the repo secrets + enables the dependency graph
-# or pull the values from 1Password:
+# or pull the values from 1Password (one item, or split GPG / Sonatype items):
 scripts/setup-gh-repo.sh --op-item op://Vault/ScalaSemantic-release
+scripts/setup-gh-repo.sh --op-gpg-item op://Personal/GPG --op-sonatype-item op://Personal/Sonatype
+# (item refs can also be preset in config.sh: OP_ITEM / OP_GPG_ITEM / OP_SONATYPE_ITEM)
 scripts/install-git-hooks.sh               # optional: run `sbt prePush` on every push
 ```
 
