@@ -14,6 +14,8 @@
 # Usage:
 #   scripts/setup-gh-repo.sh [--repo OWNER/REPO] [--op-item REF] [--op-gpg-item REF] [--op-sonatype-item REF]
 
+eval $(op signin)
+
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/config.sh"
 
