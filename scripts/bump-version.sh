@@ -23,7 +23,8 @@ require_clean_git() {
 }
 
 latest_version() {
-  git tag --list 'v*' | sed 's/^v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1
+  # `|| true` so "no tags yet" (grep exit 1) doesn't trip set -e/pipefail.
+  git tag --list 'v*' | sed 's/^v//' | { grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -n 1
 }
 
 next_version() {

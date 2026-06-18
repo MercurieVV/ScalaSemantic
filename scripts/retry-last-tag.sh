@@ -20,7 +20,7 @@ require_clean_git() {
 }
 
 latest_tag() {
-  git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1
+  git tag --list 'v*' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -n 1
 }
 
 push_tag="false"
