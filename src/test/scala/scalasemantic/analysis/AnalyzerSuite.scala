@@ -1,0 +1,50 @@
+package scalasemantic.analysis
+
+import scalasemantic.semanticdb.SemanticIndex
+
+/** Phase 3: query-engine tests against the `scalasemantic.fixtures` SemanticDB. Several of these
+  * exercise relationships (known subtypes, implicit param lists) that Metals cannot answer from a
+  * single symbol query.
+  */
+class AnalyzerSuite extends munit.FunSuite:
+
+  private val az = Analyzer(SemanticIndex.fromProject("target"))
+
+  private val Animal = "scalasemantic/fixtures/Animal#"
+  private val Dog = "scalasemantic/fixtures/Dog#"
+  private val Fish = "scalasemantic/fixtures/Fish#"
+  private val Render = "scalasemantic/fixtures/Sample.render()."
+
+  test("findUsages reports the definition and cross-type references of a trait") {
+    val u = az.findUsages(Animal)
+    assert(u.definitions.nonEmpty, "Animal should have a definition occurrence")
+    // Dog and Fish both `extends Animal` → reference occurrences in other positions.
+    assert(u.references.nonEmpty, "Animal should be referenced by its subtypes")
+  }
+
+  test("methodSignature captures type params and an implicit/using parameter list") {
+    val sig = az.methodSignature(Render).getOrElse(fail("render should have a method signature"))
+    assertEquals(sig.typeParameters, List("A"))
+    assertEquals(sig.parameterLists.size, 2)
+    assertEquals(sig.parameterLists(0).isImplicit, false)
+    assertEquals(sig.parameterLists(1).isImplicit, true)
+    assertEquals(sig.parameterLists(1).parameters.map(_.name), List("sh"))
+    assertEquals(sig.parameterLists(1).parameters.head.tpe, "Show[A]")
+    assertEquals(sig.returnType, "String")
+    assertEquals(sig.rendered, "def render[A](a: A)(implicit sh: Show[A]): String")
+  }
+
+  test("methodSignature returns None for non-methods") {
+    assertEquals(az.methodSignature(Animal), None)
+  }
+
+  test("classHierarchy lists direct parents and transitive linearization") {
+    val h = az.classHierarchy(Dog).getOrElse(fail("Dog should have a class signature"))
+    assert(h.parents.map(_.symbol).contains(Animal), s"Dog parents: ${h.parents.map(_.symbol)}")
+    assert(h.linearization.map(_.symbol).contains(Animal), "Animal in Dog linearization")
+  }
+
+  test("classHierarchy finds known subtypes across the index (beyond a single-symbol query)") {
+    val h = az.classHierarchy(Animal).getOrElse(fail("Animal should have a class signature"))
+    assertEquals(h.knownSubtypes.map(_.symbol), List(Dog, Fish))
+  }

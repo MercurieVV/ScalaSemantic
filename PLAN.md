@@ -18,14 +18,14 @@ MCP server doing deep semantic analysis on Scala via SemanticDB — beyond Metal
 | 0 | Setup: CLAUDE.md, prePush, configs, commit | ✅ | `sbt prePush` green |
 | 1 | SemanticDB study + symbol-grammar helpers (fix `owner` dead code) | ✅ | delegates to `Scala.*`; 5 tests |
 | 2 | Result models (upickle case classes) | ✅ | one per tool; round-trip tests |
-| 3 | Analysis engine — query methods | ⬜ | see method list |
+| 3 | Analysis engine — query methods | 🔄 | 3/9 done; see method list |
 | 4 | MCP protocol layer (JSON-RPC, tool registry) | ⬜ | |
 | 5 | Tests: dogfood + Metals comparison | ⬜ | |
 
 ## Phase 3 — query methods (one MCP tool each)
-- ⬜ find-usages (cross-file references)
-- ⬜ method-signature (incl. implicit params)
-- ⬜ class-hierarchy / trait relationships
+- ✅ find-usages (cross-file references)
+- ✅ method-signature (incl. implicit/using params + type renderer)
+- ✅ class-hierarchy / trait relationships (+ known-subtypes scan)
 - ⬜ resolve-implicits for a type
 - ⬜ trait-vs-local members
 - ⬜ type-at-position
