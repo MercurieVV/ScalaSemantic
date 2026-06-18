@@ -1,4 +1,4 @@
-# ScalaSemanticMCP
+# ScalaSemantic
 
 MCP server doing deep semantic analysis on Scala projects via SemanticDB — capabilities beyond standard LSP/Metals.
 

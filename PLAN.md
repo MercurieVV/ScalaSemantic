@@ -1,4 +1,4 @@
-# ScalaSemanticMCP — Plan & Execution Tracker
+# ScalaSemantic — Plan & Execution Tracker
 
 Living doc. Update status as work lands. Status: ⬜ todo · 🔄 in-progress · ✅ done · ⛔ blocked
 
@@ -57,7 +57,15 @@ Three sbt modules, one per layer: `mcp` → `analysis` → `core`.
 - **Lifecycle decision:** stdio MCP servers are spawned by the client (Claude Code), which owns start/stop. So "a service per project" = a registered launch command + emitted SemanticDB, not a daemon. A true start/stop daemon would need an HTTP/SSE transport (backlog).
 - **Portability via process launch:** the unit is `java -cp … mcpServer <root>`. An sbt plugin can't link the Scala 3.8.4 server (meta-build Scala mismatch) — it shells out, which is also what makes it sbt-1/2 and Mill/Gradle/CLI portable.
 - **`mcp/mcpLauncher`** task → writes a clean-stdout launcher script (resolved classpath via sbt 2.0 `fileConverter`; `Def.uncached` since it returns a File). **`mcp/mcpClientConfig`** → prints the `.mcp.json` entry. Verified end-to-end over real stdio (clean JVM).
-- **`sbt-plugin`** module = `com.github.mercurievv:sbt-scalasemantic-mcp` (AutoPlugin, opt-in). Sets `semanticdbEnabled`, provides `mcpClientConfig`/`mcpRun`. Not aggregated into `root` (built against the sbt-plugin Scala). Verified in a throwaway host project: enable → compile → server analyzed the host's SemanticDB.
+- **`sbt-plugin`** module = `io.github.mercurievv:sbt-scalasemantic-mcp` (AutoPlugin, opt-in). Sets `semanticdbEnabled`, provides `mcpClientConfig`/`mcpRun`. Not aggregated into `root` (built against the sbt-plugin Scala). Verified in a throwaway host project: enable → compile → server analyzed the host's SemanticDB.
+
+## Publishing (Sonatype Central)
+- **sbt 2.0 plugin reality:** aidclimbing uses sbt-typelevel (`tlCiRelease`, sbt 1 only). For sbt 2.0 the working path is `sbt-ci-release` 1.11.2 (`_sbt2_3` exists) — bundles dynver + pgp + sonatype with Central Portal support.
+- **Namespace:** Central's GitHub namespace is `io.github.<user>` → `io.github.mercurievv` (not `com.github`). Set on `ThisBuild`; pom metadata (license MIT, scm, developers, homepage) too. `versionScheme := early-semver`.
+- **Version from tags:** sbt-dynver — a `vX.Y.Z` tag publishes `X.Y.Z`. No manual version.
+- **Workflow:** `.github/workflows/ci.yml` — build+test on push/PR; `publish` job on `v*` tags runs `sbt ci-release`. Central host via `SONATYPE_CREDENTIAL_HOST=central.sonatype.com` env (the `sonatypeCredentialHost` setting isn't exposed in build.sbt here). Secrets: `SONATYPE_USERNAME`/`PASSWORD` (Central token), `PGP_SECRET`/`PASSPHRASE`.
+- **Scope:** `core`, `analysis`, `mcp`, `sbt-plugin` publish; `root` aggregate has `publish/skip := true`.
+- **Release ergonomics:** `scripts/bump-version.sh [patch|minor|major] --push`, `scripts/retry-last-tag.sh --push`.
 
 ## Backlog
 - **`reload` MCP tool** (later): re-read `*.semanticdb` from disk without restarting the server (re-run `SemanticIndex.fromProject`). SemanticDB only updates on compile, and the server loads the index once at startup — a reload tool pairs with `sbt ~compile` for near-live analysis.

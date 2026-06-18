@@ -2,6 +2,26 @@ ThisBuild / scalaVersion := "3.8.4"
 
 ThisBuild / scalafixDependencies += "org.typelevel" %% "typelevel-scalafix" % "0.5.0"
 
+// --- Publishing (Sonatype Central via sbt-ci-release) ----------------------------------------
+// Version is derived from git tags by sbt-dynver: a `vX.Y.Z` tag publishes `X.Y.Z`. The Central
+// namespace for a GitHub account is io.github.<user>. `ci-release` signs + uploads on tag pushes.
+ThisBuild / organization := "io.github.mercurievv"
+ThisBuild / organizationName := "mercurievv"
+ThisBuild / homepage := Some(url("https://github.com/mercurievv/ScalaSemantic"))
+ThisBuild / licenses := Seq("MIT" -> url("https://opensource.org/licenses/MIT"))
+ThisBuild / developers := List(
+  Developer("mercurievv", "Viktor Skalinins", "mercurievv@gmail.com", url("https://github.com/mercurievv"))
+)
+ThisBuild / scmInfo := Some(
+  ScmInfo(
+    url("https://github.com/mercurievv/ScalaSemantic"),
+    "scm:git:https://github.com/mercurievv/ScalaSemantic.git"
+  )
+)
+ThisBuild / versionScheme := Some("early-semver")
+// New Sonatype accounts publish through the Central Portal: the host is supplied to `ci-release`
+// via the SONATYPE_CREDENTIAL_HOST=central.sonatype.com env var in the release workflow.
+
 // Shared across all modules: SemanticDB emission (for dogfooding + scalafix) and wart rules.
 lazy val commonSettings = Seq(
   scalacOptions += "-Wunused:imports", // required by OrganizeImports scalafix rule
@@ -69,7 +89,7 @@ lazy val mcp = (project in file("mcp"))
       val script = target.value / "scalasemantic-mcp"
       val body =
         s"""|#!/usr/bin/env sh
-            |# Standalone launcher for the ScalaSemanticMCP server. Arg 1 = SemanticDB root (default ".").
+            |# Standalone launcher for the ScalaSemantic server. Arg 1 = SemanticDB root (default ".").
             |exec java -cp "$cp" $mainClass "$$@"
             |""".stripMargin
       IO.write(script, body)
@@ -100,13 +120,12 @@ lazy val mcp = (project in file("mcp"))
 lazy val sbtPlugin = (project in file("sbt-plugin"))
   .enablePlugins(SbtPlugin)
   .settings(
-    name := "sbt-scalasemantic-mcp",
-    organization := "com.github.mercurievv"
+    name := "sbt-scalasemantic-mcp"
   )
 
 lazy val root = (project in file("."))
   .aggregate(core, analysis, mcp)
-  .settings(name := "ScalaSemanticMCP")
+  .settings(name := "ScalaSemantic", publish / skip := true)
 
 // Pre-push gate. A command alias (not a task) so clean/format/fix/test aggregate across all
 // modules. `testOnly *` forces the full suite (sbt 2.0 `test` is cached testQuick — see PLAN.md).

@@ -5,3 +5,5 @@ ThisBuild / conflictWarning := ConflictWarning.disable
 addSbtPlugin("ch.epfl.scala" % "sbt-scalafix" % "0.14.5")
 addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.5.6")
 addSbtPlugin("org.wartremover" %% "sbt-wartremover" % "3.6.0")
+// dynver + pgp + sonatype (Central Portal) — drives tag-based releases via the `ci-release` command.
+addSbtPlugin("com.github.sbt" % "sbt-ci-release" % "1.11.2")

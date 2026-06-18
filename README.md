@@ -1,4 +1,4 @@
-# ScalaSemanticMCP
+# ScalaSemantic
 
 An MCP server that performs deep semantic analysis of Scala projects from compiler-emitted
 **SemanticDB**, exposing relationship and implicit-resolution queries that go beyond cursor-based
@@ -81,12 +81,12 @@ launcher (or `java -jar`) with the project root as the argument.
 
 ### sbt plugin (convenience)
 
-The `sbt-plugin` module publishes `com.github.mercurievv:sbt-scalasemantic-mcp` (built for sbt 2 here;
+The `sbt-plugin` module publishes `io.github.mercurievv:sbt-scalasemantic-mcp` (built for sbt 2 here;
 cross-publish for sbt 1 with `^`). In a host build:
 
 ```scala
 // project/plugins.sbt
-addSbtPlugin("com.github.mercurievv" % "sbt-scalasemantic-mcp" % "0.1.0-SNAPSHOT")
+addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "0.1.0")
 // build.sbt
 enablePlugins(ScalaSemanticMcpPlugin)
 mcpServerCommand := Seq("/abs/path/to/scalasemantic-mcp") // or Seq("java","-jar","scalasemantic-mcp.jar")
@@ -107,6 +107,28 @@ printf '%s\n' \
 ```
 
 Feed those lines to the running server's stdin; expect three JSON-RPC responses on stdout.
+
+## Releasing
+
+CI (`.github/workflows/ci.yml`) builds and tests every push/PR, and **publishes to Sonatype Central
+on a `vX.Y.Z` tag** via `sbt ci-release` (sbt-dynver derives the version from the tag; sbt-ci-release
+signs and uploads). Artifacts publish under `io.github.mercurievv`.
+
+Cut a release:
+```
+scripts/bump-version.sh patch --push   # or minor / major — tags vX.Y.Z and pushes (triggers publish)
+scripts/retry-last-tag.sh --push       # move the tag to HEAD to retry a failed release
+```
+
+Required GitHub Actions **secrets** (Settings → Secrets and variables → Actions):
+| Secret | What |
+|--------|------|
+| `SONATYPE_USERNAME` / `SONATYPE_PASSWORD` | Central Portal user token (central.sonatype.com → Account → Generate User Token) |
+| `PGP_SECRET` | base64 of your armored secret key: `gpg --armor --export-secret-keys <KEYID> \| base64` |
+| `PGP_PASSPHRASE` | passphrase for that key |
+
+Publish the matching **public** key to a keyserver (e.g. `keys.openpgp.org`) so Central can verify
+signatures. The Central namespace `io.github.mercurievv` must be verified once under your account.
 
 ## Project status
 

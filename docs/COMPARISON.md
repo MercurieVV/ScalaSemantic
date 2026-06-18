@@ -1,4 +1,4 @@
-# Validation: ScalaSemanticMCP vs standard tooling (Metals / LSP)
+# Validation: ScalaSemantic vs standard tooling (Metals / LSP)
 
 This server reads the compiler-emitted **SemanticDB** for a whole project and answers questions
 *across the entire symbol/occurrence index*. Standard LSP tooling (Metals) is built around a
