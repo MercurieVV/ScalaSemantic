@@ -17,7 +17,7 @@ MCP server doing deep semantic analysis on Scala via SemanticDB — beyond Metal
 |---|-------|--------|-------|
 | 0 | Setup: CLAUDE.md, prePush, configs, commit | ✅ | `sbt prePush` green |
 | 1 | SemanticDB study + symbol-grammar helpers (fix `owner` dead code) | ✅ | delegates to `Scala.*`; 5 tests |
-| 2 | Result models (upickle case classes) | ⬜ | |
+| 2 | Result models (upickle case classes) | ✅ | one per tool; round-trip tests |
 | 3 | Analysis engine — query methods | ⬜ | see method list |
 | 4 | MCP protocol layer (JSON-RPC, tool registry) | ⬜ | |
 | 5 | Tests: dogfood + Metals comparison | ⬜ | |
@@ -47,4 +47,5 @@ MCP server doing deep semantic analysis on Scala via SemanticDB — beyond Metal
 - **Meta-build conflict:** sbt 2.0 meta-build is Scala 3; plugins drag `_2.13` scala-collection-compat → `ConflictWarning.disable` in `project/plugins.sbt`.
 - **SemanticDB bindings:** `scala.meta.internal.semanticdb.*` lives in artifact `semanticdb-shared` (not pulled by `scalameta`). It + `scalameta` are JVM-published on the 2.13 line → both consumed via `CrossVersion.for3Use2_13` (same as scalafix). Keeping the whole scalameta line on `_2.13` avoids suffix conflicts.
 - **wartremover:** pinned 3.6.0 (latest) — 3.5.6 had no artifact for Scala 3.8.4.
+- **sbt 2.0 test caching:** `Test / test` == cached `testQuick` — skips unchanged passing tests and reports "Total 0" even after `clean`. prePush uses `(Test / testOnly).toTask(" *")` to force the full suite.
 - **Symbol grammar:** don't hand-parse — `scala.meta.internal.semanticdb.Scala.*` provides `owner`/`ownerChain`/`desc`/`isGlobal`/`isMethod`/… (same helpers Scalafix uses). `semanticdb-shared` also ships `metap.SymbolInformationPrinter` → reuse for Phase 3 signature rendering.

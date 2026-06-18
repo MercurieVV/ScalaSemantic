@@ -37,7 +37,9 @@ lazy val root = (project in file("."))
           clean,
           scalafmtAll,
           scalafixAll.toTask(""),
-          (Test / test).toTask("")
+          // `Test / test` is cached `testQuick` under sbt 2.0 and skips unchanged passing
+          // tests (reports "Total 0"); `testOnly *` forces the full suite every push.
+          (Test / testOnly).toTask(" *")
         )
         .value
     )
