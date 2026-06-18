@@ -6,6 +6,12 @@ Living doc. Update status as work lands. Status: ⬜ todo · 🔄 in-progress ·
 MCP server doing deep semantic analysis on Scala via SemanticDB — beyond Metals/LSP.
 
 ## Architecture
+Three sbt modules, one per layer: `mcp` → `analysis` → `core`.
+- `core` (…​.semanticdb): SemanticIndex load/index — no JSON, no MCP.
+- `analysis` (…​.analysis, …​.model): Analyzer + upickle models; dependsOn core.
+- `mcp` (…​.mcp, Main): stdio JSON-RPC server; dependsOn analysis (`test->test` so fixtures compile first).
+- Dogfood tests load `fromProject(".")` (repo root) to see every module's SemanticDB.
+
 `MCP stdio JSON-RPC` → `analysis engine` → `SemanticIndex` (loader, done).
 - No Scala MCP SDK → hand-rolled JSON-RPC over stdin/stdout (upickle).
 - Signature rendering: custom `Type`/`Signature` printer; implicits via `SymbolInformation.Property.IMPLICIT`.
@@ -46,6 +52,9 @@ MCP server doing deep semantic analysis on Scala via SemanticDB — beyond Metal
 - Transport: newline-delimited JSON-RPC 2.0 over stdio (`Mcp.serve`); pure `Mcp.handle`/`Mcp.process` for testing. Run: `runMain com.github.mercurievv.scalasemantic.mcpServer <root>`.
 - Token discipline (per request): lean by default — locations as `uri:line:col`, signatures as one rendered line, related symbols as display names; empty fields omitted. `"detailed": true` opts into structured breakdowns; `find_usages` is paged (`limit`/`offset` + `referenceCount`).
 - 9 tools: find_usages, method_signature, class_hierarchy, find_overloads, members, type_at_position, resolve_implicits, trace_implicit_chain, call_path.
+
+## Backlog
+- **`reload` MCP tool** (later): re-read `*.semanticdb` from disk without restarting the server (re-run `SemanticIndex.fromProject`). SemanticDB only updates on compile, and the server loads the index once at startup — a reload tool pairs with `sbt ~compile` for near-live analysis.
 
 ## Known issues / decisions
 - **sbt 2.0.0 API shifts:** `test` is now an `InputKey` → use `(Test / test).toTask("")`; task result caching needs a `HashWriter` → wrap aggregate task in `Def.uncached(...)`.

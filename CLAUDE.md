@@ -10,12 +10,15 @@ MCP server doing deep semantic analysis on Scala projects via SemanticDB — cap
 - `semanticdbEnabled := true` — project emits its own SemanticDB; analyzer dogfoods on this repo.
 
 ## Layout
+Three sbt modules (layer per module), package base `com.github.mercurievv.scalasemantic`:
 ```
-src/main/scala/com/github/mercurievv/scalasemantic/
-  Main.scala                       # entrypoint
-  semanticdb/SemanticIndex.scala   # loads *.semanticdb, indexes symbols + occurrences
+core/      …​.semanticdb   SemanticIndex — loads/indexes *.semanticdb (no JSON, no MCP)
+analysis/  …​.analysis, …​.model   Analyzer + upickle result models; dependsOn core
+mcp/       …​.mcp, Main    stdio JSON-RPC server + entrypoint; dependsOn analysis (test->test too)
 ```
-SemanticDB output: `target/out/jvm/scala-3.8.4/scalasemanticmcp/meta/META-INF/semanticdb/**/*.semanticdb` (sbt 2.0.0 layout).
+SemanticDB is emitted per module under `<module>/target/out/.../meta/META-INF/semanticdb/**`.
+Dogfood tests load `SemanticIndex.fromProject(".")` (repo root) so they see every module's output;
+unforked tests run with cwd = repo root. `mcp` test-depends on `analysis` so fixtures compile first.
 
 ## Architecture
 3 layers: **MCP stdio JSON-RPC** → **analysis engine** → **SemanticIndex**.
@@ -34,7 +37,8 @@ type-at-position, cross-file-refs, find-overloads, trace-implicit-chain, call-gr
 
 ## Build / test
 ```
-sbt compile      # regenerates SemanticDB for all sources
+sbt compile      # regenerates SemanticDB for all modules
 sbt test
-sbt prePush      # code-quality gate before pushing
+sbt prePush      # command alias: clean; scalafmtAll; scalafixAll; Test/testOnly * (aggregates all modules)
+sbt "mcp/runMain com.github.mercurievv.scalasemantic.mcpServer <root>"  # start the server
 ```

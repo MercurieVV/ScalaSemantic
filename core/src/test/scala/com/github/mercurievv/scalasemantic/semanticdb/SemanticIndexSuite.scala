@@ -6,7 +6,7 @@ package com.github.mercurievv.scalasemantic.semanticdb
 class SemanticIndexSuite extends munit.FunSuite:
 
   // Loaded once; the analyzer's own class is guaranteed to be present in the index.
-  private val idx = SemanticIndex.fromProject("target")
+  private val idx = SemanticIndex.fromProject(".")
 
   private val Cls = "com/github/mercurievv/scalasemantic/semanticdb/SemanticIndex#"
   private val DisplayName =

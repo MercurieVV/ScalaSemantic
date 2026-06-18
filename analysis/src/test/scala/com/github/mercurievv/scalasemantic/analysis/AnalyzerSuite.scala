@@ -8,7 +8,7 @@ import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
   */
 class AnalyzerSuite extends munit.FunSuite:
 
-  private val az = Analyzer(SemanticIndex.fromProject("target"))
+  private val az = Analyzer(SemanticIndex.fromProject("."))
 
   private val Animal = "com/github/mercurievv/scalasemantic/fixtures/Animal#"
   private val Dog = "com/github/mercurievv/scalasemantic/fixtures/Dog#"

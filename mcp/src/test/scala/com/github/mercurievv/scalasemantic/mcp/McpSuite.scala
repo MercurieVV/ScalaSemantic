@@ -8,7 +8,7 @@ import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
   */
 class McpSuite extends munit.FunSuite:
 
-  private val tools = McpTools.all(Analyzer(SemanticIndex.fromProject("target")))
+  private val tools = McpTools.all(Analyzer(SemanticIndex.fromProject(".")))
 
   private val Animal = "com/github/mercurievv/scalasemantic/fixtures/Animal#"
   private val Render = "com/github/mercurievv/scalasemantic/fixtures/Sample.render()."

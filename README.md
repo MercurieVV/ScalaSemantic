@@ -6,14 +6,18 @@ LSP tooling. See [docs/COMPARISON.md](docs/COMPARISON.md) for the capability com
 
 ## How it works
 
+Three sbt modules, one per architectural layer:
+
 ```
-MCP stdio JSON-RPC  →  Analysis engine  →  SemanticIndex
-  (com.github.mercurievv.scalasemantic.mcp)    (com.github.mercurievv.scalasemantic.analysis)   (loads *.semanticdb)
+mcp        stdio JSON-RPC server + entrypoint   (com.github.mercurievv.scalasemantic.mcp)
+  └─ analysis   query engine + result models    (…​.analysis, …​.model)
+       └─ core    load + index SemanticDB        (…​.semanticdb)
 ```
 
-The analyzer reads every `*.semanticdb` file under a project root and answers queries against the
-whole symbol/occurrence index. The project emits its own SemanticDB (`semanticdbEnabled := true`),
-so all 33 tests run against this codebase itself.
+`core` knows nothing about JSON or MCP; `analysis` adds upickle result models; `mcp` is the only
+module that speaks the protocol. The analyzer reads every `*.semanticdb` file under a project root
+and answers queries against the whole symbol/occurrence index. Each module emits its own SemanticDB
+(`semanticdbEnabled := true`), so all 33 tests run against this codebase itself.
 
 ## Tools
 
@@ -48,14 +52,14 @@ a directory that contains emitted `*.semanticdb` files (the target project must 
 SemanticDB enabled):
 
 ```
-runMain com.github.mercurievv.scalasemantic.mcpServer <semanticdbRoot>   # defaults to "."
+sbt "mcp/runMain com.github.mercurievv.scalasemantic.mcpServer <semanticdbRoot>"   # root defaults to "."
 ```
 
 > Note: a bare `sbt runMain` is fine for development but writes its own build logs to stdout, which
 > corrupts the JSON-RPC stream. For integration as an MCP server (e.g. in Claude Code), launch the
 > compiled application directly so stdout carries only protocol messages — package a runnable jar
-> (e.g. add `sbt-assembly`) and invoke `java -jar scalasemanticmcp.jar <root>`, then register that
-> command as the MCP server.
+> from the `mcp` module (e.g. add `sbt-assembly`) and invoke `java -jar scalasemantic-mcp.jar
+> <root>`, then register that command as the MCP server.
 
 ### Quick manual check (dev loop, stderr discarded)
 
