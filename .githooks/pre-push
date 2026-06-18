@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Run the full gate before pushing. Skip with: git push --no-verify, or PREPUSH_SKIP=1 git push.
+[ "${PREPUSH_SKIP:-0}" = "1" ] && exit 0
+echo "[pre-push] running sbt prePush..."
+exec sbt prePush

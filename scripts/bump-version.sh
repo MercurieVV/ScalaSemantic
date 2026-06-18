@@ -7,12 +7,11 @@
 #   scripts/bump-version.sh [patch|minor|major] [--push]
 #
 # Rules:
-# - Uses the highest existing v* semver tag if present, else FIRST_VERSION for the first release.
+# - Uses the highest existing v* semver tag if present, else FIRST_VERSION (scripts/config.sh).
 # - Creates the tag locally; with --push, also pushes it to origin (which triggers the release).
 
 set -euo pipefail
-
-FIRST_VERSION="0.1.0"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/config.sh"
 
 usage() { sed -n '3,12p' "$0" | sed 's/^# \{0,1\}//'; }
 

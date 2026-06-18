@@ -5,10 +5,25 @@ CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) builds and tests 
 version from the tag; sbt-ci-release signs and uploads). Artifacts publish under
 `io.github.mercurievv`.
 
+All helper scripts read project-specific values from [`scripts/config.sh`](../scripts/config.sh)
+(repo, first version, Central host, artifact metadata URL, the secret list) — override any with an
+env var of the same name, so the scripts are reusable across projects.
+
+## One-time repo setup
+
+```sh
+PGP_SECRET=... PGP_PASSPHRASE=... SONATYPE_USERNAME=... SONATYPE_PASSWORD=... \
+  scripts/setup-gh-repo.sh                 # sets the repo secrets + enables the dependency graph
+# or pull the values from 1Password:
+scripts/setup-gh-repo.sh --op-item op://Vault/ScalaSemantic-release
+scripts/install-git-hooks.sh               # optional: run `sbt prePush` on every push
+```
+
 ## Cut a release
 
 ```sh
-scripts/bump-version.sh patch --push   # or minor / major — tags vX.Y.Z and pushes (triggers publish)
+scripts/bump-version.sh patch --push   # or bump-fix/bump-minor/bump-major — tags vX.Y.Z and pushes
+scripts/check-push-workflow.sh         # wait for CI, report the latest published version
 scripts/retry-last-tag.sh --push       # move the tag to HEAD to retry a release that failed early
 ```
 
