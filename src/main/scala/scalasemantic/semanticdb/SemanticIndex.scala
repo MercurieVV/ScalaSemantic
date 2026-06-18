@@ -5,6 +5,8 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import scala.jdk.CollectionConverters.*
 import scala.meta.internal.semanticdb as s
+import scala.meta.internal.semanticdb.Scala.*
+import scala.meta.internal.semanticdb.Scala.Symbols
 
 /** Loads SemanticDB payloads from a project and indexes them for querying.
   *
@@ -30,35 +32,38 @@ final class SemanticIndex(val documents: Vector[s.TextDocument]):
 
   def info(symbol: String): Option[s.SymbolInformation] = symbols.get(symbol)
 
-  /** Human-readable name for a symbol: prefer the indexed display name, otherwise decode it from
-    * the trailing descriptor of the symbol string.
-    */
+  // --- Symbol grammar -------------------------------------------------------
+  //
+  // A SemanticDB global symbol is `Owner Descriptor`, where each descriptor encodes
+  // both the simple name and the kind via its terminator:
+  //   package `foo/`   type `Foo#`   term `foo.`   method `foo().` (with `(+1)` disambig)
+  //   parameter `(x)`   type-parameter `[T]`.   Names may be backtick-escaped.
+  // Local symbols are `local<N>`. Rather than re-parse this by hand we delegate to the
+  // official `scala.meta.internal.semanticdb.Scala` helpers — the same ones Scalafix uses.
+
+  /** Human-readable name: prefer the indexed display name, else the last descriptor's name. */
   def displayName(symbol: String): String =
-    symbols.get(symbol).map(_.displayName).filter(_.nonEmpty).getOrElse(decodeName(symbol))
+    symbols
+      .get(symbol)
+      .map(_.displayName)
+      .filter(_.nonEmpty)
+      .getOrElse(if symbol.isGlobal then symbol.desc.name.value else symbol)
 
-  /** Owner symbol (enclosing scope) of a global symbol, or "" for top-level/_root_. */
+  /** Owner symbol (enclosing scope), or "" for top-level / root / local symbols. */
   def owner(symbol: String): String =
-    val trimmed = symbol.stripSuffix("#").stripSuffix(".").stripSuffix(")").stripSuffix("/")
-    val cut = symbol.length - (symbol.length - lastDescriptorStart(symbol))
-    val idx = lastDescriptorStart(symbol)
-    if idx <= 0 then "" else symbol.substring(0, idx)
+    val o = symbol.owner
+    if o == Symbols.RootPackage || o == Symbols.EmptyPackage || o == Symbols.None then "" else o
 
-  private def lastDescriptorStart(symbol: String): Int =
-    // descriptors end in one of: # . / ) — find start of the last one
-    val end = symbol.length
-    // skip a trailing method disambiguator like "(+1)" or "()."
-    var i = end - 1
-    // find boundary: previous descriptor terminator before the final segment
-    val terminators = Set('#', '.', '/', ')')
-    // drop final terminator(s)
-    while i >= 0 && terminators.contains(symbol.charAt(i)) do i -= 1
-    while i >= 0 && !terminators.contains(symbol.charAt(i)) do i -= 1
-    i + 1
+  /** Enclosing scopes from outermost to the symbol itself (excludes the root package). */
+  def ownerChain(symbol: String): List[String] =
+    symbol.ownerChain.filterNot(s => s == Symbols.RootPackage || s == Symbols.EmptyPackage)
 
-  private def decodeName(symbol: String): String =
-    val start = lastDescriptorStart(symbol)
-    val seg = symbol.substring(start).takeWhile(c => c != '#' && c != '.' && c != '/' && c != '(')
-    if seg.nonEmpty then seg else symbol
+  def isGlobal(symbol: String): Boolean = symbol.isGlobal
+  def isLocal(symbol: String): Boolean = symbol.isLocal
+  def isMethod(symbol: String): Boolean = symbol.isGlobal && symbol.desc.isMethod
+  def isType(symbol: String): Boolean = symbol.isGlobal && symbol.isType
+  def isTerm(symbol: String): Boolean = symbol.isGlobal && symbol.isTerm
+  def isPackage(symbol: String): Boolean = symbol.isGlobal && symbol.isPackage
 
 object SemanticIndex:
 

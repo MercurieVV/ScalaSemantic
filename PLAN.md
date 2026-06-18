@@ -16,7 +16,7 @@ MCP server doing deep semantic analysis on Scala via SemanticDB — beyond Metal
 | # | Phase | Status | Notes |
 |---|-------|--------|-------|
 | 0 | Setup: CLAUDE.md, prePush, configs, commit | ✅ | `sbt prePush` green |
-| 1 | SemanticDB study + symbol-grammar helpers (fix `owner` dead code) | ⬜ | |
+| 1 | SemanticDB study + symbol-grammar helpers (fix `owner` dead code) | ✅ | delegates to `Scala.*`; 5 tests |
 | 2 | Result models (upickle case classes) | ⬜ | |
 | 3 | Analysis engine — query methods | ⬜ | see method list |
 | 4 | MCP protocol layer (JSON-RPC, tool registry) | ⬜ | |
@@ -40,10 +40,11 @@ MCP server doing deep semantic analysis on Scala via SemanticDB — beyond Metal
 - ✅ build.sbt: prePush task, wart warnings, semanticdb
 - ✅ resolve meta-build cross-version conflict (`conflictWarning := disable` in plugins.sbt)
 - ✅ verify `sbt prePush` runs green
-- ⬜ initial git commit
+- ✅ initial git commit (36aa0ee)
 
 ## Known issues / decisions
 - **sbt 2.0.0 API shifts:** `test` is now an `InputKey` → use `(Test / test).toTask("")`; task result caching needs a `HashWriter` → wrap aggregate task in `Def.uncached(...)`.
 - **Meta-build conflict:** sbt 2.0 meta-build is Scala 3; plugins drag `_2.13` scala-collection-compat → `ConflictWarning.disable` in `project/plugins.sbt`.
 - **SemanticDB bindings:** `scala.meta.internal.semanticdb.*` lives in artifact `semanticdb-shared` (not pulled by `scalameta`). It + `scalameta` are JVM-published on the 2.13 line → both consumed via `CrossVersion.for3Use2_13` (same as scalafix). Keeping the whole scalameta line on `_2.13` avoids suffix conflicts.
 - **wartremover:** pinned 3.6.0 (latest) — 3.5.6 had no artifact for Scala 3.8.4.
+- **Symbol grammar:** don't hand-parse — `scala.meta.internal.semanticdb.Scala.*` provides `owner`/`ownerChain`/`desc`/`isGlobal`/`isMethod`/… (same helpers Scalafix uses). `semanticdb-shared` also ships `metap.SymbolInformationPrinter` → reuse for Phase 3 signature rendering.
