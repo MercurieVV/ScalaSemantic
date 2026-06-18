@@ -26,14 +26,16 @@ RELEASE_SECRETS=(PGP_PASSPHRASE PGP_SECRET SONATYPE_USERNAME SONATYPE_PASSWORD)
 # or CLI flags. OP_GPG_ITEM supplies the PGP_* secrets, OP_SONATYPE_ITEM the SONATYPE_* secrets;
 # OP_ITEM is a single fallback item for all of them. Each derives op://…/ITEM/<SECRET_NAME>.
 OP_ITEM="${OP_ITEM:-}"
-OP_GPG_ITEM="${OP_GPG_ITEM:-}"
-OP_SONATYPE_ITEM="${OP_SONATYPE_ITEM:-}"
+OP_GPG_ITEM="${OP_GPG_ITEM:-op://Personal/GPG_2}"
+OP_SONATYPE_ITEM="${OP_SONATYPE_ITEM:-op://Personal/SONATYPE_CREDS}"
 
-# sbt-ci-release imports the key via `base64 --decode | gpg --import`, so PGP_SECRET must be base64.
-# If true, setup-gh-repo.sh base64-encodes the PGP_SECRET value before posting — i.e. you supply the
-# raw armored key (`gpg --armor --export-secret-keys ...`) and the script encodes it. Set false if
-# the value you supply is already base64.
-PGP_SECRET_BASE64_ENCODE="${PGP_SECRET_BASE64_ENCODE:-true}"
+# sbt-ci-release imports the key via `base64 --decode | gpg --import`, so the POSTED secret must be
+# base64. Set this true ONLY if the value you supply is the RAW armored key (the script then encodes
+# it). Keep false if the source value is already base64 — e.g. a 1Password item shared with another
+# project whose CI already base64-decodes (double-encoding would break the import).
+# Check your source: `op read 'op://Personal/GPG_2/PGP_SECRET' | head -c 30`
+#   begins with "-----BEGIN PGP" -> raw, set true ;  base64 gibberish -> already encoded, keep false.
+PGP_SECRET_BASE64_ENCODE="${PGP_SECRET_BASE64_ENCODE:-false}"
 
 # Resolve the directory of the calling script so sourcing this file is location-independent.
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
