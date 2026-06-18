@@ -139,6 +139,154 @@ final class Analyzer(index: SemanticIndex):
         )
       }
 
+  // --- resolve-implicits ----------------------------------------------------
+
+  /** Implicit/given instances in the index that produce the given type (by symbol). For a `given`
+    * object this is a parent it extends; for a `given def` it is the (possibly synthetic) return
+    * type's parent. `chosen` is set only when exactly one candidate exists.
+    */
+  def resolveImplicits(typeSymbol: String): ImplicitResolution =
+    val candidates = implicitsProducing(typeSymbol).map { si =>
+      ImplicitCandidate(
+        symbolRef(si.symbol),
+        renderType(producedType(si)),
+        fromExplicitImport = false
+      )
+    }
+    val chosen = candidates match
+      case one :: Nil => Some(one.target)
+      case _          => None
+    ImplicitResolution(typeSymbol, chosen, candidates)
+
+  // --- trace-implicit-chain -------------------------------------------------
+
+  /** Givens producing `typeSymbol`, plus the implicit dependencies they pull in, walked
+    * transitively. Each step records the implicit-parameter types it `dependsOn`.
+    */
+  def traceImplicitChain(typeSymbol: String): ImplicitChain =
+    def loop(
+        queue: List[String],
+        seenTypes: List[String],
+        steps: List[ImplicitChainStep]
+    ): List[ImplicitChainStep] =
+      queue match
+        case Nil => steps
+        case tpe :: rest =>
+          if seenTypes.contains(tpe) then loop(rest, seenTypes, steps)
+          else
+            val produced = implicitsProducing(tpe)
+            val newSteps = produced.map { si =>
+              val deps = implicitDependencyHeads(si)
+              ImplicitChainStep(symbolRef(si.symbol), renderType(producedType(si)), deps)
+            }
+            val nextTypes = produced.flatMap(implicitDependencyHeads)
+            loop(rest ::: nextTypes, tpe :: seenTypes, steps ::: newSteps)
+    ImplicitChain(typeSymbol, loop(List(typeSymbol), Nil, Nil).distinctBy(_.target.symbol))
+
+  // --- call-graph path-find -------------------------------------------------
+
+  /** Shortest call path `from -> ... -> to`, with the call-site edges that realize it. Empty `path`
+    * means `to` is unreachable from `from`.
+    */
+  def callPath(from: String, to: String): CallGraphPath =
+    val adjacency = callGraph
+    def bfs(frontier: List[List[String]], seen: Set[String]): List[String] =
+      frontier match
+        case Nil => Nil
+        case path :: rest =>
+          val node = path.head
+          if node == to then path.reverse
+          else
+            val nexts = adjacency.getOrElse(node, Nil).map(_._1).filterNot(seen.contains)
+            bfs(rest ::: nexts.map(_ :: path), seen ++ nexts)
+    val nodes = if from == to then List(from) else bfs(List(List(from)), Set(from))
+    val edges = nodes
+      .zip(nodes.drop(1))
+      .flatMap { (a, b) =>
+        adjacency.getOrElse(a, Nil).find(_._1 == b).map { (_, loc) =>
+          CallEdge(symbolRef(a), symbolRef(b), loc)
+        }
+      }
+    CallGraphPath(symbolRef(from), symbolRef(to), nodes.map(symbolRef), edges)
+
+  /** Caller -> list of (callee, call-site) edges, attributing each method reference to the most
+    * recent method definition in source order within its document.
+    */
+  private lazy val callGraph: Map[String, List[(String, Location)]] =
+    val edges = index.documents.flatMap { doc =>
+      val ordered = doc.occurrences.sortBy(o =>
+        (o.range.map(_.startLine).getOrElse(0), o.range.map(_.startCharacter).getOrElse(0))
+      )
+      ordered
+        .foldLeft((Option.empty[String], List.empty[(String, String, Location)])) {
+          case ((current, acc), occ) =>
+            val isDef = occ.role == s.SymbolOccurrence.Role.DEFINITION
+            val method = index.isMethod(occ.symbol)
+            if isDef && method then (Some(occ.symbol), acc)
+            else if method && current.exists(_ != occ.symbol) then
+              (current, acc :+ ((current.getOrElse(""), occ.symbol, location(doc.uri, occ.range))))
+            else (current, acc)
+        }
+        ._2
+    }
+    edges.toList.groupMap(_._1)(e => (e._2, e._3))
+
+  /** Given/implicit *definitions* (a given object or def/val) whose produced type's head is
+    * `typeSymbol`. Excludes implicit parameters and the synthetic self-class a `given ... with`
+    * emits (whose members are owned by an implicit type).
+    */
+  private def implicitsProducing(typeSymbol: String): List[s.SymbolInformation] =
+    index.symbols.values
+      .collect {
+        case si if isGivenDefinition(si) && parentSymbol(producedType(si)).contains(typeSymbol) =>
+          si
+      }
+      .toList
+      .sortBy(_.symbol)
+
+  private def isGivenDefinition(info: s.SymbolInformation): Boolean =
+    val k = info.kind
+    isImplicit(info) &&
+    (k == s.SymbolInformation.Kind.OBJECT || k == s.SymbolInformation.Kind.METHOD) &&
+    !index.info(index.owner(info.symbol)).exists(isImplicit)
+
+  /** The type an implicit instance provides: a given object's first non-Object parent, or a given
+    * def/val's result type (unwrapping the synthetic self-class a `given ... with` emits).
+    */
+  private def producedType(info: s.SymbolInformation): s.Type =
+    info.signature match
+      case c: s.ClassSignature  => c.parents.find(notObject).getOrElse(s.Type.Empty)
+      case m: s.MethodSignature => unwrapSelfClass(m.returnType, info.displayName)
+      case v: s.ValueSignature  => unwrapSelfClass(v.tpe, info.displayName)
+      case _                    => s.Type.Empty
+
+  /** If `tpe`'s head is the synthetic class named after the given (`given x ... with`), replace it
+    * with the interface that class extends; otherwise return `tpe` unchanged.
+    */
+  private def unwrapSelfClass(tpe: s.Type, givenName: String): s.Type =
+    val isSelfClass = parentSymbol(tpe).exists(sym => index.displayName(sym) == givenName)
+    if !isSelfClass then tpe
+    else
+      parentSymbol(tpe)
+        .flatMap(index.info)
+        .map(_.signature)
+        .collect { case c: s.ClassSignature => c.parents.find(notObject) }
+        .flatten
+        .getOrElse(tpe)
+
+  private def notObject(tpe: s.Type): Boolean =
+    !parentSymbol(tpe).contains("java/lang/Object#")
+
+  /** Head symbols of an implicit method's implicit-parameter types (its dependencies). */
+  private def implicitDependencyHeads(info: s.SymbolInformation): List[String] =
+    info.signature match
+      case m: s.MethodSignature =>
+        m.parameterLists.toList
+          .flatMap(scope => scopeInfos(Some(scope)))
+          .filter(isImplicit)
+          .flatMap(p => parentSymbol(valueType(p)))
+      case _ => Nil
+
   // --- shared helpers -------------------------------------------------------
 
   /** Member symbols declared in a type's `ClassSignature.declarations` scope. */

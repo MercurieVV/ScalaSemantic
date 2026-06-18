@@ -17,6 +17,12 @@ class AnalyzerSuite extends munit.FunSuite:
   private val Greeter = "scalasemantic/fixtures/Greeter#"
   private val Render = "scalasemantic/fixtures/Sample.render()."
   private val Over = "scalasemantic/fixtures/Sample.over()."
+  private val Show = "scalasemantic/fixtures/Show#"
+  private val Eq = "scalasemantic/fixtures/Eq#"
+  private val IntShow = "scalasemantic/fixtures/Sample.intShow."
+  private val ListShow = "scalasemantic/fixtures/Sample.listShow()."
+  private val IntEq = "scalasemantic/fixtures/Sample.intEq."
+  private def calls(m: String) = s"scalasemantic/fixtures/Calls.$m()."
 
   test("findUsages reports the definition and cross-type references of a trait") {
     val u = az.findUsages(Animal)
@@ -83,4 +89,40 @@ class AnalyzerSuite extends munit.FunSuite:
 
   test("typeAtPosition returns None for an unknown document") {
     assertEquals(az.typeAtPosition("file:///does/not/exist.scala", 0, 0), None)
+  }
+
+  test("resolveImplicits lists given definitions producing a type, ignoring params/synthetics") {
+    val r = az.resolveImplicits(Show)
+    assertEquals(r.candidates.map(_.target.symbol), List(IntShow, ListShow))
+    assertEquals(r.candidates.map(_.tpe).toSet, Set("Show[Int]", "Show[List[A]]"))
+    assertEquals(r.chosen, None) // two candidates → ambiguous
+  }
+
+  test("resolveImplicits picks `chosen` when exactly one given matches") {
+    val r = az.resolveImplicits(Eq)
+    assertEquals(r.candidates.map(_.target.symbol), List(IntEq))
+    assertEquals(r.chosen.map(_.symbol), Some(IntEq))
+  }
+
+  test("traceImplicitChain records implicit dependencies of each given") {
+    val steps = az.traceImplicitChain(Show).steps
+    assertEquals(steps.map(_.target.symbol), List(IntShow, ListShow))
+    val listStep = steps.find(_.target.symbol == ListShow).getOrElse(fail("listShow step missing"))
+    assertEquals(listStep.dependsOn, List(Show)) // Show[List[A]] needs a Show[A]
+    val intStep = steps.find(_.target.symbol == IntShow).getOrElse(fail("intShow step missing"))
+    assertEquals(intStep.dependsOn, Nil)
+  }
+
+  test("callPath finds a transitive call chain with its edges") {
+    val p = az.callPath(calls("a"), calls("c"))
+    assertEquals(p.path.map(_.displayName), List("a", "b", "c"))
+    assertEquals(
+      p.edges.map(e => e.from.displayName -> e.to.displayName),
+      List("a" -> "b", "b" -> "c")
+    )
+  }
+
+  test("callPath returns an empty path when the target is unreachable") {
+    // c calls nothing, so a is not reachable from c.
+    assertEquals(az.callPath(calls("c"), calls("a")).path, Nil)
   }

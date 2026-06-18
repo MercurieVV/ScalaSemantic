@@ -25,11 +25,28 @@ class Robot extends Greeter
 trait Show[A]:
   def show(a: A): String
 
+/** A type class with exactly one given instance — exercises single-candidate resolution. */
+trait Eq[A]:
+  def eqv(a: A, b: A): Boolean
+
 object Sample:
   given intShow: Show[Int] with
     def show(a: Int): String = a.toString
+
+  given intEq: Eq[Int] with
+    def eqv(a: Int, b: Int): Boolean = a == b
+
+  // Chained given: resolving Show[List[A]] depends on a Show[A] — feeds trace-implicit-chain.
+  given listShow[A](using s: Show[A]): Show[List[A]] with
+    def show(a: List[A]): String = a.map(s.show).mkString(",")
 
   def render[A](a: A)(using sh: Show[A]): String = sh.show(a)
 
   def over(x: Int): Int = x
   def over(x: String): String = x
+
+/** A flat call chain a -> b -> c for call-graph path-finding. */
+object Calls:
+  def a(): Int = b()
+  def b(): Int = c()
+  def c(): Int = 1
