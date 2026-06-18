@@ -1,7 +1,7 @@
-package scalasemantic.analysis
+package com.github.mercurievv.scalasemantic.analysis
 
-import scalasemantic.model.*
-import scalasemantic.semanticdb.SemanticIndex
+import com.github.mercurievv.scalasemantic.model.*
+import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
 import scala.meta.internal.semanticdb as s
 

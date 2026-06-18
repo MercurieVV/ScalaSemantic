@@ -1,7 +1,7 @@
-package scalasemantic.mcp
+package com.github.mercurievv.scalasemantic.mcp
 
-import scalasemantic.analysis.Analyzer
-import scalasemantic.semanticdb.SemanticIndex
+import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
 /** A single MCP tool: its name, one-line description, JSON-Schema for arguments, and a handler
   * producing a (deliberately lean) JSON result.

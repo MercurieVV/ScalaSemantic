@@ -43,7 +43,7 @@ MCP server doing deep semantic analysis on Scala via SemanticDB — beyond Metal
 - ✅ initial git commit (36aa0ee)
 
 ## MCP interface (Phase 4)
-- Transport: newline-delimited JSON-RPC 2.0 over stdio (`Mcp.serve`); pure `Mcp.handle`/`Mcp.process` for testing. Run: `runMain scalasemantic.mcpServer <root>`.
+- Transport: newline-delimited JSON-RPC 2.0 over stdio (`Mcp.serve`); pure `Mcp.handle`/`Mcp.process` for testing. Run: `runMain com.github.mercurievv.scalasemantic.mcpServer <root>`.
 - Token discipline (per request): lean by default — locations as `uri:line:col`, signatures as one rendered line, related symbols as display names; empty fields omitted. `"detailed": true` opts into structured breakdowns; `find_usages` is paged (`limit`/`offset` + `referenceCount`).
 - 9 tools: find_usages, method_signature, class_hierarchy, find_overloads, members, type_at_position, resolve_implicits, trace_implicit_chain, call_path.
 

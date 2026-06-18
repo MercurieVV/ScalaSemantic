@@ -1,10 +1,11 @@
-package scalasemantic
+package com.github.mercurievv.scalasemantic
 
-import scalasemantic.mcp.Mcp
-import scalasemantic.semanticdb.SemanticIndex
+import com.github.mercurievv.scalasemantic.mcp.Mcp
+import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
-/** Start the MCP server over stdio. Usage: `runMain scalasemantic.mcpServer [semanticdbRoot]` (root
-  * defaults to the current directory, where it recursively finds emitted `*.semanticdb` files).
+/** Start the MCP server over stdio. Usage: `runMain com.github.mercurievv.scalasemantic.mcpServer
+  * [semanticdbRoot]` (root defaults to the current directory, where it recursively finds emitted
+  * `*.semanticdb` files).
   */
 @main def mcpServer(args: String*): Unit =
   Mcp.serve(args.headOption.getOrElse("."))
@@ -17,6 +18,6 @@ import scalasemantic.semanticdb.SemanticIndex
   val idx = SemanticIndex.fromProject(root)
   println(s"Loaded ${idx.documents.size} documents, ${idx.symbols.size} symbols")
   idx.symbols.keys.toVector.sorted
-    .filter(_.startsWith("scalasemantic"))
+    .filter(_.startsWith("com/github/mercurievv/scalasemantic"))
     .take(30)
     .foreach(sym => println(s"  $sym  name=${idx.displayName(sym)} owner=${idx.owner(sym)}"))

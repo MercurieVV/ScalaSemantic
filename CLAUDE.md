@@ -11,7 +11,7 @@ MCP server doing deep semantic analysis on Scala projects via SemanticDB — cap
 
 ## Layout
 ```
-src/main/scala/scalasemantic/
+src/main/scala/com/github/mercurievv/scalasemantic/
   Main.scala                       # entrypoint
   semanticdb/SemanticIndex.scala   # loads *.semanticdb, indexes symbols + occurrences
 ```

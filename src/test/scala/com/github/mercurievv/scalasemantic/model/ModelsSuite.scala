@@ -1,4 +1,4 @@
-package scalasemantic.model
+package com.github.mercurievv.scalasemantic.model
 
 import upickle.default.read
 import upickle.default.write

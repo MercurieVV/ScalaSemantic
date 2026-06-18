@@ -8,7 +8,7 @@ LSP tooling. See [docs/COMPARISON.md](docs/COMPARISON.md) for the capability com
 
 ```
 MCP stdio JSON-RPC  →  Analysis engine  →  SemanticIndex
-  (scalasemantic.mcp)    (scalasemantic.analysis)   (loads *.semanticdb)
+  (com.github.mercurievv.scalasemantic.mcp)    (com.github.mercurievv.scalasemantic.analysis)   (loads *.semanticdb)
 ```
 
 The analyzer reads every `*.semanticdb` file under a project root and answers queries against the
@@ -48,7 +48,7 @@ a directory that contains emitted `*.semanticdb` files (the target project must 
 SemanticDB enabled):
 
 ```
-runMain scalasemantic.mcpServer <semanticdbRoot>   # defaults to "."
+runMain com.github.mercurievv.scalasemantic.mcpServer <semanticdbRoot>   # defaults to "."
 ```
 
 > Note: a bare `sbt runMain` is fine for development but writes its own build logs to stdout, which
@@ -63,7 +63,7 @@ runMain scalasemantic.mcpServer <semanticdbRoot>   # defaults to "."
 printf '%s\n' \
  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
  '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
- '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"class_hierarchy","arguments":{"symbol":"scalasemantic/fixtures/Animal#"}}}'
+ '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"class_hierarchy","arguments":{"symbol":"com/github/mercurievv/scalasemantic/fixtures/Animal#"}}}'
 ```
 
 Feed those lines to the running server's stdin; expect three JSON-RPC responses on stdout.

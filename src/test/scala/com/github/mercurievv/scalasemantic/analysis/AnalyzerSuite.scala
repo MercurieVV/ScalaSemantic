@@ -1,28 +1,28 @@
-package scalasemantic.analysis
+package com.github.mercurievv.scalasemantic.analysis
 
-import scalasemantic.semanticdb.SemanticIndex
+import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
-/** Phase 3: query-engine tests against the `scalasemantic.fixtures` SemanticDB. Several of these
-  * exercise relationships (known subtypes, implicit param lists) that Metals cannot answer from a
-  * single symbol query.
+/** Phase 3: query-engine tests against the `com.github.mercurievv.scalasemantic.fixtures`
+  * SemanticDB. Several of these exercise relationships (known subtypes, implicit param lists) that
+  * Metals cannot answer from a single symbol query.
   */
 class AnalyzerSuite extends munit.FunSuite:
 
   private val az = Analyzer(SemanticIndex.fromProject("target"))
 
-  private val Animal = "scalasemantic/fixtures/Animal#"
-  private val Dog = "scalasemantic/fixtures/Dog#"
-  private val Fish = "scalasemantic/fixtures/Fish#"
-  private val Robot = "scalasemantic/fixtures/Robot#"
-  private val Greeter = "scalasemantic/fixtures/Greeter#"
-  private val Render = "scalasemantic/fixtures/Sample.render()."
-  private val Over = "scalasemantic/fixtures/Sample.over()."
-  private val Show = "scalasemantic/fixtures/Show#"
-  private val Eq = "scalasemantic/fixtures/Eq#"
-  private val IntShow = "scalasemantic/fixtures/Sample.intShow."
-  private val ListShow = "scalasemantic/fixtures/Sample.listShow()."
-  private val IntEq = "scalasemantic/fixtures/Sample.intEq."
-  private def calls(m: String) = s"scalasemantic/fixtures/Calls.$m()."
+  private val Animal = "com/github/mercurievv/scalasemantic/fixtures/Animal#"
+  private val Dog = "com/github/mercurievv/scalasemantic/fixtures/Dog#"
+  private val Fish = "com/github/mercurievv/scalasemantic/fixtures/Fish#"
+  private val Robot = "com/github/mercurievv/scalasemantic/fixtures/Robot#"
+  private val Greeter = "com/github/mercurievv/scalasemantic/fixtures/Greeter#"
+  private val Render = "com/github/mercurievv/scalasemantic/fixtures/Sample.render()."
+  private val Over = "com/github/mercurievv/scalasemantic/fixtures/Sample.over()."
+  private val Show = "com/github/mercurievv/scalasemantic/fixtures/Show#"
+  private val Eq = "com/github/mercurievv/scalasemantic/fixtures/Eq#"
+  private val IntShow = "com/github/mercurievv/scalasemantic/fixtures/Sample.intShow."
+  private val ListShow = "com/github/mercurievv/scalasemantic/fixtures/Sample.listShow()."
+  private val IntEq = "com/github/mercurievv/scalasemantic/fixtures/Sample.intEq."
+  private def calls(m: String) = s"com/github/mercurievv/scalasemantic/fixtures/Calls.$m()."
 
   test("findUsages reports the definition and cross-type references of a trait") {
     val u = az.findUsages(Animal)

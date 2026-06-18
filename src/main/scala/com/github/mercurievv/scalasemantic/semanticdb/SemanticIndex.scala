@@ -1,4 +1,4 @@
-package scalasemantic.semanticdb
+package com.github.mercurievv.scalasemantic.semanticdb
 
 import java.nio.file.Files
 import java.nio.file.Path

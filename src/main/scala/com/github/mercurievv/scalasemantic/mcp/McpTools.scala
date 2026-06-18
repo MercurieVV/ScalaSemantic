@@ -1,7 +1,7 @@
-package scalasemantic.mcp
+package com.github.mercurievv.scalasemantic.mcp
 
-import scalasemantic.analysis.Analyzer
-import scalasemantic.model.*
+import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.model.*
 
 /** The nine analysis tools exposed over MCP, with token-lean JSON rendering.
   *

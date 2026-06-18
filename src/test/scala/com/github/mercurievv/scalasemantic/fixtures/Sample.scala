@@ -1,4 +1,4 @@
-package scalasemantic.fixtures
+package com.github.mercurievv.scalasemantic.fixtures
 
 /** Fixtures with traits, subtyping, type classes, using-params and overloads, so the analyzer tests
   * have real SemanticDB structure to query (richer than the analyzer's own sources).

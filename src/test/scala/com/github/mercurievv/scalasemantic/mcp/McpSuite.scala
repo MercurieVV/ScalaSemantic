@@ -1,7 +1,7 @@
-package scalasemantic.mcp
+package com.github.mercurievv.scalasemantic.mcp
 
-import scalasemantic.analysis.Analyzer
-import scalasemantic.semanticdb.SemanticIndex
+import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
 /** Phase 4: MCP protocol + tool wiring, driven through the pure `Mcp.handle` against the fixtures
   * index. Also pins the token-discipline contract: lean by default, structured under `detailed`.
@@ -10,9 +10,9 @@ class McpSuite extends munit.FunSuite:
 
   private val tools = McpTools.all(Analyzer(SemanticIndex.fromProject("target")))
 
-  private val Animal = "scalasemantic/fixtures/Animal#"
-  private val Render = "scalasemantic/fixtures/Sample.render()."
-  private val Show = "scalasemantic/fixtures/Show#"
+  private val Animal = "com/github/mercurievv/scalasemantic/fixtures/Animal#"
+  private val Render = "com/github/mercurievv/scalasemantic/fixtures/Sample.render()."
+  private val Show = "com/github/mercurievv/scalasemantic/fixtures/Show#"
 
   private def req(
       method: String,
@@ -85,8 +85,8 @@ class McpSuite extends munit.FunSuite:
   }
 
   test("call_path reports reachability and the method chain") {
-    val a = "scalasemantic/fixtures/Calls.a()."
-    val c = "scalasemantic/fixtures/Calls.c()."
+    val a = "com/github/mercurievv/scalasemantic/fixtures/Calls.a()."
+    val c = "com/github/mercurievv/scalasemantic/fixtures/Calls.c()."
     val r = call("call_path", ujson.Obj("from" -> a, "to" -> c))
     assertEquals(r("reachable").bool, true)
     assertEquals(r("path").arr.map(_.str).toList, List("a", "b", "c"))
