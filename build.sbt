@@ -130,3 +130,4 @@ lazy val root = (project in file("."))
 // Pre-push gate. A command alias (not a task) so clean/format/fix/test aggregate across all
 // modules. `testOnly *` forces the full suite (sbt 2.0 `test` is cached testQuick — see PLAN.md).
 addCommandAlias("prePush", "clean; scalafmtAll; scalafixAll; Test/testOnly *")
+
