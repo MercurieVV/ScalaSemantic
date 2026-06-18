@@ -20,7 +20,7 @@ MCP server doing deep semantic analysis on Scala via SemanticDB — beyond Metal
 | 2 | Result models (upickle case classes) | ✅ | one per tool; round-trip tests |
 | 3 | Analysis engine — query methods | ✅ | 9/9 done, 23 tests |
 | 4 | MCP protocol layer (JSON-RPC, tool registry) | ✅ | stdio, 9 tools, lean-by-default |
-| 5 | Tests: dogfood + Metals comparison | 🔄 | 33 tests green; comparison writeup pending |
+| 5 | Tests: dogfood + Metals comparison | ✅ | 33 tests; docs/COMPARISON.md + README.md |
 
 ## Phase 3 — query methods (one MCP tool each)
 - ✅ find-usages (cross-file references)
