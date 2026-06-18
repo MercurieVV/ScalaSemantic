@@ -19,8 +19,8 @@ MCP server doing deep semantic analysis on Scala via SemanticDB — beyond Metal
 | 1 | SemanticDB study + symbol-grammar helpers (fix `owner` dead code) | ✅ | delegates to `Scala.*`; 5 tests |
 | 2 | Result models (upickle case classes) | ✅ | one per tool; round-trip tests |
 | 3 | Analysis engine — query methods | ✅ | 9/9 done, 23 tests |
-| 4 | MCP protocol layer (JSON-RPC, tool registry) | ⬜ | |
-| 5 | Tests: dogfood + Metals comparison | ⬜ | |
+| 4 | MCP protocol layer (JSON-RPC, tool registry) | ✅ | stdio, 9 tools, lean-by-default |
+| 5 | Tests: dogfood + Metals comparison | 🔄 | 33 tests green; comparison writeup pending |
 
 ## Phase 3 — query methods (one MCP tool each)
 - ✅ find-usages (cross-file references)
@@ -41,6 +41,11 @@ MCP server doing deep semantic analysis on Scala via SemanticDB — beyond Metal
 - ✅ resolve meta-build cross-version conflict (`conflictWarning := disable` in plugins.sbt)
 - ✅ verify `sbt prePush` runs green
 - ✅ initial git commit (36aa0ee)
+
+## MCP interface (Phase 4)
+- Transport: newline-delimited JSON-RPC 2.0 over stdio (`Mcp.serve`); pure `Mcp.handle`/`Mcp.process` for testing. Run: `runMain scalasemantic.mcpServer <root>`.
+- Token discipline (per request): lean by default — locations as `uri:line:col`, signatures as one rendered line, related symbols as display names; empty fields omitted. `"detailed": true` opts into structured breakdowns; `find_usages` is paged (`limit`/`offset` + `referenceCount`).
+- 9 tools: find_usages, method_signature, class_hierarchy, find_overloads, members, type_at_position, resolve_implicits, trace_implicit_chain, call_path.
 
 ## Known issues / decisions
 - **sbt 2.0.0 API shifts:** `test` is now an `InputKey` → use `(Test / test).toTask("")`; task result caching needs a `HashWriter` → wrap aggregate task in `Def.uncached(...)`.
