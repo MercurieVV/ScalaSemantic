@@ -1,0 +1,7 @@
+// sbt 2.0 meta-build is Scala 3; some plugins still drag _2.13 scala-collection-compat.
+// Let coursier pick a single suffix instead of failing the cross-version check.
+ThisBuild / conflictWarning := ConflictWarning.disable
+
+addSbtPlugin("ch.epfl.scala" % "sbt-scalafix" % "0.14.5")
+addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.5.6")
+addSbtPlugin("org.wartremover" %% "sbt-wartremover" % "3.6.0")

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ScalaCompilerConfiguration">
+    <option name="separateProdTestSources" value="true" />
+    <profile name="sbt 1" modules="ScalaSemanticMCP" />
+    <profile name="sbt 2" modules="ScalaSemanticMCP.test">
+      <parameters>
+        <parameter value="-Xsemanticdb" />
+        <parameter value="-semanticdb-target" />
+        <parameter value="$PROJECT_DIR$/target/out/jvm/scala-3.8.4/scalasemanticmcp/test-meta" />
+      </parameters>
+    </profile>
+    <profile name="sbt 3" modules="ScalaSemanticMCP.main">
+      <parameters>
+        <parameter value="-Xsemanticdb" />
+        <parameter value="-semanticdb-target" />
+        <parameter value="$PROJECT_DIR$/target/out/jvm/scala-3.8.4/scalasemanticmcp/meta" />
+      </parameters>
+    </profile>
+  </component>
+</project>
