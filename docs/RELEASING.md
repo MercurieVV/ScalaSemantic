@@ -12,12 +12,17 @@ env var of the same name, so the scripts are reusable across projects.
 ## One-time repo setup
 
 ```sh
-PGP_SECRET=... PGP_PASSPHRASE=... SONATYPE_USERNAME=... SONATYPE_PASSWORD=... \
+# PGP_SECRET = the RAW armored key; the script base64-encodes it (PGP_SECRET_BASE64_ENCODE=true in
+# config.sh) because ci-release imports via `base64 --decode | gpg --import`.
+PGP_SECRET="$(gpg --armor --export-secret-keys <KEYID>)" PGP_PASSPHRASE=... \
+SONATYPE_USERNAME=... SONATYPE_PASSWORD=... \
   scripts/setup-gh-repo.sh                 # sets the repo secrets + enables the dependency graph
 # or pull the values from 1Password:
 scripts/setup-gh-repo.sh --op-item op://Vault/ScalaSemantic-release
 scripts/install-git-hooks.sh               # optional: run `sbt prePush` on every push
 ```
+
+If you supply a value that is *already* base64, set `PGP_SECRET_BASE64_ENCODE=false`.
 
 ## Cut a release
 

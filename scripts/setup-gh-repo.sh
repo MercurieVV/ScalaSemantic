@@ -46,7 +46,13 @@ resolve_value() {
 }
 
 for secret in "${RELEASE_SECRETS[@]}"; do
-  gh secret set "$secret" --repo "$REPO" --body "$(resolve_value "$secret")"
+  value="$(resolve_value "$secret")"
+  if [[ "$secret" == "PGP_SECRET" && "${PGP_SECRET_BASE64_ENCODE:-false}" == "true" ]]; then
+    # base64-encode the (armored) key so ci-release's `base64 --decode | gpg --import` works.
+    value="$(printf '%s' "$value" | base64 | tr -d '\n')"
+    echo "  (base64-encoded PGP_SECRET)"
+  fi
+  printf '%s' "$value" | gh secret set "$secret" --repo "$REPO"
   echo "Set repo secret $secret"
 done
 

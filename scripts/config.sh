@@ -22,6 +22,12 @@ MAVEN_METADATA_URL="${MAVEN_METADATA_URL:-https://repo1.maven.org/maven2/io/gith
 # (SONATYPE_CREDENTIAL_HOST is passed as a workflow env in ci.yml, so it isn't required as a secret.)
 RELEASE_SECRETS=(PGP_PASSPHRASE PGP_SECRET SONATYPE_USERNAME SONATYPE_PASSWORD)
 
+# sbt-ci-release imports the key via `base64 --decode | gpg --import`, so PGP_SECRET must be base64.
+# If true, setup-gh-repo.sh base64-encodes the PGP_SECRET value before posting — i.e. you supply the
+# raw armored key (`gpg --armor --export-secret-keys ...`) and the script encodes it. Set false if
+# the value you supply is already base64.
+PGP_SECRET_BASE64_ENCODE="${PGP_SECRET_BASE64_ENCODE:-true}"
+
 # Resolve the directory of the calling script so sourcing this file is location-independent.
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export SCRIPTS_DIR
