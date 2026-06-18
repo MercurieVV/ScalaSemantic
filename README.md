@@ -61,6 +61,42 @@ sbt "mcp/runMain com.github.mercurievv.scalasemantic.mcpServer <semanticdbRoot>"
 > from the `mcp` module (e.g. add `sbt-assembly`) and invoke `java -jar scalasemantic-mcp.jar
 > <root>`, then register that command as the MCP server.
 
+## Integrating with a build tool
+
+An MCP **stdio** server is spawned by the MCP client (e.g. Claude Code), which owns its lifecycle —
+you don't run it as a daemon. So integrating means two things: make the project emit SemanticDB, and
+register a launch command scoped to that project's root. Because the unit is a plain process, the
+same approach works from any build tool.
+
+### Standalone launcher (any build tool / bare shell)
+
+```
+sbt "mcp/mcpLauncher"        # writes target/.../scalasemantic-mcp (clean-stdout java launcher)
+sbt "mcp/mcpClientConfig"    # prints the ready-to-paste .mcp.json entry for this repo
+```
+
+Register the printed entry with your MCP client; it will spawn `scalasemantic-mcp <root>` on demand.
+Equivalent for Mill/Gradle/CLI: enable SemanticDB in that tool, then point the client at the same
+launcher (or `java -jar`) with the project root as the argument.
+
+### sbt plugin (convenience)
+
+The `sbt-plugin` module publishes `com.github.mercurievv:sbt-scalasemantic-mcp` (built for sbt 2 here;
+cross-publish for sbt 1 with `^`). In a host build:
+
+```scala
+// project/plugins.sbt
+addSbtPlugin("com.github.mercurievv" % "sbt-scalasemantic-mcp" % "0.1.0-SNAPSHOT")
+// build.sbt
+enablePlugins(ScalaSemanticMcpPlugin)
+mcpServerCommand := Seq("/abs/path/to/scalasemantic-mcp") // or Seq("java","-jar","scalasemantic-mcp.jar")
+```
+
+Then `sbt mcpClientConfig` prints the `.mcp.json` entry (SemanticDB root = the project's base dir) and
+`sbt mcpRun` runs the server in the foreground for manual testing. The plugin only enables SemanticDB
+and shells out to the launch command — it never links against the Scala 3.8.4 server, which is why it
+is sbt-1/2 and build-tool portable.
+
 ### Quick manual check (dev loop, stderr discarded)
 
 ```

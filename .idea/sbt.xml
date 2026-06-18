@@ -12,6 +12,7 @@
             <option value="$PROJECT_DIR$/core" />
             <option value="$PROJECT_DIR$/mcp" />
             <option value="$PROJECT_DIR$/project" />
+            <option value="$PROJECT_DIR$/sbt-plugin" />
           </set>
         </option>
         <option name="resolveSbtClassifiers" value="true" />

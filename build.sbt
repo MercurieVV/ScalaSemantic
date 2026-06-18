@@ -22,6 +22,11 @@ lazy val commonSettings = Seq(
 lazy val munit = "org.scalameta" %% "munit" % "1.2.3" % Test
 lazy val upickle = "com.lihaoyi" %% "upickle" % "4.2.1"
 
+// Generate a standalone, build-tool-agnostic launcher for the MCP server: a script that runs the
+// server on a clean JVM (no sbt → no stdout pollution of the JSON-RPC stream).
+lazy val mcpLauncher = taskKey[File]("Write a standalone MCP server launch script")
+lazy val mcpClientConfig = taskKey[Unit]("Print the .mcp.json entry that registers this server")
+
 // core: load + index SemanticDB and expose symbol-grammar primitives. No JSON, no MCP.
 // scalameta + its SemanticDB bindings are JVM-published on the 2.13 line; consume them from
 // Scala 3 via for3Use2_13 (as scalafix does). `semanticdb-shared` carries the
@@ -53,7 +58,50 @@ lazy val mcp = (project in file("mcp"))
   .settings(commonSettings)
   .settings(
     name := "scalasemantic-mcp",
-    libraryDependencies ++= Seq(upickle, munit)
+    libraryDependencies ++= Seq(upickle, munit),
+    mcpLauncher := Def.uncached {
+      // sbt 2.0 classpaths are virtual-file refs; resolve to real paths via the file converter.
+      val converter = fileConverter.value
+      val cp = (Runtime / fullClasspath).value
+        .map(af => converter.toPath(af.data).toAbsolutePath.toString)
+        .mkString(java.io.File.pathSeparator)
+      val mainClass = "com.github.mercurievv.scalasemantic.mcpServer"
+      val script = target.value / "scalasemantic-mcp"
+      val body =
+        s"""|#!/usr/bin/env sh
+            |# Standalone launcher for the ScalaSemanticMCP server. Arg 1 = SemanticDB root (default ".").
+            |exec java -cp "$cp" $mainClass "$$@"
+            |""".stripMargin
+      IO.write(script, body)
+      script.setExecutable(true)
+      streams.value.log.info(s"MCP launcher written: $script")
+      script
+    },
+    mcpClientConfig := {
+      val launcher = mcpLauncher.value.getAbsolutePath
+      val root = (ThisBuild / baseDirectory).value.getAbsolutePath
+      val json =
+        s"""|{
+            |  "mcpServers": {
+            |    "scala-semantic": {
+            |      "command": "$launcher",
+            |      "args": ["$root"]
+            |    }
+            |  }
+            |}""".stripMargin
+      streams.value.log.info(s"Register this in your MCP client (e.g. .mcp.json):\n$json")
+    }
+  )
+
+// sbt plugin that host projects add to enable SemanticDB + emit their MCP launch config. It shells
+// out to the server process, so it never links against the Scala 3.8.4 server. Not aggregated into
+// `root` (it builds against the sbt plugin Scala/version, separate from the modules above); build it
+// with `sbtPlugin/compile` or `sbtPlugin/publishLocal`.
+lazy val sbtPlugin = (project in file("sbt-plugin"))
+  .enablePlugins(SbtPlugin)
+  .settings(
+    name := "sbt-scalasemantic-mcp",
+    organization := "com.github.mercurievv"
   )
 
 lazy val root = (project in file("."))

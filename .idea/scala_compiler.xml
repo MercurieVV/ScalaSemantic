@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ScalaCompilerConfiguration">
     <option name="separateProdTestSources" value="true" />
-    <profile name="sbt 1" modules="ScalaSemanticMCP,ScalaSemanticMCP.scalasemantic-analysis,ScalaSemanticMCP.scalasemantic-core,ScalaSemanticMCP.scalasemantic-mcp" />
+    <profile name="sbt 1" modules="ScalaSemanticMCP,ScalaSemanticMCP.sbt-scalasemantic-mcp,ScalaSemanticMCP.scalasemantic-analysis,ScalaSemanticMCP.scalasemantic-core,ScalaSemanticMCP.scalasemantic-mcp" />
     <profile name="sbt 2" modules="ScalaSemanticMCP.main,ScalaSemanticMCP.test">
       <plugins>
         <plugin path="$PROJECT_DIR$/${CSR_CACHE}/https/repo1.maven.org/maven2/org/wartremover/wartremover_3.8.4/3.6.0/wartremover_3.8.4-3.6.0.jar" />
@@ -118,6 +118,12 @@
         <parameter value="-semanticdb-target" />
         <parameter value="$PROJECT_DIR$/target/out/jvm/scala-3.8.4/scalasemantic-mcp/meta" />
       </parameters>
+      <plugins>
+        <plugin path="$PROJECT_DIR$/${CSR_CACHE}/https/repo1.maven.org/maven2/org/wartremover/wartremover_3.8.4/3.6.0/wartremover_3.8.4-3.6.0.jar" />
+      </plugins>
+    </profile>
+    <profile name="sbt 9" modules="ScalaSemanticMCP.sbt-scalasemantic-mcp.main,ScalaSemanticMCP.sbt-scalasemantic-mcp.test">
+      <option name="deprecationWarnings" value="true" />
       <plugins>
         <plugin path="$PROJECT_DIR$/${CSR_CACHE}/https/repo1.maven.org/maven2/org/wartremover/wartremover_3.8.4/3.6.0/wartremover_3.8.4-3.6.0.jar" />
       </plugins>

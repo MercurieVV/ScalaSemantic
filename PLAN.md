@@ -53,8 +53,16 @@ Three sbt modules, one per layer: `mcp` → `analysis` → `core`.
 - Token discipline (per request): lean by default — locations as `uri:line:col`, signatures as one rendered line, related symbols as display names; empty fields omitted. `"detailed": true` opts into structured breakdowns; `find_usages` is paged (`limit`/`offset` + `referenceCount`).
 - 9 tools: find_usages, method_signature, class_hierarchy, find_overloads, members, type_at_position, resolve_implicits, trace_implicit_chain, call_path.
 
+## Integration / launch (build-tool wiring)
+- **Lifecycle decision:** stdio MCP servers are spawned by the client (Claude Code), which owns start/stop. So "a service per project" = a registered launch command + emitted SemanticDB, not a daemon. A true start/stop daemon would need an HTTP/SSE transport (backlog).
+- **Portability via process launch:** the unit is `java -cp … mcpServer <root>`. An sbt plugin can't link the Scala 3.8.4 server (meta-build Scala mismatch) — it shells out, which is also what makes it sbt-1/2 and Mill/Gradle/CLI portable.
+- **`mcp/mcpLauncher`** task → writes a clean-stdout launcher script (resolved classpath via sbt 2.0 `fileConverter`; `Def.uncached` since it returns a File). **`mcp/mcpClientConfig`** → prints the `.mcp.json` entry. Verified end-to-end over real stdio (clean JVM).
+- **`sbt-plugin`** module = `com.github.mercurievv:sbt-scalasemantic-mcp` (AutoPlugin, opt-in). Sets `semanticdbEnabled`, provides `mcpClientConfig`/`mcpRun`. Not aggregated into `root` (built against the sbt-plugin Scala). Verified in a throwaway host project: enable → compile → server analyzed the host's SemanticDB.
+
 ## Backlog
 - **`reload` MCP tool** (later): re-read `*.semanticdb` from disk without restarting the server (re-run `SemanticIndex.fromProject`). SemanticDB only updates on compile, and the server loads the index once at startup — a reload tool pairs with `sbt ~compile` for near-live analysis.
+- **HTTP/SSE transport + daemon** (later): enables a real start/stop background service (`mcpServerStart`/`Stop` with a pidfile) instead of client-spawned stdio.
+- **sbt 1 cross-publish** of the plugin (`^ publishLocal`) and a published server jar so `mcpServerCommand` can default to a resolved artifact.
 
 ## Known issues / decisions
 - **sbt 2.0.0 API shifts:** `test` is now an `InputKey` → use `(Test / test).toTask("")`; task result caching needs a `HashWriter` → wrap aggregate task in `Def.uncached(...)`.
