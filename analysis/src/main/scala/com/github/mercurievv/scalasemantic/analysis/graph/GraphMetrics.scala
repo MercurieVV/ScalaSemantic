@@ -44,6 +44,45 @@ object GraphMetrics:
       }
       ._2
 
+  /** Longest-path layering on the SCC-condensed DAG: each node's level = the length of the longest
+    * dependency chain beneath it (0 = a foundation that depends on nothing in-project; higher =
+    * depends on deeper chains). Cycles are condensed first, so every member of a cycle shares its
+    * component's level — the level is honest (where the tangle sits), but members cannot be ordered
+    * *within* the cycle (callers should read `inCycle` to know the intra-cycle order is undefined).
+    */
+  def layers(nodes: Set[String], graph: Graph): Map[String, Int] =
+    val components = stronglyConnectedComponents(nodes, graph)
+    val componentOf: Map[String, Int] =
+      components.iterator.zipWithIndex.flatMap((c, i) => c.iterator.map(_ -> i)).toMap
+    // Condensed DAG: component -> the other components it depends on.
+    val condensed: Map[Int, Set[Int]] =
+      graph.toList
+        .flatMap((from, outs) => outs.toList.filter(nodes.contains).map(to => from -> to))
+        .flatMap((from, to) =>
+          val ci = componentOf(from)
+          val cj = componentOf(to)
+          if ci != cj then List(ci -> cj) else Nil
+        )
+        .groupMap(_._1)(_._2)
+        .view
+        .mapValues(_.toSet)
+        .toMap
+    // Longest path to a sink, memoised over the (acyclic) condensed graph.
+    def level(c: Int, memo: Map[Int, Int]): (Int, Map[Int, Int]) =
+      memo.get(c) match
+        case Some(v) => (v, memo)
+        case None =>
+          val (lv, m) =
+            condensed.getOrElse(c, Set.empty).foldLeft((0, memo)) { case ((acc, mm), s) =>
+              val (sv, mm2) = level(s, mm)
+              (math.max(acc, sv + 1), mm2)
+            }
+          (lv, m + (c -> lv))
+    val componentLevels = components.indices.foldLeft(Map.empty[Int, Int]) { (memo, c) =>
+      level(c, memo)._2
+    }
+    nodes.iterator.map(n => n -> componentLevels.getOrElse(componentOf(n), 0)).toMap
+
   /** Post-order DFS over all nodes, accumulating finish order with the last-finished node first. */
   private def finishOrder(nodes: Set[String], graph: Graph): List[String] =
     def dfs(n: String, visited: Set[String], acc: List[String]): (Set[String], List[String]) =

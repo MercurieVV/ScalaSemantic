@@ -361,14 +361,16 @@ object McpTools:
       "Whole-project dependency metrics from the symbol graph — use to judge what matters and where " +
         "to start. Per in-project type: afferent coupling Ca (fan-in = how many depend on it), " +
         "efferent Ce (fan-out), instability Ce/(Ca+Ce) (0 = stable foundation, 1 = unstable leaf), " +
+        "`layer` (longest dependency-chain depth: 0 = foundation, higher = built on deeper chains), " +
         "and cycle membership. Computed over four edge dimensions (extends, memberType, call, " +
-        "implicit) and a combined overlay, with a module rollup. High Ca/low instability = core to " +
-        "understand first; `cycles` flags tangles. No layering (a cyclic node is reported, not ranked).",
+        "implicit) and a combined overlay, with a module rollup. High Ca / low instability / low " +
+        "layer = core to understand first; `cycles` flags tangles. A cyclic node shares its cycle's " +
+        "layer (intra-cycle order undefined) and is marked `inCycle` — never given a faked layer.",
       List(
         (
           "sort",
           "string",
-          "rank symbols by: afferent | efferent | instability | sccSize (default afferent)"
+          "rank symbols by: afferent | efferent | instability | layer | sccSize (default afferent)"
         ),
         (
           "dimension",
@@ -403,6 +405,7 @@ object McpTools:
         sortKey match
           case "efferent"    => m.efferent.toDouble
           case "instability" => m.instability
+          case "layer"       => m.layer.toDouble
           case "sccSize"     => m.sccSize.toDouble
           case _             => m.afferent.toDouble
       val ranked = keep.sortBy(s => -rank(pick(s))).take(argInt(a, "limit", 30))
@@ -414,6 +417,7 @@ object McpTools:
             jobj(
               Some("module" -> ujson.Str(m.module)),
               Some("types" -> ujson.Num(m.typeCount)),
+              Some("layer" -> ujson.Num(m.layer)),
               Some("ca" -> ujson.Num(m.afferent)),
               Some("ce" -> ujson.Num(m.efferent)),
               Some("instability" -> ujson.Num(round2(m.instability))),
@@ -428,6 +432,7 @@ object McpTools:
               Some("symbol" -> ujson.Str(s.symbol)),
               Some("name" -> ujson.Str(s.displayName)),
               Some("module" -> ujson.Str(s.module)),
+              Some("layer" -> ujson.Num(m.layer)),
               Some("ca" -> ujson.Num(m.afferent)),
               Some("ce" -> ujson.Num(m.efferent)),
               Some("instability" -> ujson.Num(round2(m.instability))),

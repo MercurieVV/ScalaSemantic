@@ -84,8 +84,13 @@ class McpSuite extends munit.FunSuite:
     // default sort is afferent (fan-in) descending
     val cas = r("symbols").arr.map(_("ca").num)
     assertEquals(cas.toList, cas.toList.sortBy(-_), "symbols must be ranked by Ca desc")
-    // every symbol carries the core metrics
-    assert(r("symbols").arr.forall(s => s.obj.contains("instability") && s.obj.contains("module")))
+    // every symbol carries the core metrics, including the Phase-2 layer
+    assert(r("symbols").arr.forall(s => s.obj.contains("instability") && s.obj.contains("layer")))
+    assert(r("modules").arr.forall(_.obj.contains("layer")), "modules carry a layer")
+    // sorting by layer is accepted and ranks descending
+    val byLayer = call("structure", ujson.Obj("sort" -> "layer", "limit" -> 5))
+    val layers = byLayer("symbols").arr.map(_("layer").num)
+    assertEquals(layers.toList, layers.toList.sortBy(-_), "symbols ranked by layer desc")
 
     // detailed adds the per-dimension breakdown with all four dimensions
     val d = call("structure", ujson.Obj("limit" -> 1, "detailed" -> true))

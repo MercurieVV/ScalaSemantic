@@ -37,6 +37,17 @@ class AnalyzerStructureSuite extends munit.FunSuite:
     assert(cyclic.isEmpty, s"modules in a cycle: $cyclic")
   }
 
+  test("layering puts foundations below dependents (core layer 0, mcp above)") {
+    // core depends on nothing in-project → foundation, layer 0. mcp sits on top → strictly higher.
+    assertEquals(module("core").layer, 0, s"core layer=${module("core").layer}")
+    assert(
+      module("mcp").layer > module("core").layer,
+      s"core=${module("core").layer} mcp=${module("mcp").layer}"
+    )
+    // No cycles here, so no symbol should be flagged ambiguous (inCycle) while still carrying a layer.
+    assert(structure.symbols.forall(s => !s.combined.inCycle), "unexpected cycle in this repo")
+  }
+
   test("per-symbol metrics carry all four dimensions plus the combined overlay") {
     val s = structure.symbols.head
     assertEquals(

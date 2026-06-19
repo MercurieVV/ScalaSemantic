@@ -109,13 +109,17 @@ case class TypeAtPosition(
   *
   * `afferent` (Ca) = incoming deps (fan-in); `efferent` (Ce) = outgoing deps (fan-out);
   * `instability` = Ce/(Ca+Ce) in [0,1] — 0 = stable foundation (depended-on, depends on little), 1
-  * \= unstable leaf/entry. `inCycle` is true when the node sits in a non-trivial strongly-connected
-  * component (`sccSize` > 1) — cyclic membership is reported, never hidden behind a faked layer.
+  * \= unstable leaf/entry. `layer` = longest dependency-chain depth (0 = foundation; higher = sits
+  * on deeper chains), computed on the SCC-condensed graph. `inCycle` is true when the node sits in
+  * a non-trivial strongly-connected component (`sccSize` > 1); then `layer` is the cycle's level as
+  * a whole and the order *within* the cycle is undefined — cyclic membership is reported, never
+  * hidden behind a faked per-node layer.
   */
 case class DimensionMetrics(
     afferent: Int,
     efferent: Int,
     instability: Double,
+    layer: Int,
     sccSize: Int,
     inCycle: Boolean
 ) derives ReadWriter
@@ -142,6 +146,7 @@ case class ModuleStructure(
     afferent: Int,
     efferent: Int,
     instability: Double,
+    layer: Int,
     sccSize: Int,
     inCycle: Boolean
 ) derives ReadWriter
