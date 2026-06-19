@@ -26,7 +26,7 @@ samples are executed at build time).
 
 Every capability is backed by a test that runs against this repo's own SemanticDB →
 [`AnalyzerSuite`](analysis/src/test/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerSuite.scala).
-Full comparison incl. Metals/LSP: [docs/COMPARISON.md](docs/COMPARISON.md).
+Full trade-offs, including where `grep` wins: [docs/COMPARISON.md](docs/COMPARISON.md).
 
 ## Quickstart
 
@@ -91,7 +91,7 @@ The server itself runs on any JVM (`java` 11+); the target project's Scala versi
 
 - **[Documentation site](https://mercurievv.github.io/ScalaSemantic/)** — the rendered, mdoc-checked microsite
 - [Integration](docs/INTEGRATION.md) — register with a client, sbt plugin, other build tools
-- [Comparison](docs/COMPARISON.md) — capability comparison vs Metals/LSP, with evidence
+- [Comparison](docs/COMPARISON.md) — vs `grep` (pros & cons), plus a note on Metals/LSP
 - [Development](docs/DEVELOPMENT.md) — module layout, build & test, cross-version testing
 - [Design decisions](docs/DESIGN.md) — why upickle, extensibility (external-jar tools), docs tooling
 - [Releasing](docs/RELEASING.md) — Sonatype Central release process
