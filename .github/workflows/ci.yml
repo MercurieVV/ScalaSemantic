@@ -184,9 +184,9 @@ jobs:
         with:
           ref: master
           fetch-depth: 0
-      - name: Update docs snippets
+      - name: Rewrite doc version snippets to the published version
         run: scripts/update-doc-versions.sh "${GITHUB_REF_NAME}"
-      - name: Open PR with the version bump
+      - name: Open PR updating the doc version snippets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
