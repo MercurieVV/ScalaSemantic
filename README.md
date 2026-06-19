@@ -26,17 +26,54 @@ Full comparison incl. Metals/LSP: [docs/COMPARISON.md](docs/COMPARISON.md).
 
 ## Quickstart
 
-The server is spawned by your MCP client over stdio. Generate a launcher and register it:
+The server is spawned by your MCP client over stdio. You need just two things: the **target project
+compiled with SemanticDB** (`semanticdbEnabled := true`), and a `.mcp.json` entry that launches the
+server with that project's root as its argument. Only a **JVM** is required — no coursier, no sbt.
 
-```sh
-git clone https://github.com/mercurievv/ScalaSemantic && cd ScalaSemantic
-sbt "mcp/mcpLauncher"        # builds the server, writes a standalone launch script
-sbt "mcp/mcpClientConfig"    # prints the .mcp.json entry — paste it into your MCP client
+### Recommended — auto-download launcher (any OS)
+
+Grab the cross-platform launcher script ([`scripts/`](scripts/)) — it downloads the latest fat jar
+from GitHub Releases once (cached by version) and runs it. Register it in your client:
+
+```json
+{
+  "mcpServers": {
+    "scala-semantic": {
+      "command": "/abs/path/to/scalasemantic-mcp.sh",
+      "args": ["/abs/path/to/project-to-analyze"]
+    }
+  }
+}
 ```
 
-Set the entry's `args` to the Scala project you want to analyze (it must be compiled with SemanticDB
-enabled). Your client launches it on demand. For an in-project sbt plugin, Mill/Gradle/CLI, and the
-lifecycle rationale, see **[docs/INTEGRATION.md](docs/INTEGRATION.md)**.
+Use `scalasemantic-mcp.sh` on Linux/macOS, `scalasemantic-mcp.ps1` on Windows. First launch downloads
+the jar; later launches are offline-friendly.
+
+### Plain `java -jar`
+
+Download `scalasemantic-mcp.jar` from the [latest release](https://github.com/MercurieVV/ScalaSemantic/releases/latest),
+then point your client at it:
+
+```json
+{ "mcpServers": { "scala-semantic": {
+  "command": "java",
+  "args": ["-jar", "/abs/scalasemantic-mcp.jar", "/abs/path/to/project-to-analyze"] } } }
+```
+
+### sbt plugin (auto-writes the `.mcp.json` + enables SemanticDB)
+
+```scala
+// project/plugins.sbt
+addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "0.1.0")
+// build.sbt
+enablePlugins(ScalaSemanticMcpPlugin)
+mcpServerCommand := Seq("java", "-jar", "/abs/scalasemantic-mcp.jar")
+```
+
+Then `sbt mcpClientConfig` prints the `.mcp.json` (root = project base dir); `sbt mcpRun` runs it in
+the foreground for testing.
+
+Full details (build tools, the generated `.mcp.json`, lifecycle): **[docs/INTEGRATION.md](docs/INTEGRATION.md)**.
 
 ## Tools
 

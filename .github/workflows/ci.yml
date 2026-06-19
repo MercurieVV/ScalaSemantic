@@ -80,3 +80,36 @@ jobs:
           SONATYPE_CREDENTIAL_HOST: central.sonatype.com
           PGP_SECRET: ${{ secrets.PGP_SECRET }}
           PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+
+  release:
+    name: GitHub Release (fat jar)
+    needs: [build]
+    # Only on a vX.Y.Z tag push: build the standalone `java -jar` fat jar and attach it to a
+    # GitHub Release so the auto-download launcher scripts can fetch the latest asset.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release + upload assets
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so sbt-dynver stamps the jar with the tag version
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: sbt
+      - uses: sbt/setup-sbt@v1
+      - name: Build fat jar
+        run: sbt "mcp/assembly"
+      - name: Collect asset
+        run: |
+          jar=$(find . -name scalasemantic-mcp.jar | head -1)
+          echo "Found: $jar"
+          mkdir -p release-assets
+          cp "$jar" release-assets/scalasemantic-mcp.jar
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/scalasemantic-mcp.jar
+          generate_release_notes: true

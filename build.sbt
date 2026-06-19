@@ -79,6 +79,18 @@ lazy val mcp = (project in file("mcp"))
   .settings(
     name := "scalasemantic-mcp",
     libraryDependencies ++= Seq(upickle, munit),
+    // Fat jar for `java -jar scalasemantic-mcp.jar <root>` — the install-free launch path attached
+    // to GitHub Releases. Pin the main class (the module has two @main) so the manifest is correct.
+    assembly / mainClass := Some("com.github.mercurievv.scalasemantic.mcpServer"),
+    assembly / assemblyJarName := "scalasemantic-mcp.jar",
+    assembly / assemblyMergeStrategy := {
+      case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
+      case PathList("META-INF", xs @ _*)
+          if xs.lastOption.exists(s => s.endsWith(".SF") || s.endsWith(".DSA") || s.endsWith(".RSA")) =>
+        MergeStrategy.discard
+      case "module-info.class" => MergeStrategy.discard
+      case x                   => (assembly / assemblyMergeStrategy).value.apply(x)
+    },
     mcpLauncher := Def.uncached {
       // sbt 2.0 classpaths are virtual-file refs; resolve to real paths via the file converter.
       val converter = fileConverter.value

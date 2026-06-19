@@ -9,22 +9,80 @@ The server speaks newline-delimited JSON-RPC 2.0 on **stdout** and logs to **std
 directory that contains emitted `*.semanticdb` files (the target project must be compiled with
 SemanticDB enabled).
 
-## Standalone launcher (any build tool / bare shell)
+## Prerequisite for every option: SemanticDB on the target project
 
-```sh
-sbt "mcp/mcpLauncher"        # writes target/.../scalasemantic-mcp (clean-stdout java launcher)
-sbt "mcp/mcpClientConfig"    # prints the ready-to-paste .mcp.json entry for this repo
+The server *reads* SemanticDB; it does not generate it. The project you want to analyze must be
+compiled with it enabled. In sbt:
+
+```scala
+semanticdbEnabled := true
 ```
 
-Register the printed entry with your MCP client; it will spawn `scalasemantic-mcp <root>` on demand.
-For Mill/Gradle/CLI: enable SemanticDB in that tool, then point the client at the same launcher (or
-`java -jar`) with the project root as the argument.
+For Mill/Gradle/scalac, enable the SemanticDB compiler plugin the equivalent way, then compile. (The
+sbt plugin in Option C does this step for you.)
+
+The only other requirement on the user's machine is a **JVM** (`java` on PATH) — no coursier, no sbt.
+
+## Distribution: the fat jar on GitHub Releases
+
+Each `vX.Y.Z` tag builds a self-contained fat jar (`mcp/assembly`, all deps bundled) and CI attaches
+it to the matching [GitHub Release](https://github.com/MercurieVV/ScalaSemantic/releases). That single
+file is what every launch option below runs with `java -jar`.
+
+## Three ways to launch
+
+All three end at the same place: a `.mcp.json` entry that runs the server with the project root as its
+argument. Pick by how much you want automated.
+
+| | A — auto-download script | B — plain `java -jar` | C — sbt plugin |
+|---|---|---|---|
+| Get the jar | script downloads + caches it | you download it once | you download it once |
+| Write `.mcp.json` | by hand (point at script) | by hand (point at `java`) | `sbt mcpClientConfig` generates it |
+| Enable SemanticDB | you (one line) | you (one line) | plugin does it |
+| Stays up to date | yes — pulls latest each launch | manual re-download | manual |
+| Works with | any OS / build tool | any OS / build tool | sbt (1 and 2) |
+
+### Option A — auto-download launcher (recommended)
+
+[`scripts/scalasemantic-mcp.sh`](../scripts/scalasemantic-mcp.sh) (Linux/macOS) and
+[`scripts/scalasemantic-mcp.ps1`](../scripts/scalasemantic-mcp.ps1) (Windows) resolve the latest
+GitHub Release, download its fat jar once (cached under `~/.cache/scalasemantic-mcp` /
+`%LOCALAPPDATA%`), then `exec java -jar`. Download chatter goes to stderr; stdout stays pure JSON-RPC.
+Offline, they fall back to the newest cached jar. Pin a version with `SCALASEMANTIC_VERSION=v0.1.4`.
+
+```json
+{
+  "mcpServers": {
+    "scala-semantic": {
+      "command": "/abs/path/to/scripts/scalasemantic-mcp.sh",
+      "args": ["/abs/path/to/project-to-analyze"]
+    }
+  }
+}
+```
+
+### Option B — plain `java -jar`
+
+Download `scalasemantic-mcp.jar` from the
+[latest release](https://github.com/MercurieVV/ScalaSemantic/releases/latest) and reference it
+directly — no script in between:
+
+```json
+{
+  "mcpServers": {
+    "scala-semantic": {
+      "command": "java",
+      "args": ["-jar", "/abs/path/to/scalasemantic-mcp.jar", "/abs/path/to/project-to-analyze"]
+    }
+  }
+}
+```
 
 > A bare `sbt runMain` writes its own build logs to stdout and corrupts the JSON-RPC stream — always
-> launch the compiled app (the generated launcher, or a packaged jar) so stdout carries only protocol
-> messages.
+> launch the jar (or the script that wraps it) so stdout carries only protocol messages. To build the
+> jar locally instead of downloading: `sbt "mcp/assembly"`.
 
-## sbt plugin (convenience)
+### Option C — sbt plugin (generates the `.mcp.json` for you)
 
 `io.github.mercurievv:sbt-scalasemantic-mcp` (built for sbt 2; cross-publish for sbt 1 with `^`). In a
 host build:
@@ -34,13 +92,38 @@ host build:
 addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "0.1.0")
 // build.sbt
 enablePlugins(ScalaSemanticMcpPlugin)
-mcpServerCommand := Seq("/abs/path/to/scalasemantic-mcp") // or Seq("java","-jar","scalasemantic-mcp.jar")
+mcpServerCommand := Seq("java", "-jar", "/abs/path/to/scalasemantic-mcp.jar") // or the auto-download script
 ```
 
-Then `sbt mcpClientConfig` prints the `.mcp.json` entry (SemanticDB root = the project's base dir) and
-`sbt mcpRun` runs the server in the foreground for manual testing. The plugin only enables SemanticDB
-and shells out to the launch command — it never links against the Scala 3.8.4 server, which is why it
-is sbt-1/2 and build-tool portable.
+The plugin enables SemanticDB and adds two tasks:
+
+- `sbt mcpClientConfig` — prints the `.mcp.json` entry to paste into your client.
+- `sbt mcpRun` — runs the server in the foreground (stdio) for manual testing.
+
+It only enables SemanticDB and shells out to `mcpServerCommand` — it never links against the Scala
+3.8.4 server, which is why it is sbt-1/2 and build-tool portable.
+
+#### What `mcpClientConfig` generates
+
+The task takes `mcpServerCommand` and appends the project's base directory as the trailing argument,
+then emits (with `mcpServerName := "scala-semantic"` and the `mcpServerCommand` above):
+
+```json
+{
+  "mcpServers": {
+    "scala-semantic": {
+      "command": "java",
+      "args": ["-jar", "/abs/path/to/scalasemantic-mcp.jar", "/abs/path/to/this/project"]
+    }
+  }
+}
+```
+
+`command` = `mcpServerCommand.head`; `args` = the rest of `mcpServerCommand` plus the auto-appended
+project root. So `mcpServerCommand := Seq("/abs/path/to/scalasemantic-mcp.sh")` (the auto-download
+script) would yield `"command": "/abs/path/to/scalasemantic-mcp.sh"`,
+`"args": ["/abs/path/to/this/project"]`.
+Generation logic: [`ScalaSemanticMcpPlugin.scala`](../sbt-plugin/src/main/scala/com/github/mercurievv/scalasemantic/sbtplugin/ScalaSemanticMcpPlugin.scala).
 
 ## Manual stdio check
 
@@ -49,7 +132,7 @@ printf '%s\n' \
  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
  '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
  '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"class_hierarchy","arguments":{"symbol":"com/github/mercurievv/scalasemantic/fixtures/Animal#"}}}' \
- | ./target/.../scalasemantic-mcp .
+ | java -jar scalasemantic-mcp.jar .
 ```
 
 Expect three JSON-RPC responses on stdout (stderr carries the startup log).
