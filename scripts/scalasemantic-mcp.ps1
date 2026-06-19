@@ -6,7 +6,10 @@
 #      run it with `java -jar`.
 # Download progress is suppressed so stdout carries only the JSON-RPC stream.
 #
-# Usage:   powershell -ExecutionPolicy Bypass -File scalasemantic-mcp.ps1 <semanticdb-root>
+# Usage:   powershell -ExecutionPolicy Bypass -File scalasemantic-mcp.ps1 <semanticdb-root> [classpath]
+#   All arguments are forwarded verbatim to the server: arg 1 = SemanticDB root, optional arg 2 =
+#   the compile classpath (a path-separated string or a file containing one) that enables the
+#   presentation-compiler backend for live overlay of uncompiled buffers.
 # Requires: java on PATH (and optionally coursier). No sbt needed.
 #
 # Pin a version instead of "latest" with:  $env:SCALASEMANTIC_VERSION = "v0.1.4"
@@ -24,7 +27,7 @@ $Root     = if ($args.Count -ge 1) { $args[0] } else { '.' }
 if (Get-Command cs -ErrorAction SilentlyContinue) {
   $ver = if ($env:SCALASEMANTIC_VERSION) { $env:SCALASEMANTIC_VERSION -replace '^v', '' } else { 'latest.release' }
   [Console]::Error.WriteLine("scalasemantic-mcp: launching ${Org}:${Artifact}:$ver via coursier")
-  & cs launch "${Org}:${Artifact}:$ver" -M $Main -- $Root
+  & cs launch "${Org}:${Artifact}:$ver" -M $Main -- @args
   exit $LASTEXITCODE
 }
 
@@ -53,5 +56,5 @@ if (-not $Jar -or -not (Test-Path $Jar)) {
   [Console]::Error.WriteLine("scalasemantic-mcp: offline — using cached $(Split-Path $Jar -Leaf)")
 }
 
-& java -jar $Jar $Root
+& java -jar $Jar @args
 exit $LASTEXITCODE

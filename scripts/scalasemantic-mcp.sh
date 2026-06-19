@@ -8,7 +8,10 @@
 #      run it with `java -jar`.
 # Either way, all progress goes to stderr so stdout carries only the JSON-RPC protocol stream.
 #
-# Usage:   scalasemantic-mcp.sh <semanticdb-root>     (root defaults to ".")
+# Usage:   scalasemantic-mcp.sh <semanticdb-root> [classpath]   (root defaults to ".")
+#   All arguments are forwarded verbatim to the server: arg 1 = SemanticDB root, optional arg 2 =
+#   the compile classpath (a path-separated string or a file containing one) that enables the
+#   presentation-compiler backend for live overlay of uncompiled buffers.
 # Requires: java on PATH (and optionally coursier). No sbt needed.
 #
 # Pin a version instead of "latest" by exporting SCALASEMANTIC_VERSION=v0.1.4
@@ -26,7 +29,7 @@ if command -v cs >/dev/null 2>&1; then
   ver="${SCALASEMANTIC_VERSION:-latest.release}"
   ver="${ver#v}" # coursier wants the Maven version (0.1.4), not the git tag (v0.1.4)
   echo "scalasemantic-mcp: launching $ORG:$ARTIFACT:$ver via coursier" >&2
-  exec cs launch "$ORG:$ARTIFACT:$ver" -M "$MAIN" -- "$ROOT"
+  exec cs launch "$ORG:$ARTIFACT:$ver" -M "$MAIN" -- "$@"
 fi
 
 # --- path 2: fat jar from GitHub Releases --------------------------------------------------------
@@ -65,4 +68,4 @@ if [ ! -f "$JAR" ]; then
   echo "scalasemantic-mcp: offline — using cached $(basename "$JAR")" >&2
 fi
 
-exec java -jar "$JAR" "$ROOT"
+exec java -jar "$JAR" "$@"

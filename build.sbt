@@ -62,9 +62,33 @@ lazy val core = (project in file("core"))
     )
   )
 
-// analysis: the query engine + result models (upickle), built on core.
-lazy val analysis = (project in file("analysis"))
+// pc: presentation-compiler backend. Wraps Scala 3's own in-tree PC (moved into the distribution
+// at 3.4+; the old per-patch `mtags_<full>` artifact is no longer published) to (re)generate
+// SemanticDB for an edited/uncompiled/broken buffer IN MEMORY — error-tolerant, unlike the disk
+// SemanticDB which only appears after a clean compile. `scala3-presentation-compiler_3` implements
+// the stable `scala.meta.pc` (mtags-interfaces) API and is version-locked to the compiler. Kept in
+// its own module so the heavy compiler dep stays out of `core`. WartRemover off: Java interop.
+lazy val pc = (project in file("pc"))
   .dependsOn(core)
+  .disablePlugins(wartremover.WartRemover)
+  .settings(commonSettings)
+  .settings(
+    name := "scalasemantic-pc",
+    // Fork tests so the forked JVM's `java.class.path` IS the module's real test classpath
+    // (scala-library, the compiler, deps). Unforked, `java.class.path` is only sbt's launcher, so
+    // the PC the test spins up would have no scala-library to typecheck against. This also mirrors
+    // production: the MCP server is its own JVM whose classpath is what the PC must analyse against.
+    Test / fork := true,
+    libraryDependencies ++= Seq(
+      "org.scala-lang" %% "scala3-presentation-compiler" % "3.8.4",
+      munit
+    )
+  )
+
+// analysis: the query engine + result models (upickle), built on core, with the PC backend as a
+// second (in-memory, error-tolerant) source of SemanticDB for the position-local tools.
+lazy val analysis = (project in file("analysis"))
+  .dependsOn(core, pc)
   .settings(commonSettings)
   .settings(
     name := "scalasemantic-analysis",
@@ -228,10 +252,9 @@ lazy val docs = (project in file("mdoc-docs"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(core, analysis, mcp)
+  .aggregate(core, pc, analysis, mcp)
   .settings(name := "ScalaSemantic", publish / skip := true)
 
 // Pre-push gate. A command alias (not a task) so clean/format/fix/test aggregate across all
 // modules. `testOnly *` forces the full suite (sbt 2.0 `test` is cached testQuick — see docs/PLAN.md).
 addCommandAlias("prePush", "clean; scalafmtAll; scalafixAll; Test/testOnly *")
-

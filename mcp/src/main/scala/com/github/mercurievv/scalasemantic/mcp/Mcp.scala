@@ -1,7 +1,12 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
 
 /** A single MCP tool: its name, one-line description, JSON-Schema for arguments, and a handler
   * producing a (deliberately lean) JSON result.
@@ -132,14 +137,52 @@ object Mcp:
       .flatMap(line => scala.util.Try(ujson.read(line)).toOption.flatMap(handle(_, tools)))
       .map(ujson.write(_))
 
-  /** Blocking stdio loop. Loads the SemanticDB index for `root` once, then serves requests. */
-  def serve(root: String): Unit =
-    val tools = McpTools.all(Analyzer(SemanticIndex.fromProject(root)))
-    System.err.println(s"[$ServerName] serving from '$root' with ${tools.size} tools")
+  /** Blocking stdio loop. Loads the SemanticDB index for `root` once, then serves requests.
+    *
+    * `classpath`, when given, enables the presentation-compiler second backend (live overlay of
+    * uncompiled buffers via the tools' `source` argument). It is the target project's compile
+    * classpath, supplied as either a path-separated string or a path to a file containing one
+    * (newline or path-separator delimited). Falls back to the `SCALASEMANTIC_CLASSPATH` env var.
+    * Absent, the server is index-only and `source` arguments are ignored.
+    */
+  def serve(root: String, classpath: Option[String] = None): Unit =
+    val rootPath = Paths.get(root).toAbsolutePath.nn
+    val backend = resolveClasspath(classpath).map { cp =>
+      System.err.println(s"[$ServerName] PC backend enabled (${cp.size} classpath entries)")
+      new PresentationCompilerBackend(cp, workspace = Some(rootPath))
+    }
+    val tools = McpTools.all(Analyzer(SemanticIndex.fromProject(root), backend), rootPath)
+    System.err.println(
+      s"[$ServerName] serving from '$root' with ${tools.size} tools" +
+        (if backend.isEmpty then " (index-only; pass a classpath to enable live buffers)" else "")
+    )
     val reader = java.io.BufferedReader(java.io.InputStreamReader(System.in, "UTF-8"))
     val out = java.io.PrintStream(System.out, true, "UTF-8")
     val lines = Iterator.continually(Option(reader.readLine())).takeWhile(_.isDefined).flatten
     process(lines, tools).foreach(out.println)
+
+  /** Resolve the classpath spec (arg or `SCALASEMANTIC_CLASSPATH`) to a list of paths. A spec that
+    * names an existing file is read as its contents (newline- or path-separator-delimited);
+    * anything else is treated as a literal path-separated classpath.
+    */
+  private def resolveClasspath(arg: Option[String]): Option[Seq[Path]] =
+    arg
+      .orElse(Option(System.getenv("SCALASEMANTIC_CLASSPATH")))
+      .map(_.trim)
+      .filter(_.nonEmpty)
+      .map { spec =>
+        val raw =
+          val asFile = Paths.get(spec)
+          if Files.isRegularFile(asFile) then Files.readString(asFile) else spec
+        raw
+          .split("[\n" + java.io.File.pathSeparator + "]")
+          .iterator
+          .map(_.trim)
+          .filter(_.nonEmpty)
+          .map(Paths.get(_))
+          .toVector
+      }
+      .filter(_.nonEmpty)
 
   // --- JSON-RPC envelope helpers --------------------------------------------
 

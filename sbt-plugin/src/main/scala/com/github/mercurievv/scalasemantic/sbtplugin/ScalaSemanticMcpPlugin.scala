@@ -42,6 +42,11 @@ object ScalaSemanticMcpPlugin extends AutoPlugin:
         "write the bundled auto-download launcher into a stable per-user dir (survives clean) " +
           "and return it"
       )
+    val mcpClasspathFile =
+      taskKey[File](
+        "write this project's compile classpath to a stable file and return it; the server reads " +
+          "it to enable the presentation-compiler backend (live overlay of uncompiled buffers)"
+      )
     val mcpClientConfig =
       taskKey[Unit]("print the .mcp.json entry that registers this project's MCP server")
     val mcpRun =
@@ -53,6 +58,19 @@ object ScalaSemanticMcpPlugin extends AutoPlugin:
     semanticdbEnabled := true,
     mcpServerName := "scala-semantic",
     mcpInstall := Def.uncached(writeLauncher(installDir, streams.value.log)),
+    mcpClasspathFile := Def.uncached {
+      // The PC backend needs the target project's COMPILE classpath (deps + its own output) to
+      // resolve everything a buffer references. sbt 2.0 classpaths are virtual-file refs, so resolve
+      // to real paths via the file converter (same pattern as the dev launcher). Written to a stable
+      // per-user file (survives clean) the server reads at startup; rerun after dependency changes.
+      val converter = fileConverter.value
+      val cp = (Compile / fullClasspath).value
+        .map(af => converter.toPath(af.data).toAbsolutePath.toString)
+      val out = installDir / s"${mcpServerName.value}-classpath.txt"
+      IO.write(out, cp.mkString("\n"))
+      streams.value.log.info(s"MCP classpath written (${cp.size} entries): $out")
+      out
+    },
     // Default to invoking the launcher this plugin writes. Resolved against the same STABLE path
     // mcpInstall uses (not target/, which `clean` would wipe out from under a persistent .mcp.json),
     // so `mcpClientConfig`/`mcpRun` produce a command that keeps existing.
@@ -60,7 +78,7 @@ object ScalaSemanticMcpPlugin extends AutoPlugin:
     mcpClientConfig := {
       val log = streams.value.log
       mcpInstall.value // ensure the launcher exists on disk before we print a command pointing at it
-      val argv = resolvedCommand(mcpServerCommand.value, baseDirectory.value)
+      val argv = resolvedCommand(mcpServerCommand.value, baseDirectory.value, mcpClasspathFile.value)
       val argsJson = argv.tail.map(a => "\"" + a + "\"").mkString("[", ", ", "]")
       log.info(
         s"""|Register this in your MCP client (e.g. .mcp.json):
@@ -76,7 +94,7 @@ object ScalaSemanticMcpPlugin extends AutoPlugin:
     },
     mcpRun := {
       mcpInstall.value
-      val argv = resolvedCommand(mcpServerCommand.value, baseDirectory.value)
+      val argv = resolvedCommand(mcpServerCommand.value, baseDirectory.value, mcpClasspathFile.value)
       val exit = Process(argv).!
       if exit != 0 then sys.error(s"MCP server exited with code $exit")
     }
@@ -120,11 +138,13 @@ object ScalaSemanticMcpPlugin extends AutoPlugin:
     log.info(s"MCP launcher written: $out")
     out
 
-  /** Full argv = configured command + the project's SemanticDB root, or a clear error if unset. */
-  private def resolvedCommand(command: Seq[String], baseDir: File): Seq[String] =
+  /** Full argv = configured command + the project's SemanticDB root + the classpath file (which
+    * enables the PC backend), or a clear error if the command is unset.
+    */
+  private def resolvedCommand(command: Seq[String], baseDir: File, classpathFile: File): Seq[String] =
     if command.isEmpty then
       sys.error(
         "mcpServerCommand is empty — leave it at its default (the bundled launcher) or set it to a " +
           "launch argv, e.g. Seq(\"java\",\"-jar\",\"scalasemantic-mcp.jar\")."
       )
-    else command :+ baseDir.getAbsolutePath
+    else command :+ baseDir.getAbsolutePath :+ classpathFile.getAbsolutePath

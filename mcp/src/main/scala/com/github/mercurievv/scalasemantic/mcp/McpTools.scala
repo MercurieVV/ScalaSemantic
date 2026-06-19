@@ -10,7 +10,7 @@ import com.github.mercurievv.scalasemantic.model.*
   */
 object McpTools:
 
-  def all(az: Analyzer): List[Tool] = List(
+  def all(az: Analyzer, root: java.nio.file.Path = java.nio.file.Paths.get(".")): List[Tool] = List(
     tool(
       "find_symbol",
       "START HERE INSTEAD OF grep when you have a plain name. Resolve a plain or partial name " +
@@ -229,15 +229,30 @@ object McpTools:
     tool(
       "type_at_position",
       "USE INSTEAD OF guessing a type from source. The most specific symbol and its type at a " +
-        "0-based position in a document.",
+        "0-based position in a document. Pass `source` with the file's CURRENT text to query a " +
+        "buffer edited since (or never) compiled: the presentation compiler regenerates SemanticDB " +
+        "for it in memory, error-tolerant — so this answers even when the file does not compile. " +
+        "Without `source` it reads the last compiled SemanticDB. Requires the server to have been " +
+        "started with a classpath (see startup logs); otherwise `source` is ignored.",
       List(
-        ("uri", "string", "document uri as it appears in SemanticDB"),
+        (
+          "uri",
+          "string",
+          "document uri as it appears in SemanticDB (path relative to project root)"
+        ),
         ("line", "integer", "0-based line"),
-        ("character", "integer", "0-based column")
+        ("character", "integer", "0-based column"),
+        ("source", "string", "current full text of the file at `uri`; enables the live PC overlay")
       ),
       List("uri", "line", "character")
     ) { a =>
-      az.typeAtPosition(argStr(a, "uri"), argInt(a, "line", 0), argInt(a, "character", 0)) match
+      val uri = argStr(a, "uri")
+      // With `source`, overlay the live buffer via the PC. `uri` is the index-form (relative) key;
+      // the PC needs the absolute on-disk file path, so resolve it against the project root.
+      val engine = a.obj.get("source").map(_.str) match
+        case Some(src) => az.withBuffer(root.resolve(uri).toUri, src, uri)
+        case None      => az
+      engine.typeAtPosition(uri, argInt(a, "line", 0), argInt(a, "character", 0)) match
         case None => jobj(Some("found" -> ujson.Bool(false)))
         case Some(t) =>
           jobj(

@@ -4,11 +4,14 @@ import com.github.mercurievv.scalasemantic.mcp.Mcp
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
 /** Start the MCP server over stdio. Usage: `runMain com.github.mercurievv.scalasemantic.mcpServer
-  * [semanticdbRoot]` (root defaults to the current directory, where it recursively finds emitted
-  * `*.semanticdb` files).
+  * [semanticdbRoot] [classpath]`.
+  *   - `semanticdbRoot` (default `.`): where it recursively finds emitted `*.semanticdb` files.
+  *   - `classpath` (optional): the target project's compile classpath — a path-separated string or
+  *     a file containing one — which enables the presentation-compiler backend for live overlay of
+  *     uncompiled buffers (the tools' `source` argument). Also read from `SCALASEMANTIC_CLASSPATH`.
   */
 @main def mcpServer(args: String*): Unit =
-  Mcp.serve(args.headOption.getOrElse("."))
+  Mcp.serve(args.headOption.getOrElse("."), args.drop(1).headOption)
 
 /** Throwaway entrypoint: load a project's SemanticDB and print a summary. Usage: `run
   * [semanticdbRoot]` (defaults to `target`, i.e. dogfood on this build).

@@ -1,6 +1,7 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
 /** Phase 4: MCP protocol + tool wiring, driven through the pure `Mcp.handle` against the fixtures
@@ -174,6 +175,46 @@ class McpSuite extends munit.FunSuite:
     val r = call("call_path", ujson.Obj("from" -> a, "to" -> c))
     assertEquals(r("reachable").bool, true)
     assertEquals(r("path").arr.map(_.str).toList, List("a", "b", "c"))
+  }
+
+  test("type_at_position with `source` answers on an uncompiled buffer via the PC overlay") {
+    // A buffer NOT in the disk index, whose tail does not typecheck. Lives on disk under a root so
+    // the PC can resolve its path; the tool keys the overlay by the root-relative uri.
+    val root = java.nio.file.Files.createTempDirectory("mcp-pc").nn
+    val file = root.resolve("Widget.scala").nn
+    val source =
+      """package demo
+        |
+        |class Widget:
+        |  def area(w: Int): Int = w * 2
+        |
+        |val broken: Int = "oops"
+        |""".stripMargin
+    java.nio.file.Files.writeString(file, source)
+
+    val backend = PresentationCompilerBackend.fromCurrentJvm(workspace = Some(root))
+    try
+      val pcTools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
+      def pcCall(args: ujson.Value): ujson.Value =
+        val resp =
+          Mcp.handle(
+            req("tools/call", ujson.Obj("name" -> "type_at_position", "arguments" -> args)),
+            pcTools
+          )
+        ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
+
+      // Without `source`, the empty disk index knows nothing at that position.
+      val cold = pcCall(ujson.Obj("uri" -> "Widget.scala", "line" -> 3, "character" -> 6))
+      assertEquals(cold("found").bool, false)
+
+      // With `source`, the PC regenerates SemanticDB and the position resolves — despite the error.
+      val live =
+        pcCall(
+          ujson.Obj("uri" -> "Widget.scala", "line" -> 3, "character" -> 6, "source" -> source)
+        )
+      assertEquals(live("name").str, "area")
+      assertEquals(live("type").str, "Int")
+    finally backend.close()
   }
 
   test("process maps a request stream to responses, skipping blanks and notifications") {

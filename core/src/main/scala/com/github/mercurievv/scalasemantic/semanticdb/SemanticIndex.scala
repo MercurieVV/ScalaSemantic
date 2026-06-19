@@ -32,6 +32,14 @@ final class SemanticIndex(val documents: Vector[s.TextDocument]):
 
   def info(symbol: String): Option[s.SymbolInformation] = symbols.get(symbol)
 
+  /** A new index with `doc` overlaid: any existing document for the same uri is dropped and
+    * replaced. This is the splice point for a freshly (re)generated buffer — e.g. SemanticDB
+    * emitted in-memory by the presentation compiler for a file edited since the last compile. All
+    * derived state (`symbols`, `occurrences`, …) is recomputed in the returned index.
+    */
+  def withDocument(doc: s.TextDocument): SemanticIndex =
+    new SemanticIndex(documents.filterNot(_.uri == doc.uri) :+ doc)
+
   // --- Symbol grammar -------------------------------------------------------
   //
   // A SemanticDB global symbol is `Owner Descriptor`, where each descriptor encodes

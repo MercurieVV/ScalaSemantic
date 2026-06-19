@@ -1,14 +1,41 @@
 package com.github.mercurievv.scalasemantic.analysis
 
 import com.github.mercurievv.scalasemantic.model.*
+import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
+import java.net.URI
 import scala.meta.internal.semanticdb as s
 
 /** The semantic query engine: turns a [[SemanticIndex]] into the result models that back the MCP
   * tools. Phase 3 covers find-usages, method-signature, and class-hierarchy.
+  *
+  * The index is the primary backend — disk SemanticDB from the last clean compile. An optional
+  * presentation-compiler `pc` is the second backend: [[withBuffer]] regenerates one file's
+  * SemanticDB in memory (error-tolerant, no compile needed) and overlays it, so the position-local
+  * tools can answer about a buffer that has been edited since — or never — compiled.
   */
-final class Analyzer(index: SemanticIndex):
+final class Analyzer(
+    index: SemanticIndex,
+    pc: Option[PresentationCompilerBackend] = None
+):
+
+  /** An analyzer whose index has `code` (the live contents of the file at `fileUri`) overlaid via
+    * the presentation compiler, the overlaid document keyed by `docUri` so it replaces the matching
+    * disk document. `fileUri` must point at a real on-disk path (the PC reads `code`, but needs a
+    * resolvable file path); `docUri` is how the index addresses that file (relative to project
+    * root). The returned analyzer answers every query against that fresher world; the
+    * position-local tools ([[typeAtPosition]], [[methodSignature]]) benefit most, since they
+    * describe a single file. Without a PC backend this is a no-op returning `this`.
+    */
+  def withBuffer(fileUri: URI, code: String, docUri: String): Analyzer =
+    pc match
+      case Some(backend) => new Analyzer(backend.overlay(index, fileUri, code, docUri), pc)
+      case None          => this
+
+  /** [[withBuffer]] keyed by the file's own uri (the simple single-file case). */
+  def withBuffer(uri: URI, code: String): Analyzer =
+    withBuffer(uri, code, uri.toString)
 
   // --- find-symbol ----------------------------------------------------------
 
