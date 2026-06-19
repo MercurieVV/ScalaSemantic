@@ -22,6 +22,22 @@ require_clean_git() {
   fi
 }
 
+# Releases are cut from master only, and only when it matches origin/master — so under a PR workflow
+# the tag lands on the merged commit, never a stale or feature branch.
+require_synced_master() {
+  local branch
+  branch="$(git rev-parse --abbrev-ref HEAD)"
+  if [[ "$branch" != "master" ]]; then
+    echo "Releases are tagged from master, not '$branch'. Merge your PR, then: git checkout master && git pull." >&2
+    exit 1
+  fi
+  git fetch -q origin master
+  if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/master)" ]]; then
+    echo "master is not in sync with origin/master — pull/merge before tagging a release." >&2
+    exit 1
+  fi
+}
+
 latest_version() {
   # `|| true` so "no tags yet" (grep exit 1) doesn't trip set -e/pipefail.
   git tag --list 'v*' | sed 's/^v//' | { grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -n 1
@@ -52,6 +68,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 require_clean_git
+require_synced_master
 
 current="$(latest_version)"
 if [[ -z "$current" ]]; then

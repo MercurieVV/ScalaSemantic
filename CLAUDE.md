@@ -44,8 +44,17 @@ sbt "mcp/runMain com.github.mercurievv.scalasemantic.mcpServer <root>"  # start 
 ```
 
 ## Releasing
-Version is the git tag (`vX.Y.Z`); pushing a tag publishes to Maven Central via `sbt-ci-release`.
-**Every release MUST update [`docs/RELEASE_NOTES.md`](docs/RELEASE_NOTES.md):** before tagging,
-prepend a `## vX.Y.Z — <date>` section summarizing the user-facing changes since the previous tag
-(derive from `git log <prevTag>..HEAD`), and commit it as part of the release. Newest first. The
-release *process* is in [`docs/RELEASING.md`](docs/RELEASING.md).
+PR-based: branch protection on master, squash-merge PRs with **Conventional-Commit titles**
+(`feat:`, `fix:`, `perf:`, `feat(scope)!:` for breaking; `docs/refactor/test/chore/ci/build/style`
+for everything else). Version is the git tag (`vX.Y.Z`); pushing a tag publishes to Maven Central
+via `sbt-ci-release`.
+
+Cut a release on demand from a synced master: `scripts/bump-{fix,minor,major}.sh --push` (guarded to
+refuse anything but an up-to-date master). The tag push drives CI: Maven publish + the GitHub Release.
+
+**Release notes are GENERATED — never hand-edit them.** [`scripts/changelog.sh`](scripts/changelog.sh)
+keeps only user-facing Conventional-Commit types (`feat`/`fix`/`perf` + breaking) and OMITS
+docs/refactor/test/chore; it feeds both the GitHub Release body and `docs/RELEASE_NOTES.md` (rebuilt
+by [`scripts/gen-release-notes.sh`](scripts/gen-release-notes.sh) at site-build time, hence
+gitignored). So note quality == PR-title quality — write good titles. Process:
+[`docs/RELEASING.md`](docs/RELEASING.md).

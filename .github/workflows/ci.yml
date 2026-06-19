@@ -62,6 +62,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Generate release notes page from tags
+        run: scripts/gen-release-notes.sh # writes docs/RELEASE_NOTES.md (gitignored, build-time only)
       - name: Render docs with mdoc
         run: sbt docs/run # writes executed Markdown into website/docs
       - name: Build Docusaurus site
@@ -153,11 +155,18 @@ jobs:
           echo "Found: $jar"
           mkdir -p release-assets
           cp "$jar" release-assets/scalasemantic-mcp.jar
+      - name: Generate release notes (user-facing changes only)
+        run: |
+          # Body = filtered Conventional-Commit changelog for the range previous-tag..this-tag.
+          prev=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          range="${prev:+$prev..}${GITHUB_REF_NAME}"
+          echo "Range: $range"
+          scripts/changelog.sh "$range" | tee release-notes.md
       - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: release-assets/scalasemantic-mcp.jar
-          generate_release_notes: true
+          body_path: release-notes.md
 
   update-doc-versions:
     name: Update docs with published version
