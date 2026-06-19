@@ -40,9 +40,10 @@ sbt compatGoldenAll   # recompile fixtures for every version in `compatScalaVers
 ```
 
 Add a version by appending to `compatScalaVersions` in `build.sbt` and rerunning `compatGoldenAll` —
-nothing else changes. CI runs `compatGoldenAll` then fails if the committed golden files drift, so the
-fixtures stay honest as compilers bump. The supported-versions summary is in the
-[README](../README.md#supported-scala-versions).
+nothing else changes. CI runs `compatGoldenAll` before the tests so CompatSuite always exercises the
+runner's freshly emitted SemanticDB (the committed golden is for local `sbt test` without a
+cross-compile; it is not byte-compared, since SemanticDB output isn't identical across environments).
+The supported-versions summary is in the [README](../README.md#supported-scala-versions).
 
 Run the server from source for development:
 
