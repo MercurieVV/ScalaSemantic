@@ -232,6 +232,6 @@ lazy val root = (project in file("."))
   .settings(name := "ScalaSemantic", publish / skip := true)
 
 // Pre-push gate. A command alias (not a task) so clean/format/fix/test aggregate across all
-// modules. `testOnly *` forces the full suite (sbt 2.0 `test` is cached testQuick — see PLAN.md).
+// modules. `testOnly *` forces the full suite (sbt 2.0 `test` is cached testQuick — see docs/PLAN.md).
 addCommandAlias("prePush", "clean; scalafmtAll; scalafixAll; Test/testOnly *")
 

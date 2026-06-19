@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://mercurievv.github.io/ScalaSemantic/sitemap.xml

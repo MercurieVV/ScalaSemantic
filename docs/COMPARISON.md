@@ -1,65 +1,74 @@
-# Validation: ScalaSemantic vs standard tooling (Metals / LSP)
+# ScalaSemantic vs `grep` (and a note on Metals/LSP)
 
-This server reads the compiler-emitted **SemanticDB** for a whole project and answers questions
-*across the entire symbol/occurrence index*. Standard LSP tooling (Metals) is built around a
-cursor: "go to definition", "find references", "hover here". The two overlap on the basics, but
-the index-wide and relationship queries below are awkward or impossible to get from a single LSP
-request — that is where this server earns its place.
+`grep` (ripgrep, IDE text search) is the tool an agent reaches for by default. ScalaSemantic isn't a
+replacement for it — it's the semantic complement. This page is the honest trade-off: where each wins.
 
-Every claim is backed by a test in `src/test/scala/...` that runs against this build's own
-SemanticDB (dogfooding). Method behaviour is in `AnalyzerSuite`; the MCP wire contract is in
-`McpSuite`.
+## What ScalaSemantic does better
 
-## Capability comparison
+- **Exact symbols, no false hits.** `find_usages` on `pkg/Foo#bar().` returns *that* method — not
+  every `bar` in the repo, not a `bar` in a comment, not an unrelated overload. grep can't tell them
+  apart.
+- **No false negatives from naming.** Import aliases, backtick-escaped names, and shadowing all resolve
+  to the same symbol; grep misses renamed-on-import references and over-matches common names.
+- **Relationships grep simply can't express.** Subtypes across the whole index (`class_hierarchy`),
+  which givens produce a type (`resolve_implicits`) and their transitive deps (`trace_implicit_chain`),
+  the shortest call path between two methods (`call_path`), declared-vs-inherited members. These are
+  graph queries over the compiled program, not text patterns.
+- **Type-aware signatures.** `method_signature` renders type params and flags `implicit`/`using`
+  parameter lists — information that isn't in the source text in a greppable form.
 
-| Tool | Standard LSP / Metals | This server | Evidence |
-|------|-----------------------|-------------|----------|
-| `find_usages` | `textDocument/references` — yes | def/ref split, paged, compact `uri:line:col` | `findUsages reports the definition and cross-type references` |
-| `method_signature` | hover shows a rendered signature | explicit implicit/using lists + type params, structured on demand | `methodSignature captures type params and an implicit/using parameter list` |
-| `class_hierarchy` | type hierarchy (parents/children) — yes | parents + transitive linearization + **index-wide known subtypes** in one call | `classHierarchy finds known subtypes across the index` |
-| `find_overloads` | only via completion/hover at a call site | all overloads of a name+owner, anywhere | `findOverloads groups all methods sharing an owner and name` |
-| `members` | document symbols (declared only) | **declared vs inherited**, override-aware, with declaring type | `members separates locally declared from inherited` |
-| `type_at_position` | hover — yes | most-specific symbol + type at a position | `typeAtPosition resolves the symbol at a definition's own location` |
-| `resolve_implicits` | none (no "which givens produce T?") | candidate given **definitions** producing a type | `resolveImplicits lists given definitions producing a type` |
-| `trace_implicit_chain` | none | given → its implicit **dependencies**, transitively | `traceImplicitChain records implicit dependencies of each given` |
-| `call_path` | call hierarchy (one hop in/out) | **shortest path between two methods** with edges | `callPath finds a transitive call chain with its edges` |
+## What `grep` does better
 
-## Where it clearly beats a cursor-based LSP
+- **Zero setup, instant.** No compile, no SemanticDB, no JVM server. Works on a fresh checkout.
+- **Works on *any* text.** Comments, string literals, log messages, TODOs, build files, YAML, other
+  languages — anything ScalaSemantic can't see because it only knows compiled Scala symbols.
+- **Always current.** Matches the bytes on disk right now; never stale. ScalaSemantic only sees what
+  the last `compile` emitted.
+- **Tolerates broken code.** Finds text in code that doesn't compile; SemanticDB needs a successful
+  compile.
+- **Ubiquitous and scriptable.** Every machine has it; trivial to pipe and combine.
 
-1. **Known subtypes without a cursor.** Metals' type hierarchy answers "subtypes of the class at
-   the cursor". This server answers "every type in the index that extends `pkg/Animal#`" as data —
-   `classHierarchy` scans all `ClassSignature.parents`. Test result: `Animal → [Dog, Fish]`.
+## Rule of thumb
 
-2. **Implicit/given resolution as a query.** LSP has no request for "which givens can produce
-   `Show[Int]`?". `resolve_implicits` finds the given *definitions* (filtering out implicit
-   parameters and the synthetic self-class a `given … with` emits) and returns
-   `Show[Int]` (intShow) and `Show[List[A]]` (listShow). `trace_implicit_chain` then reports that
-   `listShow` *depends on* `Show[A]` — the implicit dependency graph, which no LSP request exposes.
+| Question | Reach for |
+|---|---|
+| "Where does this string / comment / TODO appear?" | `grep` |
+| "Something in a config or non-Scala file" | `grep` |
+| "The code doesn't compile yet" | `grep` |
+| "Every caller of *this exact* method" | `find_usages` |
+| "Who extends this trait?" / "which givens produce `T`?" | `class_hierarchy` / `resolve_implicits` |
+| "Path from method `a` to method `c`" | `call_path` |
 
-3. **Paths between methods.** Call hierarchy gives one hop. `call_path` runs BFS over call edges
-   (attributed by source order within each document) and returns the whole chain `a → b → c` plus
-   the call-site edges that realize it.
+The server's `initialize` instructions tell the agent to prefer the semantic tools for the second
+group and fall back to text search for the first.
 
-4. **Implicit parameters made explicit in signatures.** A hover renders a signature, but
-   `method_signature` separates each parameter list and flags `implicit`/`using`, e.g.
-   `def render[A](a: A)(implicit sh: Show[A]): String` with `parameterLists[1].implicit == true`.
+## Limitations (read before trusting an answer)
 
-## Honest limitations
+- **Index freshness.** Results reflect the last SemanticDB-emitting `compile`; the index loads once at
+  startup. Recompile to see new code.
+- **Compiled Scala only.** No comments, strings, generated-but-not-compiled, or non-Scala files.
+- **Some approximations.** `call_path` attributes a call to the nearest preceding method definition in
+  source order (fine for flat bodies, weaker for deeply nested local defs); `linearize` is a depth-first
+  parent walk, not the exact Scala 3 linearization; type rendering is best-effort and can fall back to
+  partial output on exotic types.
+- **Candidate-level implicits.** `resolve_implicits` lists givens that *could* produce a type; it does
+  not reproduce the compiler's exact selection/priority at a specific call site.
 
-- **Approximations.** `call_path` attributes a call to the nearest preceding method definition in
-  source order — correct for flat method bodies, weaker for deeply nested local defs. `linearize`
-  is a depth-first parent walk, not the exact Scala 3 linearization algorithm.
-- **Type rendering** is best-effort Scala-ish text over SemanticDB `Type`s; exotic types fall back
-  to empty/partial output rather than a precise pretty-print.
-- **Index freshness.** Results are only as current as the last `compile` that emitted SemanticDB;
-  the server loads the index once at startup. Metals maintains a live presentation compiler.
-- **Resolution is candidate-level, not call-site-level.** `resolve_implicits` lists givens that
-  *could* produce a type; it does not reproduce the compiler's exact selection/priority at a
-  specific call site.
+## And Metals/LSP?
+
+Different shape, not really a competitor: Metals is **cursor-based** (go-to-def, find-refs, hover at a
+position) with a live presentation compiler. ScalaSemantic is **index-wide and headless** — it answers
+questions about the whole program as data, over MCP, with no editor or cursor. Key things it gives that
+a single LSP request doesn't: index-wide known subtypes, implicit/given resolution as a query, the
+implicit dependency graph, and shortest call paths. Metals stays ahead on live freshness and editor
+integration.
 
 ## Reproducing
 
+Every capability is backed by a test dogfooded on this repo's own SemanticDB
+([`AnalyzerSuite`](../analysis/src/test/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerSuite.scala),
+`McpSuite`, `CompatSuite`):
+
 ```
-sbt test        # 33 tests, all dogfooded on this project's own SemanticDB
-sbt prePush     # format + scalafix + full test suite
+sbt test
 ```
