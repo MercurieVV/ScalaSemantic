@@ -69,6 +69,89 @@ final class Analyzer(
     */
   def metricsOf(symbol: String): Option[SymbolStructure] = structureBySymbol.get(symbol)
 
+  // --- document outline -----------------------------------------------------
+
+  /** The declarations of one document, nested by enclosing scope, each with the compiler-resolved
+    * signature (explicit implicits, real types) — a structural map of a file so a caller can locate
+    * and understand its members without reading the whole source. `None` if the uri is not indexed.
+    */
+  def outline(uri: String): Option[List[OutlineEntry]] =
+    index.document(uri).map { doc =>
+      val defs = doc.occurrences.toList
+        .collect {
+          case occ
+              if occ.role == s.SymbolOccurrence.Role.DEFINITION && includeInOutline(occ.symbol) =>
+            occ.symbol -> occ.range.map(_.startLine).getOrElse(0)
+        }
+        .distinctBy(_._1)
+      val definedSet = defs.map(_._1).toSet
+      def parentOf(sym: String): Option[String] =
+        val o = index.owner(sym)
+        if definedSet.contains(o) then Some(o) else None
+      def build(sym: String, line: Int): OutlineEntry =
+        val kids = defs.filter((c, _) => parentOf(c).contains(sym)).sortBy(_._2)
+        OutlineEntry(
+          sym,
+          index.displayName(sym),
+          kindName(sym),
+          line,
+          outlineSignature(sym),
+          kids.map((c, l) => build(c, l))
+        )
+      defs.filter((sym, _) => parentOf(sym).isEmpty).sortBy(_._2).map((sym, l) => build(sym, l))
+    }
+
+  private val outlineKinds: Set[s.SymbolInformation.Kind] = Set(
+    s.SymbolInformation.Kind.CLASS,
+    s.SymbolInformation.Kind.TRAIT,
+    s.SymbolInformation.Kind.INTERFACE,
+    s.SymbolInformation.Kind.OBJECT,
+    s.SymbolInformation.Kind.METHOD,
+    s.SymbolInformation.Kind.MACRO,
+    s.SymbolInformation.Kind.TYPE,
+    s.SymbolInformation.Kind.FIELD
+  )
+
+  private def includeInOutline(symbol: String): Boolean =
+    index.info(symbol).exists { si =>
+      outlineKinds.contains(si.kind) && si.displayName.nonEmpty && si.displayName != "<init>"
+    }
+
+  /** A one-line signature for an outline entry, rendered from SemanticDB: a method's full clarified
+    * signature, a value's resolved type, or empty for a type (its name + kind already say enough).
+    */
+  private def outlineSignature(symbol: String): String =
+    index.info(symbol).map(_.signature) match
+      case Some(_: s.MethodSignature) => methodSignature(symbol).map(_.rendered).getOrElse("")
+      case Some(v: s.ValueSignature)  => s": ${renderType(v.tpe)}"
+      case _                          => ""
+
+  // --- rename plan ----------------------------------------------------------
+
+  /** The precise edits to rename `symbol` to `newName`: every compiler-resolved occurrence of its
+    * name (definitions and references), as `{uri, range, old→new}`. Because the occurrences come
+    * from SemanticDB, this never touches comments, strings, or unrelated same-named identifiers —
+    * the over-match a textual rename suffers. The MCP server is read-only, so this returns a plan
+    * for the caller to apply.
+    */
+  def renamePlan(symbol: String, newName: String): RenamePlan =
+    val oldName = index.displayName(symbol)
+    val edits = index.occurrences
+      .collect {
+        case (uri, occ) if occ.symbol == symbol =>
+          val r = occ.range.getOrElse(s.Range.defaultInstance)
+          RenameEdit(
+            uri,
+            Range(Position(r.startLine, r.startCharacter), Position(r.endLine, r.endCharacter)),
+            oldName,
+            newName
+          )
+      }
+      .distinct
+      .toList
+      .sortBy(e => (e.uri, e.range.start.line, e.range.start.character))
+    RenamePlan(symbol, oldName, newName, edits.size, edits)
+
   // --- find-symbol ----------------------------------------------------------
 
   /** Find global symbols whose display name matches `query` (case-insensitive), ranked exact >

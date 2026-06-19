@@ -60,6 +60,8 @@ object Mcp:
       |  the symbol/type at a source position               → type_at_position
       |  the symbol for a plain name                        → find_symbol
       |  what's important / where to start, dep cycles       → structure
+      |  a file's structure / where to edit (don't read it)  → document_outline
+      |  the exact edits to rename a symbol safely           → rename_plan
       |
       |Symbols: every tool except find_symbol and type_at_position takes a SemanticDB symbol string
       |(grammar: package `foo/`, type `Foo#`, term `foo.`, method `foo().`, overloads `foo().(+1)`).

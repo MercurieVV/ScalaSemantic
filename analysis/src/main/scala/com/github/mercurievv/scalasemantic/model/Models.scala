@@ -165,6 +165,39 @@ case class StructureResult(
     cycles: List[DependencyCycle]
 ) derives ReadWriter
 
+// --- document outline -------------------------------------------------------
+
+/** One declaration in a file's outline: its symbol, name, kind, the 0-based line of its definition,
+  * and a `signature` rendered from SemanticDB — so types are the compiler-resolved ones and
+  * implicit parameter lists are explicit (the "clarified" view), not the source's possibly-inferred
+  * text. `children` nests members under their enclosing type/method.
+  */
+case class OutlineEntry(
+    symbol: String,
+    name: String,
+    kind: String,
+    line: Int,
+    signature: String,
+    children: List[OutlineEntry]
+) derives ReadWriter
+
+// --- rename plan ------------------------------------------------------------
+
+/** One edit in a rename: replace `oldText` in `range` of `uri` with `newText`. Ranges are the
+  * compiler-resolved name occurrences, so there is no grep over-match (comments/strings/unrelated
+  * same-named identifiers are never touched).
+  */
+case class RenameEdit(uri: String, range: Range, oldText: String, newText: String)
+    derives ReadWriter
+
+case class RenamePlan(
+    symbol: String,
+    fromName: String,
+    toName: String,
+    editCount: Int,
+    edits: List[RenameEdit]
+) derives ReadWriter
+
 // --- call-graph path-find ---------------------------------------------------
 
 case class CallEdge(from: SymbolRef, to: SymbolRef, at: Location) derives ReadWriter
