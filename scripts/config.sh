@@ -9,6 +9,9 @@ REPO="${REPO:-MercurieVV/ScalaSemantic}"
 # First release version, used when no v* tag exists yet.
 FIRST_VERSION="${FIRST_VERSION:-0.1.0}"
 
+# Branch whose latest remote commit is tagged by bump-version.sh.
+RELEASE_BRANCH="${RELEASE_BRANCH:-master}"
+
 # Sonatype Central host (the new portal; legacy OSSRH would be s01.oss.sonatype.org).
 SONATYPE_CREDENTIAL_HOST="${SONATYPE_CREDENTIAL_HOST:-central.sonatype.com}"
 
