@@ -40,11 +40,8 @@ jobs:
   docs-site:
     name: Publish docs site (GitHub Pages)
     needs: [build]
-    # Render the mdoc docs, build the Docusaurus site, deploy to GitHub Pages. Runs from master and
-    # from the docs feature branch (both are allowed in the github-pages environment branch policy).
-    if: >-
-      github.event_name == 'push' &&
-      (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/feat/mdoc-docs-site')
+    # Render the mdoc docs, build the Docusaurus site, deploy to GitHub Pages. Master only.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
       pages: write # deploy to Pages
