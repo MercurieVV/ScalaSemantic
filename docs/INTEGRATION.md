@@ -19,7 +19,7 @@ semanticdbEnabled := true
 ```
 
 For Mill/Gradle/scalac, enable the SemanticDB compiler plugin the equivalent way, then compile. (The
-sbt plugin in Option C does this step for you.)
+sbt plugin in Option A does this step for you.)
 
 The only other requirement on the user's machine is a **JVM** (`java` on PATH) — no coursier, no sbt.
 
@@ -34,66 +34,15 @@ file is what every launch option below runs with `java -jar`.
 All three end at the same place: a `.mcp.json` entry that runs the server with the project root as its
 argument. Pick by how much you want automated.
 
-| | A — auto-download script | B — plain `java -jar` | C — sbt plugin |
+| | A — sbt plugin | B — auto-download script | C — plain `java -jar` |
 |---|---|---|---|
-| Get the jar | script downloads + caches it | you download it once | you download it once |
-| Write `.mcp.json` | by hand (point at script) | by hand (point at `java`) | `sbt mcpClientConfig` generates it |
-| Enable SemanticDB | you (one line) | you (one line) | plugin does it |
-| Stays up to date | yes — pulls latest each launch | manual re-download | manual |
-| Works with | any OS / build tool | any OS / build tool | sbt (1 and 2) |
+| Get the jar | launcher downloads + caches it | script downloads + caches it | you download it once |
+| Write `.mcp.json` | `sbt mcpClientConfig` generates it | by hand (point at script) | by hand (point at `java`) |
+| Enable SemanticDB | plugin does it | you (one line) | you (one line) |
+| Stays up to date | yes — pulls latest each launch | yes — pulls latest each launch | manual re-download |
+| Works with | sbt (1 and 2) | any OS / build tool | any OS / build tool |
 
-### Option A — auto-download launcher (recommended)
-
-[`scripts/scalasemantic-mcp.sh`](../scripts/scalasemantic-mcp.sh) (Linux/macOS) and
-[`scripts/scalasemantic-mcp.ps1`](../scripts/scalasemantic-mcp.ps1) (Windows) pick the best available
-path automatically: if **coursier** (`cs`) is on PATH they `cs launch` the artifact from Maven Central
-(resolves + caches like `npx`); otherwise they download the fat jar from the latest GitHub Release once
-(cached under `~/.cache/scalasemantic-mcp` / `%LOCALAPPDATA%`) and run `java -jar`. Download chatter
-goes to stderr; stdout stays pure JSON-RPC. Offline, they fall back to the newest cached jar. Pin a
-version with `SCALASEMANTIC_VERSION=v0.1.4`.
-
-Install the launcher to a **stable path on PATH** (`~/.local/bin/scalasemantic-mcp`) so `.mcp.json`
-does not depend on where this repo is cloned — and, unlike the sbt dev launcher under `target/`, it
-survives `sbt clean`:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/install.sh | sh
-# or, from a checkout:  scripts/install.sh
-```
-
-```json
-{
-  "mcpServers": {
-    "scala-semantic": {
-      "command": "/abs/home/.local/bin/scalasemantic-mcp",
-      "args": ["/abs/path/to/project-to-analyze"]
-    }
-  }
-}
-```
-
-### Option B — plain `java -jar`
-
-Download `scalasemantic-mcp.jar` from the
-[latest release](https://github.com/MercurieVV/ScalaSemantic/releases/latest) and reference it
-directly — no script in between:
-
-```json
-{
-  "mcpServers": {
-    "scala-semantic": {
-      "command": "java",
-      "args": ["-jar", "/abs/path/to/scalasemantic-mcp.jar", "/abs/path/to/project-to-analyze"]
-    }
-  }
-}
-```
-
-> A bare `sbt runMain` writes its own build logs to stdout and corrupts the JSON-RPC stream — always
-> launch the jar (or the script that wraps it) so stdout carries only protocol messages. To build the
-> jar locally instead of downloading: `sbt "mcp/assembly"`.
-
-### Option C — sbt plugin (generates the `.mcp.json` for you)
+### Option A — sbt plugin (recommended; generates the `.mcp.json` for you)
 
 `io.github.mercurievv:sbt-scalasemantic-mcp` (built for sbt 2; cross-publish for sbt 1 with `^`). The
 minimal host build is one line:
@@ -107,7 +56,7 @@ enablePlugins(ScalaSemanticMcpPlugin)
 
 The plugin enables SemanticDB and adds:
 
-- `sbt mcpInstall` — writes the bundled auto-download launcher (Option A's script) into `target/`.
+- `sbt mcpInstall` — writes the bundled auto-download launcher (Option B's script) into `target/`.
 - `sbt mcpClientConfig` — runs `mcpInstall`, then prints the `.mcp.json` entry pointing at that script.
 - `sbt mcpRun` — runs the server in the foreground (stdio) for manual testing.
 
@@ -140,6 +89,57 @@ project root. So overriding `mcpServerCommand := Seq("java", "-jar", "/abs/scala
 would instead yield `"command": "java"`,
 `"args": ["-jar", "/abs/scalasemantic-mcp.jar", "/abs/path/to/this/project"]`.
 Generation logic: [`ScalaSemanticMcpPlugin.scala`](../sbt-plugin/src/main/scala/com/github/mercurievv/scalasemantic/sbtplugin/ScalaSemanticMcpPlugin.scala).
+
+### Option B — auto-download launcher
+
+[`scripts/scalasemantic-mcp.sh`](../scripts/scalasemantic-mcp.sh) (Linux/macOS) and
+[`scripts/scalasemantic-mcp.ps1`](../scripts/scalasemantic-mcp.ps1) (Windows) pick the best available
+path automatically: if **coursier** (`cs`) is on PATH they `cs launch` the artifact from Maven Central
+(resolves + caches like `npx`); otherwise they download the fat jar from the latest GitHub Release once
+(cached under `~/.cache/scalasemantic-mcp` / `%LOCALAPPDATA%`) and run `java -jar`. Download chatter
+goes to stderr; stdout stays pure JSON-RPC. Offline, they fall back to the newest cached jar. Pin a
+version with `SCALASEMANTIC_VERSION=v0.1.4`.
+
+Install the launcher to a **stable path on PATH** (`~/.local/bin/scalasemantic-mcp`) so `.mcp.json`
+does not depend on where this repo is cloned — and, unlike the sbt dev launcher under `target/`, it
+survives `sbt clean`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/install.sh | sh
+# or, from a checkout:  scripts/install.sh
+```
+
+```json
+{
+  "mcpServers": {
+    "scala-semantic": {
+      "command": "/abs/home/.local/bin/scalasemantic-mcp",
+      "args": ["/abs/path/to/project-to-analyze"]
+    }
+  }
+}
+```
+
+### Option C — plain `java -jar`
+
+Download `scalasemantic-mcp.jar` from the
+[latest release](https://github.com/MercurieVV/ScalaSemantic/releases/latest) and reference it
+directly — no script in between:
+
+```json
+{
+  "mcpServers": {
+    "scala-semantic": {
+      "command": "java",
+      "args": ["-jar", "/abs/path/to/scalasemantic-mcp.jar", "/abs/path/to/project-to-analyze"]
+    }
+  }
+}
+```
+
+> A bare `sbt runMain` writes its own build logs to stdout and corrupts the JSON-RPC stream — always
+> launch the jar (or the script that wraps it) so stdout carries only protocol messages. To build the
+> jar locally instead of downloading: `sbt "mcp/assembly"`.
 
 ## Manual stdio check
 

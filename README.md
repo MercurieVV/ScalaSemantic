@@ -5,10 +5,19 @@
 [![Docs](https://img.shields.io/badge/docs-site-blue)](https://mercurievv.github.io/ScalaSemantic/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Deep semantic analysis of Scala projects, exposed over [MCP](https://modelcontextprotocol.io) so an
-AI agent (e.g. Claude Code) can ask precise questions about **symbols, types, implicits, and call
-paths**. It reads compiler-emitted **SemanticDB**, so answers reflect what the compiler actually
-resolved — not text matching.
+**ScalaSemantic** helps AI understand your Scala code like the compiler does. Instead of asking an
+agent to guess from text search (grep), you let it query compiler-emitted **SemanticDB** for exact symbols,
+types, implicits, inheritance, usages, and call paths.
+
+For a Scala developer, that means an agent can answer questions like:
+
+- where a method is really used, without false matches from `grep`;
+- which classes extend a trait or override a member;
+- which `given` can satisfy a type;
+- how one method can call another across the project.
+
+It is exposed over [MCP](https://modelcontextprotocol.io), so clients such as Claude Code can call it
+as a local tool while you keep using your normal Scala build.
 
 📖 **Documentation site: <https://mercurievv.github.io/ScalaSemantic/>** (mdoc-checked, so its code
 samples are executed at build time).

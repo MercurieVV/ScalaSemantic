@@ -41,6 +41,7 @@ So `com/example/Animal#` is the type `Animal` in package `com.example`, and
 ## Pages
 
 - [Integration](INTEGRATION.md) — register the server with an MCP client
+- [FAQ](FAQ.md) — MCP, AI-agent, and SemanticDB basics for Scala developers
 - [Comparison](COMPARISON.md) — vs `grep` (pros & cons), plus a note on Metals/LSP
 - [Development](DEVELOPMENT.md) — modules, build, cross-version testing, this site
 - [Design decisions](DESIGN.md) — upickle, extensibility, docs tooling
