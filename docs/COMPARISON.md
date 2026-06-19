@@ -3,17 +3,6 @@
 `grep` (ripgrep, IDE text search) is the tool an agent reaches for by default. ScalaSemantic isn't a
 replacement for it — it's the semantic complement. This page is the honest trade-off: where each wins.
 
-## What `grep` does better
-
-- **Zero setup, instant.** No compile, no SemanticDB, no JVM server. Works on a fresh checkout.
-- **Works on *any* text.** Comments, string literals, log messages, TODOs, build files, YAML, other
-  languages — anything ScalaSemantic can't see because it only knows compiled Scala symbols.
-- **Always current.** Matches the bytes on disk right now; never stale. ScalaSemantic only sees what
-  the last `compile` emitted.
-- **Tolerates broken code.** Finds text in code that doesn't compile; SemanticDB needs a successful
-  compile.
-- **Ubiquitous and scriptable.** Every machine has it; trivial to pipe and combine.
-
 ## What ScalaSemantic does better
 
 - **Exact symbols, no false hits.** `find_usages` on `pkg/Foo#bar().` returns *that* method — not
@@ -27,6 +16,17 @@ replacement for it — it's the semantic complement. This page is the honest tra
   graph queries over the compiled program, not text patterns.
 - **Type-aware signatures.** `method_signature` renders type params and flags `implicit`/`using`
   parameter lists — information that isn't in the source text in a greppable form.
+
+## What `grep` does better
+
+- **Zero setup, instant.** No compile, no SemanticDB, no JVM server. Works on a fresh checkout.
+- **Works on *any* text.** Comments, string literals, log messages, TODOs, build files, YAML, other
+  languages — anything ScalaSemantic can't see because it only knows compiled Scala symbols.
+- **Always current.** Matches the bytes on disk right now; never stale. ScalaSemantic only sees what
+  the last `compile` emitted.
+- **Tolerates broken code.** Finds text in code that doesn't compile; SemanticDB needs a successful
+  compile.
+- **Ubiquitous and scriptable.** Every machine has it; trivial to pipe and combine.
 
 ## Rule of thumb
 
