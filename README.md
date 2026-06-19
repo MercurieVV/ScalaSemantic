@@ -52,7 +52,7 @@ Least manual: enables SemanticDB and generates the `.mcp.json` for you; the jar 
 
 ```scala
 // project/plugins.sbt
-addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "0.1.0")
+addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "0.2.1")
 // build.sbt
 enablePlugins(ScalaSemanticMcpPlugin)
 ```
