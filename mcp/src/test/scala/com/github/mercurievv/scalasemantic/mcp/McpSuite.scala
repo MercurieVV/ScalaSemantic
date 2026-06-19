@@ -105,6 +105,23 @@ class McpSuite extends munit.FunSuite:
     assertEquals(dims, Set("extends", "memberType", "call", "implicit"), dims.toString)
   }
 
+  test("metrics badge: find_symbol and class_hierarchy carry structural metrics on request") {
+    // off by default — no badge fields
+    val plain = call("find_symbol", ujson.Obj("query" -> "Animal", "kind" -> "TRAIT"))
+    assert(plain("symbols").arr.forall(!_.obj.contains("layer")), "no badge without metrics")
+
+    // on → each in-project type result gains layer + centrality
+    val badged =
+      call("find_symbol", ujson.Obj("query" -> "Animal", "kind" -> "TRAIT", "metrics" -> true))
+    val anyBadged =
+      badged("symbols").arr.exists(s => s.obj.contains("layer") && s.obj.contains("centrality"))
+    assert(anyBadged, badged.render())
+
+    // class_hierarchy badges the queried type
+    val h = call("class_hierarchy", ujson.Obj("symbol" -> Animal, "metrics" -> true))
+    assert(h.obj.contains("layer") && h.obj.contains("centrality"), h.render())
+  }
+
   test("notifications get no response") {
     val n = ujson.Obj("jsonrpc" -> "2.0", "method" -> "notifications/initialized")
     assertEquals(Mcp.handle(n, tools), None)
