@@ -49,7 +49,7 @@ minimal host build is one line:
 
 ```scala
 // project/plugins.sbt
-addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "0.1.0")
+addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "0.2.1")
 // build.sbt
 enablePlugins(ScalaSemanticMcpPlugin)
 ```
@@ -98,7 +98,7 @@ path automatically: if **coursier** (`cs`) is on PATH they `cs launch` the artif
 (resolves + caches like `npx`); otherwise they download the fat jar from the latest GitHub Release once
 (cached under `~/.cache/scalasemantic-mcp` / `%LOCALAPPDATA%`) and run `java -jar`. Download chatter
 goes to stderr; stdout stays pure JSON-RPC. Offline, they fall back to the newest cached jar. Pin a
-version with `SCALASEMANTIC_VERSION=v0.1.4`.
+version with `SCALASEMANTIC_VERSION=v0.2.1`.
 
 Install the launcher to a **stable path on PATH** (`~/.local/bin/scalasemantic-mcp`) so `.mcp.json`
 does not depend on where this repo is cloned — and, unlike the sbt dev launcher under `target/`, it
