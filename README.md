@@ -67,11 +67,11 @@ then point your client at it:
 addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "0.1.0")
 // build.sbt
 enablePlugins(ScalaSemanticMcpPlugin)
-mcpServerCommand := Seq("java", "-jar", "/abs/scalasemantic-mcp.jar")
 ```
 
-Then `sbt mcpClientConfig` prints the `.mcp.json` (root = project base dir); `sbt mcpRun` runs it in
-the foreground for testing.
+That's it — `sbt mcpClientConfig` writes the auto-download launcher into `target/` and prints the
+`.mcp.json` pointing at it (root = project base dir). No jar to fetch by hand; it arrives on first
+spawn. `sbt mcpRun` runs it in the foreground for testing.
 
 Full details (build tools, the generated `.mcp.json`, lifecycle): **[docs/INTEGRATION.md](docs/INTEGRATION.md)**.
 

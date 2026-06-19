@@ -45,10 +45,12 @@ argument. Pick by how much you want automated.
 ### Option A — auto-download launcher (recommended)
 
 [`scripts/scalasemantic-mcp.sh`](../scripts/scalasemantic-mcp.sh) (Linux/macOS) and
-[`scripts/scalasemantic-mcp.ps1`](../scripts/scalasemantic-mcp.ps1) (Windows) resolve the latest
-GitHub Release, download its fat jar once (cached under `~/.cache/scalasemantic-mcp` /
-`%LOCALAPPDATA%`), then `exec java -jar`. Download chatter goes to stderr; stdout stays pure JSON-RPC.
-Offline, they fall back to the newest cached jar. Pin a version with `SCALASEMANTIC_VERSION=v0.1.4`.
+[`scripts/scalasemantic-mcp.ps1`](../scripts/scalasemantic-mcp.ps1) (Windows) pick the best available
+path automatically: if **coursier** (`cs`) is on PATH they `cs launch` the artifact from Maven Central
+(resolves + caches like `npx`); otherwise they download the fat jar from the latest GitHub Release once
+(cached under `~/.cache/scalasemantic-mcp` / `%LOCALAPPDATA%`) and run `java -jar`. Download chatter
+goes to stderr; stdout stays pure JSON-RPC. Offline, they fall back to the newest cached jar. Pin a
+version with `SCALASEMANTIC_VERSION=v0.1.4`.
 
 ```json
 {
@@ -84,45 +86,50 @@ directly — no script in between:
 
 ### Option C — sbt plugin (generates the `.mcp.json` for you)
 
-`io.github.mercurievv:sbt-scalasemantic-mcp` (built for sbt 2; cross-publish for sbt 1 with `^`). In a
-host build:
+`io.github.mercurievv:sbt-scalasemantic-mcp` (built for sbt 2; cross-publish for sbt 1 with `^`). The
+minimal host build is one line:
 
 ```scala
 // project/plugins.sbt
 addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "0.1.0")
 // build.sbt
 enablePlugins(ScalaSemanticMcpPlugin)
-mcpServerCommand := Seq("java", "-jar", "/abs/path/to/scalasemantic-mcp.jar") // or the auto-download script
 ```
 
-The plugin enables SemanticDB and adds two tasks:
+The plugin enables SemanticDB and adds:
 
-- `sbt mcpClientConfig` — prints the `.mcp.json` entry to paste into your client.
+- `sbt mcpInstall` — writes the bundled auto-download launcher (Option A's script) into `target/`.
+- `sbt mcpClientConfig` — runs `mcpInstall`, then prints the `.mcp.json` entry pointing at that script.
 - `sbt mcpRun` — runs the server in the foreground (stdio) for manual testing.
 
-It only enables SemanticDB and shells out to `mcpServerCommand` — it never links against the Scala
-3.8.4 server, which is why it is sbt-1/2 and build-tool portable.
+So `enablePlugins` + `sbt mcpClientConfig` + paste is the whole setup — no jar to download by hand; the
+written launcher fetches the server on first spawn (coursier if present, else the GitHub-Release fat
+jar). To pin a fixed binary instead, override `mcpServerCommand`, e.g.
+`mcpServerCommand := Seq("java", "-jar", "/abs/path/to/scalasemantic-mcp.jar")`.
+
+The plugin only enables SemanticDB and shells out to `mcpServerCommand` — it never links against the
+Scala 3.8.4 server, which is why it is sbt-1/2 and build-tool portable.
 
 #### What `mcpClientConfig` generates
 
-The task takes `mcpServerCommand` and appends the project's base directory as the trailing argument,
-then emits (with `mcpServerName := "scala-semantic"` and the `mcpServerCommand` above):
+The task takes `mcpServerCommand` and appends the project's base directory as the trailing argument.
+With the default `mcpServerCommand` (the launcher `mcpInstall` writes) it emits:
 
 ```json
 {
   "mcpServers": {
     "scala-semantic": {
-      "command": "java",
-      "args": ["-jar", "/abs/path/to/scalasemantic-mcp.jar", "/abs/path/to/this/project"]
+      "command": "/abs/path/to/<project>/target/.../scalasemantic-mcp.sh",
+      "args": ["/abs/path/to/this/project"]
     }
   }
 }
 ```
 
 `command` = `mcpServerCommand.head`; `args` = the rest of `mcpServerCommand` plus the auto-appended
-project root. So `mcpServerCommand := Seq("/abs/path/to/scalasemantic-mcp.sh")` (the auto-download
-script) would yield `"command": "/abs/path/to/scalasemantic-mcp.sh"`,
-`"args": ["/abs/path/to/this/project"]`.
+project root. So overriding `mcpServerCommand := Seq("java", "-jar", "/abs/scalasemantic-mcp.jar")`
+would instead yield `"command": "java"`,
+`"args": ["-jar", "/abs/scalasemantic-mcp.jar", "/abs/path/to/this/project"]`.
 Generation logic: [`ScalaSemanticMcpPlugin.scala`](../sbt-plugin/src/main/scala/com/github/mercurievv/scalasemantic/sbtplugin/ScalaSemanticMcpPlugin.scala).
 
 ## Manual stdio check

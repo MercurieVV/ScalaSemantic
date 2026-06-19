@@ -8,19 +8,22 @@ import scala.sys.process.Process
 /** Opt-in sbt plugin that wires the ScalaSemanticMCP server to a host project.
   *
   * It does NOT depend on the server (the server is Scala 3.8.4; an sbt plugin is built against the
-  * meta-build's Scala). Instead it launches the server as an external process, which is what makes
-  * the same approach work on sbt 1, sbt 2, and other build tools / a bare shell.
+  * meta-build's Scala). Instead it makes the project emit SemanticDB and hands the MCP client a
+  * launch command. By default that command is the bundled auto-download launcher script, which
+  * fetches + runs the server (via coursier if present, else the GitHub-Release fat jar) — so the
+  * server binary need not be installed ahead of time. The same approach works on sbt 1, sbt 2,
+  * other build tools, and a bare shell.
   *
-  * Lifecycle is intentionally client-managed: an MCP stdio server is spawned by the MCP client
-  * (e.g. Claude Code). This plugin's job is to (a) make the project emit SemanticDB, and (b) hand
-  * the client a correct launch command via `mcpClientConfig`. `mcpRun` is for manual testing.
+  * Lifecycle is client-managed: an MCP stdio server is spawned by the MCP client (e.g. Claude
+  * Code).
   *
-  * Usage in a host build:
+  * Usage in a host build — minimal:
   * {{{
   *   enablePlugins(ScalaSemanticMcpPlugin)
-  *   mcpServerCommand := Seq("/abs/path/to/scalasemantic-mcp") // or Seq("java", "-jar", "…jar")
   * }}}
-  * then `sbt mcpClientConfig` prints a ready-to-paste `.mcp.json` entry.
+  * then `sbt mcpClientConfig` prints a ready-to-paste `.mcp.json` entry. Override
+  * `mcpServerCommand` to point at a fixed jar or `cs` instead of the bundled launcher if you
+  * prefer.
   */
 object ScalaSemanticMcpPlugin extends AutoPlugin:
 
@@ -28,10 +31,14 @@ object ScalaSemanticMcpPlugin extends AutoPlugin:
 
   object autoImport:
     val mcpServerCommand =
-      settingKey[Seq[String]]("argv that launches the MCP server (the generated launcher script, " +
-        "or e.g. Seq(\"java\",\"-jar\",\"scalasemantic-mcp.jar\")). The SemanticDB root is appended.")
+      settingKey[Seq[String]](
+        "argv that launches the MCP server. Defaults to the bundled " +
+          "auto-download launcher written by `mcpInstall`. The SemanticDB root is appended."
+      )
     val mcpServerName =
       settingKey[String]("name to register this server under in the MCP client")
+    val mcpInstall =
+      taskKey[File]("write the bundled auto-download launcher script into target and return it")
     val mcpClientConfig =
       taskKey[Unit]("print the .mcp.json entry that registers this project's MCP server")
     val mcpRun =
@@ -42,9 +49,13 @@ object ScalaSemanticMcpPlugin extends AutoPlugin:
   override def projectSettings: Seq[Setting[?]] = Seq(
     semanticdbEnabled := true,
     mcpServerName := "scala-semantic",
-    mcpServerCommand := Seq.empty,
+    mcpInstall := Def.uncached(writeLauncher(target.value, streams.value.log)),
+    // Default to invoking the launcher this plugin writes. Resolved against the same path mcpInstall
+    // uses, so `mcpClientConfig`/`mcpRun` (which run mcpInstall) produce a command that exists.
+    mcpServerCommand := launcherCommand(target.value / launcherName),
     mcpClientConfig := {
       val log = streams.value.log
+      mcpInstall.value // ensure the launcher exists on disk before we print a command pointing at it
       val argv = resolvedCommand(mcpServerCommand.value, baseDirectory.value)
       val argsJson = argv.tail.map(a => "\"" + a + "\"").mkString("[", ", ", "]")
       log.info(
@@ -60,17 +71,44 @@ object ScalaSemanticMcpPlugin extends AutoPlugin:
       )
     },
     mcpRun := {
+      mcpInstall.value
       val argv = resolvedCommand(mcpServerCommand.value, baseDirectory.value)
       val exit = Process(argv).!
       if exit != 0 then sys.error(s"MCP server exited with code $exit")
     }
   )
 
+  /** OS-specific launcher file name (the resource bundled in the plugin jar). */
+  private def launcherName: String =
+    if sys.props.getOrElse("os.name", "").toLowerCase.contains("win") then "scalasemantic-mcp.ps1"
+    else "scalasemantic-mcp.sh"
+
+  /** argv prefix to invoke a launcher script — PowerShell needs an explicit host, sh is executable.
+    */
+  private def launcherCommand(script: File): Seq[String] =
+    if script.getName.endsWith(".ps1") then
+      Seq("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script.getAbsolutePath)
+    else Seq(script.getAbsolutePath)
+
+  /** Copy the bundled launcher resource into `<target>/` and mark it executable. */
+  private def writeLauncher(targetDir: File, log: Logger): File =
+    val name = launcherName
+    val out = targetDir / name
+    val res = s"scalasemantic/$name"
+    val in = Option(getClass.getClassLoader.getResourceAsStream(res))
+      .getOrElse(sys.error(s"bundled launcher resource not found: $res"))
+    try
+      IO.write(out, in.readAllBytes())
+    finally in.close()
+    out.setExecutable(true)
+    log.info(s"MCP launcher written: $out")
+    out
+
   /** Full argv = configured command + the project's SemanticDB root, or a clear error if unset. */
   private def resolvedCommand(command: Seq[String], baseDir: File): Seq[String] =
     if command.isEmpty then
       sys.error(
-        "mcpServerCommand is empty — set it to the MCP server launch argv, e.g. the launcher " +
-          "produced by `mcp/mcpLauncher`, or Seq(\"java\",\"-jar\",\"scalasemantic-mcp.jar\")."
+        "mcpServerCommand is empty — leave it at its default (the bundled launcher) or set it to a " +
+          "launch argv, e.g. Seq(\"java\",\"-jar\",\"scalasemantic-mcp.jar\")."
       )
     else command :+ baseDir.getAbsolutePath

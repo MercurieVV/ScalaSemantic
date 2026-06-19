@@ -79,6 +79,9 @@ lazy val mcp = (project in file("mcp"))
   .settings(
     name := "scalasemantic-mcp",
     libraryDependencies ++= Seq(upickle, munit),
+    // Pin the entrypoint (the module has two @main) so both the packaged Central jar and `cs launch`
+    // resolve `mcpServer` without an explicit main-class flag.
+    Compile / mainClass := Some("com.github.mercurievv.scalasemantic.mcpServer"),
     // Fat jar for `java -jar scalasemantic-mcp.jar <root>` — the install-free launch path attached
     // to GitHub Releases. Pin the main class (the module has two @main) so the manifest is correct.
     assembly / mainClass := Some("com.github.mercurievv.scalasemantic.mcpServer"),
@@ -132,7 +135,18 @@ lazy val mcp = (project in file("mcp"))
 lazy val sbtPlugin = (project in file("sbt-plugin"))
   .enablePlugins(SbtPlugin)
   .settings(
-    name := "sbt-scalasemantic-mcp"
+    name := "sbt-scalasemantic-mcp",
+    // Bundle the auto-download launcher scripts into the plugin jar so `mcpInstall` can write them
+    // into a host project's target dir. Single source of truth = top-level scripts/.
+    Compile / resourceGenerators += Def.task {
+      val root = (ThisBuild / baseDirectory).value
+      val outDir = (Compile / resourceManaged).value / "scalasemantic"
+      Seq("scalasemantic-mcp.sh", "scalasemantic-mcp.ps1").map { n =>
+        val out = outDir / n
+        IO.copyFile(root / "scripts" / n, out)
+        out
+      }
+    }.taskValue
   )
 
 lazy val root = (project in file("."))
