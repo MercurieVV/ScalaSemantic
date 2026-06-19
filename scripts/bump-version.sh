@@ -8,6 +8,7 @@
 #
 # Rules:
 # - Uses the highest existing v* semver tag if present, else FIRST_VERSION (scripts/config.sh).
+# - Switches to RELEASE_BRANCH (master by default), fast-forwards it from origin, and tags that commit.
 # - Creates the tag locally; with --push, also pushes it to origin (which triggers the release).
 
 set -euo pipefail
@@ -22,20 +23,21 @@ require_clean_git() {
   fi
 }
 
-# Releases are cut from master only, and only when it matches origin/master — so under a PR workflow
-# the tag lands on the merged commit, never a stale or feature branch.
-require_synced_master() {
-  local branch
-  branch="$(git rev-parse --abbrev-ref HEAD)"
-  if [[ "$branch" != "master" ]]; then
-    echo "Releases are tagged from master, not '$branch'. Merge your PR, then: git checkout master && git pull." >&2
-    exit 1
+# Releases are cut from the latest remote release branch commit, so under a PR workflow the tag lands
+# on the merged commit, never a stale checkout or feature branch.
+switch_to_latest_release_branch() {
+  git fetch -q --tags origin "$RELEASE_BRANCH:refs/remotes/origin/$RELEASE_BRANCH"
+
+  if git show-ref --verify --quiet "refs/heads/${RELEASE_BRANCH}"; then
+    git switch -q "$RELEASE_BRANCH"
+  else
+    git switch -q --track -c "$RELEASE_BRANCH" "origin/${RELEASE_BRANCH}"
   fi
-  git fetch -q origin master
-  if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/master)" ]]; then
-    echo "master is not in sync with origin/master — pull/merge before tagging a release." >&2
+
+  git merge --ff-only -q "origin/${RELEASE_BRANCH}" || {
+    echo "${RELEASE_BRANCH} cannot fast-forward to origin/${RELEASE_BRANCH}. Resolve it before tagging." >&2
     exit 1
-  fi
+  }
 }
 
 latest_version() {
@@ -68,7 +70,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 require_clean_git
-require_synced_master
+switch_to_latest_release_branch
 
 current="$(latest_version)"
 if [[ -z "$current" ]]; then
@@ -83,8 +85,8 @@ if git rev-parse -q --verify "refs/tags/${new_tag}" >/dev/null; then
   exit 1
 fi
 
-git tag -a "$new_tag" -m "Release ${new_tag}"
-echo "Created tag ${new_tag}"
+git tag -a "$new_tag" -m "Release ${new_tag}" "HEAD"
+echo "Created tag ${new_tag} on ${RELEASE_BRANCH} ($(git rev-parse --short HEAD))"
 
 if [[ "$push_tag" == "true" ]]; then
   git push origin "$new_tag"
