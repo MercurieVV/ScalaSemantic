@@ -25,11 +25,10 @@ object McpTools:
   def all(az: Analyzer, root: java.nio.file.Path = java.nio.file.Paths.get(".")): List[Tool] = List(
     tool(
       "find_symbol",
-      "START HERE INSTEAD OF grep when you have a plain name. Resolve a plain or partial name " +
-        "(e.g. 'Animal', 'show') to the SemanticDB symbol " +
-        "strings the other tools require. Ranked exact > prefix > substring. Narrow with `exact` " +
-        "(name equality only), `kind` (e.g. TRAIT, CLASS, METHOD, OBJECT) and `pathFilter` (glob on " +
-        "the symbol's definition uri) to cut tokens.",
+      "Resolve a plain or partial name (e.g. 'Animal', 'show') to the SemanticDB symbol strings the " +
+        "other tools require — start here whenever you have a name rather than a symbol. Ranked " +
+        "exact > prefix > substring. Narrow with `exact` (name equality only), `kind` (TRAIT, CLASS, " +
+        "METHOD, OBJECT, …) and `pathFilter` (glob on the symbol's definition uri).",
       List(
         ("query", "string", "simple or partial name to search for"),
         ("limit", "integer", "max results (default 50)"),
@@ -65,11 +64,10 @@ object McpTools:
     },
     tool(
       "find_usages",
-      "USE INSTEAD OF grep to find where a symbol is used. All references to a symbol across the " +
-        "codebase, split into definitions and references (paged). " +
-        "Use `pathFilter` (glob, e.g. `core/*` or `*compat*`) to scope to files and `include` " +
-        "(subset of [\"definitions\",\"references\"]) to drop sections — both cut tokens. " +
-        "`referenceCount` is always returned.",
+      "Every resolved reference to a symbol across the codebase, split into definitions and " +
+        "references (paged) — including renames, re-exports, and inferred/implicit uses that text " +
+        "search misses. Scope with `pathFilter` (glob, e.g. `core/*` or `*compat*`); drop sections " +
+        "with `include` (subset of [\"definitions\",\"references\"]). `referenceCount` is always returned.",
       List(
         ("symbol", "string", "SemanticDB symbol to search for"),
         ("limit", "integer", "max references to return (default 100)"),
@@ -106,11 +104,11 @@ object McpTools:
     },
     tool(
       "method_signature",
-      "USE INSTEAD OF reading source to learn a method's shape. Full method signature including " +
-        "type parameters and implicit/using parameter lists. Pass `uri` + `source` (the defining " +
-        "file's path and CURRENT text) to read the signature from a buffer edited since (or never) " +
-        "compiled: the presentation compiler regenerates it and OVERLAYS it on the index, so types " +
-        "it references from other files still resolve. Requires the server to have a classpath.",
+      "A method's full signature: type parameters, (implicit/using) parameter lists, and return " +
+        "type. Pass `uri` + `source` (the defining file's path and CURRENT text) to read it from a " +
+        "buffer edited since — or never — compiled: the presentation compiler regenerates it, " +
+        "error-tolerant, and overlays it on the index so types referenced from other files still " +
+        "resolve. (The server must have been started with a classpath for `source` to take effect.)",
       List(
         ("symbol", "string", "method symbol"),
         ("detailed", "boolean", "include structured parameter breakdown (default false)"),
@@ -161,10 +159,10 @@ object McpTools:
     },
     tool(
       "class_hierarchy",
-      "USE INSTEAD OF grep to find subtypes/supertypes/implementers. Parents, transitive " +
-        "linearization, and known subtypes of a class/trait. Use `pathFilter` " +
-        "(glob on a related type's definition uri) and `include` (subset of [\"parents\"," +
-        "\"linearization\",\"knownSubtypes\"]) to cut tokens.",
+      "Parents, transitive linearization, and known subtypes/implementers of a class or trait — " +
+        "including subtypes anywhere in the project, which a single LSP lookup cannot give. Scope " +
+        "related types with `pathFilter` (glob on a related type's definition uri); trim with " +
+        "`include` (subset of [\"parents\",\"linearization\",\"knownSubtypes\"]).",
       List(
         ("symbol", "string", "class or trait symbol"),
         ("detailed", "boolean", "expand related types to {symbol,name,kind} (default false)"),
@@ -199,8 +197,8 @@ object McpTools:
     },
     tool(
       "find_overloads",
-      "USE INSTEAD OF grep to find overloads. All method overloads sharing a name and owner with " +
-        "the given method.",
+      "All overloads sharing a name and owner with the given method (they differ only by the `(+N)` " +
+        "disambiguator in the symbol). Pass any one overload's symbol.",
       List(("symbol", "string", "any one overload's symbol")),
       List("symbol")
     ) { a =>
@@ -212,10 +210,9 @@ object McpTools:
     },
     tool(
       "members",
-      "USE INSTEAD OF reading source to list a type's members. Members declared on a type versus " +
-        "those inherited from its linearization. Use `pathFilter` " +
-        "(glob on a member's definition uri) and `include` (subset of [\"declared\",\"inherited\"]) " +
-        "to cut tokens.",
+      "Members a type declares versus those it inherits through its linearization (a member " +
+        "re-declared locally counts as declared). Scope with `pathFilter` (glob on a member's " +
+        "definition uri); trim with `include` (subset of [\"declared\",\"inherited\"]).",
       List(
         ("symbol", "string", "class or trait symbol"),
         ("detailed", "boolean", "include kinds and declaring symbols (default false)"),
@@ -254,12 +251,11 @@ object McpTools:
     },
     tool(
       "type_at_position",
-      "USE INSTEAD OF guessing a type from source. The most specific symbol and its type at a " +
-        "0-based position in a document. Pass `source` with the file's CURRENT text to query a " +
-        "buffer edited since (or never) compiled: the presentation compiler regenerates SemanticDB " +
-        "for it in memory, error-tolerant — so this answers even when the file does not compile. " +
-        "Without `source` it reads the last compiled SemanticDB. Requires the server to have been " +
-        "started with a classpath (see startup logs); otherwise `source` is ignored.",
+      "The most specific symbol and its type at a 0-based (line, character) in a document — also the " +
+        "way to turn a source location into a symbol string for the other tools. Pass `source` with " +
+        "the file's CURRENT text to resolve against a buffer edited since — or never — compiled: the " +
+        "presentation compiler regenerates SemanticDB in memory, error-tolerant. Without `source` it " +
+        "reads the last compiled SemanticDB. (`source` needs the server started with a classpath.)",
       List(
         (
           "uri",
@@ -290,8 +286,8 @@ object McpTools:
     },
     tool(
       "resolve_implicits",
-      "USE INSTEAD OF grep for givens/implicits (grep cannot resolve them). Given/implicit " +
-        "definitions in the index that produce a given type.",
+      "The given/implicit definitions in the index that produce a wanted type (by symbol) — implicit " +
+        "resolution that text search cannot do. `chosen` is set when exactly one candidate applies.",
       List(("type", "string", "the wanted type's symbol, e.g. pkg/Show#")),
       List("type")
     ) { a =>
@@ -311,8 +307,8 @@ object McpTools:
     },
     tool(
       "trace_implicit_chain",
-      "USE INSTEAD OF grep (grep cannot follow implicit resolution). Givens producing a type and " +
-        "the implicit dependencies they transitively pull in.",
+      "The givens that produce a type, plus the implicit dependencies they transitively pull in — " +
+        "follows implicit resolution across givens, step by step.",
       List(("type", "string", "the wanted type's symbol")),
       List("type")
     ) { a =>
@@ -335,8 +331,9 @@ object McpTools:
     },
     tool(
       "call_path",
-      "USE INSTEAD OF grep to trace call relationships. Shortest call path between two methods, " +
-        "with the call-site edges (detailed) that realize it.",
+      "The shortest call path from one method to another, with the call-site edges that realize it " +
+        "(pass `detailed` for edge locations). Use for reachability / how A reaches B — for direct " +
+        "callers of a single method, use find_usages.",
       List(
         ("from", "string", "caller method symbol"),
         ("to", "string", "callee method symbol"),
