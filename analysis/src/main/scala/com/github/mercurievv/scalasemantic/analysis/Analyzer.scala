@@ -66,8 +66,10 @@ final class Analyzer(index: SemanticIndex):
       case (uri, occ) if occ.symbol == symbol && keep(uri) =>
         occ.role -> location(uri, occ.range)
     }
-    val defs = located.collect { case (s.SymbolOccurrence.Role.DEFINITION, loc) => loc }.distinct.toList
-    val refs = located.collect { case (s.SymbolOccurrence.Role.REFERENCE, loc) => loc }.distinct.toList
+    val defs =
+      located.collect { case (s.SymbolOccurrence.Role.DEFINITION, loc) => loc }.distinct.toList
+    val refs =
+      located.collect { case (s.SymbolOccurrence.Role.REFERENCE, loc) => loc }.distinct.toList
     UsagesResult(symbol, index.displayName(symbol), defs, refs)
 
   /** A predicate from an optional glob: `*` matches any run of chars, the rest is literal, matched
@@ -80,9 +82,9 @@ final class Analyzer(index: SemanticIndex):
         val regex = glob.split("\\*", -1).map(java.util.regex.Pattern.quote).mkString(".*").r
         uri => regex.findFirstIn(uri).isDefined
 
-  /** A symbol-level predicate: keep a symbol when its definition uri matches the glob. A symbol with
-    * no definition occurrence in the index (e.g. external types) is dropped only when a filter is
-    * given. `None` keeps everything.
+  /** A symbol-level predicate: keep a symbol when its definition uri matches the glob. A symbol
+    * with no definition occurrence in the index (e.g. external types) is dropped only when a filter
+    * is given. `None` keeps everything.
     */
   private def bySymbolPath(pattern: Option[String]): String => Boolean =
     pattern match
@@ -94,8 +96,7 @@ final class Analyzer(index: SemanticIndex):
   /** The document uri of a symbol's definition occurrence, if the index has one. */
   private def definitionUri(symbol: String): Option[String] =
     index.occurrences.collectFirst {
-      case (uri, occ)
-          if occ.symbol == symbol && occ.role == s.SymbolOccurrence.Role.DEFINITION =>
+      case (uri, occ) if occ.symbol == symbol && occ.role == s.SymbolOccurrence.Role.DEFINITION =>
         uri
     }
 

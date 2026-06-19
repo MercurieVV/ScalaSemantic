@@ -67,7 +67,10 @@ class McpSuite extends munit.FunSuite:
     assert(exact("symbols").arr.forall(_("name").str == "Animal"), exact.render())
 
     val scoped =
-      call("find_symbol", ujson.Obj("query" -> "Animal", "kind" -> "TRAIT", "pathFilter" -> "*compat*"))
+      call(
+        "find_symbol",
+        ujson.Obj("query" -> "Animal", "kind" -> "TRAIT", "pathFilter" -> "*compat*")
+      )
     val syms = scoped("symbols").arr.map(_("symbol").str)
     assertEquals(syms.toList, List("com/github/mercurievv/scalasemantic/compat/Animal#"))
   }
@@ -135,7 +138,10 @@ class McpSuite extends munit.FunSuite:
     assert(full.obj.contains("knownSubtypes"), full.render())
 
     val only =
-      call("class_hierarchy", ujson.Obj("symbol" -> Animal, "include" -> ujson.Arr("knownSubtypes")))
+      call(
+        "class_hierarchy",
+        ujson.Obj("symbol" -> Animal, "include" -> ujson.Arr("knownSubtypes"))
+      )
     assert(!only.obj.contains("parents") && !only.obj.contains("linearization"), only.render())
     assertEquals(only("knownSubtypes").arr.map(_.str).toList, List("Dog", "Fish"))
 

@@ -63,7 +63,11 @@ object McpTools:
         ("limit", "integer", "max references to return (default 100)"),
         ("offset", "integer", "reference offset for paging (default 0)"),
         ("pathFilter", "string", "glob on document uri; `*` matches any chars (substring match)"),
-        ("include", "array", "sections to return: any of \"definitions\", \"references\" (default both)")
+        (
+          "include",
+          "array",
+          "sections to return: any of \"definitions\", \"references\" (default both)"
+        )
       ),
       List("symbol")
     ) { a =>
@@ -76,7 +80,10 @@ object McpTools:
       jobj(
         Some("symbol" -> ujson.Str(symbol)),
         Some("name" -> ujson.Str(u.displayName)),
-        opt(want("definitions") && u.definitions.nonEmpty, "definitions" -> strs(u.definitions.map(loc))),
+        opt(
+          want("definitions") && u.definitions.nonEmpty,
+          "definitions" -> strs(u.definitions.map(loc))
+        ),
         Some("referenceCount" -> ujson.Num(u.references.size)),
         opt(want("references") && page.nonEmpty, "references" -> strs(page.map(loc))),
         opt(
@@ -187,7 +194,11 @@ object McpTools:
         ("symbol", "string", "class or trait symbol"),
         ("detailed", "boolean", "include kinds and declaring symbols (default false)"),
         ("pathFilter", "string", "glob on a member's definition uri; `*` matches any chars"),
-        ("include", "array", "sections to return: any of \"declared\", \"inherited\" (default both)")
+        (
+          "include",
+          "array",
+          "sections to return: any of \"declared\", \"inherited\" (default both)"
+        )
       ),
       List("symbol")
     ) { a =>

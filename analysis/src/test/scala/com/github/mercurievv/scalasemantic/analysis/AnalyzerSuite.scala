@@ -67,8 +67,14 @@ class AnalyzerSuite extends munit.FunSuite:
     val all = az.findUsages(CompatAnimal)
     val scoped = az.findUsages(CompatAnimal, Some("*scala-3*"))
     assert(scoped.references.size < all.references.size, "filter must drop non-matching refs")
-    assert(scoped.references.forall(_.uri.contains("scala-3")), scoped.references.map(_.uri).toString)
-    assert(scoped.definitions.forall(_.uri.contains("scala-3")), scoped.definitions.map(_.uri).toString)
+    assert(
+      scoped.references.forall(_.uri.contains("scala-3")),
+      scoped.references.map(_.uri).toString
+    )
+    assert(
+      scoped.definitions.forall(_.uri.contains("scala-3")),
+      scoped.definitions.map(_.uri).toString
+    )
     // golden: only the scala-3 build remains — 1 def, 4 refs.
     assertEquals(scoped.definitions.size, 1)
     assertEquals(scoped.references.size, 4)
@@ -111,9 +117,15 @@ class AnalyzerSuite extends munit.FunSuite:
   test("members pathFilter scopes members by their definition uri") {
     // Robot inherits `greet` from Greeter (both in fixtures).
     val all = az.members(Robot).getOrElse(fail("Robot members"))
-    assert(all.inherited.exists(_.displayName == "greet"), all.inherited.map(_.displayName).toString)
+    assert(
+      all.inherited.exists(_.displayName == "greet"),
+      all.inherited.map(_.displayName).toString
+    )
     val compat = az.members(Robot, Some("*compat*")).getOrElse(fail("Robot members"))
-    assert(compat.declared.isEmpty && compat.inherited.isEmpty, "no Robot members live under compat")
+    assert(
+      compat.declared.isEmpty && compat.inherited.isEmpty,
+      "no Robot members live under compat"
+    )
     val fixtures = az.members(Robot, Some("*fixtures*")).getOrElse(fail("Robot members"))
     assert(fixtures.inherited.exists(_.displayName == "greet"))
   }
