@@ -3,9 +3,41 @@
 ## Why SemanticDB instead of parsing source files?
 
 SemanticDB is compiler-emitted data. It includes resolved symbols, owners, types, synthetic
-information, and positions after the compiler has done name resolution. That makes queries like "where
-is this method called?" or "which concrete class implements this trait?" much more precise than grep
-or raw syntax parsing.
+information, and positions after the compiler has done name resolution.
+
+Text search sees bytes, so it cannot tell these cases apart. A grep-style search for `Animal` would
+return all four lines:
+
+```sh
+$ grep -n Animal Example.scala
+1:trait Animal
+2:final class Dog extends Animal
+3:final class AnimalReport:
+4:  val label = "Animal"
+```
+
+```scala mdoc:invisible
+val source =
+  """trait Animal
+    |final class Dog extends Animal
+    |final class AnimalReport:
+    |  val label = "Animal"
+    |""".stripMargin
+
+val grepOutput = source.linesIterator.zipWithIndex.collect {
+  case (line, n) if line.contains("Animal") => s"${n + 1}:$line"
+}.mkString("\n")
+
+assert(grepOutput.contains("1:trait Animal"))
+assert(grepOutput.contains("2:final class Dog extends Animal"))
+assert(grepOutput.contains("3:final class AnimalReport:"))
+assert(grepOutput.contains("""4:  val label = "Animal""""))
+```
+
+A semantic query can ask for the exact symbol `Animal#`, then follow compiler-resolved relationships
+such as "known subtypes" or "exact references". That is why questions like "where is this method
+called?" or "which concrete class implements this trait?" are much more precise than grep or raw
+syntax parsing.
 
 ## Why must I compile first?
 

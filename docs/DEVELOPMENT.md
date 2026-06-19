@@ -54,12 +54,13 @@ sbt "mcp/runMain com.github.mercurievv.scalasemantic.mcpServer <root>"
 ## Documentation site (mdoc + Docusaurus)
 
 ```sh
-sbt docs/run                                 # mdoc renders docs/mdoc -> website/docs (runs snippets)
+sbt docs/run                                 # mdoc renders docs -> website/docs (runs snippets)
 cd website && npm install && npm run build   # Docusaurus static site (Node 18+)
 ```
 
 `sbt docs/run` compiles and executes the Scala fences so doc output stays real. Rationale and the
-sbt-2.0 / Scala-version constraints behind the setup: [DESIGN.md](DESIGN.md#documentation-tooling-mdoc-microsite).
+sbt-2.0 / Scala-version constraints behind the setup are documented in `build.sbt` and
+`mdoc-docs/src/main/scala/DocsMain.scala`.
 
 ## Notes / gotchas (sbt 2.0)
 

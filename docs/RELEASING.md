@@ -34,6 +34,11 @@ scripts/check-push-workflow.sh         # wait for CI, report the latest publishe
 scripts/retry-last-tag.sh --push       # move the tag to HEAD to retry a release that failed early
 ```
 
+After a tag release publishes, GitHub Actions runs `scripts/update-doc-versions.sh vX.Y.Z` on
+`master` and commits updated dependency snippets in `README.md` and `docs/INTEGRATION.md`. This keeps
+the shown `addSbtPlugin` version and `SCALASEMANTIC_VERSION` pin aligned with the latest published
+artifact without making normal docs builds depend on Maven Central.
+
 ## Required GitHub Actions secrets
 
 Settings → Secrets and variables → Actions:

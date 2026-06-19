@@ -28,20 +28,34 @@ So `com/example/Animal#` is the type `Animal` in package `com.example`, and
 
 `find_symbol` turns a plain name into a symbol; feed that symbol into the richer tools:
 
-```json
-{"jsonrpc":"2.0","id":1,"method":"tools/call",
- "params":{"name":"find_symbol","arguments":{"query":"Animal"}}}
-```
+```scala mdoc
+def toolCallJson(id: Int, tool: String, arguments: String): String =
+  s"""{
+     |  "jsonrpc": "2.0",
+     |  "id": $id,
+     |  "method": "tools/call",
+     |  "params": {
+     |    "name": "$tool",
+     |    "arguments": $arguments
+     |  }
+     |}""".stripMargin
 
-```json
-{"jsonrpc":"2.0","id":2,"method":"tools/call",
- "params":{"name":"class_hierarchy","arguments":{"symbol":"com/example/Animal#"}}}
+def requests: List[String] = List(
+  toolCallJson(1, "find_symbol", """{"query": "Animal"}"""),
+  toolCallJson(2, "class_hierarchy", """{"symbol": "com/example/Animal#"}""")
+)
+
+assert(requests.head.contains(""""name": "find_symbol""""))
+assert(requests(1).contains(""""symbol": "com/example/Animal#""""))
+
+requests.foreach(println)
 ```
 
 ## Pages
 
 - [Integration](INTEGRATION.md) — register the server with an MCP client
 - [FAQ](FAQ.md) — MCP, AI-agent, and SemanticDB basics for Scala developers
+- [Examples](EXAMPLES.md) — sample MCP queries, responses, and grep comparisons
 - [Comparison](COMPARISON.md) — vs `grep` (pros & cons), plus a note on Metals/LSP
 - [Development](DEVELOPMENT.md) — modules, build, cross-version testing, this site
 - [Design decisions](DESIGN.md) — upickle, extensibility, docs tooling
