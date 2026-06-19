@@ -30,14 +30,16 @@ Full comparison incl. Metals/LSP: [docs/COMPARISON.md](docs/COMPARISON.md).
 
 ## Quickstart
 
-The server is spawned by your MCP client over stdio. You need two things: the **target project
-compiled with SemanticDB** (`semanticdbEnabled := true`) and a `.mcp.json` entry that launches the
-server with that project's root as its argument. Only a **JVM** is required — no coursier, no sbt.
+Your MCP client spawns the server over stdio. Two things are needed (only a **JVM** — no coursier, no sbt):
 
-### Recommended — sbt plugin (enables SemanticDB + writes the `.mcp.json` for you)
+1. the target project **compiled with SemanticDB** (`semanticdbEnabled := true`);
+2. a `.mcp.json` entry that launches the server with that project's root as its argument.
 
-If you build with sbt, this is the least manual path: the plugin turns on SemanticDB and generates the
-client config — no jar to fetch by hand, it arrives on first spawn.
+Pick one setup:
+
+### sbt plugin — recommended
+
+Least manual: enables SemanticDB and generates the `.mcp.json` for you; the jar arrives on first spawn.
 
 ```scala
 // project/plugins.sbt
@@ -46,19 +48,16 @@ addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "0.1.0")
 enablePlugins(ScalaSemanticMcpPlugin)
 ```
 
-Then `sbt mcpClientConfig` prints the `.mcp.json` entry (root = project base dir), pointing at a stable
-installed launcher; `sbt mcpRun` runs the server in the foreground for testing.
+`sbt mcpClientConfig` prints the entry; `sbt mcpRun` runs the server for testing.
 
-### Other ways (any build tool / OS)
+### Any build tool / OS
 
-- **Auto-download launcher** — install once with
-  `curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/install.sh | sh`
-  (Windows: `scalasemantic-mcp.ps1`), then point `.mcp.json` `command` at
-  `~/.local/bin/scalasemantic-mcp`. It fetches + caches the fat jar on first run.
-- **Plain `java -jar`** — download `scalasemantic-mcp.jar` from the
+- **Auto-download launcher** — `curl -fsSL .../scripts/install.sh | sh` (Windows: `…ps1`), then set
+  `.mcp.json` `command` to `~/.local/bin/scalasemantic-mcp`. Fetches + caches the fat jar on first run.
+- **Plain `java -jar`** — grab `scalasemantic-mcp.jar` from the
   [latest release](https://github.com/MercurieVV/ScalaSemantic/releases/latest) and run it directly.
 
-Both, plus the generated config and lifecycle details: **[docs/INTEGRATION.md](docs/INTEGRATION.md)**.
+Full setup, generated config, and lifecycle: **[docs/INTEGRATION.md](docs/INTEGRATION.md)**.
 
 ## Tools
 
