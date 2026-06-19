@@ -48,7 +48,8 @@ Pick one setup:
 
 ### sbt plugin — recommended
 
-Least manual: enables SemanticDB and generates the `.mcp.json` for you; the jar arrives on first spawn.
+Least manual: works on sbt 1 and sbt 2, enables SemanticDB, and generates the `.mcp.json` for you; the
+jar arrives on first spawn.
 
 ```scala
 // project/plugins.sbt

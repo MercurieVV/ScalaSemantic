@@ -24,7 +24,13 @@ ThisBuild / versionScheme := Some("early-semver")
 
 // Shared across all modules: SemanticDB emission (for dogfooding + scalafix) and wart rules.
 lazy val commonSettings = Seq(
-  scalacOptions += "-Wunused:imports", // required by OrganizeImports scalafix rule
+  // Required by OrganizeImports scalafix rule. Scala 2.12 uses the old spelling.
+  scalacOptions ++= {
+    CrossVersion.partialVersion(scalaVersion.value) match {
+      case Some((2, 12)) => Seq("-Ywarn-unused-import")
+      case _             => Seq("-Wunused:imports")
+    }
+  },
   semanticdbEnabled := true,
   semanticdbVersion := scalafixSemanticdb.revision,
   wartremoverWarnings ++= Seq(
@@ -179,8 +185,16 @@ lazy val mcp = (project in file("mcp"))
 // `+sbtPlugin/compile` or `+sbtPlugin/publishLocal`.
 lazy val sbtPlugin = (project in file("sbt-plugin"))
   .enablePlugins(SbtPlugin)
+  .settings(commonSettings)
   .settings(
     name := "sbt-scalasemantic-mcp",
+    crossScalaVersions := Seq("2.12.20", scalaVersion.value),
+    pluginCrossBuild / sbtVersion := {
+      scalaBinaryVersion.value match {
+        case "2.12" => "1.11.6"
+        case _      => "2.0.0"
+      }
+    },
     // Bundle the auto-download launcher scripts into the plugin jar so `mcpInstall` can write them
     // into a host project's target dir. Single source of truth = top-level scripts/.
     Compile / resourceGenerators += Def.task {
