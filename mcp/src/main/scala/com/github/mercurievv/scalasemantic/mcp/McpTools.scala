@@ -488,8 +488,71 @@ object McpTools:
           })
         )
       )
+    },
+    tool(
+      "document_outline",
+      "USE INSTEAD OF reading a whole file. A structural map of a Scala file: its types and members " +
+        "nested by scope, each with kind, 0-based definition line, and a signature rendered from the " +
+        "compiler (explicit implicit/using params, real resolved types — not the source's inferred " +
+        "text). Use it to survey a file's API and locate where to edit without reading the source.",
+      List(
+        (
+          "uri",
+          "string",
+          "document uri as it appears in SemanticDB (path relative to project root)"
+        )
+      ),
+      List("uri")
+    ) { a =>
+      val uri = argStr(a, "uri")
+      az.outline(uri) match
+        case None => jobj(Some("uri" -> ujson.Str(uri)), Some("found" -> ujson.Bool(false)))
+        case Some(entries) =>
+          jobj(
+            Some("uri" -> ujson.Str(uri)),
+            Some("outline" -> ujson.Arr.from(entries.map(outlineJson)))
+          )
+    },
+    tool(
+      "rename_plan",
+      "The precise edits to rename a symbol everywhere it is used. Returns every compiler-resolved " +
+        "occurrence of the name (definitions + references) as `uri:line:col-col` ranges to replace " +
+        "with the new name — no grep over-match (comments, strings, unrelated same-named identifiers " +
+        "are never touched). The server is read-only: apply the returned edits yourself.",
+      List(
+        ("symbol", "string", "the symbol to rename"),
+        ("newName", "string", "the new simple name")
+      ),
+      List("symbol", "newName")
+    ) { a =>
+      val p = az.renamePlan(argStr(a, "symbol"), argStr(a, "newName"))
+      jobj(
+        Some("symbol" -> ujson.Str(p.symbol)),
+        Some("rename" -> ujson.Str(s"${p.fromName} -> ${p.toName}")),
+        Some("editCount" -> ujson.Num(p.editCount)),
+        Some(
+          "edits" -> strs(
+            p.edits.map(e =>
+              s"${e.uri}:${e.range.start.line}:${e.range.start.character}-${e.range.end.character}"
+            )
+          )
+        )
+      )
     }
   )
+
+  /** Render an outline entry recursively: name/kind/line, the signature and symbol, and any nested
+    * children — dropping empties for token economy.
+    */
+  private def outlineJson(e: OutlineEntry): ujson.Value =
+    jobj(
+      Some("name" -> ujson.Str(e.name)),
+      Some("kind" -> ujson.Str(e.kind)),
+      Some("line" -> ujson.Num(e.line)),
+      opt(e.signature.nonEmpty, "signature" -> ujson.Str(e.signature)),
+      Some("symbol" -> ujson.Str(e.symbol)),
+      opt(e.children.nonEmpty, "children" -> ujson.Arr.from(e.children.map(outlineJson)))
+    )
 
   // --- rendering helpers ----------------------------------------------------
 

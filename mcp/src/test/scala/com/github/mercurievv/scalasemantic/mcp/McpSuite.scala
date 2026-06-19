@@ -39,14 +39,16 @@ class McpSuite extends munit.FunSuite:
     assert(instr.contains("find_symbol"), instr)
   }
 
-  test("tools/list exposes all eleven tools with schemas") {
+  test("tools/list exposes all thirteen tools with schemas") {
     val r = Mcp.handle(req("tools/list", ujson.Obj()), tools).get
     val names = r("result")("tools").arr.map(_("name").str).toSet
-    assertEquals(names.size, 11)
+    assertEquals(names.size, 13)
     assert(names.contains("find_symbol"), names.toString)
     assert(names.contains("find_usages"), names.toString)
     assert(names.contains("call_path"), names.toString)
     assert(names.contains("structure"), names.toString)
+    assert(names.contains("document_outline"), names.toString)
+    assert(names.contains("rename_plan"), names.toString)
     // every tool carries an object input schema
     assert(r("result")("tools").arr.forall(_("inputSchema")("type").str == "object"))
   }
@@ -120,6 +122,28 @@ class McpSuite extends munit.FunSuite:
     // class_hierarchy badges the queried type
     val h = call("class_hierarchy", ujson.Obj("symbol" -> Animal, "metrics" -> true))
     assert(h.obj.contains("layer") && h.obj.contains("centrality"), h.render())
+  }
+
+  test("document_outline maps a file's declarations with clarified signatures") {
+    // Derive the fixture file's uri from a definition location (uri:line:col), robust to the path.
+    val defLoc = call("find_usages", ujson.Obj("symbol" -> Animal))("definitions").arr.head.str
+    val uri = defLoc.split(":").dropRight(2).mkString(":")
+    val o = call("document_outline", ujson.Obj("uri" -> uri))
+
+    def flatten(arr: ujson.Value): Seq[ujson.Value] =
+      arr.arr.toSeq.flatMap(e => e +: e.obj.get("children").map(flatten).getOrElse(Nil))
+    val entries = flatten(o("outline"))
+    assert(entries.exists(_("name").str == "Animal"), o.render())
+    // a method/value entry renders a resolved signature (the clarified view)
+    assert(entries.exists(_.obj.get("signature").exists(_.str.contains(":"))), o.render())
+  }
+
+  test("rename_plan returns precise, resolved edits (no grep over-match)") {
+    val rp = call("rename_plan", ujson.Obj("symbol" -> Animal, "newName" -> "Creature"))
+    assertEquals(rp("rename").str, "Animal -> Creature")
+    assert(rp("editCount").num > 0, "expected occurrences to rename")
+    // edits are uri:line:col-col ranges (definition + references), not whole lines
+    assert(rp("edits").arr.forall(_.str.matches(""".+:\d+:\d+-\d+""")), rp.render())
   }
 
   test("notifications get no response") {
@@ -288,5 +312,5 @@ class McpSuite extends munit.FunSuite:
     // 4 lines in (one blank, one notification) → 2 responses out, with matching ids
     assertEquals(out.size, 2)
     assertEquals(ujson.read(out(0))("id").num, 1.0)
-    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 11)
+    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 13)
   }
