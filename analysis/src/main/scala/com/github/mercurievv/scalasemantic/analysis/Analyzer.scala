@@ -1,5 +1,6 @@
 package com.github.mercurievv.scalasemantic.analysis
 
+import com.github.mercurievv.scalasemantic.analysis.graph.StructureMetrics
 import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
@@ -47,6 +48,14 @@ final class Analyzer(
     pc.map(backend =>
       new Analyzer(SemanticIndex(Vector(backend.semanticdb(fileUri, code, docUri))))
     )
+
+  // --- structure / dependency metrics ---------------------------------------
+
+  /** Multi-relational dependency metrics for the whole project: per in-project type, the coupling
+    * (Ca/Ce/instability) and cycle membership across the `extends`/`memberType`/`call`/`implicit`
+    * graphs and their combined overlay, plus a module rollup and the list of dependency cycles.
+    */
+  def structure(): StructureResult = StructureMetrics(index).result()
 
   // --- find-symbol ----------------------------------------------------------
 

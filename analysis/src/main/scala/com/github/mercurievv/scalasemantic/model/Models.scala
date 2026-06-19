@@ -103,6 +103,55 @@ case class TypeAtPosition(
     tpe: String
 ) derives ReadWriter
 
+// --- structure / dependency metrics -----------------------------------------
+
+/** Coupling metrics for one node in one edge dimension (or the combined overlay).
+  *
+  * `afferent` (Ca) = incoming deps (fan-in); `efferent` (Ce) = outgoing deps (fan-out);
+  * `instability` = Ce/(Ca+Ce) in [0,1] — 0 = stable foundation (depended-on, depends on little), 1
+  * \= unstable leaf/entry. `inCycle` is true when the node sits in a non-trivial strongly-connected
+  * component (`sccSize` > 1) — cyclic membership is reported, never hidden behind a faked layer.
+  */
+case class DimensionMetrics(
+    afferent: Int,
+    efferent: Int,
+    instability: Double,
+    sccSize: Int,
+    inCycle: Boolean
+) derives ReadWriter
+
+/** Structural metrics for one in-project type, in the combined graph and per edge dimension
+  * (`extends`, `memberType`, `call`, `implicit`).
+  */
+case class SymbolStructure(
+    symbol: String,
+    displayName: String,
+    module: String,
+    combined: DimensionMetrics,
+    perDimension: Map[String, DimensionMetrics]
+) derives ReadWriter
+
+/** A dependency cycle: the members of one non-trivial strongly-connected component in a dimension.
+  */
+case class DependencyCycle(dimension: String, members: List[String]) derives ReadWriter
+
+/** Module-level rollup of the combined graph (module = leading path segment of a type's uri). */
+case class ModuleStructure(
+    module: String,
+    typeCount: Int,
+    afferent: Int,
+    efferent: Int,
+    instability: Double,
+    sccSize: Int,
+    inCycle: Boolean
+) derives ReadWriter
+
+case class StructureResult(
+    symbols: List[SymbolStructure],
+    modules: List[ModuleStructure],
+    cycles: List[DependencyCycle]
+) derives ReadWriter
+
 // --- call-graph path-find ---------------------------------------------------
 
 case class CallEdge(from: SymbolRef, to: SymbolRef, at: Location) derives ReadWriter
