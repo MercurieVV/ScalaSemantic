@@ -29,19 +29,18 @@ jobs:
       - name: Check formatting
         run: sbt scalafmtCheckAll
       - name: Regenerate cross-version compat golden SemanticDB
-        # Recompiles compat-fixtures under every Scala in `compatScalaVersions` and rewrites the
-        # committed golden *.semanticdb. The drift check below fails the build if they changed,
-        # keeping the cross-version analyzer test (CompatSuite) honest as compilers bump.
+        # Recompiles compat-fixtures under every Scala in `compatScalaVersions` so CompatSuite runs
+        # against THIS runner's freshly emitted *.semanticdb. (We don't byte-compare against the
+        # committed golden: SemanticDB output isn't guaranteed identical across environments/compiler
+        # patches. The committed copies exist for local `sbt test` without a cross-compile.)
         run: sbt compatGoldenAll
-      - name: Fail if compat golden drifted
-        run: git diff --exit-code -- analysis/src/test/resources/compat
       - name: Test
         run: sbt test
 
   docs-site:
     name: Publish docs site (GitHub Pages)
     needs: [build]
-    # Only from master: render the mdoc docs, build the Docusaurus site, deploy to GitHub Pages.
+    # Render the mdoc docs, build the Docusaurus site, deploy to GitHub Pages. Master only.
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:

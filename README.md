@@ -2,12 +2,16 @@
 
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.mercurievv/scalasemantic-core_3?label=Maven%20Central)](https://central.sonatype.com/namespace/io.github.mercurievv)
 [![CI](https://github.com/mercurievv/ScalaSemantic/actions/workflows/ci.yml/badge.svg)](https://github.com/mercurievv/ScalaSemantic/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-site-blue)](https://mercurievv.github.io/ScalaSemantic/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Deep semantic analysis of Scala projects, exposed over [MCP](https://modelcontextprotocol.io) so an
 AI agent (e.g. Claude Code) can ask precise questions about **symbols, types, implicits, and call
 paths**. It reads compiler-emitted **SemanticDB**, so answers reflect what the compiler actually
 resolved — not text matching.
+
+📖 **Documentation site: <https://mercurievv.github.io/ScalaSemantic/>** (mdoc-checked, so its code
+samples are executed at build time).
 
 ## Why, vs `grep`
 
@@ -86,6 +90,7 @@ The server itself runs on any JVM (`java` 11+); the target project's Scala versi
 
 ## Docs
 
+- **[Documentation site](https://mercurievv.github.io/ScalaSemantic/)** — the rendered, mdoc-checked microsite
 - [Integration](docs/INTEGRATION.md) — register with a client, sbt plugin, other build tools
 - [Comparison](docs/COMPARISON.md) — capability comparison vs Metals/LSP, with evidence
 - [Development](docs/DEVELOPMENT.md) — module layout, build & test, cross-version testing
