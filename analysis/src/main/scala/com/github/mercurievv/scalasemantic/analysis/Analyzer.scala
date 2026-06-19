@@ -37,6 +37,17 @@ final class Analyzer(
   def withBuffer(uri: URI, code: String): Analyzer =
     withBuffer(uri, code, uri.toString)
 
+  /** PC-only: an analyzer over JUST the presentation compiler's regenerated document for `fileUri`
+    * (keyed by `docUri`) — the disk index is NOT consulted or merged. For position/buffer-local
+    * queries where the PC is authoritative for the file and the whole-project index adds nothing;
+    * cheaper than [[withBuffer]], which recomputes the full index's derived state to overlay one
+    * document. `None` when there is no PC backend (the caller falls back to the disk index).
+    */
+  def bufferOnly(fileUri: URI, code: String, docUri: String): Option[Analyzer] =
+    pc.map(backend =>
+      new Analyzer(SemanticIndex(Vector(backend.semanticdb(fileUri, code, docUri))))
+    )
+
   // --- find-symbol ----------------------------------------------------------
 
   /** Find global symbols whose display name matches `query` (case-insensitive), ranked exact >

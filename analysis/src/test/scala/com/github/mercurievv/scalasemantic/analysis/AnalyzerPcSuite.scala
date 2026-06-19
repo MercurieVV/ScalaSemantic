@@ -3,6 +3,8 @@ package com.github.mercurievv.scalasemantic.analysis
 import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
+import scala.meta.internal.semanticdb as s
+
 /** Phase 4: the presentation-compiler second backend. Proves the position-local tools answer about
   * a buffer that is NOT in the disk index and does NOT compile — exactly the case the SemanticDB
   * index alone cannot serve (no clean compile ⇒ no payload for the file).
@@ -49,4 +51,21 @@ class AnalyzerPcSuite extends munit.FunSuite:
     val at = live.typeAtPosition(uri.toString, 3, 6).getOrElse(fail("nothing at bark position"))
     assertEquals(at.displayName, "bark")
     assertEquals(at.tpe, "Int")
+  }
+
+  test("bufferOnly (PC-only) queries the buffer alone; withBuffer (overlay) keeps the disk index") {
+    // A disk index holding an unrelated document; the two routings differ on whether it shows.
+    val diskDoc = s.TextDocument(
+      uri = "Other.scala",
+      symbols = Seq(s.SymbolInformation(symbol = "demo/Other#", displayName = "Other"))
+    )
+    val withDisk = new Analyzer(new SemanticIndex(Vector(diskDoc)), Some(backend))
+
+    val pcOnly = withDisk.bufferOnly(uri, source, "Dog.scala").getOrElse(fail("no PC backend"))
+    assert(pcOnly.findSymbol("Dog").nonEmpty, "PC-only must see the buffer")
+    assert(pcOnly.findSymbol("Other").isEmpty, "PC-only must NOT consult the disk index")
+
+    val overlaid = withDisk.withBuffer(uri, source, "Dog.scala")
+    assert(overlaid.findSymbol("Dog").nonEmpty, "overlay sees the buffer")
+    assert(overlaid.findSymbol("Other").nonEmpty, "overlay keeps the rest of the disk index")
   }

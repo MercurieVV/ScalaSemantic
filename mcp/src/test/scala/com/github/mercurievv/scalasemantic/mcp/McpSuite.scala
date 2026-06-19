@@ -177,9 +177,11 @@ class McpSuite extends munit.FunSuite:
     assertEquals(r("path").arr.map(_.str).toList, List("a", "b", "c"))
   }
 
-  test("type_at_position with `source` answers on an uncompiled buffer via the PC overlay") {
+  test(
+    "PC-backed tools answer on an uncompiled buffer: type_at_position (PC-only) + method_signature (overlay)"
+  ) {
     // A buffer NOT in the disk index, whose tail does not typecheck. Lives on disk under a root so
-    // the PC can resolve its path; the tool keys the overlay by the root-relative uri.
+    // the PC can resolve its path; the tools key the buffer by the root-relative uri.
     val root = java.nio.file.Files.createTempDirectory("mcp-pc").nn
     val file = root.resolve("Widget.scala").nn
     val source =
@@ -195,25 +197,37 @@ class McpSuite extends munit.FunSuite:
     val backend = PresentationCompilerBackend.fromCurrentJvm(workspace = Some(root))
     try
       val pcTools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
-      def pcCall(args: ujson.Value): ujson.Value =
+      def pcCall(tool: String, args: ujson.Value): ujson.Value =
         val resp =
-          Mcp.handle(
-            req("tools/call", ujson.Obj("name" -> "type_at_position", "arguments" -> args)),
-            pcTools
-          )
+          Mcp.handle(req("tools/call", ujson.Obj("name" -> tool, "arguments" -> args)), pcTools)
         ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
 
-      // Without `source`, the empty disk index knows nothing at that position.
-      val cold = pcCall(ujson.Obj("uri" -> "Widget.scala", "line" -> 3, "character" -> 6))
+      // type_at_position (PC-only): without `source`, the empty disk index knows nothing.
+      val cold = pcCall(
+        "type_at_position",
+        ujson.Obj("uri" -> "Widget.scala", "line" -> 3, "character" -> 6)
+      )
       assertEquals(cold("found").bool, false)
-
       // With `source`, the PC regenerates SemanticDB and the position resolves — despite the error.
-      val live =
-        pcCall(
-          ujson.Obj("uri" -> "Widget.scala", "line" -> 3, "character" -> 6, "source" -> source)
-        )
+      val live = pcCall(
+        "type_at_position",
+        ujson.Obj("uri" -> "Widget.scala", "line" -> 3, "character" -> 6, "source" -> source)
+      )
       assertEquals(live("name").str, "area")
       assertEquals(live("type").str, "Int")
+
+      // method_signature (overlay): resolve the buffer's symbol, then read its signature live.
+      val area = "demo/Widget#area()."
+      assertEquals(
+        pcCall("method_signature", ujson.Obj("symbol" -> area)).obj.get("found"),
+        Some(ujson.Bool(false))
+      )
+      val sig =
+        pcCall(
+          "method_signature",
+          ujson.Obj("symbol" -> area, "uri" -> "Widget.scala", "source" -> source)
+        )
+      assertEquals(sig("signature").str, "def area(w: Int): Int")
     finally backend.close()
   }
 

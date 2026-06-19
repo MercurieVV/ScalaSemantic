@@ -10,6 +10,18 @@ import com.github.mercurievv.scalasemantic.model.*
   */
 object McpTools:
 
+  // Each tool falls into one of three backend categories (see the per-tool comments):
+  //   • PC-only      — a position/buffer-local query the presentation compiler answers in full from
+  //                    the buffer alone. When `source` is given, query ONLY the PC-regenerated
+  //                    document (Analyzer.bufferOnly); the stale disk index is not consulted. The PC
+  //                    is authoritative for the file, so falling back to disk would only add wrong
+  //                    answers on edited buffers. → type_at_position
+  //   • overlay      — a query that needs the whole-project index but wants ONE file fresher (e.g. to
+  //                    resolve names referenced from other files). When `source`+`uri` are given,
+  //                    overlay the buffer onto the index (Analyzer.withBuffer). → method_signature
+  //   • index-only   — an inherently project-wide scan with no single-file input; reads the disk
+  //                    index as-is. → find_symbol, find_usages, class_hierarchy, find_overloads,
+  //                    members, resolve_implicits, trace_implicit_chain, call_path
   def all(az: Analyzer, root: java.nio.file.Path = java.nio.file.Paths.get(".")): List[Tool] = List(
     tool(
       "find_symbol",
@@ -95,15 +107,29 @@ object McpTools:
     tool(
       "method_signature",
       "USE INSTEAD OF reading source to learn a method's shape. Full method signature including " +
-        "type parameters and implicit/using parameter lists.",
+        "type parameters and implicit/using parameter lists. Pass `uri` + `source` (the defining " +
+        "file's path and CURRENT text) to read the signature from a buffer edited since (or never) " +
+        "compiled: the presentation compiler regenerates it and OVERLAYS it on the index, so types " +
+        "it references from other files still resolve. Requires the server to have a classpath.",
       List(
         ("symbol", "string", "method symbol"),
-        ("detailed", "boolean", "include structured parameter breakdown (default false)")
+        ("detailed", "boolean", "include structured parameter breakdown (default false)"),
+        (
+          "uri",
+          "string",
+          "defining file's uri (path relative to project root); with `source`, overlays it"
+        ),
+        ("source", "string", "current full text of the file at `uri`; enables the live PC overlay")
       ),
       List("symbol")
     ) { a =>
       val symbol = argStr(a, "symbol")
-      az.methodSignature(symbol) match
+      // overlay category: a referenced return/param type may be defined in another file, so the
+      // buffer is overlaid ONTO the whole index rather than queried in isolation.
+      val engine = (a.obj.get("uri").map(_.str), a.obj.get("source").map(_.str)) match
+        case (Some(uri), Some(src)) => az.withBuffer(root.resolve(uri).toUri, src, uri)
+        case _                      => az
+      engine.methodSignature(symbol) match
         case None => notFound(symbol)
         case Some(m) =>
           if !argBool(a, "detailed", false) then
@@ -247,10 +273,11 @@ object McpTools:
       List("uri", "line", "character")
     ) { a =>
       val uri = argStr(a, "uri")
-      // With `source`, overlay the live buffer via the PC. `uri` is the index-form (relative) key;
-      // the PC needs the absolute on-disk file path, so resolve it against the project root.
+      // PC-only category: a position in one file is fully answered by the PC's regenerated document,
+      // so with `source` we query THAT alone — not an overlay on the (stale-for-this-file) disk
+      // index. `uri` is the index-form (relative) key; the PC needs the absolute on-disk path.
       val engine = a.obj.get("source").map(_.str) match
-        case Some(src) => az.withBuffer(root.resolve(uri).toUri, src, uri)
+        case Some(src) => az.bufferOnly(root.resolve(uri).toUri, src, uri).getOrElse(az)
         case None      => az
       engine.typeAtPosition(uri, argInt(a, "line", 0), argInt(a, "character", 0)) match
         case None => jobj(Some("found" -> ujson.Bool(false)))
