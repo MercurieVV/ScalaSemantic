@@ -1,9 +1,3 @@
----
-id: index
-title: ScalaSemantic
-slug: /
----
-
 # ScalaSemantic
 
 Deep semantic analysis of Scala projects over [MCP](https://modelcontextprotocol.io). It reads
@@ -11,8 +5,7 @@ compiler-emitted **SemanticDB**, so answers reflect what the compiler resolved �
 
 > The Scala fences below are compiled + executed by **mdoc** at site-build time, so their output is
 > real. They model the data shapes rather than call the analyzer in-process: the analyzer is built on
-> a newer Scala than mdoc's snippet compiler supports (see
-> [Development](https://github.com/MercurieVV/ScalaSemantic/blob/master/docs/DEVELOPMENT.md)).
+> a newer Scala than mdoc's snippet compiler supports (see [Development](DEVELOPMENT.md)).
 
 ## SemanticDB symbol grammar
 
@@ -45,6 +38,11 @@ So `com/example/Animal#` is the type `Animal` in package `com.example`, and
  "params":{"name":"class_hierarchy","arguments":{"symbol":"com/example/Animal#"}}}
 ```
 
-Full tool list and integration steps:
-[README](https://github.com/MercurieVV/ScalaSemantic#tools) ·
-[Integration](https://github.com/MercurieVV/ScalaSemantic/blob/master/docs/INTEGRATION.md).
+## Pages
+
+- [Integration](INTEGRATION.md) — register the server with an MCP client
+- [Comparison](COMPARISON.md) — vs `grep` (pros & cons), plus a note on Metals/LSP
+- [Development](DEVELOPMENT.md) — modules, build, cross-version testing, this site
+- [Design decisions](DESIGN.md) — upickle, extensibility, docs tooling
+- [Releasing](RELEASING.md) — Sonatype Central release process
+- [Plan](PLAN.md) — design rationale & tracker

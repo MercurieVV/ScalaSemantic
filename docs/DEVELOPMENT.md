@@ -70,4 +70,4 @@ sbt-2.0 / Scala-version constraints behind the setup: [DESIGN.md](DESIGN.md#docu
 - SemanticDB bindings live in `org.scalameta:semanticdb-shared` (a 2.13 artifact consumed via
   `CrossVersion.for3Use2_13`), not in `scalameta`.
 
-More design history and decisions: [../PLAN.md](../PLAN.md).
+More design history and decisions: [PLAN.md](PLAN.md).

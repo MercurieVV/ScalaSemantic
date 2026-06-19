@@ -11,7 +11,11 @@ const config = {
   baseUrl: '/ScalaSemantic/',
   organizationName: 'MercurieVV',
   projectName: 'ScalaSemantic',
+  // Docs link to repo files outside the site (../README.md, ../analysis/...) and to each other;
+  // warn rather than fail the build on those.
   onBrokenLinks: 'warn',
+  onBrokenMarkdownLinks: 'warn',
+  onBrokenAnchors: 'warn',
 
   presets: [
     [
