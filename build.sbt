@@ -120,8 +120,14 @@ lazy val mcp = (project in file("mcp"))
       case PathList("META-INF", xs @ _*)
           if xs.lastOption.exists(s => s.endsWith(".SF") || s.endsWith(".DSA") || s.endsWith(".RSA")) =>
         MergeStrategy.discard
-      case "module-info.class" => MergeStrategy.discard
-      case x                   => (assembly / assemblyMergeStrategy).value.apply(x)
+      case x if x.endsWith("module-info.class") => MergeStrategy.discard
+      // The `pc` backend pulls scala3-presentation-compiler → the 2.13 compiler, whose bundled
+      // `scala/tools/asm/*` collides with scala3's `scala-asm` jar. Same classes, different jars —
+      // keep one copy.
+      case PathList("scala", "tools", "asm", _*) => MergeStrategy.first
+      // Version/marker .properties duplicated across compiler/reflect/compat/coursier jars.
+      case x if x.endsWith(".properties") => MergeStrategy.first
+      case x => (assembly / assemblyMergeStrategy).value.apply(x)
     },
     // DEV-ONLY launcher: runs the server straight off this build's classpath (no jar). Written under
     // target/, so it is wiped by `clean` — do NOT reference it from a persistent .mcp.json. For that,
