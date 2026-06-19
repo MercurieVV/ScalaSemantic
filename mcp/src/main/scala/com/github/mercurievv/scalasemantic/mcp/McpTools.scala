@@ -3,7 +3,7 @@ package com.github.mercurievv.scalasemantic.mcp
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
 import com.github.mercurievv.scalasemantic.model.*
 
-/** The nine analysis tools exposed over MCP, with token-lean JSON rendering.
+/** The analysis tools exposed over MCP, with token-lean JSON rendering.
   *
   * Conventions: a symbol is a SemanticDB symbol string (e.g. `pkg/Type#method().`). Results stay
   * minimal — pass `"detailed": true` to expand the structured breakdown of a result.
@@ -355,10 +355,120 @@ object McpTools:
           )
         )
       )
+    },
+    tool(
+      "structure",
+      "Whole-project dependency metrics from the symbol graph — use to judge what matters and where " +
+        "to start. Per in-project type: afferent coupling Ca (fan-in = how many depend on it), " +
+        "efferent Ce (fan-out), instability Ce/(Ca+Ce) (0 = stable foundation, 1 = unstable leaf), " +
+        "and cycle membership. Computed over four edge dimensions (extends, memberType, call, " +
+        "implicit) and a combined overlay, with a module rollup. High Ca/low instability = core to " +
+        "understand first; `cycles` flags tangles. No layering (a cyclic node is reported, not ranked).",
+      List(
+        (
+          "sort",
+          "string",
+          "rank symbols by: afferent | efferent | instability | sccSize (default afferent)"
+        ),
+        (
+          "dimension",
+          "string",
+          "which graph's metrics per symbol: combined | extends | memberType | call | implicit (default combined)"
+        ),
+        (
+          "pathFilter",
+          "string",
+          "glob on a type's module (e.g. `core`, `*mcp*`) to scope the list"
+        ),
+        ("limit", "integer", "max symbols to return (default 30)"),
+        (
+          "detailed",
+          "boolean",
+          "include the per-dimension Ca/Ce/instability breakdown (default false)"
+        )
+      ),
+      Nil
+    ) { a =>
+      val res = az.structure()
+      val dim = argStr(a, "dimension") match
+        case "" => "combined"
+        case d  => d
+      val sortKey = argStr(a, "sort") match
+        case "" => "afferent"
+        case s  => s
+      val keep = res.symbols.filter(s => moduleGlob(a, s.module))
+      val pick: SymbolStructure => DimensionMetrics =
+        s => if dim == "combined" then s.combined else s.perDimension.getOrElse(dim, s.combined)
+      val rank: DimensionMetrics => Double = m =>
+        sortKey match
+          case "efferent"    => m.efferent.toDouble
+          case "instability" => m.instability
+          case "sccSize"     => m.sccSize.toDouble
+          case _             => m.afferent.toDouble
+      val ranked = keep.sortBy(s => -rank(pick(s))).take(argInt(a, "limit", 30))
+      jobj(
+        Some("dimension" -> ujson.Str(dim)),
+        Some("sort" -> ujson.Str(sortKey)),
+        Some(
+          "modules" -> ujson.Arr.from(res.modules.map { m =>
+            jobj(
+              Some("module" -> ujson.Str(m.module)),
+              Some("types" -> ujson.Num(m.typeCount)),
+              Some("ca" -> ujson.Num(m.afferent)),
+              Some("ce" -> ujson.Num(m.efferent)),
+              Some("instability" -> ujson.Num(round2(m.instability))),
+              opt(m.inCycle, "inCycle" -> ujson.Bool(true))
+            )
+          })
+        ),
+        Some(
+          "symbols" -> ujson.Arr.from(ranked.map { s =>
+            val m = pick(s)
+            jobj(
+              Some("symbol" -> ujson.Str(s.symbol)),
+              Some("name" -> ujson.Str(s.displayName)),
+              Some("module" -> ujson.Str(s.module)),
+              Some("ca" -> ujson.Num(m.afferent)),
+              Some("ce" -> ujson.Num(m.efferent)),
+              Some("instability" -> ujson.Num(round2(m.instability))),
+              opt(m.inCycle, "inCycle" -> ujson.Bool(true)),
+              opt(
+                argBool(a, "detailed", false),
+                "perDimension" -> ujson.Obj.from(s.perDimension.toList.sortBy(_._1).map { (d, dm) =>
+                  d -> (jobj(
+                    Some("ca" -> ujson.Num(dm.afferent)),
+                    Some("ce" -> ujson.Num(dm.efferent)),
+                    Some("instability" -> ujson.Num(round2(dm.instability)))
+                  ): ujson.Value)
+                })
+              )
+            )
+          })
+        ),
+        opt(
+          res.cycles.nonEmpty,
+          "cycles" -> ujson.Arr.from(res.cycles.map { c =>
+            jobj(
+              Some("dimension" -> ujson.Str(c.dimension)),
+              Some("members" -> strs(c.members))
+            )
+          })
+        )
+      )
     }
   )
 
   // --- rendering helpers ----------------------------------------------------
+
+  /** Keep a module when no `pathFilter` is given, or when the glob (`*` = any chars) matches it. */
+  private def moduleGlob(a: ujson.Value, module: String): Boolean =
+    a.obj.get("pathFilter").map(_.str).filter(_.nonEmpty) match
+      case None => true
+      case Some(glob) =>
+        val re = glob.split("\\*", -1).map(java.util.regex.Pattern.quote).mkString(".*").r
+        re.findFirstIn(module).isDefined
+
+  private def round2(d: Double): Double = math.round(d * 100.0) / 100.0
 
   private def loc(l: Location): String =
     s"${l.uri}:${l.range.start.line}:${l.range.start.character}"

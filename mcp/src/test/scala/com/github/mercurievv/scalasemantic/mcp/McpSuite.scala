@@ -39,13 +39,14 @@ class McpSuite extends munit.FunSuite:
     assert(instr.contains("find_symbol"), instr)
   }
 
-  test("tools/list exposes all ten tools with schemas") {
+  test("tools/list exposes all eleven tools with schemas") {
     val r = Mcp.handle(req("tools/list", ujson.Obj()), tools).get
     val names = r("result")("tools").arr.map(_("name").str).toSet
-    assertEquals(names.size, 10)
+    assertEquals(names.size, 11)
     assert(names.contains("find_symbol"), names.toString)
     assert(names.contains("find_usages"), names.toString)
     assert(names.contains("call_path"), names.toString)
+    assert(names.contains("structure"), names.toString)
     // every tool carries an object input schema
     assert(r("result")("tools").arr.forall(_("inputSchema")("type").str == "object"))
   }
@@ -74,6 +75,22 @@ class McpSuite extends munit.FunSuite:
       )
     val syms = scoped("symbols").arr.map(_("symbol").str)
     assertEquals(syms.toList, List("com/github/mercurievv/scalasemantic/compat/Animal#"))
+  }
+
+  test("structure ranks types by coupling and rolls up modules (dogfood)") {
+    val r = call("structure", ujson.Obj("limit" -> 5))
+    val mods = r("modules").arr.map(_("module").str).toSet
+    assert(Set("core", "analysis", "mcp").subsetOf(mods), mods.toString)
+    // default sort is afferent (fan-in) descending
+    val cas = r("symbols").arr.map(_("ca").num)
+    assertEquals(cas.toList, cas.toList.sortBy(-_), "symbols must be ranked by Ca desc")
+    // every symbol carries the core metrics
+    assert(r("symbols").arr.forall(s => s.obj.contains("instability") && s.obj.contains("module")))
+
+    // detailed adds the per-dimension breakdown with all four dimensions
+    val d = call("structure", ujson.Obj("limit" -> 1, "detailed" -> true))
+    val dims = d("symbols")(0)("perDimension").obj.keys.toSet
+    assertEquals(dims, Set("extends", "memberType", "call", "implicit"), dims.toString)
   }
 
   test("notifications get no response") {
@@ -242,5 +259,5 @@ class McpSuite extends munit.FunSuite:
     // 4 lines in (one blank, one notification) → 2 responses out, with matching ids
     assertEquals(out.size, 2)
     assertEquals(ujson.read(out(0))("id").num, 1.0)
-    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 10)
+    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 11)
   }
