@@ -34,11 +34,17 @@ object McpTools:
         ("limit", "integer", "max results (default 50)"),
         ("exact", "boolean", "match the display name exactly, case-insensitive (default false)"),
         ("kind", "string", "keep only this SymbolInformation kind, e.g. TRAIT, CLASS, METHOD"),
-        ("pathFilter", "string", "glob on the symbol's definition uri; `*` matches any chars")
+        ("pathFilter", "string", "glob on the symbol's definition uri; `*` matches any chars"),
+        (
+          "metrics",
+          "boolean",
+          "badge each result type with its structural layer/centrality/inCycle (default false)"
+        )
       ),
       List("query")
     ) { a =>
       val q = argStr(a, "query")
+      val withMetrics = argBool(a, "metrics", false)
       val results = az.findSymbol(
         q,
         argInt(a, "limit", 50),
@@ -53,9 +59,11 @@ object McpTools:
           "symbols" -> ujson.Arr.from(
             results.map(r =>
               jobj(
-                Some("symbol" -> ujson.Str(r.symbol)),
-                Some("name" -> ujson.Str(r.displayName)),
-                Some("kind" -> ujson.Str(r.kind))
+                (List(
+                  Some("symbol" -> ujson.Str(r.symbol)),
+                  Some("name" -> ujson.Str(r.displayName)),
+                  Some("kind" -> ujson.Str(r.kind))
+                ) ++ metricFields(az, r.symbol, withMetrics))*
               )
             )
           )
@@ -171,6 +179,11 @@ object McpTools:
           "include",
           "array",
           "sections to return: any of \"parents\", \"linearization\", \"knownSubtypes\" (default all)"
+        ),
+        (
+          "metrics",
+          "boolean",
+          "badge the queried type with its structural layer/centrality/inCycle (default false)"
         )
       ),
       List("symbol")
@@ -182,17 +195,20 @@ object McpTools:
         case None => notFound(symbol)
         case Some(h) =>
           jobj(
-            Some("symbol" -> ujson.Str(symbol)),
-            Some("name" -> ujson.Str(h.displayName)),
-            opt(want("parents") && h.parents.nonEmpty, "parents" -> refs(h.parents, detailed)),
-            opt(
-              want("linearization") && h.linearization.nonEmpty,
-              "linearization" -> refs(h.linearization, detailed)
-            ),
-            opt(
-              want("knownSubtypes") && h.knownSubtypes.nonEmpty,
-              "knownSubtypes" -> refs(h.knownSubtypes, detailed)
-            )
+            (List(
+              Some("symbol" -> ujson.Str(symbol)),
+              Some("name" -> ujson.Str(h.displayName))
+            ) ++ metricFields(az, symbol, argBool(a, "metrics", false)) ++ List(
+              opt(want("parents") && h.parents.nonEmpty, "parents" -> refs(h.parents, detailed)),
+              opt(
+                want("linearization") && h.linearization.nonEmpty,
+                "linearization" -> refs(h.linearization, detailed)
+              ),
+              opt(
+                want("knownSubtypes") && h.knownSubtypes.nonEmpty,
+                "knownSubtypes" -> refs(h.knownSubtypes, detailed)
+              )
+            ))*
           )
     },
     tool(
@@ -487,6 +503,25 @@ object McpTools:
 
   private def round2(d: Double): Double = math.round(d * 100.0) / 100.0
   private def round3(d: Double): Double = math.round(d * 1000.0) / 1000.0
+
+  /** Optional structural-metric fields (layer / centrality / inCycle) for a type symbol, for
+    * badging find_symbol / class_hierarchy results when `on`. Empty when off or the symbol is not a
+    * type node.
+    */
+  private def metricFields(
+      az: Analyzer,
+      symbol: String,
+      on: Boolean
+  ): List[Option[(String, ujson.Value)]] =
+    if !on then Nil
+    else
+      az.metricsOf(symbol).toList.flatMap { s =>
+        List(
+          Some("layer" -> ujson.Num(s.combined.layer)),
+          Some("centrality" -> ujson.Num(round3(s.combined.centrality))),
+          opt(s.combined.inCycle, "inCycle" -> ujson.Bool(true))
+        )
+      }
 
   private def loc(l: Location): String =
     s"${l.uri}:${l.range.start.line}:${l.range.start.character}"

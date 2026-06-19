@@ -52,10 +52,22 @@ final class Analyzer(
   // --- structure / dependency metrics ---------------------------------------
 
   /** Multi-relational dependency metrics for the whole project: per in-project type, the coupling
-    * (Ca/Ce/instability) and cycle membership across the `extends`/`memberType`/`call`/`implicit`
-    * graphs and their combined overlay, plus a module rollup and the list of dependency cycles.
+    * (Ca/Ce/instability), layer, centrality and cycle membership across the
+    * `extends`/`memberType`/`call`/`implicit` graphs and their combined overlay, plus a module
+    * rollup, the module coupling surface, and the list of dependency cycles. Memoised — the whole
+    * graph is built once per analyzer and shared by [[structure]] and [[metricsOf]].
     */
-  def structure(): StructureResult = StructureMetrics(index).result()
+  def structure(): StructureResult = structureResult
+
+  private lazy val structureResult: StructureResult = StructureMetrics(index).result()
+
+  private lazy val structureBySymbol: Map[String, SymbolStructure] =
+    structureResult.symbols.iterator.map(s => s.symbol -> s).toMap
+
+  /** The structural metrics for one type symbol, if it is an in-project type node — for badging the
+    * results of other tools (find_symbol, class_hierarchy) with its layer/centrality/cycle status.
+    */
+  def metricsOf(symbol: String): Option[SymbolStructure] = structureBySymbol.get(symbol)
 
   // --- find-symbol ----------------------------------------------------------
 
