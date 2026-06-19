@@ -42,14 +42,22 @@ final class StructureMetrics(index: SemanticIndex):
 
     StructureResult(symbols, moduleRollup, cycles)
 
-  /** Per-node `DimensionMetrics` for one graph: coupling + SCC size. */
+  /** Per-node `DimensionMetrics` for one graph: coupling + layer + SCC size. */
   private def metricsFor(graph: Graph): Map[String, DimensionMetrics] =
     val coupling = GraphMetrics.coupling(nodes, graph)
     val sccSize = sccSizes(nodes, graph)
+    val layer = GraphMetrics.layers(nodes, graph)
     nodes.iterator.map { n =>
       val (ca, ce) = coupling.getOrElse(n, (0, 0))
       val size = sccSize.getOrElse(n, 1)
-      n -> DimensionMetrics(ca, ce, GraphMetrics.instability(ca, ce), size, size > 1)
+      n -> DimensionMetrics(
+        ca,
+        ce,
+        GraphMetrics.instability(ca, ce),
+        layer.getOrElse(n, 0),
+        size,
+        size > 1
+      )
     }.toMap
 
   /** Module-level rollup of the combined graph: each type's module, edges lifted to module pairs.
@@ -66,6 +74,7 @@ final class StructureMetrics(index: SemanticIndex):
         .toMap
     val coupling = GraphMetrics.coupling(moduleNodes, moduleGraph)
     val sccSize = sccSizes(moduleNodes, moduleGraph)
+    val layer = GraphMetrics.layers(moduleNodes, moduleGraph)
     val typeCount = nodes.groupBy(graphs.moduleOf).view.mapValues(_.size).toMap
     moduleNodes.toList.sorted.map { m =>
       val (ca, ce) = coupling.getOrElse(m, (0, 0))
@@ -76,6 +85,7 @@ final class StructureMetrics(index: SemanticIndex):
         afferent = ca,
         efferent = ce,
         instability = GraphMetrics.instability(ca, ce),
+        layer = layer.getOrElse(m, 0),
         sccSize = size,
         inCycle = size > 1
       )
