@@ -12,7 +12,6 @@ const config = {
   organizationName: 'MercurieVV',
   projectName: 'ScalaSemantic',
   onBrokenLinks: 'warn',
-  favicon: 'img/favicon.ico',
 
   presets: [
     [

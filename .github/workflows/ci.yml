@@ -38,6 +38,45 @@ jobs:
       - name: Test
         run: sbt test
 
+  docs-site:
+    name: Publish docs site (GitHub Pages)
+    needs: [build]
+    # Only from master: render the mdoc docs, build the Docusaurus site, deploy to GitHub Pages.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write # deploy to Pages
+      id-token: write # OIDC token the deploy-pages action requires
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: sbt
+      - uses: sbt/setup-sbt@v1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Render docs with mdoc
+        run: sbt docs/run # writes executed Markdown into website/docs
+      - name: Build Docusaurus site
+        working-directory: website
+        run: |
+          npm install
+          npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/build
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
   publish:
     name: Publish to Sonatype Central
     needs: [build]
