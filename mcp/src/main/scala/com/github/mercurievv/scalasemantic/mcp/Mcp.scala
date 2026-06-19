@@ -37,35 +37,44 @@ object Mcp:
     * drive the tools and — crucially — to prefer them over text search for Scala code questions.
     */
   val Instructions: String =
-    """ScalaSemantic answers questions about Scala code from compiler-emitted SemanticDB, so results
-      |reflect what the compiler actually resolved — exact symbols, not text matches.
+    """ScalaSemantic answers questions about Scala code from compiler-emitted SemanticDB: resolved
+      |symbols, types, and references exactly as the compiler saw them — not text matches.
       |
-      |MANDATORY — USE THESE TOOLS INSTEAD OF grep / ripgrep / text search / file-reading FOR ANY
-      |QUESTION ABOUT SCALA CODE STRUCTURE OR SEMANTICS. This is not a suggestion. Whenever you are
-      |about to grep, `rg`, glob, or read `.scala` files to answer ANY of these, STOP and use the
-      |matching tool instead — it is strictly more accurate and far cheaper in tokens:
-      |  • who calls / references a symbol, where is it used  → find_usages
-      |  • what are the subtypes / supertypes / implementers  → class_hierarchy
-      |  • what is this method's signature / parameters       → method_signature
-      |  • what overloads exist                               → find_overloads
-      |  • what members does a type declare vs inherit        → members
-      |  • which givens/implicits apply, implicit chains      → resolve_implicits, trace_implicit_chain
-      |  • does method A reach method B, call paths           → call_path
-      |  • what is the type/symbol at a source position       → type_at_position
-      |  • find the symbol for a plain name                   → find_symbol
+      |Prefer these tools over grep/ripgrep/glob/file-reading for ANY question about Scala symbols,
+      |types, references, hierarchies, implicits, or call paths — they are both more accurate AND
+      |cheaper. Each returns one exact, compact answer (a symbol, a signature, a `uri:line:col` list)
+      |instead of many noisy text matches you then have to read and filter, so they spend far fewer
+      |tokens and less context. And text search is unreliable on Scala: it MISSES renames, re-exports,
+      |type-inferred uses and implicits, and OVER-MATCHES comments, strings, and unrelated same-named
+      |identifiers. Reach for text search only for non-symbol content (comments, string literals, build
+      |files, non-Scala files), or when these tools genuinely do not fit.
       |
-      |grep matches characters: it silently MISSES renames, re-exports, type-inferred uses, and
-      |implicits, and OVER-MATCHES comments, strings, and unrelated same-named identifiers. Any answer
-      |built from grep on Scala code is unreliable — these tools are the source of truth. Only fall
-      |back to text search when no tool fits (comments, string literals, build files, non-Scala files).
+      |Pick the tool by what you want to know:
+      |  who calls / references a symbol, where it is used  → find_usages
+      |  subtypes / supertypes / implementers of a type     → class_hierarchy
+      |  a method's signature / parameters / return         → method_signature
+      |  the overloads of a method                          → find_overloads
+      |  members a type declares vs. inherits               → members
+      |  which givens/implicits apply, the implicit chain   → resolve_implicits, trace_implicit_chain
+      |  whether method A reaches B, the call path          → call_path
+      |  the symbol/type at a source position               → type_at_position
+      |  the symbol for a plain name                        → find_symbol
       |
-      |Workflow: every tool takes a SemanticDB symbol string (grammar: package `foo/`, type `Foo#`,
-      |term `foo.`, method `foo().` with `(+1)` overload disambiguators). To get one from a plain
-      |name, call `find_symbol` FIRST, then feed the returned `symbol` into the other tools.
-      |`type_at_position` also yields a symbol from a source position.
+      |Symbols: every tool except find_symbol and type_at_position takes a SemanticDB symbol string
+      |(grammar: package `foo/`, type `Foo#`, term `foo.`, method `foo().`, overloads `foo().(+1)`).
+      |Do NOT hand-write or guess these — they are easy to get subtly wrong. Always obtain a symbol
+      |from `find_symbol` (from a name) or `type_at_position` (from a source location), then pass it on.
       |
-      |Results are lean by default (locations as `uri:line:col`, signatures one line); pass
-      |`"detailed": true` to expand, and `find_usages` is paged via `limit`/`offset`.""".stripMargin
+      |Worked example — "who calls Service.run?":
+      |  1. find_symbol "run"  → choose the result whose symbol ends `…/Service#run().`
+      |  2. find_usages (or call_path) with that symbol.
+      |
+      |Recovery: if a tool returns `found:false`, `count:0`, or empty lists, the symbol string is
+      |almost certainly wrong — do NOT retry it verbatim and do NOT fall back to grep. Re-resolve the
+      |name with find_symbol (narrow with `exact`, `kind`, or `pathFilter`) and use the corrected symbol.
+      |
+      |Output is lean by default (locations as `uri:line:col`, signatures one line); pass
+      |`"detailed": true` to expand, and page find_usages via `limit`/`offset`.""".stripMargin
 
   /** Pure request handler (no I/O) so it can be unit-tested. Returns `None` for notifications. */
   def handle(req: ujson.Value, tools: List[Tool]): Option[ujson.Value] =
