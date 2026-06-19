@@ -79,6 +79,7 @@ Full details (build tools, the generated `.mcp.json`, lifecycle): **[docs/INTEGR
 
 | Tool | Answers |
 |------|---------|
+| `find_symbol` | resolve a plain/partial name to SemanticDB symbol strings — **start here** |
 | `find_usages` | references to a symbol, def/ref split, paged |
 | `method_signature` | full signature incl. implicit/using parameter lists |
 | `class_hierarchy` | parents, linearization, index-wide known subtypes |
@@ -89,16 +90,26 @@ Full details (build tools, the generated `.mcp.json`, lifecycle): **[docs/INTEGR
 | `trace_implicit_chain` | a given's transitive implicit dependencies |
 | `call_path` | shortest call path between two methods |
 
-Results are **lean by default** (locations as `uri:line:col`, signatures as one line, empty fields
-omitted) to keep token use low; pass `"detailed": true` to expand, and `find_usages` is paged.
+Every tool takes a SemanticDB symbol string; call `find_symbol` first to get one from a plain name.
+On `initialize` the server also sends `instructions` telling the agent to **prefer these tools over
+`grep`** for Scala code questions. Results are **lean by default** (locations as `uri:line:col`,
+signatures one line, empty fields omitted); pass `"detailed": true` to expand, and `find_usages` is
+paged.
+
+## Supported Scala versions
+
+The server *reads* SemanticDB, so it is compiler-version-agnostic: it works against any project that
+emits SemanticDB. Cross-version behavior is enforced by tests — the analyzer is exercised against
+golden SemanticDB from **Scala 2.13 and 3.x** (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#cross-version-compatibility-test)).
+The server itself runs on any JVM (`java` 11+); the target project's Scala version is independent.
 
 ## Docs
 
 - [Integration](docs/INTEGRATION.md) — register with a client, sbt plugin, other build tools
 - [Comparison](docs/COMPARISON.md) — capability comparison vs Metals/LSP, with evidence
-- [Development](docs/DEVELOPMENT.md) — module layout, build & test
+- [Development](docs/DEVELOPMENT.md) — module layout, build & test, cross-version testing
+- [Design decisions](docs/DESIGN.md) — why upickle, extensibility (external-jar tools), docs tooling
 - [Releasing](docs/RELEASING.md) — Sonatype Central release process
-- [PLAN.md](PLAN.md) — design decisions & execution tracker
 
 ## License
 

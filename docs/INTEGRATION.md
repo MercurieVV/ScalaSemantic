@@ -52,11 +52,20 @@ path automatically: if **coursier** (`cs`) is on PATH they `cs launch` the artif
 goes to stderr; stdout stays pure JSON-RPC. Offline, they fall back to the newest cached jar. Pin a
 version with `SCALASEMANTIC_VERSION=v0.1.4`.
 
+Install the launcher to a **stable path on PATH** (`~/.local/bin/scalasemantic-mcp`) so `.mcp.json`
+does not depend on where this repo is cloned — and, unlike the sbt dev launcher under `target/`, it
+survives `sbt clean`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/install.sh | sh
+# or, from a checkout:  scripts/install.sh
+```
+
 ```json
 {
   "mcpServers": {
     "scala-semantic": {
-      "command": "/abs/path/to/scripts/scalasemantic-mcp.sh",
+      "command": "/abs/home/.local/bin/scalasemantic-mcp",
       "args": ["/abs/path/to/project-to-analyze"]
     }
   }
@@ -138,8 +147,11 @@ Generation logic: [`ScalaSemanticMcpPlugin.scala`](../sbt-plugin/src/main/scala/
 printf '%s\n' \
  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
  '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
- '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"class_hierarchy","arguments":{"symbol":"com/github/mercurievv/scalasemantic/fixtures/Animal#"}}}' \
+ '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"find_symbol","arguments":{"query":"Animal"}}}' \
+ '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"class_hierarchy","arguments":{"symbol":"com/github/mercurievv/scalasemantic/fixtures/Animal#"}}}' \
  | java -jar scalasemantic-mcp.jar .
 ```
 
-Expect three JSON-RPC responses on stdout (stderr carries the startup log).
+Expect four JSON-RPC responses on stdout (stderr carries the startup log). The `initialize` response
+carries an `instructions` field; `find_symbol` turns the name `Animal` into the symbol string the
+`class_hierarchy` call then uses.

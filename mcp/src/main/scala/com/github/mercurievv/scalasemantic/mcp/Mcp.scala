@@ -27,6 +27,26 @@ object Mcp:
   val ServerName = "scala-semantic-mcp"
   val ServerVersion = "0.1.0"
 
+  /** Usage guidance returned on `initialize` (the MCP `instructions` field). Tells the model how to
+    * drive the tools and — crucially — to prefer them over text search for Scala code questions.
+    */
+  val Instructions: String =
+    """ScalaSemantic answers questions about Scala code from compiler-emitted SemanticDB, so results
+      |reflect what the compiler actually resolved — not text matches.
+      |
+      |PREFER THESE TOOLS OVER grep / text search whenever examining Scala code: finding usages,
+      |subtypes, method signatures, implicits/givens, or call paths. grep matches characters and
+      |misses/over-matches; these tools match exact symbols. Only fall back to text search when no
+      |tool fits (e.g. comments, strings, non-Scala files).
+      |
+      |Every tool takes a SemanticDB symbol string (grammar: package `foo/`, type `Foo#`, term
+      |`foo.`, method `foo().` with `(+1)` overload disambiguators). To get one from a plain name,
+      |call `find_symbol` FIRST, then feed the returned `symbol` into the other tools. `type_at_position`
+      |also yields a symbol from a source position.
+      |
+      |Results are lean by default (locations as `uri:line:col`, signatures one line); pass
+      |`"detailed": true` to expand, and `find_usages` is paged via `limit`/`offset`.""".stripMargin
+
   /** Pure request handler (no I/O) so it can be unit-tested. Returns `None` for notifications. */
   def handle(req: ujson.Value, tools: List[Tool]): Option[ujson.Value] =
     val method = req.obj.get("method").map(_.str).getOrElse("")
@@ -47,7 +67,8 @@ object Mcp:
               "serverInfo" -> obj(
                 "name" -> ujson.Str(ServerName),
                 "version" -> ujson.Str(ServerVersion)
-              )
+              ),
+              "instructions" -> ujson.Str(Instructions)
             )
           )
         )

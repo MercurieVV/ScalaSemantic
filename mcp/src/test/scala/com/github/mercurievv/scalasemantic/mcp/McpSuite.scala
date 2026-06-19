@@ -27,20 +27,34 @@ class McpSuite extends munit.FunSuite:
     val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
     ujson.read(text)
 
-  test("initialize echoes the protocol version and advertises the server") {
+  test("initialize echoes the protocol version, advertises the server, and ships instructions") {
     val r = Mcp.handle(req("initialize", ujson.Obj("protocolVersion" -> "2025-06-18")), tools).get
     assertEquals(r("result")("protocolVersion").str, "2025-06-18")
     assertEquals(r("result")("serverInfo")("name").str, Mcp.ServerName)
+    // instructions must steer the model to prefer these tools over grep
+    val instr = r("result")("instructions").str
+    assert(instr.toLowerCase.contains("grep"), instr)
+    assert(instr.contains("find_symbol"), instr)
   }
 
-  test("tools/list exposes all nine tools with schemas") {
+  test("tools/list exposes all ten tools with schemas") {
     val r = Mcp.handle(req("tools/list", ujson.Obj()), tools).get
     val names = r("result")("tools").arr.map(_("name").str).toSet
-    assertEquals(names.size, 9)
+    assertEquals(names.size, 10)
+    assert(names.contains("find_symbol"), names.toString)
     assert(names.contains("find_usages"), names.toString)
     assert(names.contains("call_path"), names.toString)
     // every tool carries an object input schema
     assert(r("result")("tools").arr.forall(_("inputSchema")("type").str == "object"))
+  }
+
+  test("find_symbol resolves a plain name to ranked SemanticDB symbols") {
+    val r = call("find_symbol", ujson.Obj("query" -> "Animal"))
+    assert(r("count").num > 0)
+    val syms = r("symbols").arr.map(_("symbol").str)
+    assert(syms.contains(Animal), syms.toString)
+    // exact match ranks first
+    assertEquals(r("symbols")(0)("name").str, "Animal")
   }
 
   test("notifications get no response") {
@@ -103,5 +117,5 @@ class McpSuite extends munit.FunSuite:
     // 4 lines in (one blank, one notification) → 2 responses out, with matching ids
     assertEquals(out.size, 2)
     assertEquals(ujson.read(out(0))("id").num, 1.0)
-    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 9)
+    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 10)
   }

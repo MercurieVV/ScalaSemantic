@@ -1,4 +1,6 @@
 target/
+# Local MCP client registration (machine-specific abs paths). Commit .mcp.json.example instead.
+.mcp.json
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

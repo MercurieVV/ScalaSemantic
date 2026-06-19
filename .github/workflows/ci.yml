@@ -28,6 +28,13 @@ jobs:
       - uses: sbt/setup-sbt@v1
       - name: Check formatting
         run: sbt scalafmtCheckAll
+      - name: Regenerate cross-version compat golden SemanticDB
+        # Recompiles compat-fixtures under every Scala in `compatScalaVersions` and rewrites the
+        # committed golden *.semanticdb. The drift check below fails the build if they changed,
+        # keeping the cross-version analyzer test (CompatSuite) honest as compilers bump.
+        run: sbt compatGoldenAll
+      - name: Fail if compat golden drifted
+        run: git diff --exit-code -- analysis/src/test/resources/compat
       - name: Test
         run: sbt test
 

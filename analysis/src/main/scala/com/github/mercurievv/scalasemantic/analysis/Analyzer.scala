@@ -10,6 +10,34 @@ import scala.meta.internal.semanticdb as s
   */
 final class Analyzer(index: SemanticIndex):
 
+  // --- find-symbol ----------------------------------------------------------
+
+  /** Find global symbols whose display name matches `query` (case-insensitive), ranked exact >
+    * prefix > substring. This bridges a plain name (e.g. "Animal") to the SemanticDB symbol string
+    * the other tools require — without it, callers cannot discover symbols at all. Parameters, type
+    * parameters, self-params and constructors are excluded as they are never query targets.
+    */
+  def findSymbol(query: String, limit: Int = 50): List[SymbolRef] =
+    val q = query.toLowerCase
+    val excludedKinds = Set[s.SymbolInformation.Kind](
+      s.SymbolInformation.Kind.PARAMETER,
+      s.SymbolInformation.Kind.TYPE_PARAMETER,
+      s.SymbolInformation.Kind.SELF_PARAMETER
+    )
+    index.symbols.values.iterator
+      .filter(si => index.isGlobal(si.symbol))
+      .filter(si => !excludedKinds.contains(si.kind))
+      .filter(si => si.displayName.nonEmpty && si.displayName != "<init>")
+      .filter(_.displayName.toLowerCase.contains(q))
+      .toList
+      .sortBy { si =>
+        val n = si.displayName.toLowerCase
+        val rank = if n == q then 0 else if n.startsWith(q) then 1 else 2
+        (rank, si.displayName.length, si.symbol)
+      }
+      .take(limit)
+      .map(si => symbolRef(si.symbol))
+
   // --- find-usages ----------------------------------------------------------
 
   /** Every occurrence of `symbol` across all indexed documents, split into definitions and
@@ -380,4 +408,21 @@ final class Analyzer(index: SemanticIndex):
       case s.ExistentialType(t, _) => renderType(t)
       case s.UniversalType(_, t)   => renderType(t)
       case s.StructuralType(t, _)  => renderType(t)
+      case s.ConstantType(c)       => renderConstant(c)
       case _                       => ""
+
+  /** Render a literal/constant type (Scala 3 singleton-literal types, e.g. `42`, `"x"`, `true`). */
+  private def renderConstant(c: s.Constant): String =
+    c match
+      case s.IntConstant(v)     => v.toString
+      case s.LongConstant(v)    => s"${v}L"
+      case s.FloatConstant(v)   => s"${v}f"
+      case s.DoubleConstant(v)  => v.toString
+      case s.BooleanConstant(v) => v.toString
+      case s.CharConstant(v)    => s"'${v.toChar}'"
+      case s.StringConstant(v)  => s"\"$v\""
+      case s.ShortConstant(v)   => v.toString
+      case s.ByteConstant(v)    => v.toString
+      case s.UnitConstant()     => "Unit"
+      case s.NullConstant()     => "null"
+      case _                    => ""

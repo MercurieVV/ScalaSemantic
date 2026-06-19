@@ -38,7 +38,10 @@ object ScalaSemanticMcpPlugin extends AutoPlugin:
     val mcpServerName =
       settingKey[String]("name to register this server under in the MCP client")
     val mcpInstall =
-      taskKey[File]("write the bundled auto-download launcher script into target and return it")
+      taskKey[File](
+        "write the bundled auto-download launcher into a stable per-user dir (survives clean) " +
+          "and return it"
+      )
     val mcpClientConfig =
       taskKey[Unit]("print the .mcp.json entry that registers this project's MCP server")
     val mcpRun =
@@ -49,10 +52,11 @@ object ScalaSemanticMcpPlugin extends AutoPlugin:
   override def projectSettings: Seq[Setting[?]] = Seq(
     semanticdbEnabled := true,
     mcpServerName := "scala-semantic",
-    mcpInstall := Def.uncached(writeLauncher(target.value, streams.value.log)),
-    // Default to invoking the launcher this plugin writes. Resolved against the same path mcpInstall
-    // uses, so `mcpClientConfig`/`mcpRun` (which run mcpInstall) produce a command that exists.
-    mcpServerCommand := launcherCommand(target.value / launcherName),
+    mcpInstall := Def.uncached(writeLauncher(installDir, streams.value.log)),
+    // Default to invoking the launcher this plugin writes. Resolved against the same STABLE path
+    // mcpInstall uses (not target/, which `clean` would wipe out from under a persistent .mcp.json),
+    // so `mcpClientConfig`/`mcpRun` produce a command that keeps existing.
+    mcpServerCommand := launcherCommand(installDir / launcherName),
     mcpClientConfig := {
       val log = streams.value.log
       mcpInstall.value // ensure the launcher exists on disk before we print a command pointing at it
@@ -80,8 +84,20 @@ object ScalaSemanticMcpPlugin extends AutoPlugin:
 
   /** OS-specific launcher file name (the resource bundled in the plugin jar). */
   private def launcherName: String =
-    if sys.props.getOrElse("os.name", "").toLowerCase.contains("win") then "scalasemantic-mcp.ps1"
-    else "scalasemantic-mcp.sh"
+    if isWindows then "scalasemantic-mcp.ps1" else "scalasemantic-mcp.sh"
+
+  private def isWindows: Boolean =
+    sys.props.getOrElse("os.name", "").toLowerCase.contains("win")
+
+  /** Stable per-user dir for the installed launcher — survives `clean` (unlike target/) and is the
+    * same convention as scripts/install.sh: `~/.local/bin` on Unix, `%LOCALAPPDATA%\…` on Windows.
+    */
+  private def installDir: File =
+    val home = file(sys.props.getOrElse("user.home", "."))
+    if isWindows then
+      file(sys.env.getOrElse("LOCALAPPDATA", (home / "AppData" / "Local").getAbsolutePath)) /
+        "scalasemantic-mcp" / "bin"
+    else home / ".local" / "bin"
 
   /** argv prefix to invoke a launcher script — PowerShell needs an explicit host, sh is executable.
     */

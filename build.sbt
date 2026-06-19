@@ -94,6 +94,9 @@ lazy val mcp = (project in file("mcp"))
       case "module-info.class" => MergeStrategy.discard
       case x                   => (assembly / assemblyMergeStrategy).value.apply(x)
     },
+    // DEV-ONLY launcher: runs the server straight off this build's classpath (no jar). Written under
+    // target/, so it is wiped by `clean` — do NOT reference it from a persistent .mcp.json. For that,
+    // install the stable launcher (scripts/install.sh) and use the path `mcpClientConfig` prints.
     mcpLauncher := Def.uncached {
       // sbt 2.0 classpaths are virtual-file refs; resolve to real paths via the file converter.
       val converter = fileConverter.value
@@ -104,16 +107,19 @@ lazy val mcp = (project in file("mcp"))
       val script = target.value / "scalasemantic-mcp"
       val body =
         s"""|#!/usr/bin/env sh
-            |# Standalone launcher for the ScalaSemantic server. Arg 1 = SemanticDB root (default ".").
+            |# DEV launcher for the ScalaSemantic server. Arg 1 = SemanticDB root (default ".").
             |exec java -cp "$cp" $mainClass "$$@"
             |""".stripMargin
       IO.write(script, body)
       script.setExecutable(true)
-      streams.value.log.info(s"MCP launcher written: $script")
+      streams.value.log.info(s"MCP dev launcher written: $script")
       script
     },
     mcpClientConfig := {
-      val launcher = mcpLauncher.value.getAbsolutePath
+      // Point at the STABLE installed launcher (scripts/install.sh → ~/.local/bin), which survives
+      // `clean` and is independent of the clone location — not the ephemeral target/ dev launcher.
+      val launcher =
+        java.lang.System.getProperty("user.home") + "/.local/bin/scalasemantic-mcp"
       val root = (ThisBuild / baseDirectory).value.getAbsolutePath
       val json =
         s"""|{
@@ -124,7 +130,10 @@ lazy val mcp = (project in file("mcp"))
             |    }
             |  }
             |}""".stripMargin
-      streams.value.log.info(s"Register this in your MCP client (e.g. .mcp.json):\n$json")
+      streams.value.log.info(
+        s"Register this in your MCP client (.mcp.json). First run `scripts/install.sh` " +
+          s"(or set command to the dev launcher from `mcpLauncher` for in-repo testing):\n$json"
+      )
     }
   )
 
@@ -148,6 +157,46 @@ lazy val sbtPlugin = (project in file("sbt-plugin"))
       }
     }.taskValue
   )
+
+// compat-fixtures: tiny source set cross-compiled across Scala versions to emit real SemanticDB for
+// the analyzer's cross-version test (CompatSuite). Not part of the published product, not aggregated
+// into root. `compatGolden` copies the emitted *.semanticdb into versioned golden resources under
+// analysis/src/test/resources so the suite can read them without a cross-compile at test time.
+// Scala versions the analyzer is cross-checked against. Add a version here and rerun `compatGoldenAll`
+// — nothing else needs editing (the alias loops this list, CompatSuite scans the golden dirs).
+// 2.x line + an older 3.x LTS minor; the current 3.8.4 line is already exercised by the dogfooding
+// AnalyzerSuite, so it need not be duplicated here (and would collide on the scalaBinaryVersion "3"
+// golden dir with 3.3.4).
+lazy val compatScalaVersions = Seq("2.13.16", "3.3.4")
+
+lazy val compatFixtures = (project in file("compat-fixtures"))
+  .disablePlugins(wartremover.WartRemover)
+  .settings(
+    name := "scalasemantic-compat-fixtures",
+    publish / skip := true,
+    crossScalaVersions := compatScalaVersions,
+    semanticdbEnabled := true,
+    semanticdbVersion := scalafixSemanticdb.revision,
+    compatGolden := Def.uncached {
+      (Compile / compile).value // ensure SemanticDB is freshly emitted before copying
+      val src = (Compile / semanticdbTargetRoot).value / "META-INF" / "semanticdb"
+      val dst =
+        (ThisBuild / baseDirectory).value / "analysis" / "src" / "test" / "resources" /
+          "compat" / s"scala-${scalaBinaryVersion.value}"
+      IO.delete(dst)
+      if (src.exists()) IO.copyDirectory(src, dst)
+      streams.value.log.info(s"compat golden: $src -> $dst")
+    }
+  )
+
+lazy val compatGolden = taskKey[Unit]("Copy emitted SemanticDB into versioned golden test resources")
+
+// Regenerate the golden SemanticDB for every compat Scala version in one shot. CI runs this and fails
+// if the committed golden files drift, keeping the cross-version fixtures honest as compilers bump.
+addCommandAlias(
+  "compatGoldenAll",
+  compatScalaVersions.map(v => s"++$v compatFixtures/compatGolden").mkString("; ", "; ", "")
+)
 
 lazy val root = (project in file("."))
   .aggregate(core, analysis, mcp)

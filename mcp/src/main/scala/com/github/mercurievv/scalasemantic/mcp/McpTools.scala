@@ -12,6 +12,34 @@ object McpTools:
 
   def all(az: Analyzer): List[Tool] = List(
     tool(
+      "find_symbol",
+      "Start here: resolve a plain or partial name (e.g. 'Animal', 'show') to the SemanticDB symbol " +
+        "strings the other tools require. Ranked exact > prefix > substring.",
+      List(
+        ("query", "string", "simple or partial name to search for"),
+        ("limit", "integer", "max results (default 50)")
+      ),
+      List("query")
+    ) { a =>
+      val q = argStr(a, "query")
+      val results = az.findSymbol(q, argInt(a, "limit", 50))
+      jobj(
+        Some("query" -> ujson.Str(q)),
+        Some("count" -> ujson.Num(results.size)),
+        Some(
+          "symbols" -> ujson.Arr.from(
+            results.map(r =>
+              jobj(
+                Some("symbol" -> ujson.Str(r.symbol)),
+                Some("name" -> ujson.Str(r.displayName)),
+                Some("kind" -> ujson.Str(r.kind))
+              )
+            )
+          )
+        )
+      )
+    },
+    tool(
       "find_usages",
       "All references to a symbol across the codebase, split into definitions and references (paged).",
       List(

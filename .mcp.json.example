@@ -1,0 +1,14 @@
+{
+  "_comment": [
+    "Copy this to .mcp.json and edit the paths. `command` is the launcher installed by",
+    "scripts/install.sh at a STABLE location (~/.local/bin) — not the ephemeral target/ launcher.",
+    "The single `args` entry is the root of the project to analyze (must be compiled with",
+    "semanticdbEnabled := true). For dogfooding this repo, set it to this repo's absolute path."
+  ],
+  "mcpServers": {
+    "scala-semantic": {
+      "command": "/abs/home/.local/bin/scalasemantic-mcp",
+      "args": ["/abs/path/to/project-to-analyze"]
+    }
+  }
+}
