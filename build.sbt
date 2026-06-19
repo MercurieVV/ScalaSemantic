@@ -173,9 +173,10 @@ lazy val mcp = (project in file("mcp"))
   )
 
 // sbt plugin that host projects add to enable SemanticDB + emit their MCP launch config. It shells
-// out to the server process, so it never links against the Scala 3.8.4 server. Not aggregated into
-// `root` (it builds against the sbt plugin Scala/version, separate from the modules above); build it
-// with `sbtPlugin/compile` or `sbtPlugin/publishLocal`.
+// out to the server process, so it never links against the Scala 3.8.4 server. Cross-build it as a
+// real sbt plugin: Scala 2.12 for sbt 1.x, Scala 3 for sbt 2.x. Not aggregated into `root` (it
+// builds against the sbt plugin Scala/version, separate from the modules above); build it with
+// `+sbtPlugin/compile` or `+sbtPlugin/publishLocal`.
 lazy val sbtPlugin = (project in file("sbt-plugin"))
   .enablePlugins(SbtPlugin)
   .settings(
@@ -258,7 +259,7 @@ lazy val docs = (project in file("mdoc-docs"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(core, pc, analysis, mcp)
+  .aggregate(core, pc, analysis, mcp, sbtPlugin)
   .settings(name := "ScalaSemantic", publish / skip := true)
 
 // Pre-push gate. A command alias (not a task) so clean/format/fix/test aggregate across all

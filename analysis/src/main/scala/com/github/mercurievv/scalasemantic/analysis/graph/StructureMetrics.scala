@@ -5,10 +5,10 @@ import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
 /** Computes the structural metrics for a project: per-type coupling (Ca/Ce/instability), layer
-  * (longest-path on the SCC-condensed graph), centrality (PageRank), and cycle membership across the
-  * four edge dimensions and a combined overlay, plus a module rollup and the weighted module
-  * coupling surface. Cyclic nodes are reported via `inCycle`/`sccSize` and share their cycle's layer,
-  * never assigned a faked per-node layer.
+  * (longest-path on the SCC-condensed graph), centrality (PageRank), and cycle membership across
+  * the four edge dimensions and a combined overlay, plus a module rollup and the weighted module
+  * coupling surface. Cyclic nodes are reported via `inCycle`/`sccSize` and share their cycle's
+  * layer, never assigned a faked per-node layer.
   */
 final class StructureMetrics(index: SemanticIndex):
 
