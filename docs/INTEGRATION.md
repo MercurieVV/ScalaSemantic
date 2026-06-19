@@ -44,7 +44,8 @@ argument. Pick by how much you want automated.
 
 ### Option A — sbt plugin (recommended; generates the `.mcp.json` for you)
 
-`io.github.mercurievv:sbt-scalasemantic-mcp` (built for sbt 2; cross-publish for sbt 1 with `^`). The
+`io.github.mercurievv:sbt-scalasemantic-mcp` is cross-published for sbt 1 and sbt 2. The same
+`addSbtPlugin` line works in both; sbt resolves the matching plugin artifact for your build. The
 minimal host build is one line:
 
 ```scala

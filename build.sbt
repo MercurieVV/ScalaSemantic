@@ -24,7 +24,13 @@ ThisBuild / versionScheme := Some("early-semver")
 
 // Shared across all modules: SemanticDB emission (for dogfooding + scalafix) and wart rules.
 lazy val commonSettings = Seq(
-  scalacOptions += "-Wunused:imports", // required by OrganizeImports scalafix rule
+  // Required by OrganizeImports scalafix rule. Scala 2.12 uses the old spelling.
+  scalacOptions ++= {
+    CrossVersion.partialVersion(scalaVersion.value) match {
+      case Some((2, 12)) => Seq("-Ywarn-unused-import")
+      case _             => Seq("-Wunused:imports")
+    }
+  },
   semanticdbEnabled := true,
   semanticdbVersion := scalafixSemanticdb.revision,
   wartremoverWarnings ++= Seq(
@@ -173,13 +179,22 @@ lazy val mcp = (project in file("mcp"))
   )
 
 // sbt plugin that host projects add to enable SemanticDB + emit their MCP launch config. It shells
-// out to the server process, so it never links against the Scala 3.8.4 server. Not aggregated into
-// `root` (it builds against the sbt plugin Scala/version, separate from the modules above); build it
-// with `sbtPlugin/compile` or `sbtPlugin/publishLocal`.
+// out to the server process, so it never links against the Scala 3.8.4 server. Cross-build it as a
+// real sbt plugin: Scala 2.12 for sbt 1.x, Scala 3 for sbt 2.x. Not aggregated into `root` (it
+// builds against the sbt plugin Scala/version, separate from the modules above); build it with
+// `+sbtPlugin/compile` or `+sbtPlugin/publishLocal`.
 lazy val sbtPlugin = (project in file("sbt-plugin"))
   .enablePlugins(SbtPlugin)
+  .settings(commonSettings)
   .settings(
     name := "sbt-scalasemantic-mcp",
+    crossScalaVersions := Seq("2.12.20", scalaVersion.value),
+    pluginCrossBuild / sbtVersion := {
+      scalaBinaryVersion.value match {
+        case "2.12" => "1.11.6"
+        case _      => "2.0.0"
+      }
+    },
     // Bundle the auto-download launcher scripts into the plugin jar so `mcpInstall` can write them
     // into a host project's target dir. Single source of truth = top-level scripts/.
     Compile / resourceGenerators += Def.task {
@@ -258,7 +273,7 @@ lazy val docs = (project in file("mdoc-docs"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(core, pc, analysis, mcp)
+  .aggregate(core, pc, analysis, mcp, sbtPlugin)
   .settings(name := "ScalaSemantic", publish / skip := true)
 
 // Pre-push gate. A command alias (not a task) so clean/format/fix/test aggregate across all

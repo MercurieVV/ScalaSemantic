@@ -120,6 +120,7 @@ case class DimensionMetrics(
     efferent: Int,
     instability: Double,
     layer: Int,
+    centrality: Double,
     sccSize: Int,
     inCycle: Boolean
 ) derives ReadWriter
@@ -151,9 +152,16 @@ case class ModuleStructure(
     inCycle: Boolean
 ) derives ReadWriter
 
+/** A directed dependency edge between two modules in the combined graph: `weight` = how many type
+  * edges cross from `from` to `to`; `inCycle` marks an edge whose endpoints share a module cycle (a
+  * mutual-dependency boundary violation).
+  */
+case class ModuleEdge(from: String, to: String, weight: Int, inCycle: Boolean) derives ReadWriter
+
 case class StructureResult(
     symbols: List[SymbolStructure],
     modules: List[ModuleStructure],
+    moduleEdges: List[ModuleEdge],
     cycles: List[DependencyCycle]
 ) derives ReadWriter
 

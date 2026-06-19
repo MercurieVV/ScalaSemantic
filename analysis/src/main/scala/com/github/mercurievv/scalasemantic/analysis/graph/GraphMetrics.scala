@@ -83,6 +83,37 @@ object GraphMetrics:
     }
     nodes.iterator.map(n => n -> componentLevels.getOrElse(componentOf(n), 0)).toMap
 
+  /** PageRank importance, where rank flows along dependency edges so a node depended on by many
+    * (important) nodes scores high — i.e. "what is central / worth understanding first". Power
+    * iteration on the `depends-on` graph; dangling nodes (depend on nothing) simply accumulate
+    * rank, which is the desired behaviour for foundations. Scores are unnormalised (relative order
+    * is what matters).
+    */
+  def pageRank(
+      nodes: Set[String],
+      graph: Graph,
+      damping: Double = 0.85,
+      iterations: Int = 40
+  ): Map[String, Double] =
+    val n = nodes.size
+    if n == 0 then Map.empty
+    else
+      val base = (1.0 - damping) / n
+      val outDegree =
+        nodes.iterator.map(x => x -> graph.getOrElse(x, Set.empty).count(nodes.contains)).toMap
+      val dependents = reverse(nodes, graph) // dependents(node) = nodes that depend on it
+      val init = nodes.iterator.map(_ -> 1.0 / n).toMap
+      (0 until iterations).foldLeft(init) { (rank, _) =>
+        nodes.iterator.map { node =>
+          val inflow = dependents
+            .getOrElse(node, Set.empty)
+            .iterator
+            .map(m => if outDegree.getOrElse(m, 0) == 0 then 0.0 else rank(m) / outDegree(m))
+            .sum
+          node -> (base + damping * inflow)
+        }.toMap
+      }
+
   /** Post-order DFS over all nodes, accumulating finish order with the last-finished node first. */
   private def finishOrder(nodes: Set[String], graph: Graph): List[String] =
     def dfs(n: String, visited: Set[String], acc: List[String]): (Set[String], List[String]) =

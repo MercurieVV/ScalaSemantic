@@ -92,6 +92,13 @@ class McpSuite extends munit.FunSuite:
     val layers = byLayer("symbols").arr.map(_("layer").num)
     assertEquals(layers.toList, layers.toList.sortBy(-_), "symbols ranked by layer desc")
 
+    // Phase 3: centrality on every symbol, the module coupling surface, and sort=centrality.
+    assert(r("symbols").arr.forall(_.obj.contains("centrality")), "symbols carry centrality")
+    assert(r.obj.contains("moduleEdges") && r("moduleEdges").arr.nonEmpty, r.render())
+    val byCent = call("structure", ujson.Obj("sort" -> "centrality", "limit" -> 5))
+    val cents = byCent("symbols").arr.map(_("centrality").num)
+    assertEquals(cents.toList, cents.toList.sortBy(-_), "symbols ranked by centrality desc")
+
     // detailed adds the per-dimension breakdown with all four dimensions
     val d = call("structure", ujson.Obj("limit" -> 1, "detailed" -> true))
     val dims = d("symbols")(0)("perDimension").obj.keys.toSet

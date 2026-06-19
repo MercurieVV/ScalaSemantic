@@ -4,10 +4,11 @@ import com.github.mercurievv.scalasemantic.analysis.graph.GraphMetrics.Graph
 import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
-/** Computes the Phase-1 structural metrics for a project: per-type coupling (Ca/Ce/instability) and
-  * cycle membership (SCC) across the four edge dimensions and a combined overlay, plus a
-  * module-level rollup. No layering — cyclic nodes are reported via `inCycle`, not assigned a faked
-  * layer.
+/** Computes the structural metrics for a project: per-type coupling (Ca/Ce/instability), layer
+  * (longest-path on the SCC-condensed graph), centrality (PageRank), and cycle membership across
+  * the four edge dimensions and a combined overlay, plus a module rollup and the weighted module
+  * coupling surface. Cyclic nodes are reported via `inCycle`/`sccSize` and share their cycle's
+  * layer, never assigned a faked per-node layer.
   */
 final class StructureMetrics(index: SemanticIndex):
 
@@ -40,13 +41,14 @@ final class StructureMetrics(index: SemanticIndex):
             .map(c => DependencyCycle(name, c.toList.sorted))
         }
 
-    StructureResult(symbols, moduleRollup, cycles)
+    StructureResult(symbols, moduleRollup, moduleEdges, cycles)
 
-  /** Per-node `DimensionMetrics` for one graph: coupling + layer + SCC size. */
+  /** Per-node `DimensionMetrics` for one graph: coupling + layer + centrality + SCC size. */
   private def metricsFor(graph: Graph): Map[String, DimensionMetrics] =
     val coupling = GraphMetrics.coupling(nodes, graph)
     val sccSize = sccSizes(nodes, graph)
     val layer = GraphMetrics.layers(nodes, graph)
+    val centrality = GraphMetrics.pageRank(nodes, graph)
     nodes.iterator.map { n =>
       val (ca, ce) = coupling.getOrElse(n, (0, 0))
       val size = sccSize.getOrElse(n, 1)
@@ -55,23 +57,26 @@ final class StructureMetrics(index: SemanticIndex):
         ce,
         GraphMetrics.instability(ca, ce),
         layer.getOrElse(n, 0),
+        centrality.getOrElse(n, 0.0),
         size,
         size > 1
       )
     }.toMap
 
-  /** Module-level rollup of the combined graph: each type's module, edges lifted to module pairs.
+  // The combined dependency graph lifted to modules (a type's module = leading uri segment).
+  private val moduleNodes: Set[String] = nodes.map(graphs.moduleOf)
+  private val moduleGraph: Graph =
+    graphs.combined.toList
+      .flatMap((from, tos) => tos.toList.map(to => graphs.moduleOf(from) -> graphs.moduleOf(to)))
+      .filter((a, b) => a != b)
+      .groupMap(_._1)(_._2)
+      .view
+      .mapValues(_.toSet)
+      .toMap
+
+  /** Module-level rollup of the combined graph: coupling, layer, and cycle membership per module.
     */
   private def moduleRollup: List[ModuleStructure] =
-    val moduleNodes = nodes.map(graphs.moduleOf)
-    val moduleGraph: Graph =
-      graphs.combined.toList
-        .flatMap((from, tos) => tos.toList.map(to => graphs.moduleOf(from) -> graphs.moduleOf(to)))
-        .filter((a, b) => a != b)
-        .groupMap(_._1)(_._2)
-        .view
-        .mapValues(_.toSet)
-        .toMap
     val coupling = GraphMetrics.coupling(moduleNodes, moduleGraph)
     val sccSize = sccSizes(moduleNodes, moduleGraph)
     val layer = GraphMetrics.layers(moduleNodes, moduleGraph)
@@ -89,6 +94,26 @@ final class StructureMetrics(index: SemanticIndex):
         sccSize = size,
         inCycle = size > 1
       )
+    }
+
+  /** Weighted module → module dependency edges (the coupling/boundary surface). `weight` counts the
+    * type edges crossing; `inCycle` flags edges whose endpoints share a module cycle (a violation).
+    */
+  private def moduleEdges: List[ModuleEdge] =
+    val weights = graphs.combined.toList
+      .flatMap((from, tos) => tos.toList.map(to => graphs.moduleOf(from) -> graphs.moduleOf(to)))
+      .filter((a, b) => a != b)
+      .groupBy(identity)
+      .view
+      .mapValues(_.size)
+      .toMap
+    val components = GraphMetrics.stronglyConnectedComponents(moduleNodes, moduleGraph)
+    val componentOf = components.iterator.zipWithIndex.flatMap((c, i) => c.map(_ -> i)).toMap
+    val componentSize = components.flatMap(c => c.map(_ -> c.size)).toMap
+    weights.toList.sortBy((pair, _) => pair).map { case ((from, to), weight) =>
+      val cyclic =
+        componentOf.get(from) == componentOf.get(to) && componentSize.getOrElse(from, 1) > 1
+      ModuleEdge(from, to, weight, cyclic)
     }
 
   private def sccSizes(nodeSet: Set[String], graph: Graph): Map[String, Int] =
