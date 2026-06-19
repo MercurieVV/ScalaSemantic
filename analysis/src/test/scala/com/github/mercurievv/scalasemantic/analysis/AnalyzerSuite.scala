@@ -31,6 +31,53 @@ class AnalyzerSuite extends munit.FunSuite:
     assert(u.references.nonEmpty, "Animal should be referenced by its subtypes")
   }
 
+  // Cross-build trait: compat-fixtures emits SemanticDB under both scala-3 and scala-2.13, and the
+  // same .semanticdb can be present in more than one target dir — exercises dedup + path scoping.
+  private val CompatAnimal = "com/github/mercurievv/scalasemantic/compat/Animal#"
+
+  test("findSymbol kind filters to a single SymbolInformation kind") {
+    val traits = az.findSymbol("Animal", kind = Some("TRAIT")).map(_.symbol).toSet
+    assertEquals(traits, Set(Animal, CompatAnimal))
+    assert(az.findSymbol("Animal", kind = Some("TRAIT")).forall(_.kind == "TRAIT"))
+  }
+
+  test("findSymbol exact matches the whole display name only") {
+    val sub = az.findSymbol("Animal").map(_.displayName)
+    assert(sub.contains("CompatAnimal"), "substring search includes CompatAnimal")
+    val exact = az.findSymbol("Animal", exact = true).map(_.displayName)
+    assert(exact.forall(_ == "Animal"), exact.toString)
+    assert(az.findSymbol("Anim", exact = true).isEmpty, "no symbol is named exactly 'Anim'")
+  }
+
+  test("findSymbol pathFilter scopes by the symbol's definition uri") {
+    val scoped = az.findSymbol("Animal", kind = Some("TRAIT"), pathFilter = Some("*compat*"))
+    assertEquals(scoped.map(_.symbol), List(CompatAnimal))
+  }
+
+  test("findUsages dedups occurrence locations (no repeated uri:line:col)") {
+    val u = az.findUsages(CompatAnimal)
+    assertEquals(u.definitions, u.definitions.distinct, "definitions must be unique")
+    assertEquals(u.references, u.references.distinct, "references must be unique")
+    // golden counts after dedup: 2 defs (scala-3 + scala-2.13), 6 refs across both builds.
+    assertEquals(u.definitions.size, 2, u.definitions.map(_.uri).toString)
+    assertEquals(u.references.size, 6, u.references.map(_.uri).toString)
+  }
+
+  test("findUsages pathFilter scopes occurrences to matching document uris") {
+    val all = az.findUsages(CompatAnimal)
+    val scoped = az.findUsages(CompatAnimal, Some("*scala-3*"))
+    assert(scoped.references.size < all.references.size, "filter must drop non-matching refs")
+    assert(scoped.references.forall(_.uri.contains("scala-3")), scoped.references.map(_.uri).toString)
+    assert(scoped.definitions.forall(_.uri.contains("scala-3")), scoped.definitions.map(_.uri).toString)
+    // golden: only the scala-3 build remains — 1 def, 4 refs.
+    assertEquals(scoped.definitions.size, 1)
+    assertEquals(scoped.references.size, 4)
+  }
+
+  test("findUsages with no pathFilter is unchanged (None keeps everything)") {
+    assertEquals(az.findUsages(CompatAnimal, None), az.findUsages(CompatAnimal))
+  }
+
   test("methodSignature captures type params and an implicit/using parameter list") {
     val sig = az.methodSignature(Render).getOrElse(fail("render should have a method signature"))
     assertEquals(sig.typeParameters, List("A"))
@@ -45,6 +92,34 @@ class AnalyzerSuite extends munit.FunSuite:
 
   test("methodSignature returns None for non-methods") {
     assertEquals(az.methodSignature(Animal), None)
+  }
+
+  test("classHierarchy pathFilter scopes related types by their definition uri") {
+    val all = az.classHierarchy(Animal).getOrElse(fail("Animal hierarchy"))
+    assertEquals(all.knownSubtypes.map(_.symbol), List(Dog, Fish))
+    // Dog/Fish are defined under fixtures, so a compat-scoped glob drops them.
+    val compat = az.classHierarchy(Animal, Some("*compat*")).getOrElse(fail("Animal hierarchy"))
+    assert(compat.knownSubtypes.isEmpty, compat.knownSubtypes.map(_.symbol).toString)
+    val fixtures = az.classHierarchy(Animal, Some("*fixtures*")).getOrElse(fail("Animal hierarchy"))
+    assertEquals(fixtures.knownSubtypes.map(_.symbol), List(Dog, Fish))
+  }
+
+  test("classHierarchy with no pathFilter is unchanged (None keeps everything)") {
+    assertEquals(az.classHierarchy(Animal, None), az.classHierarchy(Animal))
+  }
+
+  test("members pathFilter scopes members by their definition uri") {
+    // Robot inherits `greet` from Greeter (both in fixtures).
+    val all = az.members(Robot).getOrElse(fail("Robot members"))
+    assert(all.inherited.exists(_.displayName == "greet"), all.inherited.map(_.displayName).toString)
+    val compat = az.members(Robot, Some("*compat*")).getOrElse(fail("Robot members"))
+    assert(compat.declared.isEmpty && compat.inherited.isEmpty, "no Robot members live under compat")
+    val fixtures = az.members(Robot, Some("*fixtures*")).getOrElse(fail("Robot members"))
+    assert(fixtures.inherited.exists(_.displayName == "greet"))
+  }
+
+  test("members with no pathFilter is unchanged (None keeps everything)") {
+    assertEquals(az.members(Robot, None), az.members(Robot))
   }
 
   test("classHierarchy lists direct parents and transitive linearization") {

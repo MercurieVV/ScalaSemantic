@@ -17,8 +17,16 @@ final class Analyzer(index: SemanticIndex):
     * the other tools require — without it, callers cannot discover symbols at all. Parameters, type
     * parameters, self-params and constructors are excluded as they are never query targets.
     */
-  def findSymbol(query: String, limit: Int = 50): List[SymbolRef] =
+  def findSymbol(
+      query: String,
+      limit: Int = 50,
+      exact: Boolean = false,
+      kind: Option[String] = None,
+      pathFilter: Option[String] = None
+  ): List[SymbolRef] =
     val q = query.toLowerCase
+    val wantedKind = kind.map(_.toUpperCase)
+    val keepPath = bySymbolPath(pathFilter)
     val excludedKinds = Set[s.SymbolInformation.Kind](
       s.SymbolInformation.Kind.PARAMETER,
       s.SymbolInformation.Kind.TYPE_PARAMETER,
@@ -28,7 +36,12 @@ final class Analyzer(index: SemanticIndex):
       .filter(si => index.isGlobal(si.symbol))
       .filter(si => !excludedKinds.contains(si.kind))
       .filter(si => si.displayName.nonEmpty && si.displayName != "<init>")
-      .filter(_.displayName.toLowerCase.contains(q))
+      .filter { si =>
+        val n = si.displayName.toLowerCase
+        if exact then n == q else n.contains(q)
+      }
+      .filter(si => wantedKind.forall(k => si.kind.toString.toUpperCase == k))
+      .filter(si => keepPath(si.symbol))
       .toList
       .sortBy { si =>
         val n = si.displayName.toLowerCase
@@ -42,15 +55,49 @@ final class Analyzer(index: SemanticIndex):
 
   /** Every occurrence of `symbol` across all indexed documents, split into definitions and
     * references. This is inherently cross-file: occurrences are scanned over the whole index.
+    *
+    * `pathFilter`, when given, keeps only occurrences whose document uri matches the glob (`*` =
+    * any chars, unanchored substring match) — e.g. "core" + star, or star + "compat" + star.
+    * `referenceCount` reflects the filtered set.
     */
-  def findUsages(symbol: String): UsagesResult =
+  def findUsages(symbol: String, pathFilter: Option[String] = None): UsagesResult =
+    val keep = globMatcher(pathFilter)
     val located = index.occurrences.collect {
-      case (uri, occ) if occ.symbol == symbol =>
+      case (uri, occ) if occ.symbol == symbol && keep(uri) =>
         occ.role -> location(uri, occ.range)
     }
-    val defs = located.collect { case (s.SymbolOccurrence.Role.DEFINITION, loc) => loc }.toList
-    val refs = located.collect { case (s.SymbolOccurrence.Role.REFERENCE, loc) => loc }.toList
+    val defs = located.collect { case (s.SymbolOccurrence.Role.DEFINITION, loc) => loc }.distinct.toList
+    val refs = located.collect { case (s.SymbolOccurrence.Role.REFERENCE, loc) => loc }.distinct.toList
     UsagesResult(symbol, index.displayName(symbol), defs, refs)
+
+  /** A predicate from an optional glob: `*` matches any run of chars, the rest is literal, matched
+    * unanchored (substring). `None` keeps everything.
+    */
+  private def globMatcher(pattern: Option[String]): String => Boolean =
+    pattern match
+      case None => _ => true
+      case Some(glob) =>
+        val regex = glob.split("\\*", -1).map(java.util.regex.Pattern.quote).mkString(".*").r
+        uri => regex.findFirstIn(uri).isDefined
+
+  /** A symbol-level predicate: keep a symbol when its definition uri matches the glob. A symbol with
+    * no definition occurrence in the index (e.g. external types) is dropped only when a filter is
+    * given. `None` keeps everything.
+    */
+  private def bySymbolPath(pattern: Option[String]): String => Boolean =
+    pattern match
+      case None => _ => true
+      case Some(_) =>
+        val keepUri = globMatcher(pattern)
+        sym => definitionUri(sym).exists(keepUri)
+
+  /** The document uri of a symbol's definition occurrence, if the index has one. */
+  private def definitionUri(symbol: String): Option[String] =
+    index.occurrences.collectFirst {
+      case (uri, occ)
+          if occ.symbol == symbol && occ.role == s.SymbolOccurrence.Role.DEFINITION =>
+        uri
+    }
 
   // --- method-signature -----------------------------------------------------
 
@@ -73,16 +120,21 @@ final class Analyzer(index: SemanticIndex):
 
   /** Parents, transitive linearization, and known subtypes (the latter is something Metals cannot
     * answer directly — it requires scanning every type in the index).
+    *
+    * `pathFilter`, when given, keeps only related types whose own definition uri matches the glob
+    * (`*` = any chars, substring match) — scoping each list (parents, linearization, subtypes) to a
+    * subdirectory.
     */
-  def classHierarchy(symbol: String): Option[ClassHierarchy] =
+  def classHierarchy(symbol: String, pathFilter: Option[String] = None): Option[ClassHierarchy] =
+    val keep = bySymbolPath(pathFilter)
     index.info(symbol).map(_.signature).collect { case c: s.ClassSignature =>
-      val parents = c.parents.flatMap(parentSymbol).map(symbolRef).toList
+      val parents = c.parents.flatMap(parentSymbol).filter(keep).map(symbolRef).toList
       ClassHierarchy(
         symbol,
         index.displayName(symbol),
         parents,
-        linearize(symbol).map(symbolRef),
-        knownSubtypes(symbol).map(symbolRef)
+        linearize(symbol).filter(keep).map(symbolRef),
+        knownSubtypes(symbol).filter(keep).map(symbolRef)
       )
     }
 
@@ -136,14 +188,19 @@ final class Analyzer(index: SemanticIndex):
 
   /** Members declared directly on a class/trait versus those inherited from its linearization. An
     * inherited member that is re-declared locally (overridden) is reported only as declared.
+    *
+    * `pathFilter`, when given, keeps only members whose own definition uri matches the glob (`*` =
+    * any chars, substring match) — e.g. to drop members inherited from types outside a module.
     */
-  def members(symbol: String): Option[MembersResult] =
+  def members(symbol: String, pathFilter: Option[String] = None): Option[MembersResult] =
+    val keep = bySymbolPath(pathFilter)
     index.info(symbol).map(_.signature).collect { case _: s.ClassSignature =>
-      val declared = declarationSymbols(symbol).map(memberInfo(_, symbol))
+      val declared = declarationSymbols(symbol).filter(keep).map(memberInfo(_, symbol))
       val declaredNames = declared.map(_.displayName).toSet
       val inherited = linearize(symbol)
         .flatMap(parent => declarationSymbols(parent).map(memberInfo(_, parent)))
         .filterNot(m => declaredNames.contains(m.displayName))
+        .filter(m => keep(m.symbol))
         .distinctBy(_.displayName)
       MembersResult(symbol, index.displayName(symbol), declared, inherited)
     }

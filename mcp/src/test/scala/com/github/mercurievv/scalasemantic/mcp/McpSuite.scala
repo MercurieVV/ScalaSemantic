@@ -11,6 +11,7 @@ class McpSuite extends munit.FunSuite:
   private val tools = McpTools.all(Analyzer(SemanticIndex.fromProject(".")))
 
   private val Animal = "com/github/mercurievv/scalasemantic/fixtures/Animal#"
+  private val Robot = "com/github/mercurievv/scalasemantic/fixtures/Robot#"
   private val Render = "com/github/mercurievv/scalasemantic/fixtures/Sample.render()."
   private val Show = "com/github/mercurievv/scalasemantic/fixtures/Show#"
 
@@ -57,6 +58,20 @@ class McpSuite extends munit.FunSuite:
     assertEquals(r("symbols")(0)("name").str, "Animal")
   }
 
+  test("find_symbol narrows by kind, exact, and pathFilter") {
+    val byKind = call("find_symbol", ujson.Obj("query" -> "Animal", "kind" -> "TRAIT"))
+    val kinds = byKind("symbols").arr.map(_("kind").str).toSet
+    assertEquals(kinds, Set("TRAIT"))
+
+    val exact = call("find_symbol", ujson.Obj("query" -> "Animal", "exact" -> true))
+    assert(exact("symbols").arr.forall(_("name").str == "Animal"), exact.render())
+
+    val scoped =
+      call("find_symbol", ujson.Obj("query" -> "Animal", "kind" -> "TRAIT", "pathFilter" -> "*compat*"))
+    val syms = scoped("symbols").arr.map(_("symbol").str)
+    assertEquals(syms.toList, List("com/github/mercurievv/scalasemantic/compat/Animal#"))
+  }
+
   test("notifications get no response") {
     val n = ujson.Obj("jsonrpc" -> "2.0", "method" -> "notifications/initialized")
     assertEquals(Mcp.handle(n, tools), None)
@@ -77,6 +92,29 @@ class McpSuite extends munit.FunSuite:
     assert(r("references")(0).str.count(_ == ':') >= 2, r("references")(0).str)
   }
 
+  test("find_usages include selects sections; referenceCount always stays") {
+    val full = call("find_usages", ujson.Obj("symbol" -> Animal))
+    assert(full.obj.contains("definitions") && full.obj.contains("references"), full.render())
+
+    val countOnly = call("find_usages", ujson.Obj("symbol" -> Animal, "include" -> ujson.Arr()))
+    assert(!countOnly.obj.contains("definitions"), countOnly.render())
+    assert(!countOnly.obj.contains("references"), countOnly.render())
+    assert(countOnly("referenceCount").num > 0, "count must survive any include")
+
+    val refsOnly =
+      call("find_usages", ujson.Obj("symbol" -> Animal, "include" -> ujson.Arr("references")))
+    assert(!refsOnly.obj.contains("definitions"), refsOnly.render())
+    assert(refsOnly("references").arr.nonEmpty, refsOnly.render())
+  }
+
+  test("find_usages pathFilter scopes references by document-uri glob") {
+    val compat = "com/github/mercurievv/scalasemantic/compat/Animal#"
+    val all = call("find_usages", ujson.Obj("symbol" -> compat))
+    val scoped = call("find_usages", ujson.Obj("symbol" -> compat, "pathFilter" -> "*scala-3*"))
+    assert(scoped("referenceCount").num < all("referenceCount").num, "filter must drop refs")
+    assert(scoped("references").arr.forall(_.str.contains("scala-3")), scoped.render())
+  }
+
   test("method_signature is lean by default and structured only when detailed") {
     val lean = call("method_signature", ujson.Obj("symbol" -> Render))
     assertEquals(lean("signature").str, "def render[A](a: A)(implicit sh: Show[A]): String")
@@ -90,6 +128,32 @@ class McpSuite extends munit.FunSuite:
   test("class_hierarchy reports known subtypes as display names by default") {
     val r = call("class_hierarchy", ujson.Obj("symbol" -> Animal))
     assertEquals(r("knownSubtypes").arr.map(_.str).toList, List("Dog", "Fish"))
+  }
+
+  test("class_hierarchy include selects sections and pathFilter scopes subtypes") {
+    val full = call("class_hierarchy", ujson.Obj("symbol" -> Animal))
+    assert(full.obj.contains("knownSubtypes"), full.render())
+
+    val only =
+      call("class_hierarchy", ujson.Obj("symbol" -> Animal, "include" -> ujson.Arr("knownSubtypes")))
+    assert(!only.obj.contains("parents") && !only.obj.contains("linearization"), only.render())
+    assertEquals(only("knownSubtypes").arr.map(_.str).toList, List("Dog", "Fish"))
+
+    // Dog/Fish live under fixtures → a compat glob empties the list, dropping the section.
+    val scoped = call("class_hierarchy", ujson.Obj("symbol" -> Animal, "pathFilter" -> "*compat*"))
+    assert(!scoped.obj.contains("knownSubtypes"), scoped.render())
+  }
+
+  test("members include selects sections and pathFilter scopes members") {
+    val full = call("members", ujson.Obj("symbol" -> Robot))
+    assert(full.obj.contains("inherited"), full.render())
+
+    val declOnly =
+      call("members", ujson.Obj("symbol" -> Robot, "include" -> ujson.Arr("declared")))
+    assert(!declOnly.obj.contains("inherited"), declOnly.render())
+
+    val scoped = call("members", ujson.Obj("symbol" -> Robot, "pathFilter" -> "*compat*"))
+    assert(!scoped.obj.contains("declared") && !scoped.obj.contains("inherited"), scoped.render())
   }
 
   test("resolve_implicits lists candidate givens for a type") {

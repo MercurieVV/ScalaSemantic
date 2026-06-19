@@ -13,16 +13,28 @@ object McpTools:
   def all(az: Analyzer): List[Tool] = List(
     tool(
       "find_symbol",
-      "Start here: resolve a plain or partial name (e.g. 'Animal', 'show') to the SemanticDB symbol " +
-        "strings the other tools require. Ranked exact > prefix > substring.",
+      "START HERE INSTEAD OF grep when you have a plain name. Resolve a plain or partial name " +
+        "(e.g. 'Animal', 'show') to the SemanticDB symbol " +
+        "strings the other tools require. Ranked exact > prefix > substring. Narrow with `exact` " +
+        "(name equality only), `kind` (e.g. TRAIT, CLASS, METHOD, OBJECT) and `pathFilter` (glob on " +
+        "the symbol's definition uri) to cut tokens.",
       List(
         ("query", "string", "simple or partial name to search for"),
-        ("limit", "integer", "max results (default 50)")
+        ("limit", "integer", "max results (default 50)"),
+        ("exact", "boolean", "match the display name exactly, case-insensitive (default false)"),
+        ("kind", "string", "keep only this SymbolInformation kind, e.g. TRAIT, CLASS, METHOD"),
+        ("pathFilter", "string", "glob on the symbol's definition uri; `*` matches any chars")
       ),
       List("query")
     ) { a =>
       val q = argStr(a, "query")
-      val results = az.findSymbol(q, argInt(a, "limit", 50))
+      val results = az.findSymbol(
+        q,
+        argInt(a, "limit", 50),
+        argBool(a, "exact", false),
+        a.obj.get("kind").map(_.str),
+        a.obj.get("pathFilter").map(_.str)
+      )
       jobj(
         Some("query" -> ujson.Str(q)),
         Some("count" -> ujson.Num(results.size)),
@@ -41,31 +53,42 @@ object McpTools:
     },
     tool(
       "find_usages",
-      "All references to a symbol across the codebase, split into definitions and references (paged).",
+      "USE INSTEAD OF grep to find where a symbol is used. All references to a symbol across the " +
+        "codebase, split into definitions and references (paged). " +
+        "Use `pathFilter` (glob, e.g. `core/*` or `*compat*`) to scope to files and `include` " +
+        "(subset of [\"definitions\",\"references\"]) to drop sections — both cut tokens. " +
+        "`referenceCount` is always returned.",
       List(
         ("symbol", "string", "SemanticDB symbol to search for"),
         ("limit", "integer", "max references to return (default 100)"),
-        ("offset", "integer", "reference offset for paging (default 0)")
+        ("offset", "integer", "reference offset for paging (default 0)"),
+        ("pathFilter", "string", "glob on document uri; `*` matches any chars (substring match)"),
+        ("include", "array", "sections to return: any of \"definitions\", \"references\" (default both)")
       ),
       List("symbol")
     ) { a =>
       val symbol = argStr(a, "symbol")
       val limit = argInt(a, "limit", 100)
       val offset = argInt(a, "offset", 0)
-      val u = az.findUsages(symbol)
+      val want = includeWant(a)
+      val u = az.findUsages(symbol, a.obj.get("pathFilter").map(_.str))
       val page = u.references.slice(offset, offset + limit)
       jobj(
         Some("symbol" -> ujson.Str(symbol)),
         Some("name" -> ujson.Str(u.displayName)),
-        opt(u.definitions.nonEmpty, "definitions" -> strs(u.definitions.map(loc))),
+        opt(want("definitions") && u.definitions.nonEmpty, "definitions" -> strs(u.definitions.map(loc))),
         Some("referenceCount" -> ujson.Num(u.references.size)),
-        opt(page.nonEmpty, "references" -> strs(page.map(loc))),
-        opt(offset + limit < u.references.size, "nextOffset" -> ujson.Num(offset + limit))
+        opt(want("references") && page.nonEmpty, "references" -> strs(page.map(loc))),
+        opt(
+          want("references") && offset + limit < u.references.size,
+          "nextOffset" -> ujson.Num(offset + limit)
+        )
       )
     },
     tool(
       "method_signature",
-      "Full method signature including type parameters and implicit/using parameter lists.",
+      "USE INSTEAD OF reading source to learn a method's shape. Full method signature including " +
+        "type parameters and implicit/using parameter lists.",
       List(
         ("symbol", "string", "method symbol"),
         ("detailed", "boolean", "include structured parameter breakdown (default false)")
@@ -105,29 +128,46 @@ object McpTools:
     },
     tool(
       "class_hierarchy",
-      "Parents, transitive linearization, and known subtypes of a class/trait.",
+      "USE INSTEAD OF grep to find subtypes/supertypes/implementers. Parents, transitive " +
+        "linearization, and known subtypes of a class/trait. Use `pathFilter` " +
+        "(glob on a related type's definition uri) and `include` (subset of [\"parents\"," +
+        "\"linearization\",\"knownSubtypes\"]) to cut tokens.",
       List(
         ("symbol", "string", "class or trait symbol"),
-        ("detailed", "boolean", "expand related types to {symbol,name,kind} (default false)")
+        ("detailed", "boolean", "expand related types to {symbol,name,kind} (default false)"),
+        ("pathFilter", "string", "glob on a related type's definition uri; `*` matches any chars"),
+        (
+          "include",
+          "array",
+          "sections to return: any of \"parents\", \"linearization\", \"knownSubtypes\" (default all)"
+        )
       ),
       List("symbol")
     ) { a =>
       val symbol = argStr(a, "symbol")
       val detailed = argBool(a, "detailed", false)
-      az.classHierarchy(symbol) match
+      val want = includeWant(a)
+      az.classHierarchy(symbol, a.obj.get("pathFilter").map(_.str)) match
         case None => notFound(symbol)
         case Some(h) =>
           jobj(
             Some("symbol" -> ujson.Str(symbol)),
             Some("name" -> ujson.Str(h.displayName)),
-            opt(h.parents.nonEmpty, "parents" -> refs(h.parents, detailed)),
-            opt(h.linearization.nonEmpty, "linearization" -> refs(h.linearization, detailed)),
-            opt(h.knownSubtypes.nonEmpty, "knownSubtypes" -> refs(h.knownSubtypes, detailed))
+            opt(want("parents") && h.parents.nonEmpty, "parents" -> refs(h.parents, detailed)),
+            opt(
+              want("linearization") && h.linearization.nonEmpty,
+              "linearization" -> refs(h.linearization, detailed)
+            ),
+            opt(
+              want("knownSubtypes") && h.knownSubtypes.nonEmpty,
+              "knownSubtypes" -> refs(h.knownSubtypes, detailed)
+            )
           )
     },
     tool(
       "find_overloads",
-      "All method overloads sharing a name and owner with the given method.",
+      "USE INSTEAD OF grep to find overloads. All method overloads sharing a name and owner with " +
+        "the given method.",
       List(("symbol", "string", "any one overload's symbol")),
       List("symbol")
     ) { a =>
@@ -139,16 +179,22 @@ object McpTools:
     },
     tool(
       "members",
-      "Members declared on a type versus those inherited from its linearization.",
+      "USE INSTEAD OF reading source to list a type's members. Members declared on a type versus " +
+        "those inherited from its linearization. Use `pathFilter` " +
+        "(glob on a member's definition uri) and `include` (subset of [\"declared\",\"inherited\"]) " +
+        "to cut tokens.",
       List(
         ("symbol", "string", "class or trait symbol"),
-        ("detailed", "boolean", "include kinds and declaring symbols (default false)")
+        ("detailed", "boolean", "include kinds and declaring symbols (default false)"),
+        ("pathFilter", "string", "glob on a member's definition uri; `*` matches any chars"),
+        ("include", "array", "sections to return: any of \"declared\", \"inherited\" (default both)")
       ),
       List("symbol")
     ) { a =>
       val symbol = argStr(a, "symbol")
       val detailed = argBool(a, "detailed", false)
-      az.members(symbol) match
+      val want = includeWant(a)
+      az.members(symbol, a.obj.get("pathFilter").map(_.str)) match
         case None => notFound(symbol)
         case Some(m) =>
           val declared =
@@ -165,13 +211,14 @@ object McpTools:
           jobj(
             Some("symbol" -> ujson.Str(symbol)),
             Some("name" -> ujson.Str(m.displayName)),
-            opt(m.declared.nonEmpty, "declared" -> declared),
-            opt(m.inherited.nonEmpty, "inherited" -> inherited)
+            opt(want("declared") && m.declared.nonEmpty, "declared" -> declared),
+            opt(want("inherited") && m.inherited.nonEmpty, "inherited" -> inherited)
           )
     },
     tool(
       "type_at_position",
-      "The most specific symbol and its type at a 0-based position in a document.",
+      "USE INSTEAD OF guessing a type from source. The most specific symbol and its type at a " +
+        "0-based position in a document.",
       List(
         ("uri", "string", "document uri as it appears in SemanticDB"),
         ("line", "integer", "0-based line"),
@@ -190,7 +237,8 @@ object McpTools:
     },
     tool(
       "resolve_implicits",
-      "Given/implicit definitions in the index that produce a given type.",
+      "USE INSTEAD OF grep for givens/implicits (grep cannot resolve them). Given/implicit " +
+        "definitions in the index that produce a given type.",
       List(("type", "string", "the wanted type's symbol, e.g. pkg/Show#")),
       List("type")
     ) { a =>
@@ -210,7 +258,8 @@ object McpTools:
     },
     tool(
       "trace_implicit_chain",
-      "Givens producing a type and the implicit dependencies they transitively pull in.",
+      "USE INSTEAD OF grep (grep cannot follow implicit resolution). Givens producing a type and " +
+        "the implicit dependencies they transitively pull in.",
       List(("type", "string", "the wanted type's symbol")),
       List("type")
     ) { a =>
@@ -233,7 +282,8 @@ object McpTools:
     },
     tool(
       "call_path",
-      "Shortest call path between two methods, with the call-site edges (detailed) that realize it.",
+      "USE INSTEAD OF grep to trace call relationships. Shortest call path between two methods, " +
+        "with the call-site edges (detailed) that realize it.",
       List(
         ("from", "string", "caller method symbol"),
         ("to", "string", "callee method symbol"),
@@ -285,6 +335,13 @@ object McpTools:
     else strs(rs.map(_.displayName))
 
   private def strs(xs: Iterable[String]): ujson.Value = ujson.Arr.from(xs.map(ujson.Str(_)))
+
+  /** A section predicate from an optional `include` array: absent → keep all sections; present →
+    * keep only the named ones.
+    */
+  private def includeWant(a: ujson.Value): String => Boolean =
+    val include = a.obj.get("include").map(_.arr.iterator.map(_.str).toSet)
+    section => include.forall(_.contains(section))
 
   private def notFound(symbol: String): ujson.Value =
     jobj(Some("symbol" -> ujson.Str(symbol)), Some("found" -> ujson.Bool(false)))
