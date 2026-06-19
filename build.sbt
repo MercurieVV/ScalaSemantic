@@ -75,9 +75,14 @@ lazy val analysis = (project in file("analysis"))
 // SemanticDB) are compiled before the MCP tests, which dogfood on the whole repo's SemanticDB.
 lazy val mcp = (project in file("mcp"))
   .dependsOn(analysis % "compile->compile;test->test")
+  .enablePlugins(BuildInfoPlugin)
   .settings(commonSettings)
   .settings(
     name := "scalasemantic-mcp",
+    // Surface the dynver-derived version to the server at runtime so `serverInfo.version` is real,
+    // not a hardcoded literal. Generates BuildInfo in the package below.
+    buildInfoKeys := Seq[BuildInfoKey](version),
+    buildInfoPackage := "com.github.mercurievv.scalasemantic.buildinfo",
     libraryDependencies ++= Seq(upickle, munit),
     // Pin the entrypoint (the module has two @main) so both the packaged Central jar and `cs launch`
     // resolve `mcpServer` without an explicit main-class flag.
@@ -197,6 +202,30 @@ addCommandAlias(
   "compatGoldenAll",
   compatScalaVersions.map(v => s"++$v compatFixtures/compatGolden").mkString("; ", "; ", "")
 )
+
+// docs: mdoc-powered documentation site. The sbt-mdoc *plugin* has no sbt 2.0 build yet, so we use
+// the mdoc *library* directly via a tiny wrapper main (DocsMain): it compiles + runs the Scala
+// snippets in `docs/mdoc/*.md` against the analyzer's own classpath, writing rendered Markdown into
+// `website/docs/` for the Docusaurus microsite. `sbt docs/run` regenerates; snippets that touch
+// SemanticDB need a prior `compile` (this build emits its own). Not aggregated/published.
+// mdoc-powered documentation site, driven through the mdoc *library* (the sbt-mdoc plugin has no
+// sbt 2.0 build) via DocsMain. Pinned to a Scala 3 LTS that mdoc supports and kept STANDALONE: mdoc
+// 2.9.0's snippet compiler cannot read the main build's bleeding-edge 3.8.4 TASTy, so it can neither
+// run on 3.8.4 nor `dependsOn` the analyzer. Site snippets are therefore illustrative Scala +
+// protocol JSON, not in-process analyzer calls. (Switch to live snippets once mdoc supports 3.8.x.)
+lazy val docs = (project in file("mdoc-docs"))
+  .disablePlugins(wartremover.WartRemover)
+  .settings(
+    name := "scalasemantic-docs",
+    publish / skip := true,
+    scalaVersion := "3.3.4",
+    conflictWarning := ConflictWarning.disable,
+    // Fork from the repo root so DocsMain's relative in/out paths (`docs/mdoc` -> `website/docs`)
+    // resolve correctly.
+    Compile / run / fork := true,
+    Compile / run / baseDirectory := (ThisBuild / baseDirectory).value,
+    libraryDependencies += "org.scalameta" %% "mdoc" % "2.9.0"
+  )
 
 lazy val root = (project in file("."))
   .aggregate(core, analysis, mcp)

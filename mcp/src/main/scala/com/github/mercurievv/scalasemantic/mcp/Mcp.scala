@@ -25,7 +25,8 @@ object Mcp:
 
   val ProtocolVersion = "2025-06-18"
   val ServerName = "scala-semantic-mcp"
-  val ServerVersion = "0.1.0"
+  // dynver-derived at build time (see mcp/buildInfoKeys), so it tracks the published version.
+  val ServerVersion = com.github.mercurievv.scalasemantic.buildinfo.BuildInfo.version
 
   /** Usage guidance returned on `initialize` (the MCP `instructions` field). Tells the model how to
     * drive the tools and — crucially — to prefer them over text search for Scala code questions.

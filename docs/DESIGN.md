@@ -31,16 +31,26 @@ contribute tools without forking:
 The cost is turning `Tool`, `Analyzer`, and the `model` types into a *stable public API* (they are
 internal today). That is the real commitment, so this stays a research note until there is demand.
 
-## Documentation tooling: mdoc (recommended, deferred)
+## Documentation tooling: mdoc microsite
 
-The repo's ethos is dogfooding — every capability is backed by a test against this repo's own
-SemanticDB. Documentation should get the same guarantee. **Recommendation:** adopt
-[mdoc](https://scalameta.org/mdoc/) so Scala snippets in the docs are compiled and *run* at doc-build
-time; a snippet that calls `SemanticIndex.fromProject(".")` + an analyzer method prints real output
-and cannot silently rot.
+The docs are an [mdoc](https://scalameta.org/mdoc/) + [Docusaurus](https://docusaurus.io/) microsite:
+Scala fences in `docs/mdoc/*.md` are compiled and *run* at build time, so their output is real and
+cannot silently rot. Build it:
 
-- Low-cost path (recommended now): `sbt-mdoc` checking Markdown kept in `docs/` — freshness guarantee,
-  no site generator, GitHub still renders the `.md`. mdoc snippets that touch SemanticDB must run after
-  `compile` (the index reads `target/` output), the same ordering the dogfood tests rely on.
-- Deferred: a full Docusaurus microsite via mdoc. It adds a Node toolchain and a publish step; do it
-  only if a hosted docs site becomes a goal.
+```sh
+sbt docs/run              # mdoc renders docs/mdoc -> website/docs (executes the snippets)
+cd website && npm install && npm run build   # Docusaurus static site (needs Node 18+)
+```
+
+Two constraints shaped the wiring (`docs` module in `build.sbt`, driver in
+`mdoc-docs/.../DocsMain.scala`):
+
+- **No sbt-mdoc plugin on sbt 2.0.** The published `sbt-mdoc` has no `sbt2_3` artifact, so we call the
+  mdoc *library* through a tiny `DocsMain` (`mdoc.Main.process`) run via `sbt docs/run` instead of a
+  plugin task.
+- **mdoc's snippet compiler doesn't support the build's Scala version.** mdoc 2.9.0 cannot read the
+  main modules' bleeding-edge TASTy, so the `docs` module is pinned to a Scala 3 LTS and kept
+  standalone (no `dependsOn`). Consequently site snippets are illustrative Scala + protocol JSON
+  rather than in-process analyzer calls. Switch them to live analyzer calls once mdoc supports the
+  build's Scala line — `DocsMain` already hands mdoc a classpath, so it is a `dependsOn` + version
+  bump away.
