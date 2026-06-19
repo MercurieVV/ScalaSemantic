@@ -60,4 +60,5 @@ requests.foreach(println)
 - [Development](DEVELOPMENT.md) — modules, build, cross-version testing, this site
 - [Design decisions](DESIGN.md) — upickle, extensibility, docs tooling
 - [Releasing](RELEASING.md) — Sonatype Central release process
+- [Release notes](RELEASE_NOTES.md) — user-facing changes per version
 - [Plan](PLAN.md) — design rationale & tracker

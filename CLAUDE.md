@@ -42,3 +42,10 @@ sbt test
 sbt prePush      # command alias: clean; scalafmtAll; scalafixAll; Test/testOnly * (aggregates all modules)
 sbt "mcp/runMain com.github.mercurievv.scalasemantic.mcpServer <root>"  # start the server
 ```
+
+## Releasing
+Version is the git tag (`vX.Y.Z`); pushing a tag publishes to Maven Central via `sbt-ci-release`.
+**Every release MUST update [`docs/RELEASE_NOTES.md`](docs/RELEASE_NOTES.md):** before tagging,
+prepend a `## vX.Y.Z — <date>` section summarizing the user-facing changes since the previous tag
+(derive from `git log <prevTag>..HEAD`), and commit it as part of the release. Newest first. The
+release *process* is in [`docs/RELEASING.md`](docs/RELEASING.md).
