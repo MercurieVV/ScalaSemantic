@@ -48,6 +48,19 @@ class AnalyzerStructureSuite extends munit.FunSuite:
     assert(structure.symbols.forall(s => !s.combined.inCycle), "unexpected cycle in this repo")
   }
 
+  test("centrality favours foundations; module edges expose a clean coupling surface") {
+    assert(structure.moduleEdges.nonEmpty, "expected module dependency edges")
+    // clean architecture ⇒ no mutual-dependency (CYCLE) module edges.
+    val cyclic = structure.moduleEdges.filter(_.inCycle)
+    assert(cyclic.isEmpty, s"cyclic module edges: ${cyclic.map(e => e.from + "->" + e.to)}")
+    // the most central type is a stable foundation, not an unstable leaf.
+    val top = structure.symbols.maxBy(_.combined.centrality)
+    assert(
+      top.combined.instability < 0.5,
+      s"most central type is unstable: ${top.displayName} I=${top.combined.instability}"
+    )
+  }
+
   test("per-symbol metrics carry all four dimensions plus the combined overlay") {
     val s = structure.symbols.head
     assertEquals(

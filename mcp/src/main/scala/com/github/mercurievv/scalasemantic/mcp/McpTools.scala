@@ -362,15 +362,17 @@ object McpTools:
         "to start. Per in-project type: afferent coupling Ca (fan-in = how many depend on it), " +
         "efferent Ce (fan-out), instability Ce/(Ca+Ce) (0 = stable foundation, 1 = unstable leaf), " +
         "`layer` (longest dependency-chain depth: 0 = foundation, higher = built on deeper chains), " +
-        "and cycle membership. Computed over four edge dimensions (extends, memberType, call, " +
-        "implicit) and a combined overlay, with a module rollup. High Ca / low instability / low " +
-        "layer = core to understand first; `cycles` flags tangles. A cyclic node shares its cycle's " +
-        "layer (intra-cycle order undefined) and is marked `inCycle` — never given a faked layer.",
+        "`centrality` (PageRank — importance weighted by who depends on it), and cycle membership. " +
+        "Over four edge dimensions (extends, memberType, call, implicit) + a combined overlay, with a " +
+        "module rollup and `moduleEdges` (the module coupling surface; edges marked CYCLE are " +
+        "mutual-dependency violations). High centrality / Ca, low instability / layer = core to " +
+        "understand first. A cyclic node shares its cycle's layer (intra-cycle order undefined) and " +
+        "is marked `inCycle` — never given a faked layer.",
       List(
         (
           "sort",
           "string",
-          "rank symbols by: afferent | efferent | instability | layer | sccSize (default afferent)"
+          "rank symbols by: afferent | efferent | instability | layer | centrality | sccSize (default afferent)"
         ),
         (
           "dimension",
@@ -406,6 +408,7 @@ object McpTools:
           case "efferent"    => m.efferent.toDouble
           case "instability" => m.instability
           case "layer"       => m.layer.toDouble
+          case "centrality"  => m.centrality
           case "sccSize"     => m.sccSize.toDouble
           case _             => m.afferent.toDouble
       val ranked = keep.sortBy(s => -rank(pick(s))).take(argInt(a, "limit", 30))
@@ -425,6 +428,14 @@ object McpTools:
             )
           })
         ),
+        opt(
+          res.moduleEdges.nonEmpty,
+          "moduleEdges" -> strs(
+            res.moduleEdges.map(e =>
+              s"${e.from}->${e.to} (${e.weight})${if e.inCycle then " CYCLE" else ""}"
+            )
+          )
+        ),
         Some(
           "symbols" -> ujson.Arr.from(ranked.map { s =>
             val m = pick(s)
@@ -436,6 +447,7 @@ object McpTools:
               Some("ca" -> ujson.Num(m.afferent)),
               Some("ce" -> ujson.Num(m.efferent)),
               Some("instability" -> ujson.Num(round2(m.instability))),
+              Some("centrality" -> ujson.Num(round3(m.centrality))),
               opt(m.inCycle, "inCycle" -> ujson.Bool(true)),
               opt(
                 argBool(a, "detailed", false),
@@ -474,6 +486,7 @@ object McpTools:
         re.findFirstIn(module).isDefined
 
   private def round2(d: Double): Double = math.round(d * 100.0) / 100.0
+  private def round3(d: Double): Double = math.round(d * 1000.0) / 1000.0
 
   private def loc(l: Location): String =
     s"${l.uri}:${l.range.start.line}:${l.range.start.character}"
