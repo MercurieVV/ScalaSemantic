@@ -146,6 +146,19 @@ class McpSuite extends munit.FunSuite:
     assert(rp("edits").arr.forall(_.str.matches(""".+:\d+:\d+-\d+""")), rp.render())
   }
 
+  test("tools/call invokes the debug-logging hook with the tool name and args") {
+    val captured =
+      new java.util.concurrent.atomic.AtomicReference[List[(String, ujson.Value)]](Nil)
+    val rq = req(
+      "tools/call",
+      ujson.Obj("name" -> "find_symbol", "arguments" -> ujson.Obj("query" -> "Animal"))
+    )
+    val _ = Mcp.handle(rq, tools, (n, a) => { val _ = captured.updateAndGet(_ :+ (n -> a)) })
+    val c = captured.get
+    assertEquals(c.map(_._1), List("find_symbol"))
+    assertEquals(c.head._2("query").str, "Animal")
+  }
+
   test("notifications get no response") {
     val n = ujson.Obj("jsonrpc" -> "2.0", "method" -> "notifications/initialized")
     assertEquals(Mcp.handle(n, tools), None)

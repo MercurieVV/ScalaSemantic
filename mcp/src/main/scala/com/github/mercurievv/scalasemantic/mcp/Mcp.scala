@@ -79,8 +79,15 @@ object Mcp:
       |Output is lean by default (locations as `uri:line:col`, signatures one line); pass
       |`"detailed": true` to expand, and page find_usages via `limit`/`offset`.""".stripMargin
 
-  /** Pure request handler (no I/O) so it can be unit-tested. Returns `None` for notifications. */
-  def handle(req: ujson.Value, tools: List[Tool]): Option[ujson.Value] =
+  /** Pure request handler (no I/O by default) so it can be unit-tested. `onToolCall(name, args)` is
+    * invoked just before a tool runs — `serve` passes a stderr debug logger; tests use the no-op
+    * default. Returns `None` for notifications.
+    */
+  def handle(
+      req: ujson.Value,
+      tools: List[Tool],
+      onToolCall: (String, ujson.Value) => Unit = (_, _) => ()
+  ): Option[ujson.Value] =
     val method = req.obj.get("method").map(_.str).getOrElse("")
     val idOpt = req.obj.get("id")
     method match
@@ -123,6 +130,7 @@ object Mcp:
           tools.find(_.name == name) match
             case None => err(id, -32602, s"Unknown tool: $name")
             case Some(tool) =>
+              onToolCall(name, args)
               scala.util.Try(tool.run(args)) match
                 case scala.util.Success(res) =>
                   ok(id, obj("content" -> ujson.Arr(textBlock(ujson.write(res)))))
@@ -141,13 +149,28 @@ object Mcp:
       case _ => idOpt.map(id => err(id, -32601, s"Method not found: $method"))
 
   /** Map a stream of newline-delimited request lines to response lines: blanks and unparseable
-    * lines are skipped, notifications produce no output. Pure, so the loop itself is testable.
+    * lines are skipped, notifications produce no output. `onToolCall` is forwarded to [[handle]]
+    * (no-op by default). Pure, so the loop itself is testable.
     */
-  def process(lines: Iterator[String], tools: List[Tool]): Iterator[String] =
+  def process(
+      lines: Iterator[String],
+      tools: List[Tool],
+      onToolCall: (String, ujson.Value) => Unit = (_, _) => ()
+  ): Iterator[String] =
     lines
       .filter(_.nonEmpty)
-      .flatMap(line => scala.util.Try(ujson.read(line)).toOption.flatMap(handle(_, tools)))
+      .flatMap(line =>
+        scala.util.Try(ujson.read(line)).toOption.flatMap(handle(_, tools, onToolCall))
+      )
       .map(ujson.write(_))
+
+  /** Debug logger written to stderr (stdout carries the JSON-RPC stream): one line per tool call
+    * with an ISO-8601 timestamp, the tool name, and its arguments (long arguments are truncated).
+    */
+  def logToolCall(name: String, args: ujson.Value): Unit =
+    val argStr = ujson.write(args)
+    val shown = if argStr.length > 300 then argStr.take(300) + "…" else argStr
+    System.err.println(s"[$ServerName] ${java.time.LocalDateTime.now()} call $name $shown")
 
   /** Blocking stdio loop. Loads the SemanticDB index for `root` once, then serves requests.
     *
@@ -171,7 +194,7 @@ object Mcp:
     val reader = java.io.BufferedReader(java.io.InputStreamReader(System.in, "UTF-8"))
     val out = java.io.PrintStream(System.out, true, "UTF-8")
     val lines = Iterator.continually(Option(reader.readLine())).takeWhile(_.isDefined).flatten
-    process(lines, tools).foreach(out.println)
+    process(lines, tools, logToolCall).foreach(out.println)
 
   /** Resolve the classpath spec (arg or `SCALASEMANTIC_CLASSPATH`) to a list of paths. A spec that
     * names an existing file is read as its contents (newline- or path-separator-delimited);
