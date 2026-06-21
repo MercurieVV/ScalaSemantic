@@ -68,3 +68,88 @@ instructions helps habit; `document_outline` removes the *reason* to grep.
 2. definition **ranges** on symbols,
 3. `rename_plan` edit-assist,
 4. `imports` / module-dependency surface.
+
+## Collecting these logs in *any* project
+
+Two independent ways to gather the same data for a different codebase — a live hook going forward,
+and a one-off mine of transcripts you already have. Both are project-agnostic; nothing here is
+specific to ScalaSemantic.
+
+### A. Live capture — a PostToolUse hook (forward-looking)
+
+Claude Code fires a [hook](https://docs.claude.com/en/docs/claude-code/hooks) after every tool call.
+[`scripts/log-scala-interaction.py`](../scripts/log-scala-interaction.py) reads the hook's JSON
+payload on stdin, keeps only calls that touch a `.scala` target (Read/Edit/Write/MultiEdit by
+`file_path`; Grep/Glob by pattern/glob/path mentioning "scala"; Bash by `.scala` in the command), and
+appends one JSONL record `{ts, tool, op, target, cwd}`. It never blocks or fails a tool — any error
+exits 0 with nothing logged.
+
+To reuse in another project:
+
+1. Copy `scripts/log-scala-interaction.py` into that repo.
+2. Register it as a `PostToolUse` hook in `.claude/settings.json` (team-wide) or
+   `.claude/settings.local.json` (personal, gitignored):
+
+   ```json
+   {
+     "hooks": {
+       "PostToolUse": [
+         {
+           "matcher": "Read|Edit|Write|MultiEdit|Grep|Glob|Bash",
+           "hooks": [
+             { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/log-scala-interaction.py\"" }
+           ]
+         }
+       ]
+     }
+   }
+   ```
+
+3. Open `/hooks` once (or restart Claude Code) so the new config is picked up.
+
+Logs land in `~/.claude/scala-interactions.jsonl` by default; override with the
+`SCALA_INTERACTION_LOG` env var (e.g. a per-project path). For a non-Scala language, change the
+`.scala` / `"scala"` filters in the script — the structure is otherwise generic.
+
+Quick look at what's been captured:
+
+```bash
+# counts by op (read / write / search / bash) — the edit:read ratio falls out of this
+jq -r .op ~/.claude/scala-interactions.jsonl | sort | uniq -c
+# most-touched files
+jq -r 'select(.op!="search" and .op!="bash") | .target' ~/.claude/scala-interactions.jsonl | sort | uniq -c | sort -rn | head
+```
+
+### B. Retroactive mine — existing session transcripts
+
+If you didn't have the hook installed, the history is still recoverable: Claude Code writes one JSONL
+transcript per session under `~/.claude/projects/<url-encoded-project-path>/*.jsonl`. Each line is a
+message; assistant tool calls carry `message.content[].type == "tool_use"` with `.name` and `.input`.
+This was the source for the study above.
+
+> Caveat: this transcript layout is Claude Code's internal format and can change between versions —
+> treat the filters below as best-effort, and eyeball a few records before trusting aggregate counts.
+
+Find the project's transcript directory (the path is the working directory with `/` → `-`):
+
+```bash
+ls ~/.claude/projects/ | grep -i <your-project-name>
+```
+
+Extract every Scala-touching tool call across all sessions for a project:
+
+```bash
+DIR=~/.claude/projects/-Users-you-IdeaProjects-your-project
+jq -c 'select(.message.content?) | .message.content[]
+        | select(.type=="tool_use")
+        | {tool: .name, input: .input}
+        | select(
+            (.input.file_path? // "" | endswith(".scala")) or
+            (.input.command?   // "" | test("\\.scala")) or
+            (([.input.pattern?, .input.glob?, .input.path?] | map(. // "") | join(" ")) | test("scala"; "i"))
+          )' "$DIR"/*.jsonl
+```
+
+From there, the same `jq … | sort | uniq -c` aggregations as in section A give the
+edit-vs-read ratio, the grep-vs-semantic-tool split, and the most-churned files — i.e. everything in
+"[The numbers that matter](#the-numbers-that-matter)" above, for *your* codebase.
