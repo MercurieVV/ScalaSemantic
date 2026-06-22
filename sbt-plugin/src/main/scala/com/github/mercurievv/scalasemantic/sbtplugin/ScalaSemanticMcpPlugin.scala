@@ -106,6 +106,14 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
           "Server will run index-only. Run `sbt mcpClasspathFile` once (requires a successful " +
             "compile) to enable the live presentation-compiler backend."
         )
+      // The server answers from SemanticDB, which is compiler output. If the project has never been
+      // compiled, the index is empty and every query returns nothing — warn instead of letting that
+      // look like a broken server. Cheap filesystem check only; does not trigger a compile.
+      if (!hasSemanticdb(baseDirectory.value))
+        log.warn(
+          "No SemanticDB found under target/ — the server will start with an empty index and every " +
+            "query will return nothing. Run `sbt compile` once first so it has symbols to answer from."
+        )
     },
     mcpRun := {
       val _ = mcpInstall.value
@@ -121,6 +129,24 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
     */
   private def classpathFile(serverName: String): File =
     installDir / s"$serverName-classpath.txt"
+
+  /** True if any `*.semanticdb` file exists under `<baseDir>/target` — i.e. the project has been
+    * compiled at least once with SemanticDB on, so the server has something to index. Pure
+    * filesystem walk, bounded to `target/`; never triggers a compile. Best-effort: any error or a
+    * missing `target/` reads as "none".
+    */
+  private def hasSemanticdb(baseDir: File): Boolean = {
+    val target = baseDir / "target"
+    if (!target.isDirectory) false
+    else
+      try {
+        var stream: java.util.stream.Stream[java.nio.file.Path] = null
+        try {
+          stream = java.nio.file.Files.walk(target.toPath)
+          stream.anyMatch(p => p.getFileName.toString.endsWith(".semanticdb"))
+        } finally if (stream != null) stream.close()
+      } catch { case _: Throwable => false }
+  }
 
   /** OS-specific launcher file name (the resource bundled in the plugin jar). */
   private def launcherName: String =
