@@ -69,7 +69,7 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
       val converter = fileConverter.value
       val cp = (Compile / fullClasspath).value
         .map(af => ClasspathCompat.toAbsolutePath(af.data, converter))
-      val out = installDir / s"${mcpServerName.value}-classpath.txt"
+      val out = classpathFile(mcpServerName.value)
       IO.write(out, cp.mkString("\n"))
       streams.value.log.info(s"MCP classpath written (${cp.size} entries): $out")
       out
@@ -82,8 +82,13 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
       val log = streams.value.log
       val _ =
         mcpInstall.value // ensure the launcher exists before we print a command pointing at it
-      val argv =
-        resolvedCommand(mcpServerCommand.value, baseDirectory.value, mcpClasspathFile.value)
+      // Reference the classpath file by PATH only — do NOT depend on `mcpClasspathFile`, which
+      // evaluates `Compile / fullClasspath` and so forces a full compile. Printing a config entry
+      // must work even when the project does not compile. The server treats a not-yet-written
+      // classpath file as index-only; run `sbt mcpClasspathFile` once (needs a clean compile) to
+      // enable the live presentation-compiler backend.
+      val cpFile = classpathFile(mcpServerName.value)
+      val argv = resolvedCommand(mcpServerCommand.value, baseDirectory.value, cpFile)
       val argsJson = argv.tail.map(a => "\"" + a + "\"").mkString("[", ", ", "]")
       log.info(
         s"""|Register this in your MCP client (e.g. .mcp.json):
@@ -96,6 +101,11 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
             |  }
             |}""".stripMargin
       )
+      if (!cpFile.exists)
+        log.info(
+          "Server will run index-only. Run `sbt mcpClasspathFile` once (requires a successful " +
+            "compile) to enable the live presentation-compiler backend."
+        )
     },
     mcpRun := {
       val _ = mcpInstall.value
@@ -105,6 +115,12 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
       if (exit != 0) sys.error(s"MCP server exited with code $exit")
     }
   )
+
+  /** Stable path of the classpath file for a given server name. Computed (not built) so config
+    * printing can reference it without triggering a compile; [[mcpClasspathFile]] writes it here.
+    */
+  private def classpathFile(serverName: String): File =
+    installDir / s"$serverName-classpath.txt"
 
   /** OS-specific launcher file name (the resource bundled in the plugin jar). */
   private def launcherName: String =
