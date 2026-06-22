@@ -192,6 +192,17 @@ object Mcp:
     val shown = if argStr.length > 300 then argStr.take(300) + "…" else argStr
     log(s"call $name $shown")
 
+  /** Logging configuration, off by default. When `enabled` is false NO log file is created — the
+    * server is silent. `enabled` turns on diagnostic logging (startup line + one line per tool
+    * call); `logOutputs` additionally records each JSON-RPC response sent back to the client (i.e.
+    * what the LLM receives). `logOutputs` implies a sink, so it works even without `enabled`.
+    */
+  final case class LogConfig(enabled: Boolean = false, logOutputs: Boolean = false):
+    /** A sink is needed if either kind of logging is on. */
+    def active: Boolean = enabled || logOutputs
+  object LogConfig:
+    val off: LogConfig = LogConfig()
+
   /** Blocking stdio loop. Loads the SemanticDB index for `root` once, then serves requests.
     *
     * `classpath`, when given, enables the presentation-compiler second backend (live overlay of
@@ -199,10 +210,17 @@ object Mcp:
     * classpath, supplied as either a path-separated string or a path to a file containing one
     * (newline or path-separator delimited). Falls back to the `SCALASEMANTIC_CLASSPATH` env var.
     * Absent, the server is index-only and `source` arguments are ignored.
+    *
+    * `logging` controls the (opt-in) file log; see [[LogConfig]]. Default: no log file at all.
     */
-  def serve(root: String, classpath: Option[String] = None): Unit =
+  def serve(
+      root: String,
+      classpath: Option[String] = None,
+      logging: LogConfig = LogConfig.off
+  ): Unit =
     val rootPath = Paths.get(root).toAbsolutePath.nn
-    val log = fileLogger(rootPath)
+    // Only open a log sink when logging is requested, so the default run writes nothing.
+    val log: String => Unit = if logging.active then fileLogger(rootPath) else (_ => ())
     val backend = resolveClasspath(classpath).map { cp =>
       log(s"PC backend enabled (${cp.size} classpath entries)")
       new PresentationCompilerBackend(cp, workspace = Some(rootPath))
@@ -215,7 +233,12 @@ object Mcp:
     val reader = java.io.BufferedReader(java.io.InputStreamReader(System.in, "UTF-8"))
     val out = java.io.PrintStream(System.out, true, "UTF-8")
     val lines = Iterator.continually(Option(reader.readLine())).takeWhile(_.isDefined).flatten
-    process(lines, tools, logToolCall(log)).foreach(out.println)
+    // logToolCall logs inputs (when `enabled`); the tap below logs outputs (when `logOutputs`).
+    val onCall = if logging.enabled then logToolCall(log) else (_: String, _: ujson.Value) => ()
+    process(lines, tools, onCall).foreach { line =>
+      if logging.logOutputs then log(s"out $line")
+      out.println(line)
+    }
 
   /** Resolve the classpath spec (arg or `SCALASEMANTIC_CLASSPATH`) to a list of paths. A spec that
     * names an existing file is read as its contents (newline- or path-separator-delimited);

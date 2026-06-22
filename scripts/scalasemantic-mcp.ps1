@@ -13,6 +13,10 @@
 #   All other arguments are forwarded verbatim to the server: arg 1 = SemanticDB root, optional
 #   arg 2 = the compile classpath (a path-separated string or a file containing one) that enables
 #   the presentation-compiler backend for live overlay of uncompiled buffers.
+#   --log / --log-output  Forwarded to the server to turn on its (off-by-default) file log:
+#               --log writes a startup line + one line per tool call; --log-output additionally
+#               logs each JSON-RPC response sent to the LLM. (Env equivalents: SCALASEMANTIC_LOG,
+#               SCALASEMANTIC_LOG_OUTPUT; log file path via SCALASEMANTIC_LOG_FILE.)
 # Requires: java on PATH (and optionally coursier). No sbt needed.
 #
 # Pin a version instead of "latest" with:  $env:SCALASEMANTIC_VERSION = "v0.1.4"
