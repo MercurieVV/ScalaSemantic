@@ -72,13 +72,10 @@ Latest version: [![Maven Central](https://img.shields.io/maven-central/v/io.gith
 **Optional launcher flags** — append to the `.mcp.json` `args` after the project root (the launcher
 forwards them to the server; equivalent env vars in parentheses):
 
-- `--prefetch` — download + cache the jar, then exit without serving. Run once before first use
-  (`scalasemantic-mcp --prefetch .`) so the **first connect hits a warm cache** instead of racing
-  the client's ~30s connection timeout while the ~88 MB jar downloads. `install.sh` does this for you.
-- `--log` (`SCALASEMANTIC_LOG`) — write a file log: a startup line + one line per tool call.
-- `--log-output` (`SCALASEMANTIC_LOG_OUTPUT`) — additionally log each JSON-RPC response sent to the
-  model. Logging is **off by default** (no file written); set the log path via `SCALASEMANTIC_LOG_FILE`.
-
+- `--prefetch` — download + cache the jar, then exit without serving.
+- `--log` (`SCALASEMANTIC_LOG`) — log a tool call input to file.
+- `--log-output` (`SCALASEMANTIC_LOG_OUTPUT`) — log a tool call output to file.
+- 
 ```json
 {
   "mcpServers": {
