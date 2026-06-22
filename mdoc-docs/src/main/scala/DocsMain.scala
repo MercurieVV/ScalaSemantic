@@ -9,11 +9,15 @@
   */
 object DocsMain:
   def main(args: Array[String]): Unit =
+    // Latest release version, passed by the build as a -D property (falls back to a placeholder).
+    // Registered as the mdoc `@VERSION@` site variable so version snippets fill in at build time.
+    val version = Option(System.getProperty("scalasemantic.docs.version")).getOrElse("x.y.z")
     val settings = mdoc
       .MainSettings()
       .withIn(java.nio.file.Paths.get("docs"))
       .withOut(java.nio.file.Paths.get("website", "docs"))
       .withClasspath(System.getProperty("java.class.path"))
+      .withSiteVariables(Map("VERSION" -> version))
       .withArgs(args.toList)
     val exitCode = mdoc.Main.process(settings)
     if exitCode != 0 then sys.exit(exitCode)

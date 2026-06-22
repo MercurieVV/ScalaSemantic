@@ -49,13 +49,14 @@ argument. Pick by how much you want automated.
 minimal host build is one line:
 
 ```scala
-// project/plugins.sbt — replace x.y.z with the latest release (see below)
-addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "x.y.z")
+// project/plugins.sbt
+addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "@VERSION@")
 // build.sbt
 enablePlugins(ScalaSemanticMcpPlugin)
 ```
 
-Use the latest published version in place of `x.y.z` — see the
+On the rendered docs site `@VERSION@` is filled with the latest published release at build time. If
+you are reading the raw source, take the current version from the
 [Maven Central artifact](https://central.sonatype.com/artifact/io.github.mercurievv/sbt-scalasemantic-mcp_2.12_1.0)
 or the [latest GitHub release](https://github.com/MercurieVV/ScalaSemantic/releases/latest).
 

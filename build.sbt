@@ -258,6 +258,24 @@ addCommandAlias(
 // 2.9.0's snippet compiler cannot read the main build's bleeding-edge 3.8.4 TASTy, so it can neither
 // run on 3.8.4 nor `dependsOn` the analyzer. Site snippets are therefore illustrative Scala +
 // protocol JSON, not in-process analyzer calls. (Switch to live snippets once mdoc supports 3.8.x.)
+// Latest published release = highest `v*` git tag (strip the `v`). Feeds the docs `@VERSION@` site
+// variable so version snippets are filled at site-build time instead of hand-bumped. Best-effort:
+// if there are no tags or git is unavailable (e.g. a shallow CI checkout without tags), fall back to
+// the `x.y.z` placeholder so the build never fails on this.
+lazy val latestReleaseVersion: String =
+  try
+    scala.sys.process
+      .Process(Seq("git", "tag", "--list", "v*"))
+      .!!
+      .linesIterator
+      .map(_.trim.stripPrefix("v"))
+      .filter(_.matches("""\d+\.\d+\.\d+"""))
+      .toSeq
+      .sortBy { v => val p = v.split('.').map(_.toInt); (p(0), p(1), p(2)) }
+      .lastOption
+      .getOrElse("x.y.z")
+  catch case _: Throwable => "x.y.z"
+
 lazy val docs = (project in file("mdoc-docs"))
   .disablePlugins(wartremover.WartRemover)
   .settings(
@@ -269,6 +287,9 @@ lazy val docs = (project in file("mdoc-docs"))
     // resolve correctly.
     Compile / run / fork := true,
     Compile / run / baseDirectory := (ThisBuild / baseDirectory).value,
+    // Pass the latest release version to the forked DocsMain, which registers it as the mdoc
+    // `@VERSION@` site variable.
+    Compile / run / javaOptions += s"-Dscalasemantic.docs.version=$latestReleaseVersion",
     libraryDependencies += "org.scalameta" %% "mdoc" % "2.9.0"
   )
 
