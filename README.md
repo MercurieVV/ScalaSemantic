@@ -53,7 +53,7 @@ jar arrives on first spawn.
 
 ```scala
 // project/plugins.sbt
-addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "0.3.2")
+addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "0.3.4")
 // build.sbt
 enablePlugins(ScalaSemanticMcpPlugin)
 ```
