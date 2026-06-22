@@ -38,10 +38,17 @@ scripts/check-push-workflow.sh           # wait for CI, report the latest publis
 scripts/retry-last-tag.sh --push         # move the tag to HEAD to retry a release that failed early
 ```
 
-After a tag release publishes, GitHub Actions runs `scripts/update-doc-versions.sh vX.Y.Z` on
-`master` and commits updated dependency snippets in `README.md` and `docs/INTEGRATION.md`. This keeps
-the shown `addSbtPlugin` version and `SCALASEMANTIC_VERSION` pin aligned with the latest published
-artifact without making normal docs builds depend on Maven Central.
+Docs do not pin a concrete version, so there is nothing to bump per release:
+
+- `docs/INTEGRATION.md` (an mdoc page) uses the `@VERSION@` site variable, filled at site-build time
+  with the highest `v*` git tag (computed in `build.sbt` as `latestReleaseVersion`, passed to
+  `DocsMain` via `-Dscalasemantic.docs.version`). Always current on the rendered site; the raw source
+  shows the literal `@VERSION@`.
+- `README.md` (rendered raw by GitHub — no build step, so no `@VERSION@`) shows an `x.y.z` placeholder
+  plus the Maven Central badge / latest-release link for the real number.
+
+`scripts/update-doc-versions.sh` is a retired no-op kept only so the existing post-release CI step
+keeps succeeding; remove that step from `ci.yml` whenever the workflow is next touched.
 
 ## Release notes
 
