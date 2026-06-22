@@ -159,6 +159,19 @@ class McpSuite extends munit.FunSuite:
     assertEquals(c.head._2("query").str, "Animal")
   }
 
+  test("fileLogger writes timestamped tool-call lines to <root>/scala-semantic-mcp.log") {
+    val dir = java.nio.file.Files.createTempDirectory("ss-log").nn
+    val log = Mcp.fileLogger(dir)
+    log("serving from '.'")
+    Mcp.logToolCall(log)("find_symbol", ujson.Obj("query" -> "Animal"))
+    val file = dir.resolve(s"${Mcp.ServerName}.log")
+    val lines = java.nio.file.Files.readAllLines(file).nn
+    assertEquals(lines.size, 2)
+    assert(lines.get(0).nn.endsWith("serving from '.'"), lines.get(0))
+    assert(lines.get(1).nn.contains("""call find_symbol {"query":"Animal"}"""), lines.get(1))
+    assert(lines.get(1).nn.startsWith(s"[${Mcp.ServerName}] "), lines.get(1))
+  }
+
   test("notifications get no response") {
     val n = ujson.Obj("jsonrpc" -> "2.0", "method" -> "notifications/initialized")
     assertEquals(Mcp.handle(n, tools), None)

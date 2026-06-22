@@ -19,7 +19,7 @@ final case class Tool(
 )
 
 /** Hand-rolled MCP server over stdio JSON-RPC (no Scala MCP SDK exists). Newline-delimited JSON-RPC
-  * 2.0: one message per line in, one per line out, logs to stderr.
+  * 2.0: one message per line in, one per line out, logs to a file.
   *
   * Token discipline: every result is minimal by default — locations collapse to `uri:line:col`
   * strings, signatures to a single rendered line, related symbols to display names. Callers opt
@@ -80,7 +80,7 @@ object Mcp:
       |`"detailed": true` to expand, and page find_usages via `limit`/`offset`.""".stripMargin
 
   /** Pure request handler (no I/O by default) so it can be unit-tested. `onToolCall(name, args)` is
-    * invoked just before a tool runs — `serve` passes a stderr debug logger; tests use the no-op
+    * invoked just before a tool runs — `serve` passes a file debug logger; tests use the no-op
     * default. Returns `None` for notifications.
     */
   def handle(
@@ -164,13 +164,33 @@ object Mcp:
       )
       .map(ujson.write(_))
 
-  /** Debug logger written to stderr (stdout carries the JSON-RPC stream): one line per tool call
-    * with an ISO-8601 timestamp, the tool name, and its arguments (long arguments are truncated).
+  /** Open the append-mode log sink for a run. Resolves the file from `SCALASEMANTIC_LOG_FILE`, else
+    * `<root>/scalasemantic-mcp.log`. Returns a `log(line)` function that prepends an ISO-8601
+    * timestamp and flushes each line (so a `tail -f` sees entries live). Parent dirs are created.
     */
-  def logToolCall(name: String, args: ujson.Value): Unit =
+  def fileLogger(rootPath: Path): String => Unit =
+    val logPath = Option(System.getenv("SCALASEMANTIC_LOG_FILE"))
+      .map(_.trim)
+      .filter(_.nonEmpty)
+      .map(Paths.get(_))
+      .getOrElse(rootPath.resolve(s"$ServerName.log"))
+    Option(logPath.getParent).foreach(p => Files.createDirectories(p))
+    val out = java.io.PrintWriter(
+      java.io.OutputStreamWriter(
+        java.io.FileOutputStream(logPath.toFile, /* append = */ true),
+        "UTF-8"
+      ),
+      /* autoFlush = */ true
+    )
+    line => out.println(s"[$ServerName] ${java.time.LocalDateTime.now()} $line")
+
+  /** Per-tool-call logger over a `log` sink: one line per call with the tool name and its arguments
+    * (long arguments are truncated).
+    */
+  def logToolCall(log: String => Unit)(name: String, args: ujson.Value): Unit =
     val argStr = ujson.write(args)
     val shown = if argStr.length > 300 then argStr.take(300) + "…" else argStr
-    System.err.println(s"[$ServerName] ${java.time.LocalDateTime.now()} call $name $shown")
+    log(s"call $name $shown")
 
   /** Blocking stdio loop. Loads the SemanticDB index for `root` once, then serves requests.
     *
@@ -182,19 +202,20 @@ object Mcp:
     */
   def serve(root: String, classpath: Option[String] = None): Unit =
     val rootPath = Paths.get(root).toAbsolutePath.nn
+    val log = fileLogger(rootPath)
     val backend = resolveClasspath(classpath).map { cp =>
-      System.err.println(s"[$ServerName] PC backend enabled (${cp.size} classpath entries)")
+      log(s"PC backend enabled (${cp.size} classpath entries)")
       new PresentationCompilerBackend(cp, workspace = Some(rootPath))
     }
     val tools = McpTools.all(Analyzer(SemanticIndex.fromProject(root), backend), rootPath)
-    System.err.println(
-      s"[$ServerName] serving from '$root' with ${tools.size} tools" +
+    log(
+      s"serving from '$root' with ${tools.size} tools" +
         (if backend.isEmpty then " (index-only; pass a classpath to enable live buffers)" else "")
     )
     val reader = java.io.BufferedReader(java.io.InputStreamReader(System.in, "UTF-8"))
     val out = java.io.PrintStream(System.out, true, "UTF-8")
     val lines = Iterator.continually(Option(reader.readLine())).takeWhile(_.isDefined).flatten
-    process(lines, tools, logToolCall).foreach(out.println)
+    process(lines, tools, logToolCall(log)).foreach(out.println)
 
   /** Resolve the classpath spec (arg or `SCALASEMANTIC_CLASSPATH`) to a list of paths. A spec that
     * names an existing file is read as its contents (newline- or path-separator-delimited);
