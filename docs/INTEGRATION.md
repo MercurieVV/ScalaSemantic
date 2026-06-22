@@ -78,24 +78,25 @@ Scala 3.8.4 server, which is why it is sbt-1/2 and build-tool portable.
 
 #### What `mcpClientConfig` generates
 
-The task takes `mcpServerCommand` and appends the project's base directory as the trailing argument.
-With the default `mcpServerCommand` (the launcher `mcpInstall` writes) it emits:
+The task takes `mcpServerCommand`, then appends the project's base directory, the classpath file, and
+the logging flags. With the default `mcpServerCommand` (the launcher `mcpInstall` writes) it emits:
 
 ```json
 {
   "mcpServers": {
     "scala-semantic": {
-      "command": "/abs/path/to/<project>/target/.../scalasemantic-mcp.sh",
-      "args": ["/abs/path/to/this/project"]
+      "command": "~/.local/bin/scalasemantic-mcp",
+      "args": ["/abs/path/to/this/project", "~/.local/bin/scala-semantic-classpath.txt", "--log", "--log-output"]
     }
   }
 }
 ```
 
-`command` = `mcpServerCommand.head`; `args` = the rest of `mcpServerCommand` plus the auto-appended
-project root. So overriding `mcpServerCommand := Seq("java", "-jar", "/abs/scalasemantic-mcp.jar")`
-would instead yield `"command": "java"`,
-`"args": ["-jar", "/abs/scalasemantic-mcp.jar", "/abs/path/to/this/project"]`.
+`command` = `mcpServerCommand.head`; `args` = the rest of `mcpServerCommand`, then the auto-appended
+project root and classpath file, then `--log --log-output` (the server's [logging](#logging) is off
+unless these are present — drop them for the silent default). So overriding
+`mcpServerCommand := Seq("java", "-jar", "/abs/scalasemantic-mcp.jar")` would instead yield
+`"command": "java"` with `"-jar", "/abs/scalasemantic-mcp.jar"` leading those same trailing args.
 Generation logic: [`ScalaSemanticMcpPlugin.scala`](../sbt-plugin/src/main/scala/com/github/mercurievv/scalasemantic/sbtplugin/ScalaSemanticMcpPlugin.scala).
 
 ### Option B — auto-download launcher
