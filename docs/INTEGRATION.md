@@ -114,6 +114,14 @@ the client's ~30s startup timeout) leaves a partial `.tmp` that the next launch 
 restarting, and the cached jar is only swapped in once complete. So a slow first download converges
 across the client's reconnect retries instead of looping.
 
+Cold start is **instant once anything is cached**: when a (non-pinned) launch finds a cached jar it
+serves that one *immediately* — zero download latency — and forks a detached background updater that
+fetches the latest release for the **next** launch. So the very first launch on an empty cache still
+blocks on the download (warm it ahead of time with `--prefetch`, or `sbt mcpClientConfig`, which
+prefetches for you), and after a new release the launcher keeps serving the previous version for one
+more session before the background update takes effect. Pinning with `SCALASEMANTIC_VERSION` disables
+the background updater — you get exactly that version every launch.
+
 Install the launcher to a **stable path on PATH** (`~/.local/bin/scalasemantic-mcp`) so `.mcp.json`
 does not depend on where this repo is cloned — and, unlike the sbt dev launcher under `target/`, it
 survives `sbt clean`:
