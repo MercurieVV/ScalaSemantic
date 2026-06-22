@@ -250,7 +250,7 @@ addCommandAlias(
 
 // docs: mdoc-powered documentation site. The sbt-mdoc *plugin* has no sbt 2.0 build yet, so we use
 // the mdoc *library* directly via a tiny wrapper main (DocsMain): it compiles + runs the Scala
-// snippets in `docs/mdoc/*.md` against the analyzer's own classpath, writing rendered Markdown into
+// snippets in `docs/**/*.md` against the analyzer's own classpath, writing rendered Markdown into
 // `website/docs/` for the Docusaurus microsite. `sbt docs/run` regenerates; snippets that touch
 // SemanticDB need a prior `compile` (this build emits its own). Not aggregated/published.
 // mdoc-powered documentation site, driven through the mdoc *library* (the sbt-mdoc plugin has no
@@ -283,7 +283,7 @@ lazy val docs = (project in file("mdoc-docs"))
     publish / skip := true,
     scalaVersion := "3.3.4",
     conflictWarning := ConflictWarning.disable,
-    // Fork from the repo root so DocsMain's relative in/out paths (`docs/mdoc` -> `website/docs`)
+    // Fork from the repo root so DocsMain's relative in/out paths (`docs` -> `website/docs`)
     // resolve correctly.
     Compile / run / fork := true,
     Compile / run / baseDirectory := (ThisBuild / baseDirectory).value,
@@ -298,5 +298,5 @@ lazy val root = (project in file("."))
   .settings(name := "ScalaSemantic", publish / skip := true)
 
 // Pre-push gate. A command alias (not a task) so clean/format/fix/test aggregate across all
-// modules. `testOnly *` forces the full suite (sbt 2.0 `test` is cached testQuick — see docs/PLAN.md).
+// modules. `testOnly *` forces the full suite (sbt 2.0 `test` is cached testQuick — see docs/research/plan.md).
 addCommandAlias("prePush", "clean; scalafmtAll; scalafixAll; Test/testOnly *")

@@ -43,7 +43,8 @@ Add a version by appending to `compatScalaVersions` in `build.sbt` and rerunning
 nothing else changes. CI runs `compatGoldenAll` before the tests so CompatSuite always exercises the
 runner's freshly emitted SemanticDB (the committed golden is for local `sbt test` without a
 cross-compile; it is not byte-compared, since SemanticDB output isn't identical across environments).
-The supported-versions summary is in the [README](../README.md#supported-scala-versions).
+The supported-versions summary is in the
+[README](https://github.com/MercurieVV/ScalaSemantic#supported-scala-versions).
 
 Run the server from source for development:
 
@@ -71,4 +72,4 @@ sbt-2.0 / Scala-version constraints behind the setup are documented in `build.sb
 - SemanticDB bindings live in `org.scalameta:semanticdb-shared` (a 2.13 artifact consumed via
   `CrossVersion.for3Use2_13`), not in `scalameta`.
 
-More design history and decisions: [PLAN.md](PLAN.md).
+More design history and decisions: [Plan & tracker](../research/plan.md).

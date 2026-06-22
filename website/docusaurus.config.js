@@ -30,7 +30,7 @@ const config = {
   // parse as JSX/expressions). `detect` parses *.md as CommonMark and only *.mdx as MDX.
   markdown: { format: 'detect', hooks: { onBrokenMarkdownLinks: 'warn' } },
 
-  // Docs link to repo files outside the site (../README.md, ../analysis/...) and to each other;
+  // Docs link to repo files outside the site (../../README.md, ../../analysis/...) and to each other;
   // warn rather than fail the build on those.
   onBrokenLinks: 'warn',
   onBrokenAnchors: 'warn',

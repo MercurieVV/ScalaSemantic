@@ -150,7 +150,7 @@ integration.
 ## Reproducing
 
 Every capability is backed by a test dogfooded on this repo's own SemanticDB
-([`AnalyzerSuite`](../analysis/src/test/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerSuite.scala),
+([`AnalyzerSuite`](https://github.com/MercurieVV/ScalaSemantic/blob/master/analysis/src/test/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerSuite.scala),
 `McpSuite`, `CompatSuite`):
 
 ```

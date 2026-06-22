@@ -6,7 +6,7 @@ file ops by `file_path`, Grep/Glob by pattern/glob/path mentioning "scala", Bash
 command. Writes to $SCALA_INTERACTION_LOG (default ~/.claude/scala-interactions.jsonl). Never blocks
 or fails the tool — any error just exits 0 with nothing logged.
 
-See docs/CLAUDE_INTERACTION_STUDY.md for how to collect and analyse these logs.
+See docs/research/claude-interaction-study.md for how to collect and analyse these logs.
 """
 import sys, os, json, datetime
 
