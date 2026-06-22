@@ -33,6 +33,11 @@ fi
 chmod +x "$DEST"
 
 echo "Installed: $DEST" >&2
+
+# Warm the cache now so the FIRST MCP connect hits a ready jar instead of racing the client's
+# (~30s) connection timeout while an ~88 MB jar downloads. Best-effort: never fail the install.
+echo "scalasemantic-mcp: prefetching the server jar (one-time download) ..." >&2
+"$DEST" --prefetch . 1>&2 || echo "scalasemantic-mcp: prefetch skipped (will download on first run)" >&2
 case ":$PATH:" in
   *":$BIN_DIR:"*) : ;;
   *) echo "NOTE: $BIN_DIR is not on PATH — add it, or use the absolute path below." >&2 ;;

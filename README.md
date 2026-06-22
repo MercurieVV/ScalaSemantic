@@ -69,6 +69,24 @@ Latest version: [![Maven Central](https://img.shields.io/maven-central/v/io.gith
 - **Plain `java -jar`** — grab `scalasemantic-mcp.jar` from the
   [latest release](https://github.com/MercurieVV/ScalaSemantic/releases/latest) and run it directly.
 
+**Optional launcher flags** — append to the `.mcp.json` `args` after the project root (the launcher
+forwards them to the server; equivalent env vars in parentheses):
+
+- `--prefetch` — download + cache the jar, then exit without serving.
+- `--log` (`SCALASEMANTIC_LOG`) — log a tool call input to file.
+- `--log-output` (`SCALASEMANTIC_LOG_OUTPUT`) — log a tool call output to file.
+- 
+```json
+{
+  "mcpServers": {
+    "scala-semantic": {
+      "command": "~/.local/bin/scalasemantic-mcp",
+      "args": ["/abs/path/to/project", "--log", "--log-output"]
+    }
+  }
+}
+```
+
 Full setup, generated config, and lifecycle: **[docs/INTEGRATION.md](docs/INTEGRATION.md)**.
 
 ## Tools
