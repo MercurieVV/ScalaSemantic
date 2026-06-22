@@ -49,11 +49,15 @@ argument. Pick by how much you want automated.
 minimal host build is one line:
 
 ```scala
-// project/plugins.sbt
-addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "0.3.2")
+// project/plugins.sbt — replace x.y.z with the latest release (see below)
+addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "x.y.z")
 // build.sbt
 enablePlugins(ScalaSemanticMcpPlugin)
 ```
+
+Use the latest published version in place of `x.y.z` — see the
+[Maven Central artifact](https://central.sonatype.com/artifact/io.github.mercurievv/sbt-scalasemantic-mcp_2.12_1.0)
+or the [latest GitHub release](https://github.com/MercurieVV/ScalaSemantic/releases/latest).
 
 The plugin enables SemanticDB and adds:
 
@@ -99,7 +103,7 @@ path automatically: if **coursier** (`cs`) is on PATH they `cs launch` the artif
 (resolves + caches like `npx`); otherwise they download the fat jar from the latest GitHub Release once
 (cached under `~/.cache/scalasemantic-mcp` / `%LOCALAPPDATA%`) and run `java -jar`. Download chatter
 goes to stderr; stdout stays pure JSON-RPC. Offline, they fall back to the newest cached jar. Pin a
-version with `SCALASEMANTIC_VERSION=v0.3.2`.
+version with `SCALASEMANTIC_VERSION=vX.Y.Z` (a real tag such as the latest release; default is newest).
 
 Install the launcher to a **stable path on PATH** (`~/.local/bin/scalasemantic-mcp`) so `.mcp.json`
 does not depend on where this repo is cloned — and, unlike the sbt dev launcher under `target/`, it

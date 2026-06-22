@@ -52,11 +52,13 @@ Least manual: works on sbt 1 and sbt 2, enables SemanticDB, and generates the `.
 jar arrives on first spawn.
 
 ```scala
-// project/plugins.sbt
-addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "0.3.2")
+// project/plugins.sbt — replace x.y.z with the latest release (see the badge / releases page)
+addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "x.y.z")
 // build.sbt
 enablePlugins(ScalaSemanticMcpPlugin)
 ```
+
+Latest version: [![Maven Central](https://img.shields.io/maven-central/v/io.github.mercurievv/sbt-scalasemantic-mcp_2.12_1.0)](https://central.sonatype.com/artifact/io.github.mercurievv/sbt-scalasemantic-mcp_2.12_1.0) · [GitHub releases](https://github.com/MercurieVV/ScalaSemantic/releases/latest)
 
 `sbt mcpClientConfig` prints the entry; `sbt mcpRun` runs the server for testing.
 
