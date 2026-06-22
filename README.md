@@ -69,6 +69,27 @@ Latest version: [![Maven Central](https://img.shields.io/maven-central/v/io.gith
 - **Plain `java -jar`** — grab `scalasemantic-mcp.jar` from the
   [latest release](https://github.com/MercurieVV/ScalaSemantic/releases/latest) and run it directly.
 
+**Optional launcher flags** — append to the `.mcp.json` `args` after the project root (the launcher
+forwards them to the server; equivalent env vars in parentheses):
+
+- `--prefetch` — download + cache the jar, then exit without serving. Run once before first use
+  (`scalasemantic-mcp --prefetch .`) so the **first connect hits a warm cache** instead of racing
+  the client's ~30s connection timeout while the ~88 MB jar downloads. `install.sh` does this for you.
+- `--log` (`SCALASEMANTIC_LOG`) — write a file log: a startup line + one line per tool call.
+- `--log-output` (`SCALASEMANTIC_LOG_OUTPUT`) — additionally log each JSON-RPC response sent to the
+  model. Logging is **off by default** (no file written); set the log path via `SCALASEMANTIC_LOG_FILE`.
+
+```json
+{
+  "mcpServers": {
+    "scala-semantic": {
+      "command": "~/.local/bin/scalasemantic-mcp",
+      "args": ["/abs/path/to/project", "--log", "--log-output"]
+    }
+  }
+}
+```
+
 Full setup, generated config, and lifecycle: **[docs/INTEGRATION.md](docs/INTEGRATION.md)**.
 
 ## Tools
