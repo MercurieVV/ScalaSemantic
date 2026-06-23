@@ -52,7 +52,8 @@ lazy val upickle = "com.lihaoyi" %% "upickle" % "4.2.1"
 // Generate a standalone, build-tool-agnostic launcher for the MCP server: a script that runs the
 // server on a clean JVM (no sbt → no stdout pollution of the JSON-RPC stream).
 lazy val mcpLauncher = taskKey[File]("Write a standalone MCP server launch script")
-lazy val mcpClientConfig = taskKey[Unit]("Print the .mcp.json entry that registers this server")
+lazy val mcpClientConfig =
+  taskKey[Unit]("Install the launcher + write .mcp.json pointing at it (jar auto-updates in bg)")
 lazy val proguard = taskKey[File]("Run ProGuard to shrink the assembly JAR")
 lazy val testShrunk = taskKey[Unit]("Run tests using the shrunk ProGuard JAR")
 
@@ -261,24 +262,42 @@ lazy val mcp = (project in file("mcp"))
       script
     },
     mcpClientConfig := {
-      // Point at the STABLE installed launcher (scripts/install.sh → ~/.local/bin), which survives
-      // `clean` and is independent of the clone location — not the ephemeral target/ dev launcher.
-      val launcher =
-        java.lang.System.getProperty("user.home") + "/.local/bin/scalasemantic-mcp"
-      val root = (ThisBuild / baseDirectory).value.getAbsolutePath
+      val log = streams.value.log
+      // Install the STABLE auto-download launcher (the same script as scripts/install.sh) into
+      // ~/.local/bin. It survives `clean`, is independent of the clone location, and on every launch
+      // serves the newest cached fat jar immediately while forking a detached `--bg-fetch` updater
+      // that pulls the latest release for the NEXT launch. So the config points at this script — NOT
+      // a hard-coded jar path — and the jar stays current in the background without re-running this.
+      val home = file(java.lang.System.getProperty("user.home"))
+      val launcher = home / ".local" / "bin" / "scalasemantic-mcp.sh"
+      val root = (ThisBuild / baseDirectory).value
+      IO.copyFile(root / "scripts" / "scalasemantic-mcp.sh", launcher)
+      val _ = launcher.setExecutable(true)
+      log.info(s"MCP launcher installed: $launcher")
+      // Warm the jar cache NOW (best-effort) so the first client connect hits a ready jar instead of
+      // racing its connect timeout while the ~88 MB jar downloads. `--prefetch` fetches then exits.
+      try {
+        val rc = scala.sys.process.Process(Seq(launcher.getAbsolutePath, "--prefetch", ".")).!
+        if (rc != 0) log.warn(s"jar prefetch returned $rc; it will download on first connect instead.")
+      } catch {
+        case scala.util.control.NonFatal(e) =>
+          log.warn(s"jar prefetch skipped (${e.getMessage}); it will download on first connect.")
+      }
+      // Write the project-local .mcp.json that registers this server, pointing command at the
+      // launcher script (args = the SemanticDB root). Overwrites any prior entry for this repo.
       val json =
         s"""|{
             |  "mcpServers": {
             |    "scala-semantic": {
-            |      "command": "$launcher",
-            |      "args": ["$root"]
+            |      "command": "${launcher.getAbsolutePath}",
+            |      "args": ["${root.getAbsolutePath}"]
             |    }
             |  }
-            |}""".stripMargin
-      streams.value.log.info(
-        s"Register this in your MCP client (.mcp.json). First run `scripts/install.sh` " +
-          s"(or set command to the dev launcher from `mcpLauncher` for in-repo testing):\n$json"
-      )
+            |}
+            |""".stripMargin
+      val outFile = root / ".mcp.json"
+      IO.write(outFile, json)
+      log.info(s"Wrote MCP config (launcher-backed, jar auto-updates): $outFile\n$json")
     }
   )
 
