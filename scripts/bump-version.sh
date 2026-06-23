@@ -8,34 +8,21 @@
 #
 # Rules:
 # - Uses the highest existing v* semver tag if present, else FIRST_VERSION (scripts/config.sh).
-# - Switches to RELEASE_BRANCH (master by default), fast-forwards it from origin, and tags that commit.
+# - Tags the latest REMOTE RELEASE_BRANCH commit (origin/master by default) directly — it never
+#   switches branches or touches your working tree, so unrelated WIP on a feature branch does NOT
+#   block a release. Under the PR workflow this puts the tag on the merged commit, never a stale
+#   checkout or feature branch.
 # - Creates the tag locally; with --push, also pushes it to origin (which triggers the release).
 
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/config.sh"
 
-usage() { sed -n '3,12p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'; }
 
-require_clean_git() {
-  if [[ -n "$(git status --short)" ]]; then
-    echo "Git worktree is not clean. Commit or stash changes before tagging." >&2
-    exit 1
-  fi
-}
-
-# Releases are cut from the latest remote release branch commit, so under a PR workflow the tag lands
-# on the merged commit, never a stale checkout or feature branch.
-switch_to_latest_release_branch() {
-  git fetch -q --tags origin "$RELEASE_BRANCH:refs/remotes/origin/$RELEASE_BRANCH"
-
-  if git show-ref --verify --quiet "refs/heads/${RELEASE_BRANCH}"; then
-    git switch -q "$RELEASE_BRANCH"
-  else
-    git switch -q --track -c "$RELEASE_BRANCH" "origin/${RELEASE_BRANCH}"
-  fi
-
-  git merge --ff-only -q "origin/${RELEASE_BRANCH}" || {
-    echo "${RELEASE_BRANCH} cannot fast-forward to origin/${RELEASE_BRANCH}. Resolve it before tagging." >&2
+# Update origin/RELEASE_BRANCH (and tags) without disturbing the current branch or working tree.
+fetch_release_branch() {
+  git fetch -q --tags origin "$RELEASE_BRANCH:refs/remotes/origin/$RELEASE_BRANCH" || {
+    echo "Failed to fetch origin/${RELEASE_BRANCH}." >&2
     exit 1
   }
 }
@@ -69,8 +56,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-require_clean_git
-switch_to_latest_release_branch
+fetch_release_branch
 
 current="$(latest_version)"
 if [[ -z "$current" ]]; then
@@ -85,8 +71,8 @@ if git rev-parse -q --verify "refs/tags/${new_tag}" >/dev/null; then
   exit 1
 fi
 
-git tag -a "$new_tag" -m "Release ${new_tag}" "HEAD"
-echo "Created tag ${new_tag} on ${RELEASE_BRANCH} ($(git rev-parse --short HEAD))"
+git tag -a "$new_tag" -m "Release ${new_tag}" "origin/${RELEASE_BRANCH}"
+echo "Created tag ${new_tag} on ${RELEASE_BRANCH} ($(git rev-parse --short "origin/${RELEASE_BRANCH}"))"
 
 if [[ "$push_tag" == "true" ]]; then
   git push origin "$new_tag"
