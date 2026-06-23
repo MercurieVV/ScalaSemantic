@@ -11,3 +11,4 @@ addSbtPlugin("com.github.sbt" % "sbt-ci-release" % "1.11.2")
 addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "2.3.1")
 // expose the dynver-derived version to the server at runtime (BuildInfo) instead of hardcoding it.
 addSbtPlugin("com.eed3si9n" % "sbt-buildinfo" % "0.13.1")
+libraryDependencies += "com.guardsquare" % "proguard-base" % "7.9.1"
