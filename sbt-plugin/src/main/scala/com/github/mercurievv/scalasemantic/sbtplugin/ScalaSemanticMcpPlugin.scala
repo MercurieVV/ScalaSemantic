@@ -80,15 +80,35 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
     mcpServerCommand := launcherCommand(installDir / launcherName),
     mcpClientConfig := {
       val log = streams.value.log
-      val _ =
+      val launcher =
         mcpInstall.value // ensure the launcher exists before we print a command pointing at it
+      // Blocking prefetch: download + cache the server jar NOW, while the user is setting up, so the
+      // first real client connect hits a warm cache instead of racing its connect timeout while the
+      // ~88 MB jar downloads. The launcher's `--prefetch` fetches + caches, then exits without
+      // serving. Best-effort — config printing must still work offline.
+      try {
+        log.info("Prefetching the MCP server (one-time download; may take a moment)...")
+        val rc = Process(launcherCommand(launcher) :+ "--prefetch").!
+        if (rc != 0)
+          log.warn(s"MCP server prefetch returned $rc; it will download on first connect instead.")
+      } catch {
+        case scala.util.control.NonFatal(e) =>
+          log.warn(
+            s"MCP server prefetch skipped (${e.getMessage}); it will download on first connect."
+          )
+      }
       // Reference the classpath file by PATH only — do NOT depend on `mcpClasspathFile`, which
       // evaluates `Compile / fullClasspath` and so forces a full compile. Printing a config entry
       // must work even when the project does not compile. The server treats a not-yet-written
       // classpath file as index-only; run `sbt mcpClasspathFile` once (needs a clean compile) to
       // enable the live presentation-compiler backend.
       val cpFile = classpathFile(mcpServerName.value)
-      val argv = resolvedCommand(mcpServerCommand.value, baseDirectory.value, cpFile)
+      // Enable the server's file log in the generated config: `--log` (startup + per-tool-call) and
+      // `--log-output` (also each response sent to the model). Flags are position-independent; drop
+      // them from the printed `.mcp.json` if you prefer the silent default.
+      val argv =
+        resolvedCommand(mcpServerCommand.value, baseDirectory.value, cpFile) ++
+          Seq("--log", "--log-output")
       val argsJson = argv.tail.map(a => "\"" + a + "\"").mkString("[", ", ", "]")
       log.info(
         s"""|Register this in your MCP client (e.g. .mcp.json):
