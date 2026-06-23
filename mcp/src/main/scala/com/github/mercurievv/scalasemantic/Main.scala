@@ -12,7 +12,7 @@ import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
   *
   * Logging is OFF by default (no log file is written). Enable via flags — passed straight through
   * the launcher from your `.mcp.json` args — or the matching env vars:
-  *   - `--log`        (or `SCALASEMANTIC_LOG=1`): diagnostic log (startup + per-tool-call lines).
+  *   - `--log` (or `SCALASEMANTIC_LOG=1`): diagnostic log (startup + per-tool-call lines).
   *   - `--log-output` (or `SCALASEMANTIC_LOG_OUTPUT=1`): also log each JSON-RPC response sent to
   *     the LLM. Implies a sink, so it works on its own. Flags are positional-order-independent.
   */
