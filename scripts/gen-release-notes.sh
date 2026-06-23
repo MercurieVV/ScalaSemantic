@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 
-# Render docs/RELEASE_NOTES.md from the git tags, newest first, using changelog.sh as the single
+# Render docs/project/release-notes.md from the git tags, newest first, using changelog.sh as the single
 # renderer — so the site page shows exactly what each GitHub Release body shows (user-facing
 # Conventional-Commit changes only; docs/refactor/test/chore omitted).
 #
 # This file is GENERATED — do not hand-edit. The docs-site CI job runs it before building the site,
 # so a protected master needs no commit. Run it locally before `sbt docs/run` to preview.
 #
-# Usage: scripts/gen-release-notes.sh [output-file]   (default docs/RELEASE_NOTES.md)
+# Usage: scripts/gen-release-notes.sh [output-file]   (default docs/project/release-notes.md)
 
 set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" # repo root, so paths are stable
 
 here="$(dirname "${BASH_SOURCE[0]}")"
-out="${1:-docs/RELEASE_NOTES.md}"
+out="${1:-docs/project/release-notes.md}"
 
 # Semver tags, highest first.
 tags=$(git tag --list 'v*' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V -r)
@@ -23,7 +23,7 @@ tags=$(git tag --list 'v*' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | 
   echo
   echo "User-facing changes per release, newest first. Generated from the release tags (only"
   echo "\`feat\`/\`fix\`/\`perf\` and breaking changes are listed; docs, refactors, tests and chores are"
-  echo "omitted). The release *process* is in [Releasing](RELEASING.md); do not hand-edit this page."
+  echo "omitted). The release *process* is in [Releasing](releasing.md); do not hand-edit this page."
   echo
 
   prev=""

@@ -26,7 +26,7 @@ Three sbt modules, one per layer: `mcp` → `analysis` → `core`.
 | 2 | Result models (upickle case classes) | ✅ | one per tool; round-trip tests |
 | 3 | Analysis engine — query methods | ✅ | 9/9 done, 23 tests |
 | 4 | MCP protocol layer (JSON-RPC, tool registry) | ✅ | stdio, 9 tools, lean-by-default |
-| 5 | Tests: dogfood + Metals comparison | ✅ | 33 tests; docs/COMPARISON.md + README.md |
+| 5 | Tests: dogfood + Metals comparison | ✅ | 33 tests; docs/explanation/scala-semantic-vs-grep.md + README.md |
 
 ## Phase 3 — query methods (one MCP tool each)
 - ✅ find-usages (cross-file references)

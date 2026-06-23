@@ -97,12 +97,15 @@ project root and classpath file, then `--log --log-output` (the server's [loggin
 unless these are present — drop them for the silent default). So overriding
 `mcpServerCommand := Seq("java", "-jar", "/abs/scalasemantic-mcp.jar")` would instead yield
 `"command": "java"` with `"-jar", "/abs/scalasemantic-mcp.jar"` leading those same trailing args.
-Generation logic: [`ScalaSemanticMcpPlugin.scala`](../sbt-plugin/src/main/scala/com/github/mercurievv/scalasemantic/sbtplugin/ScalaSemanticMcpPlugin.scala).
+Generation logic:
+[`ScalaSemanticMcpPlugin.scala`](https://github.com/MercurieVV/ScalaSemantic/blob/master/sbt-plugin/src/main/scala/com/github/mercurievv/scalasemantic/sbtplugin/ScalaSemanticMcpPlugin.scala).
 
 ### Option B — auto-download launcher
 
-[`scripts/scalasemantic-mcp.sh`](../scripts/scalasemantic-mcp.sh) (Linux/macOS) and
-[`scripts/scalasemantic-mcp.ps1`](../scripts/scalasemantic-mcp.ps1) (Windows) pick the best available
+[`scripts/scalasemantic-mcp.sh`](https://github.com/MercurieVV/ScalaSemantic/blob/master/scripts/scalasemantic-mcp.sh)
+(Linux/macOS) and
+[`scripts/scalasemantic-mcp.ps1`](https://github.com/MercurieVV/ScalaSemantic/blob/master/scripts/scalasemantic-mcp.ps1)
+(Windows) pick the best available
 path automatically: if **coursier** (`cs`) is on PATH they `cs launch` the artifact from Maven Central
 (resolves + caches like `npx`); otherwise they download the fat jar from the latest GitHub Release once
 (cached under `~/.cache/scalasemantic-mcp` / `%LOCALAPPDATA%`) and run `java -jar`. Download chatter

@@ -78,7 +78,8 @@ specific to ScalaSemantic.
 ### A. Live capture — a PostToolUse hook (forward-looking)
 
 Claude Code fires a [hook](https://docs.claude.com/en/docs/claude-code/hooks) after every tool call.
-[`scripts/log-scala-interaction.py`](../scripts/log-scala-interaction.py) reads the hook's JSON
+[`scripts/log-scala-interaction.py`](https://github.com/MercurieVV/ScalaSemantic/blob/master/scripts/log-scala-interaction.py)
+reads the hook's JSON
 payload on stdin, keeps only calls that touch a `.scala` target (Read/Edit/Write/MultiEdit by
 `file_path`; Grep/Glob by pattern/glob/path mentioning "scala"; Bash by `.scala` in the command), and
 appends one JSONL record `{ts, tool, op, target, cwd}`. It never blocks or fails a tool — any error

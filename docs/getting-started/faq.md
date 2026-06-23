@@ -53,7 +53,7 @@ project-wide semantic queries without needing an editor cursor.
 
 ## Which install option should I choose?
 
-For sbt projects, use [Integration](INTEGRATION.md) Option A. It enables SemanticDB and generates the
+For sbt projects, use [Integration](integration.md) Option A. It enables SemanticDB and generates the
 `.mcp.json` entry. For non-sbt projects, use Option B if you want the launcher to download/cache the
 jar, or Option C if you want to manage the jar path yourself.
 

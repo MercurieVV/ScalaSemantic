@@ -3,62 +3,49 @@
 Deep semantic analysis of Scala projects over [MCP](https://modelcontextprotocol.io). It reads
 compiler-emitted **SemanticDB**, so answers reflect what the compiler resolved — not text matching.
 
-> The Scala fences below are compiled + executed by **mdoc** at site-build time, so their output is
-> real. They model the data shapes rather than call the analyzer in-process: the analyzer is built on
-> a newer Scala than mdoc's snippet compiler supports (see [Development](DEVELOPMENT.md)).
+ScalaSemantic is for AI coding agents working on Scala. Instead of asking the agent to grep source
+text and guess which matches are real, it gives the agent compiler-resolved queries for symbols,
+types, usages, inheritance, implicits, members, and call paths.
 
-## SemanticDB symbol grammar
+## Start here
 
-Every tool takes a SemanticDB **symbol string**, whose terminator encodes the kind:
+- **Install it fast:** [Quickstart](getting-started/quickstart.md) is the shortest sbt path.
+- **Wire a custom setup:** [Integration](getting-started/integration.md) covers the sbt plugin,
+  auto-download launcher, plain `java -jar`, logging, and manual stdio checks.
+- **See the tool surface:** [Tool reference](reference/tools.md) lists every MCP tool and the symbol
+  format they use.
+- **Try the tools:** [Examples](usage/examples.md) shows representative MCP calls and compact responses.
+- **Decide when to use it:** [ScalaSemantic vs grep](explanation/scala-semantic-vs-grep.md) explains where semantic queries
+  win, where text search still wins, and the measured token/context cost.
+- **Answer common setup questions:** [FAQ](getting-started/faq.md) covers SemanticDB, compile freshness, Metals/LSP,
+  and install-option choice.
 
-```scala mdoc
-enum Descriptor(val terminator: String):
-  case Package extends Descriptor("/") //  com/example/
-  case Type    extends Descriptor("#") //  Animal#
-  case Term    extends Descriptor(".") //  Sample.
-  case Method  extends Descriptor(").") // render(). , render(+1). for an overload
+## Documentation map
 
-Descriptor.values.map(d => s"${d}${d.terminator}").toList
-```
+### Get started
 
-So `com/example/Animal#` is the type `Animal` in package `com.example`, and
-`com/example/Sample.render().` is a method.
+- [Quickstart](getting-started/quickstart.md) — shortest sbt setup path.
+- [Integration](getting-started/integration.md) — register the server with an MCP client.
+- [FAQ](getting-started/faq.md) — MCP, AI-agent, and SemanticDB basics for Scala developers.
 
-## Talking to the server (stdio JSON-RPC)
+### Reference and usage
 
-`find_symbol` turns a plain name into a symbol; feed that symbol into the richer tools:
+- [Tool reference](reference/tools.md) — MCP tools, SemanticDB symbol grammar, and request shape.
+- [Examples](usage/examples.md) — sample MCP queries, responses, and grep comparisons.
 
-```scala mdoc
-def toolCallJson(id: Int, tool: String, arguments: String): String =
-  s"""{
-     |  "jsonrpc": "2.0",
-     |  "id": $id,
-     |  "method": "tools/call",
-     |  "params": {
-     |    "name": "$tool",
-     |    "arguments": $arguments
-     |  }
-     |}""".stripMargin
+### Explanation
 
-def requests: List[String] = List(
-  toolCallJson(1, "find_symbol", """{"query": "Animal"}"""),
-  toolCallJson(2, "class_hierarchy", """{"symbol": "com/example/Animal#"}""")
-)
+- [ScalaSemantic vs grep](explanation/scala-semantic-vs-grep.md) — trade-offs, measured context cost, and Metals/LSP scope.
 
-assert(requests.head.contains(""""name": "find_symbol""""))
-assert(requests(1).contains(""""symbol": "com/example/Animal#""""))
+### Project
 
-requests.foreach(println)
-```
+- [Development](project/development.md) — modules, build, cross-version testing, and this site.
+- [Design decisions](project/design.md) — implementation notes and future extension points.
+- [Releasing](project/releasing.md) — Sonatype Central release process.
+- [Release notes](project/release-notes.md) — user-facing changes per version.
 
-## Pages
+### Research
 
-- [Integration](INTEGRATION.md) — register the server with an MCP client
-- [FAQ](FAQ.md) — MCP, AI-agent, and SemanticDB basics for Scala developers
-- [Examples](EXAMPLES.md) — sample MCP queries, responses, and grep comparisons
-- [Comparison](COMPARISON.md) — vs `grep` (pros & cons), plus a note on Metals/LSP
-- [Development](DEVELOPMENT.md) — modules, build, cross-version testing, this site
-- [Design decisions](DESIGN.md) — upickle, extensibility, docs tooling
-- [Releasing](RELEASING.md) — Sonatype Central release process
-- [Release notes](RELEASE_NOTES.md) — user-facing changes per version
-- [Plan](PLAN.md) — design rationale & tracker
+- [Claude interaction study](research/claude-interaction-study.md) — measured agent behavior used to rank
+  future tool work.
+- [Plan & tracker](research/plan.md) — implementation history, backlog, and known decisions.

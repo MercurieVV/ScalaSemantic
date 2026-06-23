@@ -35,7 +35,8 @@ samples are executed at build time).
 
 Every capability is backed by a test that runs against this repo's own SemanticDB →
 [`AnalyzerSuite`](analysis/src/test/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerSuite.scala).
-Full trade-offs, including where `grep` wins: [docs/COMPARISON.md](docs/COMPARISON.md).
+Full trade-offs, including where `grep` wins:
+[docs/explanation/scala-semantic-vs-grep.md](docs/explanation/scala-semantic-vs-grep.md).
 
 ## Quickstart
 
@@ -87,7 +88,8 @@ forwards them to the server; equivalent env vars in parentheses):
 }
 ```
 
-Full setup, generated config, and lifecycle: **[docs/INTEGRATION.md](docs/INTEGRATION.md)**.
+Full setup, generated config, and lifecycle:
+**[docs/getting-started/integration.md](docs/getting-started/integration.md)**.
 
 ## Tools
 
@@ -114,17 +116,21 @@ paged.
 
 The server *reads* SemanticDB, so it is compiler-version-agnostic: it works against any project that
 emits SemanticDB. Cross-version behavior is enforced by tests — the analyzer is exercised against
-golden SemanticDB from **Scala 2.13 and 3.x** (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#cross-version-compatibility-test)).
+golden SemanticDB from **Scala 2.13 and 3.x** (see
+[docs/project/development.md](docs/project/development.md#cross-version-compatibility-test)).
 The server itself runs on any JVM (`java` 11+); the target project's Scala version is independent.
 
 ## Docs
 
 - **[Documentation site](https://mercurievv.github.io/ScalaSemantic/)** — the rendered, mdoc-checked microsite
-- [Integration](docs/INTEGRATION.md) — register with a client, sbt plugin, other build tools
-- [Comparison](docs/COMPARISON.md) — vs `grep` (pros & cons), plus a note on Metals/LSP
-- [Development](docs/DEVELOPMENT.md) — module layout, build & test, cross-version testing
-- [Design decisions](docs/DESIGN.md) — why upickle, extensibility (external-jar tools), docs tooling
-- [Releasing](docs/RELEASING.md) — Sonatype Central release process
+- [Quickstart](docs/getting-started/quickstart.md) — shortest sbt setup path
+- [Integration](docs/getting-started/integration.md) — register with a client, sbt plugin, other build tools
+- [Tool reference](docs/reference/tools.md) — MCP tools, symbol grammar, request shape
+- [Examples](docs/usage/examples.md) — sample MCP queries and responses
+- [ScalaSemantic vs grep](docs/explanation/scala-semantic-vs-grep.md) — trade-offs and measured context cost
+- [Development](docs/project/development.md) — module layout, build & test, cross-version testing
+- [Design decisions](docs/project/design.md) — implementation notes and future extension points
+- [Releasing](docs/project/releasing.md) — Sonatype Central release process
 
 ## License
 
