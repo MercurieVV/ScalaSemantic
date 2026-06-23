@@ -16,8 +16,8 @@ For a Scala developer, that means an agent can answer questions like:
 - which `given` can satisfy a type;
 - how one method can call another across the project.
 
-It is exposed over [MCP](https://modelcontextprotocol.io), so clients such as Claude Code can call it
-as a local tool while you keep using your normal Scala build.
+It is exposed over [MCP](https://modelcontextprotocol.io), so clients such as Claude Code, Codex, and
+Gemini CLI can call it as a local tool while you keep using your normal Scala build.
 
 📖 **Documentation site: <https://mercurievv.github.io/ScalaSemantic/>** (mdoc-checked, so its code
 samples are executed at build time).
@@ -43,14 +43,14 @@ Full trade-offs, including where `grep` wins:
 Your MCP client spawns the server over stdio. Two things are needed (only a **JVM** — no coursier, no sbt):
 
 1. the target project **compiled with SemanticDB** (`semanticdbEnabled := true`);
-2. a `.mcp.json` entry that launches the server with that project's root as its argument.
+2. MCP client config that launches the server with that project's root as its argument.
 
 Pick one setup:
 
 ### sbt plugin — recommended
 
-Least manual: works on sbt 1 and sbt 2, enables SemanticDB, and generates the `.mcp.json` for you; the
-jar arrives on first spawn.
+Least manual: works on sbt 1 and sbt 2, enables SemanticDB, and generates MCP client config for you;
+the jar arrives on first spawn.
 
 ```scala
 // project/plugins.sbt — replace x.y.z with the latest release (see the badge / releases page)
@@ -61,16 +61,20 @@ enablePlugins(ScalaSemanticMcpPlugin)
 
 Latest version: [![Maven Central](https://img.shields.io/maven-central/v/io.github.mercurievv/sbt-scalasemantic-mcp_2.12_1.0)](https://central.sonatype.com/artifact/io.github.mercurievv/sbt-scalasemantic-mcp_2.12_1.0) · [GitHub releases](https://github.com/MercurieVV/ScalaSemantic/releases/latest)
 
-`sbt mcpClientConfig` prints the entry; `sbt mcpRun` runs the server for testing.
+`sbt mcpClientConfig` prints the config; `sbt mcpRun` runs the server for testing. The default
+`mcpClient := "claude"` emits `.mcp.json`-style JSON. Set `mcpClient := "codex"` for Codex
+`config.toml`, `mcpClient := "gemini"` for Gemini CLI JSON, `mcpClient := "cline"` for Cline,
+`mcpClient := "roo"` for Roo Code, `mcpClient := "continue"` for Continue YAML, or
+`mcpClient := "generic-json"` for other MCP clients.
 
 ### Any build tool / OS
 
 - **Auto-download launcher** — `curl -fsSL .../scripts/install.sh | sh` (Windows: `…ps1`), then set
-  `.mcp.json` `command` to `~/.local/bin/scalasemantic-mcp`. Fetches + caches the fat jar on first run.
+  your MCP client `command` to `~/.local/bin/scalasemantic-mcp`. Fetches + caches the fat jar on first run.
 - **Plain `java -jar`** — grab `scalasemantic-mcp.jar` from the
   [latest release](https://github.com/MercurieVV/ScalaSemantic/releases/latest) and run it directly.
 
-**Optional launcher flags** — append to the `.mcp.json` `args` after the project root (the launcher
+**Optional launcher flags** — append to the MCP client `args` after the project root (the launcher
 forwards them to the server; equivalent env vars in parentheses):
 
 - `--prefetch` — download + cache the jar, then exit without serving.
