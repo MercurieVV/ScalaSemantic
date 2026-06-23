@@ -53,6 +53,38 @@ class AnalyzerPcSuite extends munit.FunSuite:
     assertEquals(at.tpe, "Int")
   }
 
+  // A method body with locals so extract-method's free-variable analysis has real structure.
+  // Lines (0-based): 4 `val a`, 5 `val b`, 6 `val c`, 7 `c`.
+  private val calc =
+    """package demo
+      |
+      |object Calc:
+      |  def run(n: Int): Int =
+      |    val a: Int = n + 1
+      |    val b: Int = a * 2
+      |    val c: Int = b + a
+      |    c
+      |""".stripMargin
+  private val calcFile = workspace.resolve("Calc.scala").nn
+  java.nio.file.Files.writeString(calcFile, calc)
+
+  test("extractMethodPlan derives params (free vars), returns (live-out), and the call site") {
+    val live = az.bufferOnly(calcFile.toUri, calc, "Calc.scala").getOrElse(fail("no PC backend"))
+    // Select lines 5..6 (`val b = a * 2` and `val c = b + a`); end is exclusive at (7, 0).
+    val p = live
+      .extractMethodPlan("Calc.scala", 5, 0, 7, 0, "compute")
+      .getOrElse(fail("expected an extract plan"))
+    // `a` is read inside but defined above the selection → a parameter.
+    assertEquals(p.parameters.map(_.name), List("a"))
+    assertEquals(p.parameters.map(_.tpe), List("Int"))
+    // `c` is defined inside and read on line 7 (after the selection) → the return; `b` is not.
+    assertEquals(p.returns.map(_.name), List("c"))
+    assertEquals(p.returnType, "Int")
+    assertEquals(p.signature, "def compute(a: Int): Int")
+    assertEquals(p.call, "val c = compute(a)")
+    assertEquals(p.enclosingMethod.map(_.displayName), Some("run"))
+  }
+
   test("bufferOnly (PC-only) queries the buffer alone; withBuffer (overlay) keeps the disk index") {
     // A disk index holding an unrelated document; the two routings differ on whether it shows.
     val diskDoc = s.TextDocument(

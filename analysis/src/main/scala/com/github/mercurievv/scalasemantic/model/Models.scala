@@ -211,6 +211,58 @@ case class RenamePlan(
     edits: List[RenameEdit]
 ) derives ReadWriter
 
+// --- move plan --------------------------------------------------------------
+
+/** One file's import adjustment for a move: in `uri`, drop `removeImport` (if non-empty) and add
+  * `addImport` (if non-empty), both as dotted fully-qualified names. A file already in the
+  * destination package needs neither and is omitted from the plan.
+  */
+case class MoveImport(uri: String, removeImport: String, addImport: String) derives ReadWriter
+
+/** The edits to move `symbol` from `fromOwner` to `toOwner` (both package symbols), keeping every
+  * call/usage resolving. `definition` is the occurrence to relocate; `references` is every
+  * compiler-resolved use across the project (so the move touches calls/usages, not just the body);
+  * `imports` is the per-file import adjustment that move-induced FQN change requires. The server is
+  * read-only — apply the returned edits yourself.
+  */
+case class MovePlan(
+    symbol: String,
+    displayName: String,
+    kind: String,
+    fromOwner: String,
+    toOwner: String,
+    fromFqn: String,
+    toFqn: String,
+    definition: Option[Location],
+    references: List[Location],
+    imports: List[MoveImport]
+) derives ReadWriter
+
+// --- extract method plan ----------------------------------------------------
+
+/** A name/type pair in an extracted method's surface (a parameter or a returned local). */
+case class ExtractBinding(name: String, tpe: String) derives ReadWriter
+
+/** The plan to extract the selected range of `uri` into a new method `methodName`. `parameters` are
+  * the locals the selection reads but does not define (free variables → params); `returns` are the
+  * locals it defines and that later code outside the selection still uses (→ the result).
+  * `signature` is the new method's declaration and `call` is the expression that replaces the
+  * selection (so both the extracted body AND its call site are covered). `enclosingMethod` is the
+  * method the selection sits in, where the new method belongs. The server is read-only — apply the
+  * edits yourself.
+  */
+case class ExtractMethodPlan(
+    uri: String,
+    range: Range,
+    methodName: String,
+    enclosingMethod: Option[SymbolRef],
+    parameters: List[ExtractBinding],
+    returns: List[ExtractBinding],
+    returnType: String,
+    signature: String,
+    call: String
+) derives ReadWriter
+
 // --- call-graph path-find ---------------------------------------------------
 
 case class CallEdge(from: SymbolRef, to: SymbolRef, at: Location) derives ReadWriter

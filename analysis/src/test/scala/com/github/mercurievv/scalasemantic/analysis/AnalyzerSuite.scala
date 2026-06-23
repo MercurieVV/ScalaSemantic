@@ -1,6 +1,9 @@
 package com.github.mercurievv.scalasemantic.analysis
 
+import com.github.mercurievv.scalasemantic.model.MoveImport
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+
+import scala.meta.internal.semanticdb as s
 
 /** Phase 3: query-engine tests against the `com.github.mercurievv.scalasemantic.fixtures`
   * SemanticDB. Several of these exercise relationships (known subtypes, implicit param lists) that
@@ -212,4 +215,34 @@ class AnalyzerSuite extends munit.FunSuite:
   test("callPath returns an empty path when the target is unreachable") {
     // c calls nothing, so a is not reachable from c.
     assertEquals(az.callPath(calls("c"), calls("a")).path, Nil)
+  }
+
+  test("movePlan relocates a symbol and rewrites its FQN, keeping every usage") {
+    val p = az.movePlan(Animal, "com/github/mercurievv/scalasemantic/relocated/")
+    assertEquals(p.fromFqn, "com.github.mercurievv.scalasemantic.fixtures.Animal")
+    assertEquals(p.toFqn, "com.github.mercurievv.scalasemantic.relocated.Animal")
+    assert(p.definition.nonEmpty, "Animal should have a definition to relocate")
+    // Dog and Fish `extends Animal` → the move covers calls/usages, not just the body.
+    assert(p.references.nonEmpty, "the move must list every reference")
+  }
+
+  test("movePlan emits a per-file import swap for cross-package references") {
+    // Two files, two packages: Foo defined in pkgA, referenced from a file in pkgB.
+    def occ(sym: String, role: s.SymbolOccurrence.Role, line: Int) =
+      s.SymbolOccurrence(symbol = sym, role = role, range = Some(s.Range(line, 0, line, 3)))
+    val docA = s.TextDocument(
+      uri = "a/Foo.scala",
+      occurrences = Seq(occ("pkgA/Foo#", s.SymbolOccurrence.Role.DEFINITION, 0))
+    )
+    val docB = s.TextDocument(
+      uri = "b/Bar.scala",
+      occurrences = Seq(
+        occ("pkgB/Bar#", s.SymbolOccurrence.Role.DEFINITION, 0),
+        occ("pkgA/Foo#", s.SymbolOccurrence.Role.REFERENCE, 1)
+      )
+    )
+    val mz = new Analyzer(new SemanticIndex(Vector(docA, docB)))
+    val p = mz.movePlan("pkgA/Foo#", "pkgC/")
+    // the definition's own file moves with it (no import edit there); only Bar.scala needs one
+    assertEquals(p.imports, List(MoveImport("b/Bar.scala", "pkgA.Foo", "pkgC.Foo")))
   }

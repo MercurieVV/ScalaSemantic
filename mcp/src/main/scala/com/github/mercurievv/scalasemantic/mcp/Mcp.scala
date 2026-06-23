@@ -50,19 +50,21 @@ object Mcp:
       |files, non-Scala files), or when these tools genuinely do not fit.
       |
       |Pick the tool by what you want to know:
-      |  who calls / references a symbol, where it is used  → find_usages
-      |  subtypes / supertypes / implementers of a type     → class_hierarchy
-      |  a method's signature / parameters / return         → method_signature
-      |  the overloads of a method                          → find_overloads
-      |  members a type declares vs. inherits               → members
-      |  which givens/implicits apply, the implicit chain   → resolve_implicits, trace_implicit_chain
-      |  whether method A reaches B, the call path          → call_path
-      |  the symbol/type at a source position               → type_at_position
-      |  the symbol for a plain name                        → find_symbol
-      |  what's important / where to start, dep cycles       → structure
-      |  a file's structure / where to edit (don't read it)  → document_outline
-      |  the full text of a .scala file (read it THIS way)   → annotated_source
-      |  the exact edits to rename a symbol safely           → rename_plan
+      |  who calls / references a symbol, where it is used    → find_usages
+      |  subtypes / supertypes / implementers of a type       → class_hierarchy
+      |  a method's signature / parameters / return           → method_signature
+      |  the overloads of a method                            → find_overloads
+      |  members a type declares vs. inherits                 → members
+      |  which givens/implicits apply, the implicit chain     → resolve_implicits, trace_implicit_chain
+      |  whether method A reaches B, the call path            → call_path
+      |  the symbol/type at a source position                 → type_at_position
+      |  the symbol for a plain name                          → find_symbol
+      |  what's important / where to start, dep cycles        → structure
+      |  a file's structure / where to edit (don't read it)   → document_outline
+      |  the full text of a .scala file (read it THIS way)    → annotated_source
+      |  the exact edits to rename a symbol safely            → rename_plan
+      |  the edits to move a symbol to another package        → move_plan
+      |  the edits to extract a code range into a new method  → extract_method_plan
       |
       |Symbols: every tool except find_symbol and type_at_position takes a SemanticDB symbol string
       |(grammar: package `foo/`, type `Foo#`, term `foo.`, method `foo().`, overloads `foo().(+1)`).
@@ -70,7 +72,7 @@ object Mcp:
       |from `find_symbol` (from a name) or `type_at_position` (from a source location), then pass it on.
       |
       |Worked example — "who calls Service.run?":
-      |  1. find_symbol "run"  → choose the result whose symbol ends `…/Service#run().`
+      |  1. find_symbol "run"                                 → choose the result whose symbol ends `…/Service#run().`
       |  2. find_usages (or call_path) with that symbol.
       |
       |Recovery: if a tool returns `found:false`, `count:0`, or empty lists, the symbol string is
