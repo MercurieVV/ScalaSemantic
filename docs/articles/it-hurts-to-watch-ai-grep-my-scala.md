@@ -45,43 +45,71 @@ It is not magic.
 
 Most answers come from SemanticDB, so they reflect your last build. If the build is stale, the data can be stale too.
 
-The presentation compiler can also inspect code you just typed and have not built yet, but not every tool uses it yet. And nothing here tries to understand comments or arbitrary plain text. For those, grep is still the right tool — and the server can tell the AI when to use it.
+The presentation compiler can also inspect code you just typed and have not built yet, but not every tool uses it yet. And nothing here tries to understand comments or arbitrary plain text. For those, grep is still the right tool — and ScalaSemantic can tell the AI when to use it.
+
+## The point
+
+Here is the part I keep thinking about.
+
+We spent years building compilers that understand our code precisely. Then we handed the code to AI assistants and let them read it with the simplest tool available.
+
+That is a little strange.
+
+The structured knowledge already exists. Someone just had to connect it.
+
+So I connected it.
+
+Now the AI can ask the compiler. It is faster, cheaper, and stops embarrassing itself in front of my code.
+
+A small win. But an honest one.
 
 ## How it works, technically
 
-ScalaSemantic is deliberately boring infrastructure.
+### Query flow
 
-It is a local MCP server. Your AI client starts it as a normal process over stdio, then sends JSON-RPC tool calls to it. There is no daemon to manage, no editor plugin protocol to reverse-engineer, and no dependency on a specific AI vendor. Claude Code, Codex, Gemini CLI, Cline, Roo Code, Continue, or any other MCP client can spawn the same process.
+```text
+LLM                              asks a Scala question
+  -> MCP client                  chooses a tool and validates arguments
+  -> stdio JSON-RPC              sends the tool call as protocol messages
+  -> ScalaSemantic               runs the semantic query
+  -> SemanticDB / live compiler  provides compiler facts
+  -> filter + transform          keeps only the useful result
+  -> compact MCP response        returns JSON
+  -> LLM context                 receives exact symbols, locations, signatures, or relationships
+```
 
-The main input is SemanticDB. When your Scala project compiles with SemanticDB enabled, the compiler writes `*.semanticdb` files containing resolved symbols, definitions, references, types, and synthetics. ScalaSemantic loads those files, walks the documents, and builds an in-memory index that can answer questions about the compiled program.
+Read the diagram left to right. After initialization, `tools/call` runs one query with JSON arguments. The result goes back as compact JSON inside the MCP response, ready to be added to the model's context.
 
-That index is why the tools can be more precise than text search:
+Once the request reaches ScalaSemantic, **the answer comes from compiler facts, not source-text matches.** With `SemanticDB` enabled, scalac records the semantic view of each source file: definitions, references, symbols, signatures, inferred types, and synthetics. The relationships in that compiler data are the important part: they tell us what the code means after name resolution, type inference, and desugaring. That is why the tool starts from SemanticDB instead of an AST or grep output: the hard Scala work has already been done by the compiler.
 
-- `find_symbol` maps a plain name to real SemanticDB symbols.
-- `find_usages` finds references to that exact symbol, not just the same text.
-- `class_hierarchy` follows inheritance relationships.
-- `method_signature` renders the compiler-known signature.
-- `resolve_implicits` and `trace_implicit_chain` expose given/implicit relationships.
-- `call_path` uses recorded relationships to find a path between methods.
-- `annotated_source` can show compiler insertions that are not obvious in the source text.
+That leads to the core lookup model: **most tools operate on SemanticDB symbols.** A symbol is not just a method name like `run`; it includes the owner and descriptor, so two unrelated `run` methods are different values. This makes the protocol a little more explicit, but it prevents the model from guessing which overloaded, imported, inherited, or renamed thing the user meant. The usual LLM flow is therefore resolve first, then query:
 
-I kept the server read-only on purpose. It does not run your build, mutate files, or try to be an IDE. The build tool remains responsible for compiling. The MCP server reads the compiler output and answers semantic questions from it. That boundary matters: it makes the tool predictable, easy to launch from different AI clients, and safe to point at real projects.
+1. call `find_symbol` or `type_at_position` to get the exact SemanticDB symbol;
+2. pass that symbol to a narrower tool such as `find_usages`, `method_signature`, `class_hierarchy`, or `call_path`.
 
-There is a second path for fresher local context: if the server gets the target project's compile classpath, it can create a presentation-compiler backend. That is useful for position-local tools, because an AI client may send source text from an unsaved or not-yet-compiled buffer. SemanticDB remains the durable project-wide index; the presentation compiler is the overlay for live source.
+The tools line up with that model:
 
-The implementation is split around that boundary:
+- `find_symbol` resolves a human name to candidate SemanticDB symbols.
+- `find_usages` returns occurrences of that exact symbol.
+- `method_signature` renders the signature recorded by the compiler.
+- `class_hierarchy`, `members`, and `call_path` derive relationships from the resolved symbol graph.
+- `resolve_implicits`, `trace_implicit_chain`, and `annotated_source` expose compiler-inserted or inferred information that is easy to miss in the written source.
 
-- `core` loads and indexes SemanticDB.
-- `analysis` turns that index into semantic queries and compact result models.
-- `pc` wraps the Scala presentation compiler for live source overlays.
-- `mcp` exposes those queries as stdio MCP tools.
-- `sbt-plugin` makes host projects emit SemanticDB and prints the MCP client configuration.
+The compiled SemanticDB path covers the project-wide view. **The presentation compiler path covers code that has changed since the last compile.** When ScalaSemantic has the project's compile classpath, it can ask the presentation compiler to produce SemanticDB for the current buffer text. Position-local tools can use that regenerated document directly; tools that still need project context can overlay that document on top of the compiled project view. This split keeps whole-project queries stable while still letting local questions see unsaved or not-yet-compiled edits.
 
-The annoying part was not the algorithm. The annoying part was the integration shape. An AI client needs clean stdout for JSON-RPC, so `sbt run` is wrong because sbt writes logs to stdout. The server must run as its own JVM. The launcher exists mostly to make that boring: it downloads or resolves the server, keeps protocol output clean, and lets the MCP client start it like any other stdio server.
+That boundary is intentional. **The build tool remains responsible for compiling.** ScalaSemantic reads compiler output, answers semantic questions, and returns compact JSON through MCP. It does not try to become a second build tool or a hidden IDE. That makes failures easier to reason about: if project-wide data is stale, recompile; if a live-buffer query needs current text, use the presentation compiler path.
+
+The response is usually **compressed first and expanded only when useful**. By default, locations become `uri:line:col`, signatures are one rendered line, related symbols are display names, and empty fields are dropped. Some tools can then explode that view on request: `detailed` returns structured fields, `include` selects result sections, `find_usages` pages with `limit`/`offset`, and `annotated_source` can render as `annotated`, `compilable`, or `plain` with optional `annotationsOnly`. The point is token control: the LLM gets the smallest precise answer first, but can ask for the richer Scala-shaped view when it needs to edit or reason deeper.
+
+### Initialization
+
+MCP initialization is separate from the query itself. The client starts ScalaSemantic as a local stdio process and speaks JSON-RPC to it. `initialize` returns instructions, and `tools/list` returns tool names plus JSON Schemas. This keeps ScalaSemantic independent from any one AI client: Claude Code, Codex, Gemini CLI, Cline, Roo Code, Continue, or another MCP client can all use the same process.
+
+The launcher exists mostly to keep the process boundary clean: an AI client needs protocol-only stdout, while `sbt run` writes build logs there, so ScalaSemantic runs as its own JVM process. Logs and diagnostics must stay away from stdout because stdout is the JSON-RPC transport. Boring process isolation matters here: one stray log line can corrupt the protocol stream.
 
 ## Minimal setup for an sbt project
 
-For sbt, use the plugin. It enables SemanticDB, installs the launcher, warms the server cache, writes the compile classpath file used by the presentation-compiler backend, and prints the config for your MCP client.
+For sbt, use the plugin. It enables SemanticDB, installs the launcher, warms the ScalaSemantic cache, writes the compile classpath file used by the presentation-compiler backend, and prints the config for your MCP client.
 
 Add the plugin:
 
@@ -104,39 +132,17 @@ sbt compile
 sbt mcpClientConfig
 ```
 
-By default it prints Claude-style `.mcp.json`. Pick another client with `mcpClient`:
+By default it prints Claude-style `.mcp.json`, which you paste into your client config manually for now. Pick another client with `mcpClient`:
 
 ```scala
-mcpClient := "claude"       // default
-mcpClient := "codex"        // Codex config.toml
-mcpClient := "gemini"       // Gemini CLI settings JSON
-mcpClient := "cline"        // Cline MCP JSON
-mcpClient := "roo"          // Roo Code MCP JSON
-mcpClient := "continue"     // Continue config.yaml
-mcpClient := "generic-json" // standard mcpServers JSON
+mcpClient := "codex"
 ```
 
-The generated config points the AI client at the launcher and passes two important arguments: the project root, where SemanticDB is loaded from, and a classpath file, which enables the presentation-compiler overlay. Paste the printed config into your client, restart the client/session, and ask a Scala question that should use semantic information.
+Supported values: `claude` (default), `codex`, `gemini`, `cline`, `roo`, `continue`, `generic-json`.
 
-For non-sbt projects, the same rule applies: make the build emit SemanticDB, install or download the launcher, and register it as a stdio MCP server with the project root as the first argument. The integration guide has the manual config shapes.
+Paste the generated config into your MCP client and restart the session. For non-sbt projects, emit SemanticDB and register ScalaSemantic with the project root.
 
-One practical note: recompile when the code changes. The project-wide answers come from compiler output on disk. If the AI asks a question about code you have not compiled yet, the answer can be stale unless the relevant tool can use the presentation-compiler overlay.
-
-## The point
-
-Here is the part I keep thinking about.
-
-We spent years building compilers that understand our code precisely. Then we handed the code to AI assistants and let them read it with the simplest tool available.
-
-That is a little strange.
-
-The structured knowledge already exists. Someone just had to connect it.
-
-So I connected it.
-
-Now the AI can ask the compiler. It is faster, cheaper, and stops embarrassing itself in front of my code.
-
-A small win. But an honest one.
+Important note. Recompile when code changes; project-wide answers come from compiler output on disk.
 
 ---
 
