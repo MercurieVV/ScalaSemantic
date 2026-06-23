@@ -358,6 +358,15 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
   @tailrec private def skipWs(s: String, i: Int, limit: Int): Int =
     if (i < limit && s.charAt(i).isWhitespace) skipWs(s, i + 1, limit) else i
 
+  /** Normalize to exactly one trailing newline so re-running the merge on its own output is a
+    * fixpoint (the append and replace paths would otherwise differ only in the EOF newline).
+    */
+  private def withTrailingNewline(s: String): String =
+    s.replaceAll("\\R+\\z", "") + "\n"
+
+  /** Number of leading space characters on a line (its YAML indentation depth). */
+  private def leadingSpaces(line: String): Int = line.takeWhile(_ == ' ').length
+
   /** Index just past the value (object/array/string/primitive) that starts at `vs`. */
   private def jsonValueEnd(s: String, vs: Int, limit: Int): Int =
     s.charAt(vs) match {
@@ -457,23 +466,25 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
   private def mergeToml(existing: Option[String], serverName: String, argv: Seq[String]): String = {
     val fresh = renderCodexToml(serverName, argv)
     val src = existing.getOrElse("")
-    if (src.trim.isEmpty) fresh
-    else {
-      val header = s"[mcp_servers.${tomlKey(serverName)}]"
-      val lines = src.split("\n", -1).toVector
-      val idx = lines.indexWhere(_.trim == header)
-      if (idx < 0) {
-        val sep = if (src.endsWith("\n")) "" else "\n"
-        src + sep + "\n" + fresh + "\n"
-      } else {
-        // The table runs until the next `[...]` table header, or EOF.
-        val end = lines.indexWhere(_.trim.startsWith("["), idx + 1) match {
-          case -1 => lines.length
-          case e  => e
+    val body =
+      if (src.trim.isEmpty) fresh
+      else {
+        val header = s"[mcp_servers.${tomlKey(serverName)}]"
+        val lines = src.split("\n", -1).toVector
+        val idx = lines.indexWhere(_.trim == header)
+        if (idx < 0) {
+          val sep = if (src.endsWith("\n")) "" else "\n"
+          src + sep + "\n" + fresh
+        } else {
+          // The table runs until the next `[...]` table header, or EOF.
+          val end = lines.indexWhere(_.trim.startsWith("["), idx + 1) match {
+            case -1 => lines.length
+            case e  => e
+          }
+          (lines.take(idx) ++ fresh.split("\n", -1) ++ lines.drop(end)).mkString("\n")
         }
-        (lines.take(idx) ++ fresh.split("\n", -1) ++ lines.drop(end)).mkString("\n")
       }
-    }
+    withTrailingNewline(body)
   }
 
   // --- YAML (Continue) --------------------------------------------------------------------------
@@ -499,34 +510,40 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
   private def mergeYaml(existing: Option[String], serverName: String, argv: Seq[String]): String = {
     val fresh = renderContinueYaml(serverName, argv)
     val src = existing.getOrElse("")
-    if (src.trim.isEmpty) fresh
-    else {
-      val item = continueItem(serverName, argv)
-      val lines = src.split("\n", -1).toVector
-      val msIdx = lines.indexWhere(_.matches("""mcpServers:\s*"""))
-      if (msIdx < 0) {
-        val sep = if (src.endsWith("\n")) "" else "\n"
-        src + sep + "mcpServers:\n" + item + "\n"
-      } else {
-        // The list block runs while lines stay indented (or blank).
-        val blockEnd =
-          lines.indexWhere(l => !l.startsWith(" ") && l.trim.nonEmpty, msIdx + 1) match {
-            case -1 => lines.length
-            case e  => e
+    val body =
+      if (src.trim.isEmpty) fresh
+      else {
+        val item = continueItem(serverName, argv)
+        val lines = src.split("\n", -1).toVector
+        val msIdx = lines.indexWhere(_.matches("""mcpServers:\s*"""))
+        if (msIdx < 0) {
+          val sep = if (src.endsWith("\n")) "" else "\n"
+          src + sep + "mcpServers:\n" + item
+        } else {
+          // The list block runs while lines stay indented (or blank).
+          val blockEnd =
+            lines.indexWhere(l => !l.startsWith(" ") && l.trim.nonEmpty, msIdx + 1) match {
+              case -1 => lines.length
+              case e  => e
+            }
+          val nameLine = s"- name: ${yamlString(serverName)}"
+          val itemIdx = (msIdx + 1 until blockEnd).find(i => lines(i).trim == nameLine)
+          itemIdx match {
+            case Some(s0) =>
+              // This item ends at the next sibling list item — a `- ` at the SAME indentation as
+              // this one (deeper `- ` lines are the item's own `args:` sequence) — or the block end.
+              val indent = leadingSpaces(lines(s0))
+              val e = (s0 + 1 until blockEnd)
+                .find(i => leadingSpaces(lines(i)) == indent && lines(i).trim.startsWith("- "))
+                .getOrElse(blockEnd)
+              (lines.take(s0) ++ item.split("\n", -1) ++ lines.drop(e)).mkString("\n")
+            case None =>
+              (lines.take(msIdx + 1) ++ item.split("\n", -1) ++ lines.drop(msIdx + 1))
+                .mkString("\n")
           }
-        val nameLine = s"- name: ${yamlString(serverName)}"
-        val itemIdx = (msIdx + 1 until blockEnd).find(i => lines(i).trim == nameLine)
-        itemIdx match {
-          case Some(s0) =>
-            // This item ends at the next list item (`- ...`) or the block end.
-            val e =
-              (s0 + 1 until blockEnd).find(i => lines(i).trim.startsWith("- ")).getOrElse(blockEnd)
-            (lines.take(s0) ++ item.split("\n", -1) ++ lines.drop(e)).mkString("\n")
-          case None =>
-            (lines.take(msIdx + 1) ++ item.split("\n", -1) ++ lines.drop(msIdx + 1)).mkString("\n")
         }
       }
-    }
+    withTrailingNewline(body)
   }
 
   private def tomlKey(value: String): String =
