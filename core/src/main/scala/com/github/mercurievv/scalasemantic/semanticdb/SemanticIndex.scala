@@ -25,6 +25,16 @@ final class SemanticIndex(val documents: Vector[s.TextDocument]):
   val occurrences: Vector[(String, s.SymbolOccurrence)] =
     documents.flatMap(d => d.occurrences.map(d.uri -> _))
 
+  /** Occurrences grouped by their symbol, so per-symbol queries (usages, rename, definition uri)
+    * are a map lookup instead of a full scan of [[occurrences]].
+    */
+  val occurrencesBySymbol: Map[String, Vector[(String, s.SymbolOccurrence)]] =
+    occurrences.groupBy(_._2.symbol)
+
+  /** Occurrences of one symbol across all documents (empty if none). */
+  def occurrencesOf(symbol: String): Vector[(String, s.SymbolOccurrence)] =
+    occurrencesBySymbol.getOrElse(symbol, Vector.empty)
+
   private val docByUri: Map[String, s.TextDocument] =
     documents.map(d => d.uri -> d).toMap
 

@@ -249,10 +249,10 @@ final class Analyzer(
     */
   def renamePlan(symbol: String, newName: String): RenamePlan =
     val oldName = index.displayName(symbol)
-    val edits = index.occurrences
-      .collect {
-        case (uri, occ) if occ.symbol == symbol =>
-          val r = occ.range.getOrElse(s.Range.defaultInstance)
+    val edits = index
+      .occurrencesOf(symbol)
+      .collect { case (uri, occ) =>
+        val r = occ.range.getOrElse(s.Range.defaultInstance)
           RenameEdit(
             uri,
             Range(Position(r.startLine, r.startCharacter), Position(r.endLine, r.endCharacter)),
@@ -282,14 +282,9 @@ final class Analyzer(
     val q = query.toLowerCase
     val wantedKind = kind.map(_.toUpperCase)
     val keepPath = bySymbolPath(pathFilter)
-    val excludedKinds = Set[s.SymbolInformation.Kind](
-      s.SymbolInformation.Kind.PARAMETER,
-      s.SymbolInformation.Kind.TYPE_PARAMETER,
-      s.SymbolInformation.Kind.SELF_PARAMETER
-    )
     index.symbols.values.iterator
       .filter(si => index.isGlobal(si.symbol))
-      .filter(si => !excludedKinds.contains(si.kind))
+      .filter(si => !findSymbolExcludedKinds.contains(si.kind))
       .filter(si => si.displayName.nonEmpty && si.displayName != "<init>")
       .filter { si =>
         val n = si.displayName.toLowerCase
@@ -306,6 +301,12 @@ final class Analyzer(
       .take(limit)
       .map(si => symbolRef(si.symbol))
 
+  private val findSymbolExcludedKinds: Set[s.SymbolInformation.Kind] = Set(
+    s.SymbolInformation.Kind.PARAMETER,
+    s.SymbolInformation.Kind.TYPE_PARAMETER,
+    s.SymbolInformation.Kind.SELF_PARAMETER
+  )
+
   // --- find-usages ----------------------------------------------------------
 
   /** Every occurrence of `symbol` across all indexed documents, split into definitions and
@@ -317,8 +318,8 @@ final class Analyzer(
     */
   def findUsages(symbol: String, pathFilter: Option[String] = None): UsagesResult =
     val keep = globMatcher(pathFilter)
-    val located = index.occurrences.collect {
-      case (uri, occ) if occ.symbol == symbol && keep(uri) =>
+    val located = index.occurrencesOf(symbol).collect {
+      case (uri, occ) if keep(uri) =>
         occ.role -> location(uri, occ.range)
     }
     val defs =
@@ -350,9 +351,8 @@ final class Analyzer(
 
   /** The document uri of a symbol's definition occurrence, if the index has one. */
   private def definitionUri(symbol: String): Option[String] =
-    index.occurrences.collectFirst {
-      case (uri, occ) if occ.symbol == symbol && occ.role == s.SymbolOccurrence.Role.DEFINITION =>
-        uri
+    index.occurrencesOf(symbol).collectFirst {
+      case (uri, occ) if occ.role == s.SymbolOccurrence.Role.DEFINITION => uri
     }
 
   // --- method-signature -----------------------------------------------------
@@ -403,13 +403,14 @@ final class Analyzer(
   /** Depth-first transitive parents (excluding `symbol` itself), de-duplicated by first sight. */
   private def linearize(symbol: String): List[String] =
     def parentsOf(sym: String): List[String] = index.info(sym).map(directParents).getOrElse(Nil)
-    def loop(queue: List[String], seen: List[String]): List[String] =
+    @annotation.tailrec
+    def loop(queue: List[String], seen: Set[String], acc: List[String]): List[String] =
       queue match
-        case Nil => seen
+        case Nil => acc.reverse
         case head :: tail =>
-          if seen.contains(head) then loop(tail, seen)
-          else loop(parentsOf(head) ::: tail, seen :+ head)
-    loop(parentsOf(symbol), Nil)
+          if seen.contains(head) then loop(tail, seen, acc)
+          else loop(parentsOf(head) ::: tail, seen + head, head :: acc)
+    loop(parentsOf(symbol), Set.empty, Nil)
 
   /** All indexed classes/traits that declare `symbol` among their direct parents. */
   private def knownSubtypes(symbol: String): List[String] =
@@ -565,10 +566,11 @@ final class Analyzer(
             val method = index.isMethod(occ.symbol)
             if isDef && method then (Some(occ.symbol), acc)
             else if method && current.exists(_ != occ.symbol) then
-              (current, acc :+ ((current.getOrElse(""), occ.symbol, location(doc.uri, occ.range))))
+              (current, (current.getOrElse(""), occ.symbol, location(doc.uri, occ.range)) :: acc)
             else (current, acc)
         }
         ._2
+        .reverse
     }
     edges.toList.groupMap(_._1)(e => (e._2, e._3))
 
