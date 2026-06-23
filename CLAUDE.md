@@ -49,8 +49,9 @@ PR-based: branch protection on master, squash-merge PRs with **Conventional-Comm
 for everything else). Version is the git tag (`vX.Y.Z`); pushing a tag publishes to Maven Central
 via `sbt-ci-release`.
 
-Cut a release on demand from a synced master: `scripts/bump-{fix,minor,major}.sh --push` (guarded to
-refuse anything but an up-to-date master). The tag push drives CI: Maven publish + the GitHub Release.
+Cut a release on demand: `scripts/bump-{fix,minor,major}.sh` tags the latest `origin/master` commit
+and pushes the tag (no opt-in — pushing is unconditional). The tag push drives CI: Maven publish +
+the GitHub Release.
 
 **Release notes are GENERATED — never hand-edit them.** [`scripts/changelog.sh`](scripts/changelog.sh)
 keeps only user-facing Conventional-Commit types (`feat`/`fix`/`perf` + breaking) and OMITS

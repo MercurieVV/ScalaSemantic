@@ -31,11 +31,11 @@ If you supply a value that is *already* base64, set `PGP_SECRET_BASE64_ENCODE=fa
 ## Cut a release
 
 Development is PR-based (branch protection on `master`, squash-merge). A release is just a tag on the
-latest `origin/master` commit; the bump script switches to `master`, fetches the latest remote commit,
-fast-forwards, tags it, and optionally pushes the tag:
+latest `origin/master` commit; the bump script tags that remote commit directly and pushes the tag
+(unconditionally — pushing is the whole point):
 
 ```sh
-scripts/bump-version.sh minor --push     # or bump-fix/bump-minor/bump-major — tags vX.Y.Z and pushes
+scripts/bump-version.sh minor            # or bump-fix/bump-minor/bump-major — tags vX.Y.Z and pushes
 scripts/check-push-workflow.sh           # wait for CI, report the latest published version
 scripts/retry-last-tag.sh --push         # move the tag to HEAD to retry a release that failed early
 ```

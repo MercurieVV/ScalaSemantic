@@ -65,7 +65,7 @@ Three sbt modules, one per layer: `mcp` → `analysis` → `core`.
 - **Version from tags:** sbt-dynver — a `vX.Y.Z` tag publishes `X.Y.Z`. No manual version.
 - **Workflow:** `.github/workflows/ci.yml` — build+test on push/PR; `publish` job on `v*` tags runs `sbt ci-release`. Central host via `SONATYPE_CREDENTIAL_HOST=central.sonatype.com` env (the `sonatypeCredentialHost` setting isn't exposed in build.sbt here). Secrets: `SONATYPE_USERNAME`/`PASSWORD` (Central token), `PGP_SECRET`/`PASSPHRASE`.
 - **Scope:** `core`, `analysis`, `mcp`, `sbt-plugin` publish; `root` aggregate has `publish/skip := true`.
-- **Release ergonomics:** `scripts/bump-version.sh [patch|minor|major] --push`, `scripts/retry-last-tag.sh --push`.
+- **Release ergonomics:** `scripts/bump-version.sh [patch|minor|major]` (tags origin/master + pushes), `scripts/retry-last-tag.sh --push`.
 
 ## Backlog
 - **`reload` MCP tool** (later): re-read `*.semanticdb` from disk without restarting the server (re-run `SemanticIndex.fromProject`). SemanticDB only updates on compile, and the server loads the index once at startup — a reload tool pairs with `sbt ~compile` for near-live analysis.
