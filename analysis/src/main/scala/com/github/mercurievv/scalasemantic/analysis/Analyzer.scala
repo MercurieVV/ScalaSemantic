@@ -126,6 +126,119 @@ final class Analyzer(
       case Some(v: s.ValueSignature)  => s": ${renderType(v.tpe)}"
       case _                          => ""
 
+  // --- annotated source -----------------------------------------------------
+
+  /** The compiler insertions invisible in the source of `uri`, as positioned annotations: the
+    * implicit arguments / conversions the compiler synthesised and the type arguments it inferred
+    * (both from SemanticDB `synthetics`), plus the inferred result/value type of every definition
+    * the source left unascribed. This is exactly what a plain text read of the file MISSES.
+    *
+    * `sourceLines` is the file's current text split on newlines — used only to drop a definition's
+    * inferred-type note when the source already states the type. `None` if `uri` is not indexed.
+    */
+  def sourceAnnotations(
+      uri: String,
+      sourceLines: IndexedSeq[String]
+  ): Option[List[SourceAnnotation]] =
+    index.document(uri).map { doc =>
+      val synthetic = doc.synthetics.iterator.flatMap(syntheticAnnotation).toList
+      val defTypes = doc.occurrences.iterator.flatMap(defTypeAnnotation(_, sourceLines)).toList
+      (synthetic ++ defTypes).distinct.sortBy(a => (a.line, a.character, a.kind))
+    }
+
+  /** An implicit-insertion or inferred-type-argument annotation for one synthetic, anchored at the
+    * synthetic's source range. The `kind` distinguishes notes whose range is a precise call site
+    * (`inferred-type-args`, `implicit-conversion`) from the using-argument note, whose range is the
+    * zero-width enclosing point and so carries no trustworthy column. `None` for synthetics we do
+    * not surface.
+    */
+  private def syntheticAnnotation(syn: s.Synthetic): Option[SourceAnnotation] =
+    val r = syn.range.getOrElse(s.Range.defaultInstance)
+    syn.tree match
+      case t: s.TypeApplyTree if t.typeArguments.nonEmpty =>
+        Some(
+          SourceAnnotation(
+            r.startLine,
+            r.startCharacter,
+            "inferred-type-args",
+            t.typeArguments.map(renderType).mkString("[", ", ", "]")
+          )
+        )
+      case app: s.ApplyTree =>
+        app.function match
+          // using-args appended to a visible call: the function IS the original expression, so the
+          // range is the enclosing point, not where the args belong — no reliable column.
+          case _: s.OriginalTree =>
+            val args = app.arguments.iterator.flatMap(insertedName).toList
+            Option.when(args.nonEmpty)(
+              SourceAnnotation(
+                r.startLine,
+                r.startCharacter,
+                "implicit",
+                args.mkString("(using ", ", ", ")")
+              )
+            )
+          // an implicit conversion wraps the original expression: the range pins the converted
+          // expression, so the column is meaningful.
+          case fn =>
+            insertedName(fn).map(c =>
+              SourceAnnotation(r.startLine, r.startCharacter, "implicit-conversion", s"$c(…)")
+            )
+      case _ => None
+
+  /** Best-effort display name of an inserted implicit tree (a given/implicit reference). */
+  private def insertedName(tree: s.Tree): Option[String] =
+    tree match
+      case t: s.IdTree        => Some(index.displayName(t.symbol))
+      case t: s.SelectTree    => t.id.flatMap(insertedName)
+      case t: s.TypeApplyTree => insertedName(t.function)
+      case t: s.ApplyTree     => insertedName(t.function)
+      case _                  => None
+
+  private val annotatedDefKinds: Set[s.SymbolInformation.Kind] =
+    Set(s.SymbolInformation.Kind.METHOD, s.SymbolInformation.Kind.FIELD)
+
+  /** The inferred result/value type of a definition occurrence, as a `: T` note — but only when the
+    * source line did not already ascribe a type (so explicitly-typed definitions stay un-noted).
+    */
+  private def defTypeAnnotation(
+      occ: s.SymbolOccurrence,
+      sourceLines: IndexedSeq[String]
+  ): Option[SourceAnnotation] =
+    if occ.role != s.SymbolOccurrence.Role.DEFINITION then None
+    else
+      index
+        .info(occ.symbol)
+        .filter(si => annotatedDefKinds.contains(si.kind) && si.displayName != "<init>")
+        .flatMap { si =>
+          val tpe = si.signature match
+            case m: s.MethodSignature => m.returnType
+            case v: s.ValueSignature  => v.tpe
+            case _                    => s.Type.Empty
+          val rendered = renderType(tpe)
+          val r = occ.range.getOrElse(s.Range.defaultInstance)
+          val line = sourceLines.lift(r.startLine).getOrElse("")
+          if rendered.isEmpty || alreadyAscribed(line, r.startCharacter) then None
+          else
+            Some(SourceAnnotation(r.startLine, r.startCharacter, "inferred-type", s": $rendered"))
+        }
+
+  /** Whether the definition whose name starts at `nameStart` on `line` already has an explicit type
+    * ascription: a top-level `:` (outside any `()`/`[]` group) before the `=` of its body.
+    */
+  private def alreadyAscribed(line: String, nameStart: Int): Boolean =
+    @annotation.tailrec
+    def scan(i: Int, depth: Int): Boolean =
+      if i >= line.length then false
+      else
+        line.charAt(i) match
+          case '=' if depth == 0 => false
+          case ':' if depth == 0 => true
+          case '(' | '['         => scan(i + 1, depth + 1)
+          case ')' | ']'         => scan(i + 1, depth - 1)
+          case _                 => scan(i + 1, depth)
+    nameStart >= 0 && nameStart < line.length && scan(nameStart, 0)
+
   // --- rename plan ----------------------------------------------------------
 
   /** The precise edits to rename `symbol` to `newName`: every compiler-resolved occurrence of its

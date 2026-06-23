@@ -39,15 +39,16 @@ class McpSuite extends munit.FunSuite:
     assert(instr.contains("find_symbol"), instr)
   }
 
-  test("tools/list exposes all thirteen tools with schemas") {
+  test("tools/list exposes all fourteen tools with schemas") {
     val r = Mcp.handle(req("tools/list", ujson.Obj()), tools).get
     val names = r("result")("tools").arr.map(_("name").str).toSet
-    assertEquals(names.size, 13)
+    assertEquals(names.size, 14)
     assert(names.contains("find_symbol"), names.toString)
     assert(names.contains("find_usages"), names.toString)
     assert(names.contains("call_path"), names.toString)
     assert(names.contains("structure"), names.toString)
     assert(names.contains("document_outline"), names.toString)
+    assert(names.contains("annotated_source"), names.toString)
     assert(names.contains("rename_plan"), names.toString)
     // every tool carries an object input schema
     assert(r("result")("tools").arr.forall(_("inputSchema")("type").str == "object"))
@@ -136,6 +137,45 @@ class McpSuite extends munit.FunSuite:
     assert(entries.exists(_("name").str == "Animal"), o.render())
     // a method/value entry renders a resolved signature (the clarified view)
     assert(entries.exists(_.obj.get("signature").exists(_.str.contains(":"))), o.render())
+  }
+
+  test("annotated_source surfaces compiler insertions invisible in the source text") {
+    // Resolve the fixtures file uri from a definition location, robust to the on-disk path.
+    val defLoc = call("find_usages", ujson.Obj("symbol" -> Show))("definitions").arr.head.str
+    val uri = defLoc.split(":").dropRight(2).mkString(":")
+    val r = call("annotated_source", ujson.Obj("uri" -> uri))
+    assert(r("annotationCount").num > 0, r.render())
+    val src = r("source").str
+    // numbered lines + the annotation marker for the compiler's invisible work
+    assert(src.linesIterator.exists(_.contains("⟹")), src)
+    // Sample.scala's `listShow` body inserts an inferred type arg and a synthesised using-arg.
+    assert(src.contains("[") && src.contains("using"), src)
+
+    // annotationsOnly trims to just the carrying lines (each one keeps the marker).
+    val only = call("annotated_source", ujson.Obj("uri" -> uri, "annotationsOnly" -> true))
+    assert(only("source").str.linesIterator.forall(_.contains("⟹")), only("source").str)
+  }
+
+  test("annotated_source format: plain strips notes, compilable comments them out") {
+    val defLoc = call("find_usages", ujson.Obj("symbol" -> Show))("definitions").arr.head.str
+    val uri = defLoc.split(":").dropRight(2).mkString(":")
+
+    // plain: the raw file, no annotation markers at all
+    val plain = call("annotated_source", ujson.Obj("uri" -> uri, "format" -> "plain"))
+    assertEquals(plain("format").str, "plain")
+    assert(!plain("source").str.contains("⟹"), "plain must carry no notes")
+
+    // compilable: notes become trailing `// ⟹` comments and the gutter is dropped
+    val comp = call("annotated_source", ujson.Obj("uri" -> uri, "format" -> "compilable"))
+    val src = comp("source").str
+    assert(src.contains("// ⟹"), src)
+    // no line-number gutter → the first source line starts at column 0, not padded digits
+    assert(!src.linesIterator.next().matches("""\s+\d+\s+\S.*"""), src.linesIterator.next())
+  }
+
+  test("annotated_source reports found:false for an unknown uri") {
+    val r = call("annotated_source", ujson.Obj("uri" -> "does/not/exist.scala"))
+    assertEquals(r("found").bool, false)
   }
 
   test("rename_plan returns precise, resolved edits (no grep over-match)") {
@@ -338,5 +378,5 @@ class McpSuite extends munit.FunSuite:
     // 4 lines in (one blank, one notification) → 2 responses out, with matching ids
     assertEquals(out.size, 2)
     assertEquals(ujson.read(out(0))("id").num, 1.0)
-    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 13)
+    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 14)
   }

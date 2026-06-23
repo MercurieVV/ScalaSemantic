@@ -514,6 +514,39 @@ object McpTools:
           )
     },
     tool(
+      "annotated_source",
+      "READ A SCALA FILE THIS WAY — use instead of cat/head/sed/Read for *.scala. Returns the file's " +
+        "source with the compiler's invisible insertions made explicit inline: the implicit " +
+        "arguments & conversions it synthesised, the type arguments it inferred, and the inferred " +
+        "result/value type of every definition the source left unascribed. Each note is appended to " +
+        "its line after `⟹` (with `col N`, 1-based, when it pins a precise spot); lines are 1-based. " +
+        "A plain text read MISSES all of this — this shows what the compiler actually sees. Pass " +
+        "`annotationsOnly` to get just the annotated lines. Pick the `format` for your need: " +
+        "`annotated` (default, densest — gutter + `⟹` notes, NOT valid Scala), `compilable` (notes as " +
+        "`// ⟹` comments, no gutter — valid pasteable Scala), or `plain` (the raw file, no notes). In " +
+        "`annotated`/`plain` the gutter is a READ-ONLY view: never paste it into code; edit the real " +
+        "file at `uri` (gutter numbers map 1:1).",
+      ("uri", "string", "document uri as it appears in SemanticDB (path relative to project root)")
+        :: SourceView.params,
+      List("uri")
+    ) { a =>
+      val uri = argStr(a, "uri")
+      val file = root.resolve(uri)
+      if !java.nio.file.Files.isRegularFile(file) then notFoundUri(uri)
+      else
+        val lines = java.nio.file.Files.readString(file).split("\n", -1).toIndexedSeq
+        az.sourceAnnotations(uri, lines) match
+          case None => notFoundUri(uri)
+          case Some(anns) =>
+            SourceView.result(
+              uri,
+              lines,
+              anns,
+              argStr(a, "format"),
+              argBool(a, "annotationsOnly", false)
+            )
+    },
+    tool(
       "rename_plan",
       "The precise edits to rename a symbol everywhere it is used. Returns every compiler-resolved " +
         "occurrence of the name (definitions + references) as `uri:line:col-col` ranges to replace " +
@@ -555,6 +588,105 @@ object McpTools:
     )
 
   // --- rendering helpers ----------------------------------------------------
+
+  /** Shared rendering for any tool that returns a WHOLE source file enriched with positioned
+    * [[SourceAnnotation]]s. Tools differ only in how they COMPUTE the annotations; the
+    * format/gutter/legend/`col N` handling and the result envelope live here so they are written
+    * once. A new source-returning tool just appends [[params]] to its schema and calls [[result]].
+    */
+  private object SourceView:
+
+    /** The schema entries every source-returning tool shares (append after its own `uri` entry). */
+    val params: List[(String, String, String)] = List(
+      (
+        "format",
+        "string",
+        "annotated (default, gutter + ⟹ notes) | compilable (// ⟹ comments, valid Scala) | plain"
+      ),
+      (
+        "annotationsOnly",
+        "boolean",
+        "return only the lines that carry an annotation, not the whole file (default false)"
+      )
+    )
+
+    /** The full tool result: the rendered `source` plus `format`, `annotationCount`, and `legend`.
+      * `format`/`annotationsOnly` arrive pre-parsed from the caller (which owns the `ujson`
+      * argument helpers) so this object stays self-contained — depending only on `ujson` and the
+      * model, never back on [[McpTools]] (which would form a dependency cycle).
+      */
+    def result(
+        uri: String,
+        lines: IndexedSeq[String],
+        anns: List[SourceAnnotation],
+        format: String,
+        annotationsOnly: Boolean
+    ): ujson.Value =
+      val fmt = normalize(format)
+      ujson.Obj(
+        "uri" -> ujson.Str(uri),
+        "format" -> ujson.Str(fmt),
+        "annotationCount" -> ujson.Num(anns.size),
+        "legend" -> ujson.Str(legend(fmt)),
+        "source" -> ujson.Str(render(lines, anns, fmt, annotationsOnly))
+      )
+
+    private def normalize(format: String): String =
+      format match
+        case "compilable" => "compilable"
+        case "plain"      => "plain"
+        case _            => "annotated"
+
+    /** Weave source lines and annotations into one string per the chosen format. */
+    private def render(
+        lines: IndexedSeq[String],
+        anns: List[SourceAnnotation],
+        fmt: String,
+        annotationsOnly: Boolean
+    ): String =
+      val byLine = anns.groupBy(_.line)
+      // `plain` shows no notes, so `annotationsOnly` would be empty — ignore it there.
+      val onlyAnnotated = fmt != "plain" && annotationsOnly
+      val gutter = fmt != "compilable" // a line-number gutter is not valid Scala
+      lines.iterator.zipWithIndex
+        .flatMap { case (src, i) =>
+          val notes = byLine.getOrElse(i, Nil)
+          if onlyAnnotated && notes.isEmpty then None
+          else
+            val base = if gutter then f"${i + 1}%5d  $src" else src
+            if notes.isEmpty || fmt == "plain" then Some(base)
+            else
+              val joined = notes.map(noteText).mkString("; ")
+              Some(if fmt == "compilable" then s"$base  // ⟹ $joined" else s"$base   ⟹ $joined")
+        }
+        .mkString("\n")
+
+    /** Kinds whose `character` is a precise call site, so a `col N` prefix points the reader at the
+      * exact call the note applies to (vs. the using-arg note, whose range is only the enclosing
+      * point).
+      */
+    private val preciseColKinds = Set("inferred-type-args", "implicit-conversion")
+
+    /** An annotation's display text, prefixed with a 1-based `col N` when its column is
+      * trustworthy.
+      */
+    private def noteText(n: SourceAnnotation): String =
+      if preciseColKinds.contains(n.kind) then s"col ${n.character + 1} ${n.text}" else n.text
+
+    private def legend(fmt: String): String =
+      val markers =
+        "Notes show compiler insertions invisible in the source: `(using …)` implicit args, " +
+          "`name(…)` implicit conversion, `[…]` inferred type args, `: T` inferred type; `col N` " +
+          "(1-based) pins the call a note applies to."
+      fmt match
+        case "compilable" =>
+          s"Valid Scala: each note is a trailing `// ⟹` comment, no line-number gutter. $markers"
+        case "plain" =>
+          "The raw file with a 1-based line-number gutter (a READ-ONLY view — edit the real file " +
+            "at uri, not this). No annotations in this format."
+        case _ =>
+          s"READ-ONLY view, NOT valid Scala — do NOT paste into code; edit the real file at uri " +
+            s"(gutter line numbers map 1:1). ⟹ marks each note. $markers"
 
   /** Keep a module when no `pathFilter` is given, or when the glob (`*` = any chars) matches it. */
   private def moduleGlob(a: ujson.Value, module: String): Boolean =
@@ -621,6 +753,9 @@ object McpTools:
 
   private def notFound(symbol: String): ujson.Value =
     jobj(Some("symbol" -> ujson.Str(symbol)), Some("found" -> ujson.Bool(false)))
+
+  private def notFoundUri(uri: String): ujson.Value =
+    jobj(Some("uri" -> ujson.Str(uri)), Some("found" -> ujson.Bool(false)))
 
   /** Build an object from optional fields, dropping the absent ones (token discipline). */
   private def jobj(fields: Option[(String, ujson.Value)]*): ujson.Value =
