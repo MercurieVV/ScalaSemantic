@@ -253,17 +253,207 @@ final class Analyzer(
       .occurrencesOf(symbol)
       .collect { case (uri, occ) =>
         val r = occ.range.getOrElse(s.Range.defaultInstance)
-          RenameEdit(
-            uri,
-            Range(Position(r.startLine, r.startCharacter), Position(r.endLine, r.endCharacter)),
-            oldName,
-            newName
-          )
+        RenameEdit(
+          uri,
+          Range(Position(r.startLine, r.startCharacter), Position(r.endLine, r.endCharacter)),
+          oldName,
+          newName
+        )
       }
       .distinct
       .toList
       .sortBy(e => (e.uri, e.range.start.line, e.range.start.character))
     RenamePlan(symbol, oldName, newName, edits.size, edits)
+
+  // --- move plan ------------------------------------------------------------
+
+  /** The edits to move `symbol` to the package `newOwner`, keeping every call/usage resolving.
+    *
+    * Beyond relocating the definition, a move changes the symbol's fully-qualified name, so each
+    * file that references it may need its import adjusted. Per referencing file (computed from its
+    * own package, derived from SemanticDB — no text guessing of import lines):
+    *   - already in `newOwner` → no import needed (omitted);
+    *   - in the old package `fromOwner` → previously unqualified, now needs the new FQN imported;
+    *   - elsewhere → swap the old FQN import for the new one.
+    *
+    * `references` carries every resolved use (so the caller sees calls/usages, not just the body).
+    * `newOwner` is a package symbol (`com/foo/bar/`); the symbol's simple name is preserved.
+    */
+  def movePlan(symbol: String, newOwner: String): MovePlan =
+    val name = index.displayName(symbol)
+    val fromOwner = index.owner(symbol)
+    val toOwner = if newOwner.endsWith("/") || newOwner.isEmpty then newOwner else s"$newOwner/"
+    val fromFqn = joinFqn(packageDotted(fromOwner), name)
+    val toFqn = joinFqn(packageDotted(toOwner), name)
+    val occs = index.occurrencesOf(symbol)
+    val defLoc = occs.collectFirst {
+      case (uri, occ) if occ.role == s.SymbolOccurrence.Role.DEFINITION => location(uri, occ.range)
+    }
+    val defUri = defLoc.map(_.uri)
+    val references = occs
+      .collect {
+        case (uri, occ) if occ.role == s.SymbolOccurrence.Role.REFERENCE => location(uri, occ.range)
+      }
+      .distinct
+      .toList
+    // One import edit per referencing file, decided by that file's own package.
+    val imports = references
+      .map(_.uri)
+      .distinct
+      .filterNot(defUri.contains) // the definition's file moves with it
+      .flatMap { uri =>
+        val pkg = documentPackage(uri)
+        if pkg.contains(toOwner) then None // already in the destination package
+        else if pkg.contains(fromOwner) then Some(MoveImport(uri, "", toFqn))
+        else Some(MoveImport(uri, fromFqn, toFqn))
+      }
+    MovePlan(
+      symbol,
+      name,
+      kindName(symbol),
+      fromOwner,
+      toOwner,
+      fromFqn,
+      toFqn,
+      defLoc,
+      references,
+      imports
+    )
+
+  /** A package symbol (`com/foo/bar/`) as a dotted name (`com.foo.bar`); empty for the root. */
+  private def packageDotted(pkgSymbol: String): String =
+    pkgSymbol.stripSuffix("/").replace('/', '.')
+
+  private def joinFqn(pkg: String, name: String): String =
+    if pkg.isEmpty then name else s"$pkg.$name"
+
+  /** The package a document belongs to: the owner of its first top-level global definition. `None`
+    * if the document is not indexed or declares nothing top-level.
+    */
+  private def documentPackage(uri: String): Option[String] =
+    index.document(uri).flatMap { doc =>
+      doc.occurrences.iterator
+        .filter(_.role == s.SymbolOccurrence.Role.DEFINITION)
+        .map(_.symbol)
+        .filter(index.isGlobal)
+        .map(index.owner)
+        .find(index.isPackage)
+    }
+
+  // --- extract method plan --------------------------------------------------
+
+  /** The plan to extract the `[start, end)` selection of `uri` into a new method `methodName`.
+    *
+    * Free-variable analysis over the selection's SemanticDB occurrences: a local the selection
+    * READS but whose definition lies outside the selection becomes a parameter; a local the
+    * selection DEFINES that is still referenced after the selection becomes part of the result.
+    * This is exactly the analysis a correct extract-method needs, and it is grounded in the
+    * compiler's resolved symbols and types — not text heuristics. `None` if the uri is not indexed.
+    */
+  def extractMethodPlan(
+      uri: String,
+      startLine: Int,
+      startChar: Int,
+      endLine: Int,
+      endChar: Int,
+      methodName: String
+  ): Option[ExtractMethodPlan] =
+    index.document(uri).map { doc =>
+      def inSelection(r: s.Range): Boolean =
+        val afterStart =
+          r.startLine > startLine || (r.startLine == startLine && r.startCharacter >= startChar)
+        val beforeEnd =
+          r.endLine < endLine || (r.endLine == endLine && r.endCharacter <= endChar)
+        afterStart && beforeEnd
+      def afterSelection(r: s.Range): Boolean =
+        r.startLine > endLine || (r.startLine == endLine && r.startCharacter >= endChar)
+
+      val occ = doc.occurrences
+      // Definition occurrences of each local, used to decide inside/outside the selection.
+      val defInside = occ.iterator
+        .filter(o => o.role == s.SymbolOccurrence.Role.DEFINITION && o.range.exists(inSelection))
+        .map(_.symbol)
+        .filter(index.isLocal)
+        .toSet
+      val definedAnywhere = occ.iterator
+        .filter(_.role == s.SymbolOccurrence.Role.DEFINITION)
+        .map(_.symbol)
+        .toSet
+
+      // Parameters: locals READ in the selection whose definition is NOT inside it (free vars),
+      // ordered by first read position, de-duplicated.
+      val params = occ.iterator
+        .filter(o => o.role == s.SymbolOccurrence.Role.REFERENCE && o.range.exists(inSelection))
+        .filter(o => index.isLocal(o.symbol) && !defInside.contains(o.symbol))
+        .toList
+        .sortBy(o => o.range.map(r => (r.startLine, r.startCharacter)).getOrElse((0, 0)))
+        .map(_.symbol)
+        .distinct
+        .map(sym => ExtractBinding(localName(sym), localTypeText(sym)))
+
+      // Returns: locals DEFINED inside the selection that are still READ after it.
+      val readAfter = occ.iterator
+        .filter(o => o.role == s.SymbolOccurrence.Role.REFERENCE && o.range.exists(afterSelection))
+        .map(_.symbol)
+        .toSet
+      val returns = occ.iterator
+        .filter(o => o.role == s.SymbolOccurrence.Role.DEFINITION && o.range.exists(inSelection))
+        .filter(o => index.isLocal(o.symbol) && readAfter.contains(o.symbol))
+        .toList
+        .sortBy(o => o.range.map(r => (r.startLine, r.startCharacter)).getOrElse((0, 0)))
+        .map(_.symbol)
+        .distinct
+        .map(sym => ExtractBinding(localName(sym), localTypeText(sym)))
+
+      // The method the selection sits in: nearest preceding method definition in the file.
+      val enclosing = occ
+        .filter(o => o.role == s.SymbolOccurrence.Role.DEFINITION && index.isMethod(o.symbol))
+        .filter(o =>
+          o.range.exists(r =>
+            r.startLine < startLine ||
+              (r.startLine == startLine && r.startCharacter <= startChar)
+          )
+        )
+        .maxByOption(o => o.range.map(r => (r.startLine, r.startCharacter)).getOrElse((0, 0)))
+        .map(o => symbolRef(o.symbol))
+
+      val returnType = returns match
+        case Nil      => "Unit"
+        case b :: Nil => b.tpe
+        case many     => many.map(_.tpe).mkString("(", ", ", ")")
+      val paramText = params.map(p => s"${p.name}: ${p.tpe}").mkString(", ")
+      val signature = s"def $methodName($paramText): $returnType"
+      val args = params.map(_.name).mkString(", ")
+      val call = returns match
+        case Nil      => s"$methodName($args)"
+        case b :: Nil => s"val ${b.name} = $methodName($args)"
+        case many     => s"val (${many.map(_.name).mkString(", ")}) = $methodName($args)"
+
+      val range = Range(Position(startLine, startChar), Position(endLine, endChar))
+      ExtractMethodPlan(
+        uri,
+        range,
+        methodName,
+        enclosing,
+        params,
+        returns,
+        returnType,
+        signature,
+        call
+      )
+    }
+
+  /** A local symbol's display name (locals carry no descriptor, so fall back to the index). */
+  private def localName(symbol: String): String =
+    index.info(symbol).map(_.displayName).filter(_.nonEmpty).getOrElse(symbol)
+
+  /** A local's rendered type, or `?` when SemanticDB recorded none — Scala leaves the inferred type
+    * of an unascribed local val Empty, so the caller must supply it (the binding name is always
+    * exact).
+    */
+  private def localTypeText(symbol: String): String =
+    val rendered = renderType(index.info(symbol).map(valueType).getOrElse(s.Type.Empty))
+    if rendered.isEmpty then "?" else rendered
 
   // --- find-symbol ----------------------------------------------------------
 

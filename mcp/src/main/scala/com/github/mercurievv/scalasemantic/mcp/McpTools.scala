@@ -571,6 +571,99 @@ object McpTools:
           )
         )
       )
+    },
+    tool(
+      "move_plan",
+      "The edits to move a top-level definition (class/object/trait/def/val) to another package " +
+        "while keeping every call and usage compiling — not just the definition itself. Three parts: " +
+        "the `definition` location to cut and re-place under `newOwner`; every compiler-resolved " +
+        "`reference` to it across the project (so you can confirm nothing is missed); and the per-file " +
+        "`imports` to add/remove, since the move changes the symbol's fully-qualified name (a file " +
+        "already in the destination package needs none). `newOwner` is the destination package symbol, " +
+        "e.g. `com/foo/bar/`; the simple name is unchanged. Read-only — apply the edits yourself.",
+      List(
+        ("symbol", "string", "the symbol to move"),
+        ("newOwner", "string", "destination package symbol, e.g. `com/foo/bar/`")
+      ),
+      List("symbol", "newOwner")
+    ) { a =>
+      val p = az.movePlan(argStr(a, "symbol"), argStr(a, "newOwner"))
+      jobj(
+        Some("symbol" -> ujson.Str(p.symbol)),
+        Some("move" -> ujson.Str(s"${p.fromFqn} -> ${p.toFqn}")),
+        p.definition.map(d => "definition" -> ujson.Str(loc(d))),
+        Some("referenceCount" -> ujson.Num(p.references.size)),
+        opt(p.references.nonEmpty, "references" -> strs(p.references.map(loc))),
+        opt(
+          p.imports.nonEmpty,
+          "imports" -> ujson.Arr.from(
+            p.imports.map(i =>
+              jobj(
+                Some("uri" -> ujson.Str(i.uri)),
+                opt(i.removeImport.nonEmpty, "remove" -> ujson.Str(i.removeImport)),
+                opt(i.addImport.nonEmpty, "add" -> ujson.Str(i.addImport))
+              )
+            )
+          )
+        )
+      )
+    },
+    tool(
+      "extract_method_plan",
+      "The edits to extract a selected source range into a new method — both the new method AND the " +
+        "call that replaces the selection. From the compiler's resolved symbols/types in the range: " +
+        "locals it READS but does not define become the parameters (with real types); locals it " +
+        "DEFINES that later code still uses become the return. Returns the `signature` to insert in " +
+        "the enclosing scope and the `call` to put where the selection was. A binding name is always " +
+        "exact; an inferred local val whose type SemanticDB did not record renders as `?` for you to " +
+        "fill. Give the selection as start/end line+character (0-based, end exclusive). Pass `source` " +
+        "(the file's CURRENT text) to analyse a buffer edited since — or never — compiled (needs a " +
+        "classpath-started server). Read-only — apply the edits yourself.",
+      List(
+        ("uri", "string", "document uri (path relative to project root)"),
+        ("startLine", "integer", "0-based start line of the selection"),
+        ("startCharacter", "integer", "0-based start column of the selection"),
+        ("endLine", "integer", "0-based end line of the selection (exclusive end)"),
+        ("endCharacter", "integer", "0-based end column of the selection (exclusive)"),
+        ("methodName", "string", "name for the extracted method (default `extracted`)"),
+        ("source", "string", "current full text of the file at `uri`; enables the live PC overlay")
+      ),
+      List("uri", "startLine", "startCharacter", "endLine", "endCharacter")
+    ) { a =>
+      val uri = argStr(a, "uri")
+      val name = argStr(a, "methodName") match
+        case "" => "extracted"
+        case n  => n
+      // PC-only: extraction is a single-file analysis, so when `source` is given query the PC's
+      // regenerated document alone rather than overlaying the (stale-for-this-file) disk index.
+      val engine = a.obj.get("source").map(_.str) match
+        case Some(src) => az.bufferOnly(root.resolve(uri).toUri, src, uri).getOrElse(az)
+        case None      => az
+      engine.extractMethodPlan(
+        uri,
+        argInt(a, "startLine", 0),
+        argInt(a, "startCharacter", 0),
+        argInt(a, "endLine", 0),
+        argInt(a, "endCharacter", 0),
+        name
+      ) match
+        case None => notFoundUri(uri)
+        case Some(p) =>
+          jobj(
+            Some("uri" -> ujson.Str(p.uri)),
+            p.enclosingMethod.map(m => "enclosingMethod" -> ujson.Str(m.displayName)),
+            Some("signature" -> ujson.Str(p.signature)),
+            Some("call" -> ujson.Str(p.call)),
+            opt(
+              p.parameters.nonEmpty,
+              "parameters" -> strs(p.parameters.map(b => s"${b.name}: ${b.tpe}"))
+            ),
+            opt(
+              p.returns.nonEmpty,
+              "returns" -> strs(p.returns.map(b => s"${b.name}: ${b.tpe}"))
+            ),
+            Some("returnType" -> ujson.Str(p.returnType))
+          )
     }
   )
 

@@ -39,10 +39,10 @@ class McpSuite extends munit.FunSuite:
     assert(instr.contains("find_symbol"), instr)
   }
 
-  test("tools/list exposes all fourteen tools with schemas") {
+  test("tools/list exposes all sixteen tools with schemas") {
     val r = Mcp.handle(req("tools/list", ujson.Obj()), tools).get
     val names = r("result")("tools").arr.map(_("name").str).toSet
-    assertEquals(names.size, 14)
+    assertEquals(names.size, 16)
     assert(names.contains("find_symbol"), names.toString)
     assert(names.contains("find_usages"), names.toString)
     assert(names.contains("call_path"), names.toString)
@@ -50,6 +50,8 @@ class McpSuite extends munit.FunSuite:
     assert(names.contains("document_outline"), names.toString)
     assert(names.contains("annotated_source"), names.toString)
     assert(names.contains("rename_plan"), names.toString)
+    assert(names.contains("move_plan"), names.toString)
+    assert(names.contains("extract_method_plan"), names.toString)
     // every tool carries an object input schema
     assert(r("result")("tools").arr.forall(_("inputSchema")("type").str == "object"))
   }
@@ -184,6 +186,64 @@ class McpSuite extends munit.FunSuite:
     assert(rp("editCount").num > 0, "expected occurrences to rename")
     // edits are uri:line:col-col ranges (definition + references), not whole lines
     assert(rp("edits").arr.forall(_.str.matches(""".+:\d+:\d+-\d+""")), rp.render())
+  }
+
+  test("move_plan relocates a symbol and lists references + the FQN change") {
+    val mp = call(
+      "move_plan",
+      ujson.Obj("symbol" -> Animal, "newOwner" -> "com/github/mercurievv/scalasemantic/moved/")
+    )
+    assertEquals(
+      mp("move").str,
+      "com.github.mercurievv.scalasemantic.fixtures.Animal -> " +
+        "com.github.mercurievv.scalasemantic.moved.Animal"
+    )
+    assert(mp.obj.contains("definition"), mp.render())
+    assert(mp("referenceCount").num > 0, "the move must surface calls/usages")
+  }
+
+  test("extract_method_plan renders the new signature and the replacing call") {
+    // A buffer with a method body and locals; lives on disk so the PC can resolve its path.
+    val root = java.nio.file.Files.createTempDirectory("mcp-extract").nn
+    val file = root.resolve("Calc.scala").nn
+    val source =
+      """package demo
+        |
+        |object Calc:
+        |  def run(n: Int): Int =
+        |    val a: Int = n + 1
+        |    val b: Int = a * 2
+        |    val c: Int = b + a
+        |    c
+        |""".stripMargin
+    java.nio.file.Files.writeString(file, source)
+
+    val backend = PresentationCompilerBackend.fromCurrentJvm(workspace = Some(root))
+    try
+      val pcTools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
+      val resp = Mcp.handle(
+        req(
+          "tools/call",
+          ujson.Obj(
+            "name" -> "extract_method_plan",
+            "arguments" -> ujson.Obj(
+              "uri" -> "Calc.scala",
+              "startLine" -> 5,
+              "startCharacter" -> 0,
+              "endLine" -> 7,
+              "endCharacter" -> 0,
+              "methodName" -> "compute",
+              "source" -> source
+            )
+          )
+        ),
+        pcTools
+      )
+      val r = ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
+      assertEquals(r("signature").str, "def compute(a: Int): Int")
+      assertEquals(r("call").str, "val c = compute(a)")
+      assertEquals(r("enclosingMethod").str, "run")
+    finally backend.close()
   }
 
   test("tools/call invokes the debug-logging hook with the tool name and args") {
@@ -378,5 +438,5 @@ class McpSuite extends munit.FunSuite:
     // 4 lines in (one blank, one notification) → 2 responses out, with matching ids
     assertEquals(out.size, 2)
     assertEquals(ujson.read(out(0))("id").num, 1.0)
-    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 14)
+    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 16)
   }
