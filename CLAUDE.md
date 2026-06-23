@@ -28,7 +28,8 @@ unforked tests run with cwd = repo root. `mcp` test-depends on `analysis` so fix
 
 ## MCP tools (target surface)
 find-usages, method-signature, class-hierarchy, resolve-implicits, trait-vs-local-members,
-type-at-position, cross-file-refs, find-overloads, trace-implicit-chain, call-graph-path.
+type-at-position, cross-file-refs, find-overloads, trace-implicit-chain, call-graph-path,
+rename-plan, move-plan, extract-method-plan.
 
 ## Conventions
 - Symbol strings follow SemanticDB grammar (descriptors end in `#` type, `.` term, `/` package, `(...)` method disambig).
