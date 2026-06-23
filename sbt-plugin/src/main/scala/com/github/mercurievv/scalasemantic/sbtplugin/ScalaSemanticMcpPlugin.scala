@@ -315,7 +315,7 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
   /** Insert-or-replace this server under the top-level `mcpServers` object, preserving everything
     * else. Falls back to a fresh document if the file is absent/blank or not a JSON object.
     */
-  private def mergeJson(
+  private[sbtplugin] def mergeJson(
       existing: Option[String],
       serverName: String,
       argv: Seq[String],
@@ -463,7 +463,11 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
   /** Replace the `[mcp_servers.<name>]` table (header through the line before the next `[...]`
     * table, or EOF) if present, else append it. Other tables stay put.
     */
-  private def mergeToml(existing: Option[String], serverName: String, argv: Seq[String]): String = {
+  private[sbtplugin] def mergeToml(
+      existing: Option[String],
+      serverName: String,
+      argv: Seq[String]
+  ): String = {
     val fresh = renderCodexToml(serverName, argv)
     val src = existing.getOrElse("")
     val body =
@@ -507,7 +511,11 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
         |${continueItem(serverName, argv)}""".stripMargin
 
   /** Insert-or-replace this server's list item under `mcpServers:`, else append the block. */
-  private def mergeYaml(existing: Option[String], serverName: String, argv: Seq[String]): String = {
+  private[sbtplugin] def mergeYaml(
+      existing: Option[String],
+      serverName: String,
+      argv: Seq[String]
+  ): String = {
     val fresh = renderContinueYaml(serverName, argv)
     val src = existing.getOrElse("")
     val body =

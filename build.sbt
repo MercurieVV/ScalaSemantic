@@ -195,6 +195,9 @@ lazy val sbtPlugin = (project in file("sbt-plugin"))
         case _      => "2.0.0"
       }
     },
+    // munit unit-tests the pure config-merge helpers (no sbt/scripted machinery needed). munit 1.2.3
+    // is published for both the 2.12 and 3 plugin axes, so `%%` resolves on each cross-build.
+    libraryDependencies += munit,
     // Bundle the auto-download launcher scripts into the plugin jar so `mcpInstall` can write them
     // into a host project's target dir. Single source of truth = top-level scripts/.
     Compile / resourceGenerators += Def.task {
