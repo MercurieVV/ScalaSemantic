@@ -14,16 +14,16 @@ import scala.sys.process.Process
   * server binary need not be installed ahead of time. The same approach works on sbt 1, sbt 2,
   * other build tools, and a bare shell.
   *
-  * Lifecycle is client-managed: an MCP stdio server is spawned by the MCP client (e.g. Claude
-  * Code).
+  * Lifecycle is client-managed: an MCP stdio server is spawned by the MCP client (for example
+  * Claude Code, Codex, Gemini CLI, or another MCP-capable coding agent).
   *
   * Usage in a host build — minimal:
   * {{{
   *   enablePlugins(ScalaSemanticMcpPlugin)
   * }}}
-  * then `sbt mcpClientConfig` prints a ready-to-paste `.mcp.json` entry. Override
-  * `mcpServerCommand` to point at a fixed jar or `cs` instead of the bundled launcher if you
-  * prefer.
+  * then `sbt mcpClientConfig` prints ready-to-paste MCP client configuration. Set `mcpClient` to
+  * choose the output format. Override `mcpServerCommand` to point at a fixed jar or `cs` instead of
+  * the bundled launcher if you prefer.
   */
 object ScalaSemanticMcpPlugin extends AutoPlugin {
 
@@ -37,6 +37,10 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
       )
     val mcpServerName =
       settingKey[String]("name to register this server under in the MCP client")
+    val mcpClient =
+      settingKey[String](
+        "MCP client config dialect to print: claude, codex, gemini, cline, roo, continue, or generic-json"
+      )
     @transient
     val mcpInstall =
       taskKey[File](
@@ -49,8 +53,10 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
         "write this project's compile classpath to a stable file and return it; the server reads " +
           "it to enable the presentation-compiler backend (live overlay of uncompiled buffers)"
       )
+    @transient
     val mcpClientConfig =
-      taskKey[Unit]("print the .mcp.json entry that registers this project's MCP server")
+      taskKey[Unit]("print the selected MCP client config that registers this project's server")
+    @transient
     val mcpRun =
       taskKey[Unit]("run the MCP server in the foreground (stdio) against this project")
   }
@@ -60,6 +66,7 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
   override def projectSettings = Seq(
     semanticdbEnabled := true,
     mcpServerName := "scala-semantic",
+    mcpClient := "claude",
     mcpInstall := writeLauncher(installDir, streams.value.log),
     mcpClasspathFile := {
       // The PC backend needs the target project's COMPILE classpath (deps + its own output) to
@@ -109,18 +116,8 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
       val argv =
         resolvedCommand(mcpServerCommand.value, baseDirectory.value, cpFile) ++
           Seq("--log", "--log-output")
-      val argsJson = argv.tail.map(a => "\"" + a + "\"").mkString("[", ", ", "]")
-      log.info(
-        s"""|Register this in your MCP client (e.g. .mcp.json):
-            |{
-            |  "mcpServers": {
-            |    "${mcpServerName.value}": {
-            |      "command": "${argv.head}",
-            |      "args": $argsJson
-            |    }
-            |  }
-            |}""".stripMargin
-      )
+      val rendered = renderClientConfig(mcpClient.value, mcpServerName.value, argv)
+      log.info(s"Register this in ${rendered.destination}:\n${rendered.config}")
       if (!cpFile.exists)
         log.info(
           "Server will run index-only. Run `sbt mcpClasspathFile` once (requires a successful " +
@@ -222,4 +219,131 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
           "launch argv, e.g. Seq(\"java\",\"-jar\",\"scalasemantic-mcp.jar\")."
       )
     else command :+ baseDir.getAbsolutePath :+ classpathFile.getAbsolutePath
+
+  private final case class RenderedConfig(destination: String, config: String)
+
+  private def renderClientConfig(
+      client: String,
+      serverName: String,
+      argv: Seq[String]
+  ): RenderedConfig = {
+    val normalized = client.trim.toLowerCase.replace('_', '-')
+    normalized match {
+      case "codex" | "openai" | "openai-codex" =>
+        RenderedConfig(
+          "Codex config.toml (for example ~/.codex/config.toml or .codex/config.toml)",
+          renderCodexToml(serverName, argv)
+        )
+      case "claude" | "claude-code" | "anthropic" =>
+        RenderedConfig("Claude Code .mcp.json", renderMcpJson(serverName, argv, Nil))
+      case "gemini" | "google" | "google-gemini" | "gemini-cli" =>
+        RenderedConfig(
+          "Gemini CLI settings.json (for example ~/.gemini/settings.json or .gemini/settings.json)",
+          renderMcpJson(serverName, argv, Seq("timeout" -> "60000"))
+        )
+      case "cline" =>
+        RenderedConfig(
+          "Cline MCP JSON (for example ~/.cline/mcp.json or the IDE MCP settings JSON)",
+          renderMcpJson(serverName, argv, Seq("disabled" -> "false", "autoApprove" -> "[]"))
+        )
+      case "roo" | "roo-code" =>
+        RenderedConfig(
+          "Roo Code MCP JSON (for example .roo/mcp.json or global mcp_settings.json)",
+          renderMcpJson(
+            serverName,
+            argv,
+            Seq("disabled" -> "false", "alwaysAllow" -> "[]", "timeout" -> "60")
+          )
+        )
+      case "continue" | "continue-dev" =>
+        RenderedConfig("Continue config.yaml", renderContinueYaml(serverName, argv))
+      case "generic" | "generic-json" | "json" | "oss" | "open-source" | "free" =>
+        RenderedConfig("a generic MCP client JSON config", renderMcpJson(serverName, argv, Nil))
+      case other =>
+        sys.error(
+          s"Unsupported mcpClient '$other'. Use one of: " +
+            "claude, codex, gemini, cline, roo, continue, generic-json."
+        )
+    }
+  }
+
+  private def renderMcpJson(
+      serverName: String,
+      argv: Seq[String],
+      extraFields: Seq[(String, String)]
+  ): String = {
+    val argsJson = argv.tail.map(jsonString).mkString("[", ", ", "]")
+    val extra =
+      extraFields.map { case (name, value) => s",\n      ${jsonString(name)}: $value" }.mkString
+    s"""|{
+        |  "mcpServers": {
+        |    ${jsonString(serverName)}: {
+        |      "command": ${jsonString(argv.head)},
+        |      "args": $argsJson$extra
+        |    }
+        |  }
+        |}""".stripMargin
+  }
+
+  private def renderCodexToml(serverName: String, argv: Seq[String]): String = {
+    val argsToml = argv.tail.map(tomlString).mkString("[", ", ", "]")
+    s"""|[mcp_servers.${tomlKey(serverName)}]
+        |command = ${tomlString(argv.head)}
+        |args = $argsToml
+        |startup_timeout_sec = 60
+        |tool_timeout_sec = 60""".stripMargin
+  }
+
+  private def renderContinueYaml(serverName: String, argv: Seq[String]): String = {
+    val args =
+      if (argv.tail.isEmpty) ""
+      else argv.tail.map(a => s"\n      - ${yamlString(a)}").mkString("\n    args:", "", "")
+    s"""|name: ScalaSemantic MCP
+        |version: 1.0.0
+        |schema: v1
+        |mcpServers:
+        |  - name: ${yamlString(serverName)}
+        |    command: ${yamlString(argv.head)}$args
+        |    connectionTimeout: 60000""".stripMargin
+  }
+
+  private def tomlKey(value: String): String =
+    if (value.matches("[A-Za-z0-9_-]+")) value else tomlString(value)
+
+  private def jsonString(value: String): String =
+    "\"" + value.flatMap {
+      case '"'          => "\\\""
+      case '\\'         => "\\\\"
+      case '\b'         => "\\b"
+      case '\f'         => "\\f"
+      case '\n'         => "\\n"
+      case '\r'         => "\\r"
+      case '\t'         => "\\t"
+      case c if c < ' ' => "\\u%04x".format(c.toInt)
+      case c            => c.toString
+    } + "\""
+
+  private def tomlString(value: String): String =
+    "\"" + value.flatMap {
+      case '"'  => "\\\""
+      case '\\' => "\\\\"
+      case '\b' => "\\b"
+      case '\t' => "\\t"
+      case '\n' => "\\n"
+      case '\f' => "\\f"
+      case '\r' => "\\r"
+      case c    => c.toString
+    } + "\""
+
+  private def yamlString(value: String): String =
+    "\"" + value.flatMap {
+      case '"'  => "\\\""
+      case '\\' => "\\\\"
+      case '\b' => "\\b"
+      case '\t' => "\\t"
+      case '\n' => "\\n"
+      case '\f' => "\\f"
+      case '\r' => "\\r"
+      case c    => c.toString
+    } + "\""
 }

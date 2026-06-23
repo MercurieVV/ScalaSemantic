@@ -1,9 +1,9 @@
 # Integration
 
-An MCP **stdio** server is spawned by the MCP client (e.g. Claude Code), which owns its lifecycle —
-you don't run it as a daemon. Integrating means two things: make the project emit SemanticDB, and
-register a launch command scoped to that project's root. Because the unit is a plain process, the
-same approach works from any build tool.
+An MCP **stdio** server is spawned by the MCP client (for example Claude Code, Codex, Gemini CLI, or
+another coding agent), which owns its lifecycle — you don't run it as a daemon. Integrating means two
+things: make the project emit SemanticDB, and register a launch command scoped to that project's root.
+Because the unit is a plain process, the same approach works from any build tool.
 
 The server speaks newline-delimited JSON-RPC 2.0 on **stdout**; **stderr** carries only launcher
 download chatter. The server's own diagnostic logging is **off by default** (nothing is written) and,
@@ -33,18 +33,18 @@ file is what every launch option below runs with `java -jar`.
 
 ## Three ways to launch
 
-All three end at the same place: a `.mcp.json` entry that runs the server with the project root as its
-argument. Pick by how much you want automated.
+All three end at the same place: MCP client configuration that runs the server with the project root
+as its argument. Pick by how much you want automated.
 
 | | A — sbt plugin | B — auto-download script | C — plain `java -jar` |
 |---|---|---|---|
 | Get the jar | launcher downloads + caches it | script downloads + caches it | you download it once |
-| Write `.mcp.json` | `sbt mcpClientConfig` generates it | by hand (point at script) | by hand (point at `java`) |
+| Write client config | `sbt mcpClientConfig` generates it | by hand (point at script) | by hand (point at `java`) |
 | Enable SemanticDB | plugin does it | you (one line) | you (one line) |
 | Stays up to date | yes — pulls latest each launch | yes — pulls latest each launch | manual re-download |
 | Works with | sbt (1 and 2) | any OS / build tool | any OS / build tool |
 
-### Option A — sbt plugin (recommended; generates the `.mcp.json` for you)
+### Option A — sbt plugin (recommended; generates the client config for you)
 
 `io.github.mercurievv:sbt-scalasemantic-mcp` is cross-published for sbt 1 and sbt 2. The same
 `addSbtPlugin` line works in both; sbt resolves the matching plugin artifact for your build. The
@@ -65,7 +65,8 @@ or the [latest GitHub release](https://github.com/MercurieVV/ScalaSemantic/relea
 The plugin enables SemanticDB and adds:
 
 - `sbt mcpInstall` — writes the bundled auto-download launcher (Option B's script) into `target/`.
-- `sbt mcpClientConfig` — runs `mcpInstall`, then prints the `.mcp.json` entry pointing at that script.
+- `sbt mcpClientConfig` — runs `mcpInstall`, then prints the selected MCP client config pointing at
+  that script.
 - `sbt mcpRun` — runs the server in the foreground (stdio) for manual testing.
 
 So `enablePlugins` + `sbt mcpClientConfig` + paste is the whole setup — no jar to download by hand; the
@@ -73,13 +74,26 @@ written launcher fetches the server on first spawn (coursier if present, else th
 jar). To pin a fixed binary instead, override `mcpServerCommand`, e.g.
 `mcpServerCommand := Seq("java", "-jar", "/abs/path/to/scalasemantic-mcp.jar")`.
 
+Choose the generated client format with `mcpClient`:
+
+```scala
+mcpClient := "claude"       // default: Claude Code .mcp.json-style JSON
+mcpClient := "codex"        // Codex config.toml
+mcpClient := "gemini"       // Gemini CLI settings JSON
+mcpClient := "cline"        // Cline MCP JSON
+mcpClient := "roo"          // Roo Code MCP JSON
+mcpClient := "continue"     // Continue config.yaml
+mcpClient := "generic-json" // other MCP clients using the standard mcpServers JSON shape
+```
+
 The plugin only enables SemanticDB and shells out to `mcpServerCommand` — it never links against the
 Scala 3.8.4 server, which is why it is sbt-1/2 and build-tool portable.
 
 #### What `mcpClientConfig` generates
 
 The task takes `mcpServerCommand`, then appends the project's base directory, the classpath file, and
-the logging flags. With the default `mcpServerCommand` (the launcher `mcpInstall` writes) it emits:
+the logging flags. With the default `mcpServerCommand` (the launcher `mcpInstall` writes) and
+`mcpClient := "claude"` it emits:
 
 ```json
 {
@@ -99,6 +113,85 @@ unless these are present — drop them for the silent default). So overriding
 `"command": "java"` with `"-jar", "/abs/scalasemantic-mcp.jar"` leading those same trailing args.
 Generation logic:
 [`ScalaSemanticMcpPlugin.scala`](https://github.com/MercurieVV/ScalaSemantic/blob/master/sbt-plugin/src/main/scala/com/github/mercurievv/scalasemantic/sbtplugin/ScalaSemanticMcpPlugin.scala).
+
+With `mcpClient := "codex"` it emits TOML for `~/.codex/config.toml` or a trusted project's
+`.codex/config.toml`:
+
+```toml
+[mcp_servers.scala-semantic]
+command = "~/.local/bin/scalasemantic-mcp"
+args = ["/abs/path/to/this/project", "~/.local/bin/scala-semantic-classpath.txt", "--log", "--log-output"]
+startup_timeout_sec = 60
+tool_timeout_sec = 60
+```
+
+The explicit timeouts avoid first-launch failures when the launcher has to resolve or download the
+server jar. `sbt mcpClientConfig` also prefetches the jar on a best-effort basis before printing the
+config.
+
+With `mcpClient := "gemini"` it emits JSON for Gemini CLI `~/.gemini/settings.json` or
+`.gemini/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "scala-semantic": {
+      "command": "~/.local/bin/scalasemantic-mcp",
+      "args": ["/abs/path/to/this/project", "~/.local/bin/scala-semantic-classpath.txt", "--log", "--log-output"],
+      "timeout": 60000
+    }
+  }
+}
+```
+
+With `mcpClient := "cline"` it emits JSON for Cline's MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "scala-semantic": {
+      "command": "~/.local/bin/scalasemantic-mcp",
+      "args": ["/abs/path/to/this/project", "~/.local/bin/scala-semantic-classpath.txt", "--log", "--log-output"],
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
+```
+
+With `mcpClient := "roo"` it emits JSON for Roo Code's global `mcp_settings.json` or project
+`.roo/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "scala-semantic": {
+      "command": "~/.local/bin/scalasemantic-mcp",
+      "args": ["/abs/path/to/this/project", "~/.local/bin/scala-semantic-classpath.txt", "--log", "--log-output"],
+      "disabled": false,
+      "alwaysAllow": [],
+      "timeout": 60
+    }
+  }
+}
+```
+
+With `mcpClient := "continue"` it emits YAML for Continue `config.yaml`:
+
+```yaml
+name: ScalaSemantic MCP
+version: 1.0.0
+schema: v1
+mcpServers:
+  - name: "scala-semantic"
+    command: "~/.local/bin/scalasemantic-mcp"
+    args:
+      - "/abs/path/to/this/project"
+      - "~/.local/bin/scala-semantic-classpath.txt"
+      - "--log"
+      - "--log-output"
+    connectionTimeout: 60000
+```
 
 ### Option B — auto-download launcher
 
@@ -125,7 +218,7 @@ prefetches for you), and after a new release the launcher keeps serving the prev
 more session before the background update takes effect. Pinning with `SCALASEMANTIC_VERSION` disables
 the background updater — you get exactly that version every launch.
 
-Install the launcher to a **stable path on PATH** (`~/.local/bin/scalasemantic-mcp`) so `.mcp.json`
+Install the launcher to a **stable path on PATH** (`~/.local/bin/scalasemantic-mcp`) so client config
 does not depend on where this repo is cloned — and, unlike the sbt dev launcher under `target/`, it
 survives `sbt clean`:
 
