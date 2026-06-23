@@ -69,4 +69,4 @@ done
 gh api -H "Accept: application/vnd.github+json" --method PUT "/repos/${REPO}/vulnerability-alerts" >/dev/null
 echo "Enabled vulnerability alerts and dependency graph"
 
-echo "Done. Repo ${REPO} is ready for tag-driven releases (scripts/bump-version.sh ... --push)."
+echo "Done. Repo ${REPO} is ready for tag-driven releases (scripts/bump-version.sh patch|minor|major)."

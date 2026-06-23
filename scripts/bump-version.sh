@@ -4,7 +4,7 @@
 # (sbt-dynver derives the published version from the tag).
 #
 # Usage:
-#   scripts/bump-version.sh [patch|minor|major] [--push]
+#   scripts/bump-version.sh [patch|minor|major]
 #
 # Rules:
 # - Uses the highest existing v* semver tag if present, else FIRST_VERSION (scripts/config.sh).
@@ -12,7 +12,8 @@
 #   switches branches or touches your working tree, so unrelated WIP on a feature branch does NOT
 #   block a release. Under the PR workflow this puts the tag on the merged commit, never a stale
 #   checkout or feature branch.
-# - Creates the tag locally; with --push, also pushes it to origin (which triggers the release).
+# - Creates the tag AND pushes it to origin, which triggers the release. Pushing is unconditional —
+#   there is no opt-in. (`--push` is still accepted for backwards compatibility, but is now a no-op.)
 
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/config.sh"
@@ -45,12 +46,11 @@ next_version() {
 }
 
 bump_type="${1:-}"
-push_tag="false"
 [[ "$bump_type" == "-h" || "$bump_type" == "--help" || -z "$bump_type" ]] && { usage; exit 0; }
 shift || true
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --push) push_tag="true"; shift ;;
+    --push) shift ;; # deprecated no-op: pushing (and thus releasing) is now unconditional
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
@@ -74,7 +74,5 @@ fi
 git tag -a "$new_tag" -m "Release ${new_tag}" "origin/${RELEASE_BRANCH}"
 echo "Created tag ${new_tag} on ${RELEASE_BRANCH} ($(git rev-parse --short "origin/${RELEASE_BRANCH}"))"
 
-if [[ "$push_tag" == "true" ]]; then
-  git push origin "$new_tag"
-  echo "Pushed ${new_tag} to origin (release workflow will run)"
-fi
+git push origin "$new_tag"
+echo "Pushed ${new_tag} to origin (release workflow will run)"
