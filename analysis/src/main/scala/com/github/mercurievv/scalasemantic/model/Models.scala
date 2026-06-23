@@ -181,6 +181,19 @@ case class OutlineEntry(
     children: List[OutlineEntry]
 ) derives ReadWriter
 
+// --- annotated source -------------------------------------------------------
+
+/** One compiler insertion that is invisible in a file's source text, anchored at a 0-based `(line,
+  * character)`. `kind` is one of `implicit` (a synthesised using-argument; its `character` is the
+  * enclosing point, NOT a precise column), `implicit-conversion` (an inserted conversion, precise
+  * `character`), `inferred-type-args` (type arguments the compiler inferred for a call, precise
+  * `character`), or `inferred-type` (the result/value type of a definition the source left
+  * unascribed). `text` is the rendered insertion, e.g. `(using sh)`, `toSeq(…)`, `[String]`, or `:
+  * Future[Int]`.
+  */
+case class SourceAnnotation(line: Int, character: Int, kind: String, text: String)
+    derives ReadWriter
+
 // --- rename plan ------------------------------------------------------------
 
 /** One edit in a rename: replace `oldText` in `range` of `uri` with `newText`. Ranges are the

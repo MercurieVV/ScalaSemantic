@@ -61,6 +61,7 @@ object Mcp:
       |  the symbol for a plain name                        → find_symbol
       |  what's important / where to start, dep cycles       → structure
       |  a file's structure / where to edit (don't read it)  → document_outline
+      |  the full text of a .scala file (read it THIS way)   → annotated_source
       |  the exact edits to rename a symbol safely           → rename_plan
       |
       |Symbols: every tool except find_symbol and type_at_position takes a SemanticDB symbol string
