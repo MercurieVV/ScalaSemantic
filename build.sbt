@@ -297,6 +297,9 @@ lazy val root = (project in file("."))
   .aggregate(core, pc, analysis, mcp, sbtPlugin)
   .settings(name := "ScalaSemantic", publish / skip := true)
 
-// Pre-push gate. A command alias (not a task) so clean/format/fix/test aggregate across all
-// modules. `testOnly *` forces the full suite (sbt 2.0 `test` is cached testQuick — see docs/research/plan.md).
-addCommandAlias("prePush", "clean; scalafmtAll; scalafixAll; Test/testOnly *")
+// Pre-push gate. A command alias (not a task) so the steps aggregate across all modules. This is a
+// VERIFY-ONLY gate (mirrors CI): scalafmtCheckAll + scalafixAll --check FAIL the push on drift rather
+// than silently rewriting files (a pre-push rewrite lands post-commit and never gets pushed — CI then
+// rejects it). Formatting is applied earlier by the pre-commit hook; here we only confirm it stuck.
+// `testOnly *` forces the full suite (sbt 2.0 `test` is cached testQuick — see docs/research/plan.md).
+addCommandAlias("prePush", "clean; scalafmtCheckAll; scalafixAll --check; Test/testOnly *")

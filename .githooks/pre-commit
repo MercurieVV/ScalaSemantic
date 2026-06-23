@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+# Auto-format the commit so it is born clean: scalafmt rewrites the sources, then we re-stage them
+# so the fixes land INSIDE this commit (a pre-commit hook stages into the in-progress commit, so
+# there is no post-commit drift and no extra commit — unlike formatting in pre-push). pre-push then
+# only VERIFIES (scalafmtCheckAll), catching anything that slipped past (e.g. a --no-verify commit).
+# Skip with: git commit --no-verify, or PRECOMMIT_SKIP=1 git commit.
+[ "${PRECOMMIT_SKIP:-0}" = "1" ] && exit 0
+echo "[pre-commit] formatting staged Scala (sbt scalafmtAll)..."
+sbt -batch scalafmtAll || exit 1
+# Re-stage tracked files scalafmt may have rewritten so the formatting is part of this commit.
+git add -u
