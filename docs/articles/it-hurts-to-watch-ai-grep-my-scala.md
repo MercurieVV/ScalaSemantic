@@ -8,13 +8,17 @@ Sometimes it gets a lot of matches. Most are a different doThisWell. A few are i
 
 And honestly, it annoys me a little.
 
+## The point
+
 Here is the thing: we, the Scala community, already solved this. The Scala compiler knows which symbol each reference points to. It resolves names, tracks types, and writes structured semantic information into SemanticDB.
 
 That data just sits there while the AI next to it keeps guessing with grep.
 
 So I built ScalaSemantic: a small tool for AI coding agents that lets the AI ask the compiler instead of reading the text.
 
-## A short glossary, for people who skipped the AI hype
+The interesting part is not that an AI can call another tool. It is that the expensive understanding has already happened. ScalaSemantic just connects the assistant to those compiler facts, so it can spend less context sorting through noisy text matches and more context on the actual change.
+
+## A short glossary
 
 Three words:
 
@@ -46,22 +50,6 @@ It is not magic.
 Most answers come from SemanticDB, so they reflect your last build. If the build is stale, the data can be stale too.
 
 The presentation compiler can also inspect code you just typed and have not built yet, but not every tool uses it yet. And nothing here tries to understand comments or arbitrary plain text. For those, grep is still the right tool — and ScalaSemantic can tell the AI when to use it.
-
-## The point
-
-Here is the part I keep thinking about.
-
-We spent years building compilers that understand our code precisely. Then we handed the code to AI assistants and let them read it with the simplest tool available.
-
-That is a little strange.
-
-The structured knowledge already exists. Someone just had to connect it.
-
-So I connected it.
-
-Now the AI can ask the compiler. It is faster, cheaper, and stops embarrassing itself in front of my code.
-
-A small win. But an honest one.
 
 ## How it works, technically
 
