@@ -15,11 +15,17 @@ import scala.meta.internal.semanticdb as s
   * presentation-compiler `pc` is the second backend: [[withBuffer]] regenerates one file's
   * SemanticDB in memory (error-tolerant, no compile needed) and overlays it, so the position-local
   * tools can answer about a buffer that has been edited since — or never — compiled.
+  *
+  * The stateless query primitives (rendering, symbol/scope/package lookups, glob predicates,
+  * implicit resolution) live in [[AnalyzerHelpers]]; the methods here orchestrate them into tool
+  * results.
   */
 final class Analyzer(
     index: SemanticIndex,
     pc: Option[PresentationCompilerBackend] = None
 ):
+
+  private val h = AnalyzerHelpers(index)
 
   /** An analyzer whose index has `code` (the live contents of the file at `fileUri`) overlaid via
     * the presentation compiler, the overlaid document keyed by `docUri` so it replaces the matching
@@ -80,7 +86,7 @@ final class Analyzer(
       val defs = doc.occurrences.toList
         .collect {
           case occ
-              if occ.role == s.SymbolOccurrence.Role.DEFINITION && includeInOutline(occ.symbol) =>
+              if occ.role == s.SymbolOccurrence.Role.DEFINITION && h.includeInOutline(occ.symbol) =>
             occ.symbol -> occ.range.map(_.startLine).getOrElse(0)
         }
         .distinctBy(_._1)
@@ -93,28 +99,12 @@ final class Analyzer(
         OutlineEntry(
           sym,
           index.displayName(sym),
-          kindName(sym),
+          h.kindName(sym),
           line,
           outlineSignature(sym),
           kids.map((c, l) => build(c, l))
         )
       defs.filter((sym, _) => parentOf(sym).isEmpty).sortBy(_._2).map((sym, l) => build(sym, l))
-    }
-
-  private val outlineKinds: Set[s.SymbolInformation.Kind] = Set(
-    s.SymbolInformation.Kind.CLASS,
-    s.SymbolInformation.Kind.TRAIT,
-    s.SymbolInformation.Kind.INTERFACE,
-    s.SymbolInformation.Kind.OBJECT,
-    s.SymbolInformation.Kind.METHOD,
-    s.SymbolInformation.Kind.MACRO,
-    s.SymbolInformation.Kind.TYPE,
-    s.SymbolInformation.Kind.FIELD
-  )
-
-  private def includeInOutline(symbol: String): Boolean =
-    index.info(symbol).exists { si =>
-      outlineKinds.contains(si.kind) && si.displayName.nonEmpty && si.displayName != "<init>"
     }
 
   /** A one-line signature for an outline entry, rendered from SemanticDB: a method's full clarified
@@ -123,7 +113,7 @@ final class Analyzer(
   private def outlineSignature(symbol: String): String =
     index.info(symbol).map(_.signature) match
       case Some(_: s.MethodSignature) => methodSignature(symbol).map(_.rendered).getOrElse("")
-      case Some(v: s.ValueSignature)  => s": ${renderType(v.tpe)}"
+      case Some(v: s.ValueSignature)  => s": ${h.renderType(v.tpe)}"
       case _                          => ""
 
   // --- annotated source -----------------------------------------------------
@@ -141,103 +131,10 @@ final class Analyzer(
       sourceLines: IndexedSeq[String]
   ): Option[List[SourceAnnotation]] =
     index.document(uri).map { doc =>
-      val synthetic = doc.synthetics.iterator.flatMap(syntheticAnnotation).toList
-      val defTypes = doc.occurrences.iterator.flatMap(defTypeAnnotation(_, sourceLines)).toList
+      val synthetic = doc.synthetics.iterator.flatMap(h.syntheticAnnotation).toList
+      val defTypes = doc.occurrences.iterator.flatMap(h.defTypeAnnotation(_, sourceLines)).toList
       (synthetic ++ defTypes).distinct.sortBy(a => (a.line, a.character, a.kind))
     }
-
-  /** An implicit-insertion or inferred-type-argument annotation for one synthetic, anchored at the
-    * synthetic's source range. The `kind` distinguishes notes whose range is a precise call site
-    * (`inferred-type-args`, `implicit-conversion`) from the using-argument note, whose range is the
-    * zero-width enclosing point and so carries no trustworthy column. `None` for synthetics we do
-    * not surface.
-    */
-  private def syntheticAnnotation(syn: s.Synthetic): Option[SourceAnnotation] =
-    val r = syn.range.getOrElse(s.Range.defaultInstance)
-    syn.tree match
-      case t: s.TypeApplyTree if t.typeArguments.nonEmpty =>
-        Some(
-          SourceAnnotation(
-            r.startLine,
-            r.startCharacter,
-            "inferred-type-args",
-            t.typeArguments.map(renderType).mkString("[", ", ", "]")
-          )
-        )
-      case app: s.ApplyTree =>
-        app.function match
-          // using-args appended to a visible call: the function IS the original expression, so the
-          // range is the enclosing point, not where the args belong — no reliable column.
-          case _: s.OriginalTree =>
-            val args = app.arguments.iterator.flatMap(insertedName).toList
-            Option.when(args.nonEmpty)(
-              SourceAnnotation(
-                r.startLine,
-                r.startCharacter,
-                "implicit",
-                args.mkString("(using ", ", ", ")")
-              )
-            )
-          // an implicit conversion wraps the original expression: the range pins the converted
-          // expression, so the column is meaningful.
-          case fn =>
-            insertedName(fn).map(c =>
-              SourceAnnotation(r.startLine, r.startCharacter, "implicit-conversion", s"$c(…)")
-            )
-      case _ => None
-
-  /** Best-effort display name of an inserted implicit tree (a given/implicit reference). */
-  private def insertedName(tree: s.Tree): Option[String] =
-    tree match
-      case t: s.IdTree        => Some(index.displayName(t.symbol))
-      case t: s.SelectTree    => t.id.flatMap(insertedName)
-      case t: s.TypeApplyTree => insertedName(t.function)
-      case t: s.ApplyTree     => insertedName(t.function)
-      case _                  => None
-
-  private val annotatedDefKinds: Set[s.SymbolInformation.Kind] =
-    Set(s.SymbolInformation.Kind.METHOD, s.SymbolInformation.Kind.FIELD)
-
-  /** The inferred result/value type of a definition occurrence, as a `: T` note — but only when the
-    * source line did not already ascribe a type (so explicitly-typed definitions stay un-noted).
-    */
-  private def defTypeAnnotation(
-      occ: s.SymbolOccurrence,
-      sourceLines: IndexedSeq[String]
-  ): Option[SourceAnnotation] =
-    if occ.role != s.SymbolOccurrence.Role.DEFINITION then None
-    else
-      index
-        .info(occ.symbol)
-        .filter(si => annotatedDefKinds.contains(si.kind) && si.displayName != "<init>")
-        .flatMap { si =>
-          val tpe = si.signature match
-            case m: s.MethodSignature => m.returnType
-            case v: s.ValueSignature  => v.tpe
-            case _                    => s.Type.Empty
-          val rendered = renderType(tpe)
-          val r = occ.range.getOrElse(s.Range.defaultInstance)
-          val line = sourceLines.lift(r.startLine).getOrElse("")
-          if rendered.isEmpty || alreadyAscribed(line, r.startCharacter) then None
-          else
-            Some(SourceAnnotation(r.startLine, r.startCharacter, "inferred-type", s": $rendered"))
-        }
-
-  /** Whether the definition whose name starts at `nameStart` on `line` already has an explicit type
-    * ascription: a top-level `:` (outside any `()`/`[]` group) before the `=` of its body.
-    */
-  private def alreadyAscribed(line: String, nameStart: Int): Boolean =
-    @annotation.tailrec
-    def scan(i: Int, depth: Int): Boolean =
-      if i >= line.length then false
-      else
-        line.charAt(i) match
-          case '=' if depth == 0 => false
-          case ':' if depth == 0 => true
-          case '(' | '['         => scan(i + 1, depth + 1)
-          case ')' | ']'         => scan(i + 1, depth - 1)
-          case _                 => scan(i + 1, depth)
-    nameStart >= 0 && nameStart < line.length && scan(nameStart, 0)
 
   // --- rename plan ----------------------------------------------------------
 
@@ -283,16 +180,18 @@ final class Analyzer(
     val name = index.displayName(symbol)
     val fromOwner = index.owner(symbol)
     val toOwner = if newOwner.endsWith("/") || newOwner.isEmpty then newOwner else s"$newOwner/"
-    val fromFqn = joinFqn(packageDotted(fromOwner), name)
-    val toFqn = joinFqn(packageDotted(toOwner), name)
+    val fromFqn = h.joinFqn(h.packageDotted(fromOwner), name)
+    val toFqn = h.joinFqn(h.packageDotted(toOwner), name)
     val occs = index.occurrencesOf(symbol)
     val defLoc = occs.collectFirst {
-      case (uri, occ) if occ.role == s.SymbolOccurrence.Role.DEFINITION => location(uri, occ.range)
+      case (uri, occ) if occ.role == s.SymbolOccurrence.Role.DEFINITION =>
+        h.location(uri, occ.range)
     }
     val defUri = defLoc.map(_.uri)
     val references = occs
       .collect {
-        case (uri, occ) if occ.role == s.SymbolOccurrence.Role.REFERENCE => location(uri, occ.range)
+        case (uri, occ) if occ.role == s.SymbolOccurrence.Role.REFERENCE =>
+          h.location(uri, occ.range)
       }
       .distinct
       .toList
@@ -302,7 +201,7 @@ final class Analyzer(
       .distinct
       .filterNot(defUri.contains) // the definition's file moves with it
       .flatMap { uri =>
-        val pkg = documentPackage(uri)
+        val pkg = h.documentPackage(uri)
         if pkg.contains(toOwner) then None // already in the destination package
         else if pkg.contains(fromOwner) then Some(MoveImport(uri, "", toFqn))
         else Some(MoveImport(uri, fromFqn, toFqn))
@@ -310,7 +209,7 @@ final class Analyzer(
     MovePlan(
       symbol,
       name,
-      kindName(symbol),
+      h.kindName(symbol),
       fromOwner,
       toOwner,
       fromFqn,
@@ -319,26 +218,6 @@ final class Analyzer(
       references,
       imports
     )
-
-  /** A package symbol (`com/foo/bar/`) as a dotted name (`com.foo.bar`); empty for the root. */
-  private def packageDotted(pkgSymbol: String): String =
-    pkgSymbol.stripSuffix("/").replace('/', '.')
-
-  private def joinFqn(pkg: String, name: String): String =
-    if pkg.isEmpty then name else s"$pkg.$name"
-
-  /** The package a document belongs to: the owner of its first top-level global definition. `None`
-    * if the document is not indexed or declares nothing top-level.
-    */
-  private def documentPackage(uri: String): Option[String] =
-    index.document(uri).flatMap { doc =>
-      doc.occurrences.iterator
-        .filter(_.role == s.SymbolOccurrence.Role.DEFINITION)
-        .map(_.symbol)
-        .filter(index.isGlobal)
-        .map(index.owner)
-        .find(index.isPackage)
-    }
 
   // --- extract method plan --------------------------------------------------
 
@@ -375,10 +254,6 @@ final class Analyzer(
         .map(_.symbol)
         .filter(index.isLocal)
         .toSet
-      val definedAnywhere = occ.iterator
-        .filter(_.role == s.SymbolOccurrence.Role.DEFINITION)
-        .map(_.symbol)
-        .toSet
 
       // Parameters: locals READ in the selection whose definition is NOT inside it (free vars),
       // ordered by first read position, de-duplicated.
@@ -389,7 +264,7 @@ final class Analyzer(
         .sortBy(o => o.range.map(r => (r.startLine, r.startCharacter)).getOrElse((0, 0)))
         .map(_.symbol)
         .distinct
-        .map(sym => ExtractBinding(localName(sym), localTypeText(sym)))
+        .map(sym => ExtractBinding(h.localName(sym), h.localTypeText(sym)))
 
       // Returns: locals DEFINED inside the selection that are still READ after it.
       val readAfter = occ.iterator
@@ -403,7 +278,7 @@ final class Analyzer(
         .sortBy(o => o.range.map(r => (r.startLine, r.startCharacter)).getOrElse((0, 0)))
         .map(_.symbol)
         .distinct
-        .map(sym => ExtractBinding(localName(sym), localTypeText(sym)))
+        .map(sym => ExtractBinding(h.localName(sym), h.localTypeText(sym)))
 
       // The method the selection sits in: nearest preceding method definition in the file.
       val enclosing = occ
@@ -415,7 +290,7 @@ final class Analyzer(
           )
         )
         .maxByOption(o => o.range.map(r => (r.startLine, r.startCharacter)).getOrElse((0, 0)))
-        .map(o => symbolRef(o.symbol))
+        .map(o => h.symbolRef(o.symbol))
 
       val returnType = returns match
         case Nil      => "Unit"
@@ -443,18 +318,6 @@ final class Analyzer(
       )
     }
 
-  /** A local symbol's display name (locals carry no descriptor, so fall back to the index). */
-  private def localName(symbol: String): String =
-    index.info(symbol).map(_.displayName).filter(_.nonEmpty).getOrElse(symbol)
-
-  /** A local's rendered type, or `?` when SemanticDB recorded none — Scala leaves the inferred type
-    * of an unascribed local val Empty, so the caller must supply it (the binding name is always
-    * exact).
-    */
-  private def localTypeText(symbol: String): String =
-    val rendered = renderType(index.info(symbol).map(valueType).getOrElse(s.Type.Empty))
-    if rendered.isEmpty then "?" else rendered
-
   // --- find-symbol ----------------------------------------------------------
 
   /** Find global symbols whose display name matches `query` (case-insensitive), ranked exact >
@@ -471,7 +334,7 @@ final class Analyzer(
   ): List[SymbolRef] =
     val q = query.toLowerCase
     val wantedKind = kind.map(_.toUpperCase)
-    val keepPath = bySymbolPath(pathFilter)
+    val keepPath = h.bySymbolPath(pathFilter)
     index.symbols.values.iterator
       .filter(si => index.isGlobal(si.symbol))
       .filter(si => !findSymbolExcludedKinds.contains(si.kind))
@@ -489,7 +352,7 @@ final class Analyzer(
         (rank, si.displayName.length, si.symbol)
       }
       .take(limit)
-      .map(si => symbolRef(si.symbol))
+      .map(si => h.symbolRef(si.symbol))
 
   private val findSymbolExcludedKinds: Set[s.SymbolInformation.Kind] = Set(
     s.SymbolInformation.Kind.PARAMETER,
@@ -507,10 +370,10 @@ final class Analyzer(
     * `referenceCount` reflects the filtered set.
     */
   def findUsages(symbol: String, pathFilter: Option[String] = None): UsagesResult =
-    val keep = globMatcher(pathFilter)
+    val keep = h.globMatcher(pathFilter)
     val located = index.occurrencesOf(symbol).collect {
       case (uri, occ) if keep(uri) =>
-        occ.role -> location(uri, occ.range)
+        occ.role -> h.location(uri, occ.range)
     }
     val defs =
       located.collect { case (s.SymbolOccurrence.Role.DEFINITION, loc) => loc }.distinct.toList
@@ -518,48 +381,31 @@ final class Analyzer(
       located.collect { case (s.SymbolOccurrence.Role.REFERENCE, loc) => loc }.distinct.toList
     UsagesResult(symbol, index.displayName(symbol), defs, refs)
 
-  /** A predicate from an optional glob: `*` matches any run of chars, the rest is literal, matched
-    * unanchored (substring). `None` keeps everything.
-    */
-  private def globMatcher(pattern: Option[String]): String => Boolean =
-    pattern match
-      case None => _ => true
-      case Some(glob) =>
-        val regex = glob.split("\\*", -1).map(java.util.regex.Pattern.quote).mkString(".*").r
-        uri => regex.findFirstIn(uri).isDefined
-
-  /** A symbol-level predicate: keep a symbol when its definition uri matches the glob. A symbol
-    * with no definition occurrence in the index (e.g. external types) is dropped only when a filter
-    * is given. `None` keeps everything.
-    */
-  private def bySymbolPath(pattern: Option[String]): String => Boolean =
-    pattern match
-      case None => _ => true
-      case Some(_) =>
-        val keepUri = globMatcher(pattern)
-        sym => definitionUri(sym).exists(keepUri)
-
-  /** The document uri of a symbol's definition occurrence, if the index has one. */
-  private def definitionUri(symbol: String): Option[String] =
-    index.occurrencesOf(symbol).collectFirst {
-      case (uri, occ) if occ.role == s.SymbolOccurrence.Role.DEFINITION => uri
-    }
-
   // --- method-signature -----------------------------------------------------
 
   /** Full method signature including type parameters and (implicit) parameter lists. */
   def methodSignature(symbol: String): Option[MethodSignature] =
     index.info(symbol).map(_.signature).collect { case m: s.MethodSignature =>
       val name = index.displayName(symbol)
-      val tparams = scopeInfos(m.typeParameters).map(_.displayName).toList
+      val tparams = h.scopeInfos(m.typeParameters).map(_.displayName).toList
       val plists = m.parameterLists.map { scope =>
-        val params = scopeInfos(Some(scope)).map { p =>
-          Parameter(p.displayName, renderType(valueType(p)), isImplicit(p))
-        }.toList
+        val params = h
+          .scopeInfos(Some(scope))
+          .map { p =>
+            Parameter(p.displayName, h.renderType(h.valueType(p)), h.isImplicit(p))
+          }
+          .toList
         ParameterList(params, params.nonEmpty && params.forall(_.isImplicit))
       }.toList
-      val ret = renderType(m.returnType)
-      MethodSignature(symbol, name, tparams, plists, ret, renderMethod(name, tparams, plists, ret))
+      val ret = h.renderType(m.returnType)
+      MethodSignature(
+        symbol,
+        name,
+        tparams,
+        plists,
+        ret,
+        h.renderMethod(name, tparams, plists, ret)
+      )
     }
 
   // --- class-hierarchy ------------------------------------------------------
@@ -572,44 +418,17 @@ final class Analyzer(
     * subdirectory.
     */
   def classHierarchy(symbol: String, pathFilter: Option[String] = None): Option[ClassHierarchy] =
-    val keep = bySymbolPath(pathFilter)
+    val keep = h.bySymbolPath(pathFilter)
     index.info(symbol).map(_.signature).collect { case c: s.ClassSignature =>
-      val parents = c.parents.flatMap(parentSymbol).filter(keep).map(symbolRef).toList
+      val parents = c.parents.flatMap(h.parentSymbol).filter(keep).map(h.symbolRef).toList
       ClassHierarchy(
         symbol,
         index.displayName(symbol),
         parents,
-        linearize(symbol).filter(keep).map(symbolRef),
-        knownSubtypes(symbol).filter(keep).map(symbolRef)
+        h.linearize(symbol).filter(keep).map(h.symbolRef),
+        h.knownSubtypes(symbol).filter(keep).map(h.symbolRef)
       )
     }
-
-  /** Direct parent symbols declared by a type's `ClassSignature` (empty for non-classes). */
-  private def directParents(info: s.SymbolInformation): List[String] =
-    info.signature match
-      case c: s.ClassSignature => c.parents.flatMap(parentSymbol).toList
-      case _                   => Nil
-
-  /** Depth-first transitive parents (excluding `symbol` itself), de-duplicated by first sight. */
-  private def linearize(symbol: String): List[String] =
-    def parentsOf(sym: String): List[String] = index.info(sym).map(directParents).getOrElse(Nil)
-    @annotation.tailrec
-    def loop(queue: List[String], seen: Set[String], acc: List[String]): List[String] =
-      queue match
-        case Nil => acc.reverse
-        case head :: tail =>
-          if seen.contains(head) then loop(tail, seen, acc)
-          else loop(parentsOf(head) ::: tail, seen + head, head :: acc)
-    loop(parentsOf(symbol), Set.empty, Nil)
-
-  /** All indexed classes/traits that declare `symbol` among their direct parents. */
-  private def knownSubtypes(symbol: String): List[String] =
-    index.symbols.values
-      .collect {
-        case si if directParents(si).contains(symbol) => si.symbol
-      }
-      .toList
-      .sorted
 
   // --- find-overloads -------------------------------------------------------
 
@@ -640,12 +459,13 @@ final class Analyzer(
     * any chars, substring match) — e.g. to drop members inherited from types outside a module.
     */
   def members(symbol: String, pathFilter: Option[String] = None): Option[MembersResult] =
-    val keep = bySymbolPath(pathFilter)
+    val keep = h.bySymbolPath(pathFilter)
     index.info(symbol).map(_.signature).collect { case _: s.ClassSignature =>
-      val declared = declarationSymbols(symbol).filter(keep).map(memberInfo(_, symbol))
+      val declared = h.declarationSymbols(symbol).filter(keep).map(h.memberInfo(_, symbol))
       val declaredNames = declared.map(_.displayName).toSet
-      val inherited = linearize(symbol)
-        .flatMap(parent => declarationSymbols(parent).map(memberInfo(_, parent)))
+      val inherited = h
+        .linearize(symbol)
+        .flatMap(parent => h.declarationSymbols(parent).map(h.memberInfo(_, parent)))
         .filterNot(m => declaredNames.contains(m.displayName))
         .filter(m => keep(m.symbol))
         .distinctBy(_.displayName)
@@ -660,14 +480,14 @@ final class Analyzer(
       .document(uri)
       .toSeq
       .flatMap(_.occurrences)
-      .filter(occ => occ.range.exists(rangeContains(_, line, character)))
-      .minByOption(occ => occ.range.map(rangeSpan).getOrElse(Int.MaxValue))
+      .filter(occ => occ.range.exists(h.rangeContains(_, line, character)))
+      .minByOption(occ => occ.range.map(h.rangeSpan).getOrElse(Int.MaxValue))
       .map { occ =>
         TypeAtPosition(
-          location(uri, occ.range),
+          h.location(uri, occ.range),
           occ.symbol,
           index.displayName(occ.symbol),
-          typeString(occ.symbol)
+          h.typeString(occ.symbol)
         )
       }
 
@@ -678,10 +498,10 @@ final class Analyzer(
     * type's parent. `chosen` is set only when exactly one candidate exists.
     */
   def resolveImplicits(typeSymbol: String): ImplicitResolution =
-    val candidates = implicitsProducing(typeSymbol).map { si =>
+    val candidates = h.implicitsProducing(typeSymbol).map { si =>
       ImplicitCandidate(
-        symbolRef(si.symbol),
-        renderType(producedType(si)),
+        h.symbolRef(si.symbol),
+        h.renderType(h.producedType(si)),
         fromExplicitImport = false
       )
     }
@@ -706,12 +526,12 @@ final class Analyzer(
         case tpe :: rest =>
           if seenTypes.contains(tpe) then loop(rest, seenTypes, steps)
           else
-            val produced = implicitsProducing(tpe)
+            val produced = h.implicitsProducing(tpe)
             val newSteps = produced.map { si =>
-              val deps = implicitDependencyHeads(si)
-              ImplicitChainStep(symbolRef(si.symbol), renderType(producedType(si)), deps)
+              val deps = h.implicitDependencyHeads(si)
+              ImplicitChainStep(h.symbolRef(si.symbol), h.renderType(h.producedType(si)), deps)
             }
-            val nextTypes = produced.flatMap(implicitDependencyHeads)
+            val nextTypes = produced.flatMap(h.implicitDependencyHeads)
             loop(rest ::: nextTypes, tpe :: seenTypes, steps ::: newSteps)
     ImplicitChain(typeSymbol, loop(List(typeSymbol), Nil, Nil).distinctBy(_.target.symbol))
 
@@ -736,10 +556,10 @@ final class Analyzer(
       .zip(nodes.drop(1))
       .flatMap { (a, b) =>
         adjacency.getOrElse(a, Nil).find(_._1 == b).map { (_, loc) =>
-          CallEdge(symbolRef(a), symbolRef(b), loc)
+          CallEdge(h.symbolRef(a), h.symbolRef(b), loc)
         }
       }
-    CallGraphPath(symbolRef(from), symbolRef(to), nodes.map(symbolRef), edges)
+    CallGraphPath(h.symbolRef(from), h.symbolRef(to), nodes.map(h.symbolRef), edges)
 
   /** Caller -> list of (callee, call-site) edges, attributing each method reference to the most
     * recent method definition in source order within its document.
@@ -756,178 +576,10 @@ final class Analyzer(
             val method = index.isMethod(occ.symbol)
             if isDef && method then (Some(occ.symbol), acc)
             else if method && current.exists(_ != occ.symbol) then
-              (current, (current.getOrElse(""), occ.symbol, location(doc.uri, occ.range)) :: acc)
+              (current, (current.getOrElse(""), occ.symbol, h.location(doc.uri, occ.range)) :: acc)
             else (current, acc)
         }
         ._2
         .reverse
     }
     edges.toList.groupMap(_._1)(e => (e._2, e._3))
-
-  /** Given/implicit *definitions* (a given object or def/val) whose produced type's head is
-    * `typeSymbol`. Excludes implicit parameters and the synthetic self-class a `given ... with`
-    * emits (whose members are owned by an implicit type).
-    */
-  private def implicitsProducing(typeSymbol: String): List[s.SymbolInformation] =
-    index.symbols.values
-      .collect {
-        case si if isGivenDefinition(si) && parentSymbol(producedType(si)).contains(typeSymbol) =>
-          si
-      }
-      .toList
-      .sortBy(_.symbol)
-
-  private def isGivenDefinition(info: s.SymbolInformation): Boolean =
-    val k = info.kind
-    isImplicit(info) &&
-    (k == s.SymbolInformation.Kind.OBJECT || k == s.SymbolInformation.Kind.METHOD) &&
-    !index.info(index.owner(info.symbol)).exists(isImplicit)
-
-  /** The type an implicit instance provides: a given object's first non-Object parent, or a given
-    * def/val's result type (unwrapping the synthetic self-class a `given ... with` emits).
-    */
-  private def producedType(info: s.SymbolInformation): s.Type =
-    info.signature match
-      case c: s.ClassSignature  => c.parents.find(notObject).getOrElse(s.Type.Empty)
-      case m: s.MethodSignature => unwrapSelfClass(m.returnType, info.displayName)
-      case v: s.ValueSignature  => unwrapSelfClass(v.tpe, info.displayName)
-      case _                    => s.Type.Empty
-
-  /** If `tpe`'s head is the synthetic class named after the given (`given x ... with`), replace it
-    * with the interface that class extends; otherwise return `tpe` unchanged.
-    */
-  private def unwrapSelfClass(tpe: s.Type, givenName: String): s.Type =
-    val isSelfClass = parentSymbol(tpe).exists(sym => index.displayName(sym) == givenName)
-    if !isSelfClass then tpe
-    else
-      parentSymbol(tpe)
-        .flatMap(index.info)
-        .map(_.signature)
-        .collect { case c: s.ClassSignature => c.parents.find(notObject) }
-        .flatten
-        .getOrElse(tpe)
-
-  private def notObject(tpe: s.Type): Boolean =
-    !parentSymbol(tpe).contains("java/lang/Object#")
-
-  /** Head symbols of an implicit method's implicit-parameter types (its dependencies). */
-  private def implicitDependencyHeads(info: s.SymbolInformation): List[String] =
-    info.signature match
-      case m: s.MethodSignature =>
-        m.parameterLists.toList
-          .flatMap(scope => scopeInfos(Some(scope)))
-          .filter(isImplicit)
-          .flatMap(p => parentSymbol(valueType(p)))
-      case _ => Nil
-
-  // --- shared helpers -------------------------------------------------------
-
-  /** Member symbols declared in a type's `ClassSignature.declarations` scope. */
-  private def declarationSymbols(symbol: String): List[String] =
-    index
-      .info(symbol)
-      .map(_.signature)
-      .collect { case c: s.ClassSignature => scopeInfos(c.declarations).map(_.symbol).toList }
-      .getOrElse(Nil)
-
-  private def memberInfo(member: String, declaredIn: String): MemberInfo =
-    MemberInfo(member, index.displayName(member), kindName(member), symbolRef(declaredIn))
-
-  private def rangeContains(r: s.Range, line: Int, character: Int): Boolean =
-    val afterStart = line > r.startLine || (line == r.startLine && character >= r.startCharacter)
-    val beforeEnd = line < r.endLine || (line == r.endLine && character < r.endCharacter)
-    afterStart && beforeEnd
-
-  private def rangeSpan(r: s.Range): Int =
-    (r.endLine - r.startLine) * 10000 + (r.endCharacter - r.startCharacter)
-
-  /** A symbol's type as text: a method's return, a value's type, else the symbol's own name. */
-  private def typeString(symbol: String): String =
-    index.info(symbol).map(_.signature) match
-      case Some(m: s.MethodSignature) => renderType(m.returnType)
-      case Some(v: s.ValueSignature)  => renderType(v.tpe)
-      case _                          => index.displayName(symbol)
-
-  private def location(uri: String, range: Option[s.Range]): Location =
-    val r = range.getOrElse(s.Range.defaultInstance)
-    Location(
-      uri,
-      Range(Position(r.startLine, r.startCharacter), Position(r.endLine, r.endCharacter))
-    )
-
-  private def symbolRef(symbol: String): SymbolRef =
-    SymbolRef(symbol, index.displayName(symbol), kindName(symbol))
-
-  private def kindName(symbol: String): String =
-    index.info(symbol).map(_.kind.toString).getOrElse("UNKNOWN")
-
-  private def parentSymbol(tpe: s.Type): Option[String] =
-    tpe match
-      case s.TypeRef(_, sym, _) => Some(sym)
-      case s.SingleType(_, sym) => Some(sym)
-      case _                    => None
-
-  private def scopeInfos(scope: Option[s.Scope]): Seq[s.SymbolInformation] =
-    scope.toSeq.flatMap { sc =>
-      if sc.hardlinks.nonEmpty then sc.hardlinks
-      else sc.symlinks.flatMap(index.info)
-    }
-
-  private def valueType(info: s.SymbolInformation): s.Type =
-    info.signature match
-      case v: s.ValueSignature  => v.tpe
-      case m: s.MethodSignature => m.returnType
-      case _                    => s.Type.Empty
-
-  private def isImplicit(info: s.SymbolInformation): Boolean =
-    (info.properties & s.SymbolInformation.Property.IMPLICIT.value) != 0
-
-  private def renderMethod(
-      name: String,
-      tparams: List[String],
-      plists: List[ParameterList],
-      ret: String
-  ): String =
-    val tp = if tparams.isEmpty then "" else tparams.mkString("[", ", ", "]")
-    val ps = plists.map { pl =>
-      val prefix = if pl.isImplicit then "implicit " else ""
-      pl.parameters.map(p => s"${p.name}: ${p.tpe}").mkString(s"($prefix", ", ", ")")
-    }.mkString
-    s"def $name$tp$ps: $ret"
-
-  /** Best-effort rendering of a SemanticDB type to readable Scala-ish text. */
-  private def renderType(tpe: s.Type): String =
-    tpe match
-      case s.TypeRef(_, sym, args) =>
-        val base = index.displayName(sym)
-        if args.isEmpty then base else args.map(renderType).mkString(s"$base[", ", ", "]")
-      case s.SingleType(_, sym)    => s"${index.displayName(sym)}.type"
-      case s.ThisType(sym)         => s"${index.displayName(sym)}.this"
-      case s.SuperType(_, sym)     => index.displayName(sym)
-      case s.ByNameType(t)         => s"=> ${renderType(t)}"
-      case s.RepeatedType(t)       => s"${renderType(t)}*"
-      case s.WithType(ts)          => ts.map(renderType).mkString(" with ")
-      case s.IntersectionType(ts)  => ts.map(renderType).mkString(" & ")
-      case s.UnionType(ts)         => ts.map(renderType).mkString(" | ")
-      case s.AnnotatedType(_, t)   => renderType(t)
-      case s.ExistentialType(t, _) => renderType(t)
-      case s.UniversalType(_, t)   => renderType(t)
-      case s.StructuralType(t, _)  => renderType(t)
-      case s.ConstantType(c)       => renderConstant(c)
-      case _                       => ""
-
-  /** Render a literal/constant type (Scala 3 singleton-literal types, e.g. `42`, `"x"`, `true`). */
-  private def renderConstant(c: s.Constant): String =
-    c match
-      case s.IntConstant(v)     => v.toString
-      case s.LongConstant(v)    => s"${v}L"
-      case s.FloatConstant(v)   => s"${v}f"
-      case s.DoubleConstant(v)  => v.toString
-      case s.BooleanConstant(v) => v.toString
-      case s.CharConstant(v)    => s"'${v.toChar}'"
-      case s.StringConstant(v)  => s"\"$v\""
-      case s.ShortConstant(v)   => v.toString
-      case s.ByteConstant(v)    => v.toString
-      case s.UnitConstant()     => "Unit"
-      case s.NullConstant()     => "null"
-      case _                    => ""
