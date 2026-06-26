@@ -58,16 +58,17 @@ lazy val proguard = taskKey[File]("Run ProGuard to shrink the assembly JAR")
 lazy val testShrunk = taskKey[Unit]("Run tests using the shrunk ProGuard JAR")
 
 // core: load + index SemanticDB and expose symbol-grammar primitives. No JSON, no MCP.
-// scalameta + its SemanticDB bindings are JVM-published on the 2.13 line; consume them from
-// Scala 3 via for3Use2_13 (as scalafix does). `semanticdb-shared` carries the
+// scalameta + its SemanticDB bindings are now published natively for Scala 3 (semanticdb-shared_3
+// from 4.16.2), so we depend on the _3 artifacts directly — no more for3Use2_13. This keeps the
+// whole transitive ScalaPB/protobuf stack on the Scala 3 line. `semanticdb-shared` carries the
 // scala.meta.internal.semanticdb.* protobuf classes (not pulled in by `scalameta`).
 lazy val core = (project in file("core"))
   .settings(commonSettings)
   .settings(
     name := "scalasemantic-core",
     libraryDependencies ++= Seq(
-      ("org.scalameta" %% "scalameta" % "4.13.9").cross(CrossVersion.for3Use2_13),
-      ("org.scalameta" %% "semanticdb-shared" % "4.13.9").cross(CrossVersion.for3Use2_13),
+      "org.scalameta" %% "scalameta" % "4.17.0",
+      "org.scalameta" %% "semanticdb-shared" % "4.17.0",
       munit
     )
   )
