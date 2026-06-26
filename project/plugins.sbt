@@ -2,7 +2,7 @@
 // Let coursier pick a single suffix instead of failing the cross-version check.
 ThisBuild / conflictWarning := ConflictWarning.disable
 
-addSbtPlugin("ch.epfl.scala" % "sbt-scalafix" % "0.14.5")
+addSbtPlugin("ch.epfl.scala" % "sbt-scalafix" % "0.14.7")
 addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.5.6")
 addSbtPlugin("org.wartremover" %% "sbt-wartremover" % "3.6.0")
 // dynver + pgp + sonatype (Central Portal) — drives tag-based releases via the `ci-release` command.
