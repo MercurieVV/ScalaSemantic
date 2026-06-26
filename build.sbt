@@ -46,7 +46,7 @@ lazy val commonSettings = Seq(
   )
 )
 
-lazy val munit = "org.scalameta" %% "munit" % "1.2.3" % Test
+lazy val munit = "org.scalameta" %% "munit" % "1.2.4" % Test
 lazy val upickle = "com.lihaoyi" %% "upickle" % "4.2.1"
 
 // Generate a standalone, build-tool-agnostic launcher for the MCP server: a script that runs the
