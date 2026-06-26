@@ -18,13 +18,23 @@ class CompatSuite extends munit.FunSuite:
 
   private val pkg = "com/github/mercurievv/scalasemantic/compat/"
 
+  // Locate the golden root robustly w.r.t. the process cwd. Normal `sbt test` runs unforked from the
+  // repo root, but a forked runner (e.g. Stryker4s mutation testing) starts from the module dir, so a
+  // single cwd-relative path is fragile. Walk up from cwd trying the known relative locations.
+  private val compatRoot: Option[Path] =
+    val rels = List("analysis/src/test/resources/compat", "src/test/resources/compat")
+    val start = Paths.get("").toAbsolutePath
+    val bases = Iterator.iterate(start)(_.getParent).takeWhile(_ != null).take(8).toList
+    (for base <- bases.iterator; rel <- rels.iterator; p = base.resolve(rel) if Files.isDirectory(p)
+    yield p).nextOption()
+
   private val versionDirs: List[Path] =
-    val root = Paths.get("analysis/src/test/resources/compat")
-    if !Files.isDirectory(root) then Nil
-    else
-      val s = Files.list(root)
-      try s.iterator.asScala.filter(Files.isDirectory(_)).toList.sortBy(_.getFileName.toString)
-      finally s.close()
+    compatRoot match
+      case None => Nil
+      case Some(r) =>
+        val s = Files.list(r)
+        try s.iterator.asScala.filter(Files.isDirectory(_)).toList.sortBy(_.getFileName.toString)
+        finally s.close()
 
   test("golden fixtures exist for at least one non-default version"):
     assert(versionDirs.nonEmpty, "no compat golden dirs found — run `sbt compatGoldenAll`")
