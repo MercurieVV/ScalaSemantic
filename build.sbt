@@ -66,8 +66,8 @@ lazy val core = (project in file("core"))
   .settings(
     name := "scalasemantic-core",
     libraryDependencies ++= Seq(
-      ("org.scalameta" %% "scalameta" % "4.13.9").cross(CrossVersion.for3Use2_13),
-      ("org.scalameta" %% "semanticdb-shared" % "4.13.9").cross(CrossVersion.for3Use2_13),
+      ("org.scalameta" %% "scalameta" % "4.13.10").cross(CrossVersion.for3Use2_13),
+      ("org.scalameta" %% "semanticdb-shared" % "4.13.10").cross(CrossVersion.for3Use2_13),
       munit
     )
   )
