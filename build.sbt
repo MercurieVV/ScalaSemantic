@@ -312,7 +312,7 @@ lazy val sbtPlugin = (project in file("sbt-plugin"))
   .settings(commonSettings)
   .settings(
     name := "sbt-scalasemantic-mcp",
-    crossScalaVersions := Seq("2.12.20", scalaVersion.value),
+    crossScalaVersions := Seq("2.12.21", scalaVersion.value),
     pluginCrossBuild / sbtVersion := {
       scalaBinaryVersion.value match {
         case "2.12" => "1.11.6"
