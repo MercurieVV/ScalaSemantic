@@ -655,6 +655,44 @@ object McpTools:
             ),
             Some("returnType" -> ujson.Str(p.returnType))
           )
+    },
+    tool(
+      "smart_code_duplications",
+      "Analyze code duplications (clones) across the project or scoped by path. Normalizes ASTs " +
+        "by abstracting over variable/internal names, literal values, and types, reporting identical " +
+        "structures. Excludes nested blocks that are already reported as part of a larger clone group.",
+      List(
+        ("minSize", "integer", "minimum number of AST nodes to consider (default 15)"),
+        ("pathFilter", "string", "glob on the document uri; `*` matches any chars")
+      ),
+      List()
+    ) { a =>
+      val minSize = argPositiveInt(a, "minSize", 15)
+      val pathFilter = a.obj.get("pathFilter").map(_.str)
+      val res = az.analyzeDuplications(root, minSize, pathFilter)
+      jobj(
+        Some("groupsCount" -> ujson.Num(res.groups.size)),
+        Some(
+          "groups" -> ujson.Arr.from(
+            res.groups.map { g =>
+              jobj(
+                Some("occurrencesCount" -> ujson.Num(g.size)),
+                Some("astNodeCount" -> ujson.Num(g.astNodeCount)),
+                Some(
+                  "occurrences" -> ujson.Arr.from(
+                    g.occurrences.map { occ =>
+                      jobj(
+                        Some("location" -> ujson.Str(loc(occ.location))),
+                        occ.enclosingMethod.map(m => "enclosingMethod" -> ujson.Str(m))
+                      )
+                    }
+                  )
+                )
+              )
+            }
+          )
+        )
+      )
     }
   )
 

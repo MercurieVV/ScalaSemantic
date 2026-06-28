@@ -56,6 +56,15 @@ final class Analyzer(
       new Analyzer(SemanticIndex(Vector(backend.semanticdb(fileUri, code, docUri))))
     )
 
+  // --- smart-code-duplications ----------------------------------------------
+
+  def analyzeDuplications(
+      root: java.nio.file.Path,
+      minSize: PositiveInt,
+      pathFilter: Option[String] = None
+  ): DuplicationsResult =
+    DuplicationAnalyzer.analyze(index, root, minSize.value, pathFilter)
+
   // --- structure / dependency metrics ---------------------------------------
 
   /** Multi-relational dependency metrics for the whole project: per in-project type, the coupling
