@@ -54,3 +54,4 @@ build/
 
 *.log
 /.claude/worktrees/chore+scala-steward/
+/.codex/config.toml
