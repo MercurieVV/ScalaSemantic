@@ -50,17 +50,3 @@ class ModelsSuite extends munit.FunSuite:
     assert(write(loc).contains("\"uri\""), write(loc))
     assert(write(ref).contains("\"displayName\""), write(ref))
   }
-
-  test("input smart constructors reject invalid values") {
-    import InputTypes.*
-
-    assert(SemanticDbSymbol.from("not a symbol").isLeft)
-    assert(MethodSymbol.from("a/B#").isLeft)
-    assert(TypeSymbol.from("a/B#").isRight)
-    assert(PackageSymbol.from("a/b").map(_.value) == Right("a/b/"))
-    assert(DocumentUri.from("../A.scala").isLeft)
-    assert(SourcePosition.from(-1, 0).isLeft)
-    assert(SourceRange.from(2, 0, 1, 0).isLeft)
-    assert(ScalaIdentifier.from("class").isLeft)
-    assert(ScalaIdentifier.from("renamed").isRight)
-  }

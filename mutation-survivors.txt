@@ -1,24 +1,39 @@
-# Survived mutants: 38
-# generated from analysis/target/stryker4s-report/1782674938914/report.json
+# Survived mutants: 71
+# generated from analysis/target/stryker4s-report/1782683008384/report.json
 #
 # by file:
-#     18 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala
-#     14 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala
+#     26 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala
+#     16 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala
+#     10 src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala
+#      8 src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala
 #      6 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala
+#      5 src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/DependencyGraphs.scala
 #
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:430:31  [MethodExpression] -> params.isEmpty
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:430:47  [LogicalOperator] -> ||
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:430:50  [MethodExpression] -> params.exists(_.isImplicit)
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:464:9  [MethodExpression] -> h.linearize(sym).filterNot(keep)
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:482:36  [LogicalOperator] -> ||
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:547:30  [BooleanLiteral] -> true
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:595:14  [ConditionalExpression] -> true
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:595:19  [EqualityOperator] -> !=
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:75:36  [MethodExpression] -> pathFilter.filterNot(_.nonEmpty)
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:75:54  [MethodExpression] -> _.isEmpty
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:147:61  [StringLiteral] -> "Stryker was here!"
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:222:35  [EqualityOperator] -> !=
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:283:70  [MethodExpression] -> o.range.forall(inSelection)
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:290:20  [MethodExpression] -> occ.iterator.filterNot(o => o.role == s.SymbolOccurrence.Role.REFERENCE && o.range.exists(inSelection))
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:291:66  [LogicalOperator] -> ||
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:291:69  [MethodExpression] -> o.range.forall(inSelection)
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:301:69  [MethodExpression] -> o.range.forall(afterSelection)
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:304:21  [MethodExpression] -> occ.iterator.filterNot(o => o.role == s.SymbolOccurrence.Role.DEFINITION && o.range.exists(inSelection))
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:305:67  [LogicalOperator] -> ||
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:305:70  [MethodExpression] -> o.range.forall(inSelection)
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:316:22  [MethodExpression] -> o.range.forall(r => range.start.atOrAfter(r.startLine, r.startCharacter))
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:324:72  [StringLiteral] -> ""
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:326:46  [StringLiteral] -> ""
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:369:45  [LogicalOperator] -> ||
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:369:66  [StringLiteral] -> ""
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:379:23  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:379:23  [ConditionalExpression] -> true
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:379:25  [EqualityOperator] -> !=
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:379:45  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:379:45  [ConditionalExpression] -> true
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:523:9  [MethodExpression] -> occ.range.forall(h.rangeContains(_, position.lineValue, position.characterValue))
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:570:14  [ConditionalExpression] -> false
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:599:20  [ConditionalExpression] -> false
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:599:20  [ConditionalExpression] -> true
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:599:28  [EqualityOperator] -> !=
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:601:12  [MethodExpression] -> nodes.take(1)
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:603:47  [EqualityOperator] -> !=
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:622:74  [LogicalOperator] -> ||
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:119:10  [ConditionalExpression] -> false
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:119:12  [EqualityOperator] -> ==
@@ -27,17 +42,38 @@ src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scal
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:122:29  [EqualityOperator] -> !=
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:127:15  [EqualityOperator] -> >
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:127:33  [EqualityOperator] -> <=
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:163:8  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:163:30  [StringLiteral] -> ""
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:210:14  [ConditionalExpression] -> false
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:232:42  [LogicalOperator] -> ||
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:240:22  [LogicalOperator] -> ||
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:241:8  [EqualityOperator] -> !=
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:241:48  [EqualityOperator] -> !=
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:241:84  [LogicalOperator] -> ||
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:242:6  [MethodExpression] -> index.info(index.owner(info.symbol)).forall(isImplicit)
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:258:23  [MethodExpression] -> parentSymbol(tpe).forall(sym => index.displayName(sym) == givenName)
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:259:8  [ConditionalExpression] -> true
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:295:78  [EqualityOperator] -> ==
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:330:10  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/DependencyGraphs.scala:74:74  [LogicalOperator] -> ||
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/DependencyGraphs.scala:93:10  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/DependencyGraphs.scala:95:24  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/DependencyGraphs.scala:96:12  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/DependencyGraphs.scala:98:62  [LogicalOperator] -> ||
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala:64:14  [ConditionalExpression] -> true
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala:64:17  [EqualityOperator] -> ==
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala:99:8  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala:111:26  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala:120:10  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala:137:8  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala:137:33  [LogicalOperator] -> &&
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala:147:12  [ConditionalExpression] -> true
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:36:63  [StringLiteral] -> ""
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:40:28  [EqualityOperator] -> >=
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:95:24  [EqualityOperator] -> <
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:95:24  [EqualityOperator] -> ==
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:95:24  [EqualityOperator] -> >=
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:115:31  [EqualityOperator] -> !=
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:115:54  [LogicalOperator] -> ||
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:115:90  [EqualityOperator] -> <
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:115:90  [EqualityOperator] -> ==
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:115:90  [EqualityOperator] -> >=
 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:28:23  [StringLiteral] -> ""
 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:64:10  [ConditionalExpression] -> true
 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:64:53  [LogicalOperator] -> ||

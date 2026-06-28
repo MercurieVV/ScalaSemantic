@@ -61,9 +61,9 @@ enablePlugins(ScalaSemanticMcpPlugin)
 
 Latest version: [![Maven Central](https://img.shields.io/maven-central/v/io.github.mercurievv/sbt-scalasemantic-mcp_2.12_1.0)](https://central.sonatype.com/artifact/io.github.mercurievv/sbt-scalasemantic-mcp_2.12_1.0) · [GitHub releases](https://github.com/MercurieVV/ScalaSemantic/releases/latest)
 
-`sbt mcpClientConfig` writes/merges the client configuration (or you can specify the client as a CLI argument, e.g., `sbt "mcpClientConfig gemini"`, or `sbt "mcpClientConfig all"` to generate configs for all supported clients in one go); `sbt mcpRun` runs the server for testing. The default client is `claude` (which emits `.mcp.json` for Claude Code). Other supported clients are: `codex` (for Codex `config.toml`), `gemini` (Gemini CLI), `cline`, `roo` (Roo Code), `continue` (Continue YAML), `generic-json`, or `all`.
+`sbt mcpClientConfig` writes/merges the client configuration (or you can specify the client as a CLI argument, e.g., `sbt "mcpClientConfig gemini"`, or `sbt "mcpClientConfig all"` to generate configs for all supported clients in one go); `sbt mcpRun` runs the server for testing. The default client is `claude` (which emits `.mcp.json` for Claude Code). Other supported clients are: `codex` (for Codex `config.toml`), `gemini` (Gemini CLI), `antigravity` (Antigravity CLI/IDE), `cline`, `roo` (Roo Code), `continue` (Continue YAML), `generic-json`, or `all`.
 
-Running `mcpClientConfig` also automatically generates a [SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md) file containing coding rules for the agent, and creates/updates client-specific rules (like `CLAUDE.md`, `AGENTS.md`, or `.cursorrules`) pointing to it.
+Running `mcpClientConfig` also automatically generates a [SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md) file containing coding rules for the agent, and creates/updates client-specific rules (like `CLAUDE.md`, `AGENTS.md` (for Gemini/Antigravity), or `.cursorrules`) pointing to it.
 
 ### Any build tool / OS
 
