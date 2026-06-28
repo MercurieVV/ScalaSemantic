@@ -107,13 +107,13 @@ class AnalyzerHelpersSuite extends munit.FunSuite:
 
   test("globMatcher: None keeps all; literal is substring; * is wildcard"):
     assert(h.globMatcher(None)("anything"))
-    val foo = h.globMatcher(Some("Foo"))
-    assert(foo("xFooy"))
-    assert(!foo("bar"))
-    val ab = h.globMatcher(Some("a*b"))
-    assert(ab("axxb"))
-    assert(ab("ab"))
-    assert(!ab("ba"))
+    val fooGlob = h.globMatcher(Some("Foo"))
+    assert(fooGlob("xFooy"))
+    assert(!fooGlob("bar"))
+    val abGlob = h.globMatcher(Some("a*b"))
+    assert(abGlob("axxb"))
+    assert(abGlob("ab"))
+    assert(!abGlob("ba"))
 
   test("parentSymbol and notObject"):
     assertEquals(h.parentSymbol(IntT), Some("scala/Int#"))
@@ -158,19 +158,24 @@ class AnalyzerHelpersSuite extends munit.FunSuite:
       signature = signature
     )
 
-  private val dog = sigInfo(
+  private val dogInfo = sigInfo(
     "a/Dog#",
     s.SymbolInformation.Kind.CLASS,
     "Dog",
     s.ClassSignature(None, List(ref("a/Animal#")), s.Type.Empty, None)
   )
-  private val animal = sigInfo("a/Animal#", s.SymbolInformation.Kind.CLASS, "Animal")
-  private val initSym = sigInfo("a/Dog#`<init>`().", s.SymbolInformation.Kind.METHOD, "<init>")
-  private val field = sigInfo("a/Dog#x.", s.SymbolInformation.Kind.FIELD, "x")
-  private val hidden = sigInfo("a/Dog#h.", s.SymbolInformation.Kind.PARAMETER, "h")
+  private val animalInfo = sigInfo("a/Animal#", s.SymbolInformation.Kind.CLASS, "Animal")
+  private val initInfo = sigInfo("a/Dog#`<init>`().", s.SymbolInformation.Kind.METHOD, "<init>")
+  private val fieldInfo = sigInfo("a/Dog#x.", s.SymbolInformation.Kind.FIELD, "x")
+  private val hiddenInfo = sigInfo("a/Dog#h.", s.SymbolInformation.Kind.PARAMETER, "h")
   private val idx =
     new SemanticIndex(
-      Vector(s.TextDocument(uri = "a.scala", symbols = Vector(dog, animal, initSym, field, hidden)))
+      Vector(
+        s.TextDocument(
+          uri = "a.scala",
+          symbols = Vector(dogInfo, animalInfo, initInfo, fieldInfo, hiddenInfo)
+        )
+      )
     )
   private val hi = AnalyzerHelpers(idx)
 
@@ -188,4 +193,4 @@ class AnalyzerHelpersSuite extends munit.FunSuite:
   test("linearize and knownSubtypes walk the parent relation"):
     assertEquals(hi.linearize("a/Dog#"), List("a/Animal#"))
     assertEquals(hi.knownSubtypes("a/Animal#"), List("a/Dog#"))
-    assertEquals(hi.directParents(dog), List("a/Animal#"))
+    assertEquals(hi.directParents(dogInfo), List("a/Animal#"))
