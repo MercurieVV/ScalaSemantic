@@ -1,9 +1,6 @@
-# AGENTS.md instructions
+# Project Rules & Context
 
-<INSTRUCTIONS>
-@/Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/SCALA_SEMANTIC_RULES.md
-@/Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/CLAUDE.md
-</INSTRUCTIONS>
+Please follow the rules in [SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md) for working with Scala code.
 
 ## Project Description & Startup Context
 
@@ -24,5 +21,4 @@ For detailed instructions, architecture, build/test commands, and conventions, p
 - **Conventions**:
   - Follow Scala Code Rules in [SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md).
   - Use Conventional Commit titles for squash merging PRs (`feat:`, `fix:`, `perf:`).
-
 
