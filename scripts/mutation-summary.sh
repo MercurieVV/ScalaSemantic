@@ -23,7 +23,7 @@ if [[ -z "$report" ]]; then
 fi
 if [[ -z "$report" || ! -f "$report" ]]; then
   echo "error: no report.json found (looked under analysis/target/stryker4s-report/*/)" >&2
-  echo "       run 'sbt \"analysis/stryker\"' first, or pass the report path explicitly." >&2
+  echo "       run 'sbt -Dstryker=true \"analysis/stryker\"' first, or pass the report path explicitly." >&2
   exit 1
 fi
 

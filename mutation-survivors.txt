@@ -1,10 +1,10 @@
-# Survived mutants: 80
-# generated from analysis/target/stryker4s-report/1782671061459/report.json
+# Survived mutants: 52
+# generated from analysis/target/stryker4s-report/1782671913743/report.json
 #
 # by file:
-#     34 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala
 #     32 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala
 #     14 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala
+#      6 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala
 #
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:430:31  [MethodExpression] -> params.isEmpty
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:430:47  [LogicalOperator] -> ||
@@ -53,36 +53,8 @@ src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scal
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:368:67  [StringLiteral] -> ""
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:369:67  [StringLiteral] -> ""
 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:28:23  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:31:19  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:42:19  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:52:12  [ConditionalExpression] -> true
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:52:25  [LogicalOperator] -> ||
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:53:19  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:62:14  [StringLiteral] -> "Stryker was here!"
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:63:23  [ConditionalExpression] -> false
 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:64:10  [ConditionalExpression] -> true
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:64:10  [MethodExpression] -> normalized.nonEmpty
 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:64:53  [LogicalOperator] -> ||
 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:65:17  [StringLiteral] -> ""
 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:72:23  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:74:12  [ConditionalExpression] -> false
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:74:12  [ConditionalExpression] -> true
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:74:28  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:74:43  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:75:17  [ConditionalExpression] -> true
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:76:16  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:85:49  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:99:17  [EqualityOperator] -> <=
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:99:17  [EqualityOperator] -> ==
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:99:35  [LogicalOperator] -> &&
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:100:20  [EqualityOperator] -> !=
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:100:39  [LogicalOperator] -> ||
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:100:57  [EqualityOperator] -> <=
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:100:57  [EqualityOperator] -> ==
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:100:57  [EqualityOperator] -> >
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:113:40  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:114:45  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:146:14  [ConditionalExpression] -> false
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:147:21  [StringLiteral] -> ""
 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:205:23  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:213:48  [StringLiteral] -> ""
