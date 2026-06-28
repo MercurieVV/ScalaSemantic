@@ -2,7 +2,7 @@
 
 For Scala source questions, use ScalaSemantic MCP tools before shell text tools. Preferably compile code before usage, then moreSclaSemantic functions could be used with better result.
 
-Do not use `cat`, `sed`, `rg`, or similar tools to inspect `.scala` files for symbol, type,
+Do not use `grep`, `cat`, `sed`, `rg`, or similar tools to inspect `.scala` files for symbol, type,
 signature, hierarchy, implicit, reference, or call-path questions when ScalaSemantic tools are
 available.
 

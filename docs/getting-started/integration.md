@@ -78,6 +78,7 @@ Choose the generated client format with `mcpClient`:
 mcpClient := "claude"       // default: Claude Code .mcp.json-style JSON
 mcpClient := "codex"        // Codex config.toml
 mcpClient := "gemini"       // Gemini CLI settings JSON
+mcpClient := "antigravity"  // Antigravity CLI/IDE mcp_config.json
 mcpClient := "cline"        // Cline MCP JSON
 mcpClient := "roo"          // Roo Code MCP JSON
 mcpClient := "continue"     // Continue config.yaml
@@ -100,6 +101,7 @@ untouched):
 | `claude`, `generic-json` | `.mcp.json` |
 | `codex` | `.codex/config.toml` |
 | `gemini` | `.gemini/settings.json` |
+| `antigravity` | `.agents/mcp_config.json` |
 | `cline` | `.cline/mcp.json` |
 | `roo` | `.roo/mcp.json` |
 | `continue` | `.continue/config.yaml` |
@@ -150,6 +152,19 @@ With `mcpClient := "gemini"` it writes JSON into the project's `.gemini/settings
       "command": "~/.local/bin/scalasemantic-mcp",
       "args": ["/abs/path/to/this/project", "~/.local/bin/scala-semantic-classpath.txt", "--log", "--log-output"],
       "timeout": 60000
+    }
+  }
+}
+```
+
+With `mcpClient := "antigravity"` it writes JSON into the project's `.agents/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "scala-semantic": {
+      "command": "~/.local/bin/scalasemantic-mcp",
+      "args": ["/abs/path/to/this/project", "~/.local/bin/scala-semantic-classpath.txt", "--log", "--log-output"]
     }
   }
 }

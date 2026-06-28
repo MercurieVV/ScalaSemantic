@@ -286,7 +286,7 @@ lazy val mcp = (project in file("mcp"))
       val clientVal = args.headOption.getOrElse("claude")
 
       val clients = if (clientVal.trim.toLowerCase == "all") {
-        Seq("claude", "codex", "gemini", "cline", "roo", "continue")
+        Seq("claude", "codex", "gemini", "cline", "roo", "continue", "antigravity")
       } else {
         Seq(clientVal)
       }
