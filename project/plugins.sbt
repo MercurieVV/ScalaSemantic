@@ -16,5 +16,13 @@ libraryDependencies += "com.guardsquare" % "proguard-base" % "7.9.1"
 // Mutation testing. The published sbt-stryker4s (0.21.0) is built against sbt 2.0.0-RC2 and its ABI
 // fails to load on sbt 2.0.0 final. Stryker4s MASTER already pins the plugin to sbt 2.0.0 final, so
 // we consume a locally-published build of master (`sbtPlugin3/publishLocal` in a stryker4s clone)
-// until a release ships. Run with `sbt "analysis/stryker"`; config in stryker4s.conf.
-addSbtPlugin("io.stryker-mutator" % "sbt-stryker4s" % "0.0.0+1-2c0f5bd7-SNAPSHOT")
+// until a release ships.
+//
+// That snapshot lives ONLY in the local ivy cache — it is on no remote repo, so loading it
+// unconditionally breaks every environment that lacks the publishLocal (notably CI: the meta-build
+// can't resolve it and the whole build fails before any task runs). So gate it behind a flag and
+// enable it only when actually mutation-testing:
+//   sbt -Dstryker=true "analysis/stryker"      (config in stryker4s.conf)
+if (sys.props.get("stryker").contains("true") || sys.env.contains("STRYKER"))
+  Seq(addSbtPlugin("io.stryker-mutator" % "sbt-stryker4s" % "0.0.0+1-2c0f5bd7-SNAPSHOT"))
+else Seq.empty[Setting[?]]
