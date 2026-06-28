@@ -1,24 +1,13 @@
-# Survived mutants: 38
-# generated from analysis/target/stryker4s-report/1782674938914/report.json
+# Survived mutants: 24
+# generated from analysis/target/stryker4s-report/1782678647242/report.json
 #
 # by file:
-#     18 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala
-#     14 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala
+#     15 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala
 #      6 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala
+#      3 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala
 #
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:430:31  [MethodExpression] -> params.isEmpty
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:430:47  [LogicalOperator] -> ||
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:430:50  [MethodExpression] -> params.exists(_.isImplicit)
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:464:9  [MethodExpression] -> h.linearize(sym).filterNot(keep)
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:482:36  [LogicalOperator] -> ||
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:547:30  [BooleanLiteral] -> true
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:595:14  [ConditionalExpression] -> true
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:595:19  [EqualityOperator] -> !=
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:599:20  [ConditionalExpression] -> false
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:599:20  [ConditionalExpression] -> true
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:599:28  [EqualityOperator] -> !=
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:601:12  [MethodExpression] -> nodes.take(1)
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:603:47  [EqualityOperator] -> !=
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:622:74  [LogicalOperator] -> ||
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:119:10  [ConditionalExpression] -> false
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:119:12  [EqualityOperator] -> ==
@@ -30,14 +19,11 @@ src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scal
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:210:14  [ConditionalExpression] -> false
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:232:42  [LogicalOperator] -> ||
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:240:22  [LogicalOperator] -> ||
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:241:8  [EqualityOperator] -> !=
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:241:48  [EqualityOperator] -> !=
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:241:84  [LogicalOperator] -> ||
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:242:6  [MethodExpression] -> index.info(index.owner(info.symbol)).forall(isImplicit)
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:258:23  [MethodExpression] -> parentSymbol(tpe).forall(sym => index.displayName(sym) == givenName)
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:259:8  [ConditionalExpression] -> true
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:295:78  [EqualityOperator] -> ==
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:330:10  [ConditionalExpression] -> false
 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:28:23  [StringLiteral] -> ""
 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:64:10  [ConditionalExpression] -> true
 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:64:53  [LogicalOperator] -> ||
