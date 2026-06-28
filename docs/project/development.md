@@ -34,6 +34,7 @@ To write or merge client configurations and LLM steering rules directly in the r
 ```sh
 sbt "mcpClientConfig all"         # generate/merge configs and rules for all clients in one shot
 sbt "mcpClientConfig gemini"      # generate/merge config and rules for a specific client (e.g., gemini)
+sbt "mcpClientConfig antigravity" # generate/merge config and rules for antigravity (e.g., antigravity)
 ```
 
 ## Cross-version compatibility test

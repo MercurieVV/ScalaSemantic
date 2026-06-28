@@ -41,7 +41,7 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
       settingKey[String]("name to register this server under in the MCP client")
     val mcpClient =
       settingKey[String](
-        "MCP client config dialect to write: claude, codex, gemini, cline, roo, continue, generic-json, or all"
+        "MCP client config dialect to write: claude, codex, gemini, cline, roo, continue, antigravity, generic-json, or all"
       )
     @transient
     val mcpInstall =
@@ -125,7 +125,7 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
       val serverName = mcpServerName.value
       val clientVal = args.headOption.getOrElse(mcpClient.value)
       val clients = if (clientVal.trim.toLowerCase == "all") {
-        Seq("claude", "codex", "gemini", "cline", "roo", "continue")
+        Seq("claude", "codex", "gemini", "cline", "roo", "continue", "antigravity")
       } else {
         Seq(clientVal)
       }

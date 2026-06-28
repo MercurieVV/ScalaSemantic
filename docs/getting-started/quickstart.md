@@ -28,6 +28,8 @@ or [GitHub Releases](https://github.com/MercurieVV/ScalaSemantic/releases/latest
  ```sh
  sbt "mcpClientConfig gemini"
  # or
+ sbt "mcpClientConfig antigravity"
+ # or
  sbt "mcpClientConfig all"
  ```
  

@@ -22,6 +22,8 @@ object ScalaSemanticConfigMerger {
         Target(".mcp.json", JsonFmt, Nil)
       case "gemini" | "google" | "google-gemini" | "gemini-cli" =>
         Target(".gemini/settings.json", JsonFmt, Seq("timeout" -> "60000"))
+      case "antigravity" | "antigravity-cli" | "agy" =>
+        Target(".agents/mcp_config.json", JsonFmt, Nil)
       case "cline" =>
         Target(".cline/mcp.json", JsonFmt, Seq("disabled" -> "false", "autoApprove" -> "[]"))
       case "roo" | "roo-code" =>
@@ -37,7 +39,7 @@ object ScalaSemanticConfigMerger {
       case other =>
         sys.error(
           s"Unsupported mcpClient '$other'. Use one of: " +
-            "claude, codex, gemini, cline, roo, continue, generic-json."
+            "claude, codex, gemini, cline, roo, continue, antigravity, generic-json."
         )
     }
   }
@@ -346,7 +348,8 @@ object ScalaSemanticConfigMerger {
         Some(
           (baseDir / "CLAUDE.md", "CLAUDE.md", "[SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md)")
         )
-      case "gemini" | "google" | "google-gemini" | "gemini-cli" =>
+      case "gemini" | "google" | "google-gemini" | "gemini-cli" | "antigravity" |
+          "antigravity-cli" | "agy" =>
         Some((baseDir / "AGENTS.md", "AGENTS.md", "@SCALA_SEMANTIC_RULES.md"))
       case "codex" | "openai" | "openai-codex" =>
         Some(

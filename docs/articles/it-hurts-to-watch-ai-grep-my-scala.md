@@ -126,7 +126,7 @@ By default it prints Claude-style `.mcp.json`, which you paste into your client 
 mcpClient := "codex"
 ```
 
-Supported values: `claude` (default), `codex`, `gemini`, `cline`, `roo`, `continue`, `generic-json`.
+Supported values: `claude` (default), `codex`, `gemini`, `antigravity`, `cline`, `roo`, `continue`, `generic-json`.
 
 Paste the generated config into your MCP client and restart the session. For non-sbt projects, emit SemanticDB and register ScalaSemantic with the project root.
 
