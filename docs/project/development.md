@@ -27,6 +27,15 @@ sbt test        # dogfooded on this project (core, analysis incl. CompatSuite, m
 sbt prePush     # command alias: clean; scalafmtAll; scalafixAll; Test/testOnly * (all modules)
 ```
 
+## Local Configuration Generation (Dogfooding/Testing)
+
+To write or merge client configurations and LLM steering rules directly in the root of this project for testing and development purposes:
+
+```sh
+sbt "mcpClientConfig all"         # generate/merge configs and rules for all clients in one shot
+sbt "mcpClientConfig gemini"      # generate/merge config and rules for a specific client (e.g., gemini)
+```
+
 ## Cross-version compatibility test
 
 The analyzer reads SemanticDB emitted by *any* Scala, not just the version it is built with. To prove

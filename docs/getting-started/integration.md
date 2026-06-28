@@ -64,7 +64,7 @@ or the [latest GitHub release](https://github.com/MercurieVV/ScalaSemantic/relea
 
 The plugin enables SemanticDB and adds:
 
-- `sbt mcpClientConfig` — runs `mcpInstall`, then writes/merges the selected MCP client config (pointing at that script) into a project-local file. You can pass the client name directly as a command-line argument, e.g., `sbt "mcpClientConfig gemini"`. Running this task also automatically generates a `SCALA_SEMANTIC_RULES.md` file in the project root and sets up LLM-specific rules pointing to it (like `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, etc.).
+- `sbt mcpClientConfig` — runs `mcpInstall`, then writes/merges the selected MCP client config (pointing at that script) into a project-local file. You can pass the client name directly as a command-line argument, e.g., `sbt "mcpClientConfig gemini"`, or `sbt "mcpClientConfig all"` to write configurations and steering rules for all supported LLM clients in one shot. Running this task also automatically generates a `SCALA_SEMANTIC_RULES.md` file in the project root and sets up LLM-specific rules pointing to it (like `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, etc.).
 - `sbt mcpRun` — runs the server in the foreground (stdio) for manual testing.
 
 So `enablePlugins` + `sbt mcpClientConfig` is the whole setup — no config to paste, no jar to download by hand; the
@@ -82,6 +82,7 @@ mcpClient := "cline"        // Cline MCP JSON
 mcpClient := "roo"          // Roo Code MCP JSON
 mcpClient := "continue"     // Continue config.yaml
 mcpClient := "generic-json" // other MCP clients using the standard mcpServers JSON shape
+mcpClient := "all"          // generate configurations for all supported LLM clients
 ```
 
 The plugin only enables SemanticDB and shells out to `mcpServerCommand` — it never links against the
