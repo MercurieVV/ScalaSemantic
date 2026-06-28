@@ -1,5 +1,5 @@
 # NoCoverage mutants: 213
-# generated from analysis/target/stryker4s-report/1782674938914/report.json
+# generated from analysis/target/stryker4s-report/1782678825860/report.json
 #
 # by file:
 #     83 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala
