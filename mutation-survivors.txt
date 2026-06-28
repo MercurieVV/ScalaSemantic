@@ -1,9 +1,12 @@
-# Survived mutants: 23
-# generated from analysis/target/stryker4s-report/1782678825860/report.json
+# Survived mutants: 46
+# generated from analysis/target/stryker4s-report/1782680877459/report.json
 #
 # by file:
 #     15 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala
+#     10 src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala
+#      8 src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala
 #      6 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala
+#      5 src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/DependencyGraphs.scala
 #      2 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala
 #
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:599:20  [ConditionalExpression] -> false
@@ -23,6 +26,29 @@ src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scal
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:258:23  [MethodExpression] -> parentSymbol(tpe).forall(sym => index.displayName(sym) == givenName)
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:259:8  [ConditionalExpression] -> true
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:295:78  [EqualityOperator] -> ==
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/DependencyGraphs.scala:74:74  [LogicalOperator] -> ||
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/DependencyGraphs.scala:93:10  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/DependencyGraphs.scala:95:24  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/DependencyGraphs.scala:96:12  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/DependencyGraphs.scala:98:62  [LogicalOperator] -> ||
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala:64:14  [ConditionalExpression] -> true
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala:64:17  [EqualityOperator] -> ==
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala:99:8  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala:111:26  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala:120:10  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala:137:8  [ConditionalExpression] -> false
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala:137:33  [LogicalOperator] -> &&
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala:147:12  [ConditionalExpression] -> true
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:36:63  [StringLiteral] -> ""
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:40:28  [EqualityOperator] -> >=
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:95:24  [EqualityOperator] -> <
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:95:24  [EqualityOperator] -> ==
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:95:24  [EqualityOperator] -> >=
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:115:31  [EqualityOperator] -> !=
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:115:54  [LogicalOperator] -> ||
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:115:90  [EqualityOperator] -> <
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:115:90  [EqualityOperator] -> ==
+src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:115:90  [EqualityOperator] -> >=
 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:28:23  [StringLiteral] -> ""
 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:64:10  [ConditionalExpression] -> true
 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:64:53  [LogicalOperator] -> ||
