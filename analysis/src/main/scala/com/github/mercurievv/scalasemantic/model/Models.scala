@@ -273,3 +273,20 @@ case class CallGraphPath(
     path: List[SymbolRef],
     edges: List[CallEdge]
 ) derives ReadWriter
+
+// --- smart-code-duplications -----------------------------------------------
+
+case class DuplicateOccurrence(
+    location: Location,
+    enclosingMethod: Option[String]
+) derives ReadWriter
+
+case class DuplicationGroup(
+    size: Int,
+    astNodeCount: Int,
+    occurrences: List[DuplicateOccurrence]
+) derives ReadWriter
+
+case class DuplicationsResult(
+    groups: List[DuplicationGroup]
+) derives ReadWriter
