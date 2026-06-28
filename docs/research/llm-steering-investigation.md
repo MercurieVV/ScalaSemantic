@@ -38,7 +38,7 @@ Most major AI coding assistants and IDEs have custom mechanisms to read project-
 ### Google Antigravity / Gemini CLI
 * **Configuration Surface**: `AGENTS.md`
 * **How it works**: Configured in global (`~/.gemini/config/AGENTS.md`) or workspace (`.agents/AGENTS.md` or root `AGENTS.md`) roots.
-* **Steering Strategy**: Include instructions directly or reference external files (e.g., `<INSTRUCTIONS> @SCALA_CODE_RULES.md </INSTRUCTIONS>`).
+* **Steering Strategy**: Include instructions directly or reference external files (e.g., `<INSTRUCTIONS> @SCALA_SEMANTIC_RULES.md </INSTRUCTIONS>`).
 
 ---
 
@@ -82,7 +82,7 @@ To consistently steer AI agents toward ScalaSemantic tools, the project should a
    Continue returning detailed usage guidance in the MCP `initialize` response (`Mcp.scala`). This provides out-of-the-box steering for all compliant clients (such as Claude Desktop and Roo Code) without needing repo-level changes.
    
 2. **Establish a Symlinked / Templated Root Rules Layout**:
-   Provide a centralized rules document like `SCALA_CODE_RULES.md` (or `AGENTS.md`), and document how users can reference it.
+   Provide a centralized rules document like `SCALA_SEMANTIC_RULES.md` (or `AGENTS.md`), and document how users can reference it.
    For users setting up ScalaSemantic in their own projects:
    * **Claude Code**: The `sbt` plugin or setup guide can offer to append rules to the local `CLAUDE.md`.
    * **Cursor**: Provide a template `.cursorrules` or `.cursor/rules/scala-semantic.mdc` pointing to the ScalaSemantic tools.

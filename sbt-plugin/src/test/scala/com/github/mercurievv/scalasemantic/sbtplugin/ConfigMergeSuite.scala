@@ -192,4 +192,50 @@ class ConfigMergeSuite extends munit.FunSuite {
     val out = mergeYaml(Some(withOther), name, argv)
     assert(out.contains("""- name: "other"""") && out.contains("models:"))
   }
+
+  test("writeRulesAndSteer: writes SCALA_SEMANTIC_RULES.md and CLAUDE.md for claude") {
+    val tempDir = java.nio.file.Files.createTempDirectory("scalasemantic-test-").toFile
+    val log = new sbt.Logger {
+      def trace(t: => Throwable): Unit = ()
+      def success(message: => String): Unit = ()
+      def log(level: sbt.Level.Value, message: => String): Unit = ()
+    }
+    try {
+      ScalaSemanticMcpPlugin.writeRulesAndSteer("claude", tempDir, log)
+      val rulesFile = new sbt.File(tempDir, "SCALA_SEMANTIC_RULES.md")
+      val claudeFile = new sbt.File(tempDir, "CLAUDE.md")
+
+      assert(rulesFile.exists())
+      assert(claudeFile.exists())
+
+      val claudeContent = sbt.IO.read(claudeFile)
+      assert(claudeContent.contains("SCALA_SEMANTIC_RULES.md"))
+    } finally {
+      sbt.IO.delete(tempDir)
+    }
+  }
+
+  test("writeRulesAndSteer: migrates legacy SCALA_CODE_RULES.md in AGENTS.md for gemini") {
+    val tempDir = java.nio.file.Files.createTempDirectory("scalasemantic-test-").toFile
+    val log = new sbt.Logger {
+      def trace(t: => Throwable): Unit = ()
+      def success(message: => String): Unit = ()
+      def log(level: sbt.Level.Value, message: => String): Unit = ()
+    }
+    try {
+      val agentsFile = new sbt.File(tempDir, "AGENTS.md")
+      sbt.IO.write(agentsFile, "<INSTRUCTIONS>\n@SCALA_CODE_RULES.md\n</INSTRUCTIONS>")
+
+      ScalaSemanticMcpPlugin.writeRulesAndSteer("gemini", tempDir, log)
+
+      val rulesFile = new sbt.File(tempDir, "SCALA_SEMANTIC_RULES.md")
+      assert(rulesFile.exists())
+
+      val updatedAgentsContent = sbt.IO.read(agentsFile)
+      assert(updatedAgentsContent.contains("@SCALA_SEMANTIC_RULES.md"))
+      assert(!updatedAgentsContent.contains("SCALA_CODE_RULES.md"))
+    } finally {
+      sbt.IO.delete(tempDir)
+    }
+  }
 }

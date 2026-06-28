@@ -136,6 +136,7 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
       IO.write(outFile, merged)
       val verb = if (existing.isEmpty) "Wrote" else "Merged into"
       log.info(s"$verb MCP config for server '$serverName': $outFile")
+      writeRulesAndSteer(mcpClient.value, baseDirectory.value, log)
       if (!cpFile.exists)
         log.info(
           "Server will run index-only. Run `sbt mcpClasspathFile` once (requires a successful " +
@@ -593,4 +594,112 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
       case '\r' => "\\r"
       case c    => c.toString
     } + "\""
+
+  private[sbtplugin] def writeRulesAndSteer(client: String, baseDir: File, log: Logger): Unit = {
+    // 1. Create SCALA_SEMANTIC_RULES.md if not exists
+    val rulesFile = baseDir / "SCALA_SEMANTIC_RULES.md"
+    val defaultRulesContent =
+      """# Scala Semantic Rules
+        |
+        |For Scala source questions, use ScalaSemantic MCP tools before shell text tools. Preferably compile code before usage, then more ScalaSemantic functions can be used with better results.
+        |
+        |Do not use `cat`, `sed`, `rg`, or similar tools to inspect `.scala` files for symbol, type,
+        |signature, hierarchy, implicit, reference, or call-path questions when ScalaSemantic tools are
+        |available.
+        |
+        |Use shell for builds, tests, git, config, docs, scripts, and non-Scala text work.
+        |""".stripMargin
+
+    if (!rulesFile.exists()) {
+      IO.write(rulesFile, defaultRulesContent)
+      log.info(s"Created default rules file: $rulesFile")
+    }
+
+    // 2. Identify the LLM specific config file based on client
+    val normalized = client.trim.toLowerCase.replace('_', '-')
+    val optLlmConfig = normalized match {
+      case "claude" | "claude-code" | "anthropic" =>
+        Some(
+          (baseDir / "CLAUDE.md", "CLAUDE.md", "[SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md)")
+        )
+      case "gemini" | "google" | "google-gemini" | "gemini-cli" =>
+        Some((baseDir / "AGENTS.md", "AGENTS.md", "@SCALA_SEMANTIC_RULES.md"))
+      case "codex" | "openai" | "openai-codex" =>
+        Some(
+          (
+            baseDir / ".cursorrules",
+            ".cursorrules",
+            "[SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md)"
+          )
+        )
+      case "cline" | "roo" | "roo-code" =>
+        Some(
+          (
+            baseDir / ".clinerules",
+            ".clinerules",
+            "[SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md)"
+          )
+        )
+      case "continue" | "continue-dev" =>
+        Some(
+          (baseDir / ".continue" / "rules.txt", ".continue/rules.txt", "SCALA_SEMANTIC_RULES.md")
+        )
+      case _ =>
+        None
+    }
+
+    optLlmConfig.foreach { case (file, name, reference) =>
+      if (!file.exists()) {
+        val content = if (name == "AGENTS.md") {
+          s"""# AGENTS.md instructions
+             |
+             |<INSTRUCTIONS>
+             |$reference
+             |</INSTRUCTIONS>
+             |""".stripMargin
+        } else if (name.endsWith(".md") || name.endsWith("rules") || name.endsWith("rules.txt")) {
+          s"""# Project Rules
+             |
+             |Please follow the rules in $reference for working with Scala code.
+             |""".stripMargin
+        } else {
+          s"Please follow the rules in $reference for working with Scala code."
+        }
+        IO.write(file, content)
+        log.info(s"Created LLM-specific rules file: $file pointing to SCALA_SEMANTIC_RULES.md")
+      } else {
+        // Read and update/append if reference not present
+        val existingContent = IO.read(file)
+        if (
+          !existingContent
+            .contains("SCALA_SEMANTIC_RULES.md") && !existingContent.contains("SCALA_CODE_RULES.md")
+        ) {
+          val separator = if (existingContent.endsWith("\n")) "" else "\n"
+          val appendContent = if (name == "AGENTS.md") {
+            s"""$separator
+               |<INSTRUCTIONS>
+               |$reference
+               |</INSTRUCTIONS>
+               |""".stripMargin
+          } else {
+            s"""$separator
+               |## Scala Code Rules
+               |Please follow the rules in $reference.
+               |""".stripMargin
+          }
+          IO.write(file, existingContent + appendContent)
+          log.info(s"Updated LLM-specific rules file: $file to point to SCALA_SEMANTIC_RULES.md")
+        } else if (existingContent.contains("SCALA_CODE_RULES.md")) {
+          // Replace legacy name with the new one
+          val updated = existingContent
+            .replace("SCALA_CODE_RULES.md", "SCALA_SEMANTIC_RULES.md")
+            .replace("@SCALA_CODE_RULES.md", "@SCALA_SEMANTIC_RULES.md")
+          IO.write(file, updated)
+          log.info(
+            s"Migrated legacy SCALA_CODE_RULES.md reference in: $file to SCALA_SEMANTIC_RULES.md"
+          )
+        }
+      }
+    }
+  }
 }
