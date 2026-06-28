@@ -65,7 +65,6 @@ Latest version: [![Maven Central](https://img.shields.io/maven-central/v/io.gith
 
 Running `mcpClientConfig` also automatically generates a [SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md) file containing coding rules for the agent, and creates/updates client-specific rules (like `CLAUDE.md`, `AGENTS.md` (for Gemini/Antigravity), or `.cursorrules`) pointing to it.
 
-
 ### Any build tool / OS
 
 - **Auto-download launcher** — `curl -fsSL .../scripts/install.sh | sh` (Windows: `…ps1`), then set
