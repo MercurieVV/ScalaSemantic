@@ -48,4 +48,5 @@ types, usages, inheritance, implicits, members, and call paths.
 
 - [Claude interaction study](research/claude-interaction-study.md) — measured agent behavior used to rank
   future tool work.
+- [LLM steering investigation](research/llm-steering-investigation.md) — strategies for making popular LLM agents prefer ScalaSemantic tools over text search.
 - [Plan & tracker](research/plan.md) — implementation history, backlog, and known decisions.

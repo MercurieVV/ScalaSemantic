@@ -1,8 +1,8 @@
 package com.github.mercurievv.scalasemantic.sbtplugin
 
-import ScalaSemanticMcpPlugin.mergeJson
-import ScalaSemanticMcpPlugin.mergeToml
-import ScalaSemanticMcpPlugin.mergeYaml
+import ScalaSemanticConfigMerger.mergeJson
+import ScalaSemanticConfigMerger.mergeToml
+import ScalaSemanticConfigMerger.mergeYaml
 
 /** Unit tests for the dependency-free config mergers in [[ScalaSemanticMcpPlugin]]. They exercise
   * the three on-disk formats (JSON / TOML / YAML) for: a fresh file, adding alongside an existing
@@ -191,5 +191,51 @@ class ConfigMergeSuite extends munit.FunSuite {
     assertIdempotent("yaml/other", e => mergeYaml(e, name, argv), Some(withOther))
     val out = mergeYaml(Some(withOther), name, argv)
     assert(out.contains("""- name: "other"""") && out.contains("models:"))
+  }
+
+  test("writeRulesAndSteer: writes SCALA_SEMANTIC_RULES.md and CLAUDE.md for claude") {
+    val tempDir = java.nio.file.Files.createTempDirectory("scalasemantic-test-").toFile
+    val log = new sbt.Logger {
+      def trace(t: => Throwable): Unit = ()
+      def success(message: => String): Unit = ()
+      def log(level: sbt.Level.Value, message: => String): Unit = ()
+    }
+    try {
+      ScalaSemanticConfigMerger.writeRulesAndSteer("claude", tempDir, log)
+      val rulesFile = new sbt.File(tempDir, "SCALA_SEMANTIC_RULES.md")
+      val claudeFile = new sbt.File(tempDir, "CLAUDE.md")
+
+      assert(rulesFile.exists())
+      assert(claudeFile.exists())
+
+      val claudeContent = sbt.IO.read(claudeFile)
+      assert(claudeContent.contains("SCALA_SEMANTIC_RULES.md"))
+    } finally {
+      sbt.IO.delete(tempDir)
+    }
+  }
+
+  test("writeRulesAndSteer: migrates legacy SCALA_CODE_RULES.md in AGENTS.md for gemini") {
+    val tempDir = java.nio.file.Files.createTempDirectory("scalasemantic-test-").toFile
+    val log = new sbt.Logger {
+      def trace(t: => Throwable): Unit = ()
+      def success(message: => String): Unit = ()
+      def log(level: sbt.Level.Value, message: => String): Unit = ()
+    }
+    try {
+      val agentsFile = new sbt.File(tempDir, "AGENTS.md")
+      sbt.IO.write(agentsFile, "<INSTRUCTIONS>\n@SCALA_CODE_RULES.md\n</INSTRUCTIONS>")
+
+      ScalaSemanticConfigMerger.writeRulesAndSteer("gemini", tempDir, log)
+
+      val rulesFile = new sbt.File(tempDir, "SCALA_SEMANTIC_RULES.md")
+      assert(rulesFile.exists())
+
+      val updatedAgentsContent = sbt.IO.read(agentsFile)
+      assert(updatedAgentsContent.contains("@SCALA_SEMANTIC_RULES.md"))
+      assert(!updatedAgentsContent.contains("SCALA_CODE_RULES.md"))
+    } finally {
+      sbt.IO.delete(tempDir)
+    }
   }
 }

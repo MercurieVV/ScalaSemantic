@@ -17,14 +17,23 @@ If you are reading the raw source instead of the rendered site, replace `@VERSIO
 release from [Maven Central](https://central.sonatype.com/artifact/io.github.mercurievv/sbt-scalasemantic-mcp_2.12_1.0)
 or [GitHub Releases](https://github.com/MercurieVV/ScalaSemantic/releases/latest).
 
-## 2. Generate the MCP client config
-
-```sh
-sbt mcpClientConfig
-```
-
-Paste the printed `scala-semantic` entry into your MCP client's project config. The generated command
-points at this project root and runs over stdio, so the client owns the server lifecycle.
+## 2. Generate the MCP client config & rules
+ 
+ ```sh
+ sbt mcpClientConfig
+ ```
+ 
+ This writes/merges the `scala-semantic` server configuration into your project's local config file (e.g., `.mcp.json`). You can also specify the client format directly as a command-line argument (or pass `all` to generate configurations for all supported clients in one go):
+ 
+ ```sh
+ sbt "mcpClientConfig gemini"
+ # or
+ sbt "mcpClientConfig all"
+ ```
+ 
+ Running this task also automatically:
+ 1. Creates a `SCALA_SEMANTIC_RULES.md` file in your project root containing semantic steering guidelines for coding agents.
+ 2. Creates/updates client-specific rules (such as `CLAUDE.md`, `AGENTS.md`, or `.cursorrules`) to point to it, ensuring AI agents prefer ScalaSemantic tools over text-based `grep`.
 
 ## 3. Compile the project
 
