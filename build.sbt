@@ -46,8 +46,8 @@ lazy val commonSettings = Seq(
   )
 )
 
-lazy val munit = "org.scalameta" %% "munit" % "1.2.3" % Test
-lazy val upickle = "com.lihaoyi" %% "upickle" % "4.2.1"
+lazy val munit = "org.scalameta" %% "munit" % "1.2.4" % Test
+lazy val upickle = "com.lihaoyi" %% "upickle" % "4.4.3"
 lazy val refined = "eu.timepit" %% "refined" % "0.11.3"
 
 // Generate a standalone, build-tool-agnostic launcher for the MCP server: a script that runs the
@@ -313,7 +313,7 @@ lazy val sbtPlugin = (project in file("sbt-plugin"))
   .settings(commonSettings)
   .settings(
     name := "sbt-scalasemantic-mcp",
-    crossScalaVersions := Seq("2.12.20", scalaVersion.value),
+    crossScalaVersions := Seq("2.12.21", scalaVersion.value),
     pluginCrossBuild / sbtVersion := {
       scalaBinaryVersion.value match {
         case "2.12" => "1.11.6"

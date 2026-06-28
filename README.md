@@ -118,11 +118,21 @@ paged.
 
 ## Supported Scala versions
 
-The server *reads* SemanticDB, so it is compiler-version-agnostic: it works against any project that
-emits SemanticDB. Cross-version behavior is enforced by tests — the analyzer is exercised against
-golden SemanticDB from **Scala 2.13 and 3.x** (see
-[docs/project/development.md](docs/project/development.md#cross-version-compatibility-test)).
-The server itself runs on any JVM (`java` 11+); the target project's Scala version is independent.
+There are two analysis paths, with different version coverage:
+
+- **Disk SemanticDB (primary path)** — the server *reads* the `*.semanticdb` files your build emits,
+  so it is largely compiler-version-agnostic: it works against any project that compiles cleanly with
+  SemanticDB enabled. Cross-version behavior is enforced by tests — the analyzer is exercised against
+  golden SemanticDB from **Scala 2.13.\* and 3.\*.\*** (see
+  [docs/project/development.md](docs/project/development.md#cross-version-compatibility-test)).
+- **Presentation-compiler (live) path** — used for position-local tools on an edited / uncompiled /
+  broken in-memory buffer, before a clean compile exists on disk. This embeds Scala 3's own
+  presentation compiler, which is **version-locked to Scala 3.8.4** (the only PC build wired in today).
+  In principle the Scala 3 compiler can parse older 3.\* source, but no per-version PC switching ships
+  yet, and Scala 2.13 is *not* supported on this path (Scala 3's compiler is not a Scala 2 compiler).
+
+So: disk-based analysis covers **2.13.\* + 3.\*.\***; the live broken-buffer path is **Scala 3.8.4
+only**. The server itself runs on any JVM (`java` 11+); the target project's Scala version is independent.
 
 ## Docs
 
