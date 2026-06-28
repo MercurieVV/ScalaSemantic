@@ -58,7 +58,7 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
       )
     @transient
     val mcpClientConfig =
-      taskKey[Unit](
+      inputKey[Unit](
         "write/merge the selected MCP client config (project-local file) that registers this " +
           "project's server"
       )
@@ -92,6 +92,7 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
     // so `mcpClientConfig`/`mcpRun` produce a command that keeps existing.
     mcpServerCommand := launcherCommand(installDir / launcherName),
     mcpClientConfig := {
+      val args = sbt.complete.DefaultParsers.spaceDelimited("<client>").parsed
       val log = streams.value.log
       val launcher =
         mcpInstall.value // ensure the launcher exists before we print a command pointing at it
@@ -123,7 +124,8 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
         resolvedCommand(mcpServerCommand.value, baseDirectory.value, cpFile) ++
           Seq("--log", "--log-output")
       val serverName = mcpServerName.value
-      val target = targetFor(mcpClient.value)
+      val clientVal = args.headOption.getOrElse(mcpClient.value)
+      val target = targetFor(clientVal)
       val outFile = baseDirectory.value / target.relPath
       val existing = if (outFile.exists) Some(IO.read(outFile)) else None
       val merged = target.fmt match {
@@ -136,7 +138,7 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
       IO.write(outFile, merged)
       val verb = if (existing.isEmpty) "Wrote" else "Merged into"
       log.info(s"$verb MCP config for server '$serverName': $outFile")
-      writeRulesAndSteer(mcpClient.value, baseDirectory.value, log)
+      writeRulesAndSteer(clientVal, baseDirectory.value, log)
       if (!cpFile.exists)
         log.info(
           "Server will run index-only. Run `sbt mcpClasspathFile` once (requires a successful " +
