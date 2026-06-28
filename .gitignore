@@ -53,3 +53,4 @@ build/
 .bsp/
 
 *.log
+/.claude/worktrees/chore+scala-steward/

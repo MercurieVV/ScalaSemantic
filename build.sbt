@@ -48,6 +48,7 @@ lazy val commonSettings = Seq(
 
 lazy val munit = "org.scalameta" %% "munit" % "1.2.3" % Test
 lazy val upickle = "com.lihaoyi" %% "upickle" % "4.2.1"
+lazy val refined = "eu.timepit" %% "refined" % "0.11.3"
 
 // Generate a standalone, build-tool-agnostic launcher for the MCP server: a script that runs the
 // server on a clean JVM (no sbt → no stdout pollution of the JSON-RPC stream).
@@ -103,7 +104,7 @@ lazy val analysis = (project in file("analysis"))
   .settings(commonSettings)
   .settings(
     name := "scalasemantic-analysis",
-    libraryDependencies ++= Seq(upickle, munit)
+    libraryDependencies ++= Seq(upickle, refined, munit)
   )
 
 // mcp: stdio JSON-RPC server + entrypoint. Test-depends on analysis so its fixtures (and their

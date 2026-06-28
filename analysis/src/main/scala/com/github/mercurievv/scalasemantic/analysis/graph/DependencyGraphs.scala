@@ -68,13 +68,13 @@ final class DependencyGraphs(index: SemanticIndex):
       )
       ordered
         .foldLeft((Option.empty[String], List.empty[(String, String)])) {
-          case ((current, acc), occ) =>
-            val isDef = occ.role == s.SymbolOccurrence.Role.DEFINITION
-            val method = index.isMethod(occ.symbol)
-            if isDef && method then (Some(occ.symbol), acc)
-            else if method && current.exists(_ != occ.symbol) then
-              (current, (current.getOrElse(""), occ.symbol) :: acc)
-            else (current, acc)
+          case ((_, acc), occ)
+              if occ.role == s.SymbolOccurrence.Role.DEFINITION && index.isMethod(occ.symbol) =>
+            (Some(occ.symbol), acc)
+          case ((Some(current), acc), occ) if index.isMethod(occ.symbol) && current != occ.symbol =>
+            (Some(current), (current, occ.symbol) :: acc)
+          case (state, _) =>
+            state
         }
         ._2
     }
@@ -102,7 +102,9 @@ final class DependencyGraphs(index: SemanticIndex):
   // --- semanticdb helpers (local, to keep this module self-contained) -------
 
   private def isClass(si: s.SymbolInformation): Boolean =
-    si.signature.isInstanceOf[s.ClassSignature]
+    si.signature match
+      case _: s.ClassSignature => true
+      case _                   => false
 
   private def parentsOf(symbol: String): List[String] =
     index.info(symbol).map(_.signature).toList.collect { case c: s.ClassSignature => c }.flatMap {

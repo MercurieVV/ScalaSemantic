@@ -2,6 +2,7 @@ package com.github.mercurievv.scalasemantic.analysis
 
 import com.github.mercurievv.scalasemantic.analysis.graph.StructureMetrics
 import com.github.mercurievv.scalasemantic.model.*
+import com.github.mercurievv.scalasemantic.model.InputTypes.*
 import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
@@ -65,10 +66,40 @@ final class Analyzer(
     */
   def structure(): StructureResult = structureResult
 
+  def rankedStructureSymbols(
+      dimension: StructureDimension,
+      sort: StructureSort,
+      limit: PositiveInt,
+      pathFilter: Option[String] = None
+  ): List[(SymbolStructure, DimensionMetrics)] =
+    val keepModule = h.globMatcher(pathFilter.filter(_.nonEmpty))
+    structureResult.symbols
+      .filter(s => keepModule(s.module))
+      .map(s => s -> selectedMetrics(s, dimension))
+      .sortBy((_, metrics) => -rankStructureMetrics(metrics, sort))
+      .take(limit.value)
+
   private lazy val structureResult: StructureResult = StructureMetrics(index).result()
 
   private lazy val structureBySymbol: Map[String, SymbolStructure] =
     structureResult.symbols.iterator.map(s => s.symbol -> s).toMap
+
+  private def selectedMetrics(
+      symbol: SymbolStructure,
+      dimension: StructureDimension
+  ): DimensionMetrics =
+    dimension match
+      case StructureDimension.Combined => symbol.combined
+      case other => symbol.perDimension.getOrElse(other.value, symbol.combined)
+
+  private def rankStructureMetrics(metrics: DimensionMetrics, sort: StructureSort): Double =
+    sort match
+      case StructureSort.Afferent    => metrics.afferent.toDouble
+      case StructureSort.Efferent    => metrics.efferent.toDouble
+      case StructureSort.Instability => metrics.instability
+      case StructureSort.Layer       => metrics.layer.toDouble
+      case StructureSort.Centrality  => metrics.centrality
+      case StructureSort.SccSize     => metrics.sccSize.toDouble
 
   /** The structural metrics for one type symbol, if it is an in-project type node — for badging the
     * results of other tools (find_symbol, class_hierarchy) with its layer/centrality/cycle status.
@@ -81,8 +112,8 @@ final class Analyzer(
     * signature (explicit implicits, real types) — a structural map of a file so a caller can locate
     * and understand its members without reading the whole source. `None` if the uri is not indexed.
     */
-  def outline(uri: String): Option[List[OutlineEntry]] =
-    index.document(uri).map { doc =>
+  def outline(uri: DocumentUri): Option[List[OutlineEntry]] =
+    index.document(uri.value).map { doc =>
       val defs = doc.occurrences.toList
         .collect {
           case occ
@@ -112,9 +143,10 @@ final class Analyzer(
     */
   private def outlineSignature(symbol: String): String =
     index.info(symbol).map(_.signature) match
-      case Some(_: s.MethodSignature) => methodSignature(symbol).map(_.rendered).getOrElse("")
-      case Some(v: s.ValueSignature)  => s": ${h.renderType(v.tpe)}"
-      case _                          => ""
+      case Some(_: s.MethodSignature) =>
+        methodSignatureOf(symbol).map(_.rendered).getOrElse("")
+      case Some(v: s.ValueSignature) => s": ${h.renderType(v.tpe)}"
+      case _                         => ""
 
   // --- annotated source -----------------------------------------------------
 
@@ -127,10 +159,10 @@ final class Analyzer(
     * inferred-type note when the source already states the type. `None` if `uri` is not indexed.
     */
   def sourceAnnotations(
-      uri: String,
+      uri: DocumentUri,
       sourceLines: IndexedSeq[String]
   ): Option[List[SourceAnnotation]] =
-    index.document(uri).map { doc =>
+    index.document(uri.value).map { doc =>
       val synthetic = doc.synthetics.iterator.flatMap(h.syntheticAnnotation).toList
       val defTypes = doc.occurrences.iterator.flatMap(h.defTypeAnnotation(_, sourceLines)).toList
       (synthetic ++ defTypes).distinct.sortBy(a => (a.line, a.character, a.kind))
@@ -144,23 +176,25 @@ final class Analyzer(
     * the over-match a textual rename suffers. The MCP server is read-only, so this returns a plan
     * for the caller to apply.
     */
-  def renamePlan(symbol: String, newName: String): RenamePlan =
-    val oldName = index.displayName(symbol)
+  def renamePlan(symbol: SemanticDbSymbol, newName: ScalaIdentifier): RenamePlan =
+    val sym = symbol.value
+    val name = newName.value
+    val oldName = index.displayName(sym)
     val edits = index
-      .occurrencesOf(symbol)
+      .occurrencesOf(sym)
       .collect { case (uri, occ) =>
         val r = occ.range.getOrElse(s.Range.defaultInstance)
         RenameEdit(
           uri,
           Range(Position(r.startLine, r.startCharacter), Position(r.endLine, r.endCharacter)),
           oldName,
-          newName
+          name
         )
       }
       .distinct
       .toList
       .sortBy(e => (e.uri, e.range.start.line, e.range.start.character))
-    RenamePlan(symbol, oldName, newName, edits.size, edits)
+    RenamePlan(sym, oldName, name, edits.size, edits)
 
   // --- move plan ------------------------------------------------------------
 
@@ -176,13 +210,14 @@ final class Analyzer(
     * `references` carries every resolved use (so the caller sees calls/usages, not just the body).
     * `newOwner` is a package symbol (`com/foo/bar/`); the symbol's simple name is preserved.
     */
-  def movePlan(symbol: String, newOwner: String): MovePlan =
-    val name = index.displayName(symbol)
-    val fromOwner = index.owner(symbol)
-    val toOwner = if newOwner.endsWith("/") || newOwner.isEmpty then newOwner else s"$newOwner/"
+  def movePlan(symbol: SemanticDbSymbol, newOwner: PackageSymbol): MovePlan =
+    val sym = symbol.value
+    val name = index.displayName(sym)
+    val fromOwner = index.owner(sym)
+    val toOwner = newOwner.value
     val fromFqn = h.joinFqn(h.packageDotted(fromOwner), name)
     val toFqn = h.joinFqn(h.packageDotted(toOwner), name)
-    val occs = index.occurrencesOf(symbol)
+    val occs = index.occurrencesOf(sym)
     val defLoc = occs.collectFirst {
       case (uri, occ) if occ.role == s.SymbolOccurrence.Role.DEFINITION =>
         h.location(uri, occ.range)
@@ -207,9 +242,9 @@ final class Analyzer(
         else Some(MoveImport(uri, fromFqn, toFqn))
       }
     MovePlan(
-      symbol,
+      sym,
       name,
-      h.kindName(symbol),
+      h.kindName(sym),
       fromOwner,
       toOwner,
       fromFqn,
@@ -230,22 +265,17 @@ final class Analyzer(
     * compiler's resolved symbols and types — not text heuristics. `None` if the uri is not indexed.
     */
   def extractMethodPlan(
-      uri: String,
-      startLine: Int,
-      startChar: Int,
-      endLine: Int,
-      endChar: Int,
-      methodName: String
+      uri: DocumentUri,
+      range: SourceRange,
+      methodName: ScalaIdentifier
   ): Option[ExtractMethodPlan] =
-    index.document(uri).map { doc =>
+    val docUri = uri.value
+    val name = methodName.value
+    index.document(docUri).map { doc =>
       def inSelection(r: s.Range): Boolean =
-        val afterStart =
-          r.startLine > startLine || (r.startLine == startLine && r.startCharacter >= startChar)
-        val beforeEnd =
-          r.endLine < endLine || (r.endLine == endLine && r.endCharacter <= endChar)
-        afterStart && beforeEnd
+        range.contains(r.startLine, r.startCharacter, r.endLine, r.endCharacter)
       def afterSelection(r: s.Range): Boolean =
-        r.startLine > endLine || (r.startLine == endLine && r.startCharacter >= endChar)
+        range.startsAtOrAfterEnd(r.startLine, r.startCharacter)
 
       val occ = doc.occurrences
       // Definition occurrences of each local, used to decide inside/outside the selection.
@@ -283,12 +313,7 @@ final class Analyzer(
       // The method the selection sits in: nearest preceding method definition in the file.
       val enclosing = occ
         .filter(o => o.role == s.SymbolOccurrence.Role.DEFINITION && index.isMethod(o.symbol))
-        .filter(o =>
-          o.range.exists(r =>
-            r.startLine < startLine ||
-              (r.startLine == startLine && r.startCharacter <= startChar)
-          )
-        )
+        .filter(o => o.range.exists(r => range.start.atOrAfter(r.startLine, r.startCharacter)))
         .maxByOption(o => o.range.map(r => (r.startLine, r.startCharacter)).getOrElse((0, 0)))
         .map(o => h.symbolRef(o.symbol))
 
@@ -297,18 +322,21 @@ final class Analyzer(
         case b :: Nil => b.tpe
         case many     => many.map(_.tpe).mkString("(", ", ", ")")
       val paramText = params.map(p => s"${p.name}: ${p.tpe}").mkString(", ")
-      val signature = s"def $methodName($paramText): $returnType"
+      val signature = s"def $name($paramText): $returnType"
       val args = params.map(_.name).mkString(", ")
       val call = returns match
-        case Nil      => s"$methodName($args)"
-        case b :: Nil => s"val ${b.name} = $methodName($args)"
-        case many     => s"val (${many.map(_.name).mkString(", ")}) = $methodName($args)"
+        case Nil      => s"$name($args)"
+        case b :: Nil => s"val ${b.name} = $name($args)"
+        case many     => s"val (${many.map(_.name).mkString(", ")}) = $name($args)"
 
-      val range = Range(Position(startLine, startChar), Position(endLine, endChar))
+      val resultRange = Range(
+        Position(range.startLine, range.startCharacter),
+        Position(range.endLine, range.endCharacter)
+      )
       ExtractMethodPlan(
-        uri,
-        range,
-        methodName,
+        docUri,
+        resultRange,
+        name,
         enclosing,
         params,
         returns,
@@ -327,7 +355,7 @@ final class Analyzer(
     */
   def findSymbol(
       query: String,
-      limit: Int = 50,
+      limit: PositiveInt = PositiveInt.DefaultLimit,
       exact: Boolean = false,
       kind: Option[String] = None,
       pathFilter: Option[String] = None
@@ -351,7 +379,7 @@ final class Analyzer(
         val rank = if n == q then 0 else if n.startsWith(q) then 1 else 2
         (rank, si.displayName.length, si.symbol)
       }
-      .take(limit)
+      .take(limit.value)
       .map(si => h.symbolRef(si.symbol))
 
   private val findSymbolExcludedKinds: Set[s.SymbolInformation.Kind] = Set(
@@ -369,9 +397,10 @@ final class Analyzer(
     * any chars, unanchored substring match) — e.g. "core" + star, or star + "compat" + star.
     * `referenceCount` reflects the filtered set.
     */
-  def findUsages(symbol: String, pathFilter: Option[String] = None): UsagesResult =
+  def findUsages(symbol: SemanticDbSymbol, pathFilter: Option[String] = None): UsagesResult =
+    val sym = symbol.value
     val keep = h.globMatcher(pathFilter)
-    val located = index.occurrencesOf(symbol).collect {
+    val located = index.occurrencesOf(sym).collect {
       case (uri, occ) if keep(uri) =>
         occ.role -> h.location(uri, occ.range)
     }
@@ -379,14 +408,17 @@ final class Analyzer(
       located.collect { case (s.SymbolOccurrence.Role.DEFINITION, loc) => loc }.distinct.toList
     val refs =
       located.collect { case (s.SymbolOccurrence.Role.REFERENCE, loc) => loc }.distinct.toList
-    UsagesResult(symbol, index.displayName(symbol), defs, refs)
+    UsagesResult(sym, index.displayName(sym), defs, refs)
 
   // --- method-signature -----------------------------------------------------
 
   /** Full method signature including type parameters and (implicit) parameter lists. */
-  def methodSignature(symbol: String): Option[MethodSignature] =
-    index.info(symbol).map(_.signature).collect { case m: s.MethodSignature =>
-      val name = index.displayName(symbol)
+  def methodSignature(symbol: MethodSymbol): Option[MethodSignature] =
+    methodSignatureOf(symbol.value)
+
+  private def methodSignatureOf(sym: String): Option[MethodSignature] =
+    index.info(sym).map(_.signature).collect { case m: s.MethodSignature =>
+      val name = index.displayName(sym)
       val tparams = h.scopeInfos(m.typeParameters).map(_.displayName).toList
       val plists = m.parameterLists.map { scope =>
         val params = h
@@ -399,7 +431,7 @@ final class Analyzer(
       }.toList
       val ret = h.renderType(m.returnType)
       MethodSignature(
-        symbol,
+        sym,
         name,
         tparams,
         plists,
@@ -417,16 +449,20 @@ final class Analyzer(
     * (`*` = any chars, substring match) — scoping each list (parents, linearization, subtypes) to a
     * subdirectory.
     */
-  def classHierarchy(symbol: String, pathFilter: Option[String] = None): Option[ClassHierarchy] =
+  def classHierarchy(
+      symbol: TypeSymbol,
+      pathFilter: Option[String] = None
+  ): Option[ClassHierarchy] =
+    val sym = symbol.value
     val keep = h.bySymbolPath(pathFilter)
-    index.info(symbol).map(_.signature).collect { case c: s.ClassSignature =>
+    index.info(sym).map(_.signature).collect { case c: s.ClassSignature =>
       val parents = c.parents.flatMap(h.parentSymbol).filter(keep).map(h.symbolRef).toList
       ClassHierarchy(
-        symbol,
-        index.displayName(symbol),
+        sym,
+        index.displayName(sym),
         parents,
-        h.linearize(symbol).filter(keep).map(h.symbolRef),
-        h.knownSubtypes(symbol).filter(keep).map(h.symbolRef)
+        h.linearize(sym).filter(keep).map(h.symbolRef),
+        h.knownSubtypes(sym).filter(keep).map(h.symbolRef)
       )
     }
 
@@ -435,9 +471,10 @@ final class Analyzer(
   /** All methods sharing the owner and simple name of `symbol` (overloads differ only by the `(+N)`
     * disambiguator in their symbol string). Works given any one of the overloads.
     */
-  def findOverloads(symbol: String): OverloadsResult =
-    val name = index.displayName(symbol)
-    val own = index.owner(symbol)
+  def findOverloads(symbol: MethodSymbol): OverloadsResult =
+    val sym = symbol.value
+    val name = index.displayName(sym)
+    val own = index.owner(sym)
     val overloads = index.symbols.values
       .collect {
         case si
@@ -447,7 +484,7 @@ final class Analyzer(
       }
       .toList
       .sorted
-      .flatMap(methodSignature)
+      .flatMap(methodSignatureOf)
     OverloadsResult(name, overloads)
 
   // --- trait-vs-local members -----------------------------------------------
@@ -458,33 +495,37 @@ final class Analyzer(
     * `pathFilter`, when given, keeps only members whose own definition uri matches the glob (`*` =
     * any chars, substring match) — e.g. to drop members inherited from types outside a module.
     */
-  def members(symbol: String, pathFilter: Option[String] = None): Option[MembersResult] =
+  def members(symbol: TypeSymbol, pathFilter: Option[String] = None): Option[MembersResult] =
+    val sym = symbol.value
     val keep = h.bySymbolPath(pathFilter)
-    index.info(symbol).map(_.signature).collect { case _: s.ClassSignature =>
-      val declared = h.declarationSymbols(symbol).filter(keep).map(h.memberInfo(_, symbol))
+    index.info(sym).map(_.signature).collect { case _: s.ClassSignature =>
+      val declared = h.declarationSymbols(sym).filter(keep).map(h.memberInfo(_, sym))
       val declaredNames = declared.map(_.displayName).toSet
       val inherited = h
-        .linearize(symbol)
+        .linearize(sym)
         .flatMap(parent => h.declarationSymbols(parent).map(h.memberInfo(_, parent)))
         .filterNot(m => declaredNames.contains(m.displayName))
         .filter(m => keep(m.symbol))
         .distinctBy(_.displayName)
-      MembersResult(symbol, index.displayName(symbol), declared, inherited)
+      MembersResult(sym, index.displayName(sym), declared, inherited)
     }
 
   // --- type-at-position -----------------------------------------------------
 
   /** The most specific symbol whose occurrence range covers the given 0-based position. */
-  def typeAtPosition(uri: String, line: Int, character: Int): Option[TypeAtPosition] =
+  def typeAtPosition(uri: DocumentUri, position: SourcePosition): Option[TypeAtPosition] =
+    val docUri = uri.value
     index
-      .document(uri)
+      .document(docUri)
       .toSeq
       .flatMap(_.occurrences)
-      .filter(occ => occ.range.exists(h.rangeContains(_, line, character)))
+      .filter(occ =>
+        occ.range.exists(h.rangeContains(_, position.lineValue, position.characterValue))
+      )
       .minByOption(occ => occ.range.map(h.rangeSpan).getOrElse(Int.MaxValue))
       .map { occ =>
         TypeAtPosition(
-          h.location(uri, occ.range),
+          h.location(docUri, occ.range),
           occ.symbol,
           index.displayName(occ.symbol),
           h.typeString(occ.symbol)
@@ -497,8 +538,9 @@ final class Analyzer(
     * object this is a parent it extends; for a `given def` it is the (possibly synthetic) return
     * type's parent. `chosen` is set only when exactly one candidate exists.
     */
-  def resolveImplicits(typeSymbol: String): ImplicitResolution =
-    val candidates = h.implicitsProducing(typeSymbol).map { si =>
+  def resolveImplicits(typeSymbol: TypeSymbol): ImplicitResolution =
+    val sym = typeSymbol.value
+    val candidates = h.implicitsProducing(sym).map { si =>
       ImplicitCandidate(
         h.symbolRef(si.symbol),
         h.renderType(h.producedType(si)),
@@ -508,14 +550,15 @@ final class Analyzer(
     val chosen = candidates match
       case one :: Nil => Some(one.target)
       case _          => None
-    ImplicitResolution(typeSymbol, chosen, candidates)
+    ImplicitResolution(sym, chosen, candidates)
 
   // --- trace-implicit-chain -------------------------------------------------
 
   /** Givens producing `typeSymbol`, plus the implicit dependencies they pull in, walked
     * transitively. Each step records the implicit-parameter types it `dependsOn`.
     */
-  def traceImplicitChain(typeSymbol: String): ImplicitChain =
+  def traceImplicitChain(typeSymbol: TypeSymbol): ImplicitChain =
+    val sym = typeSymbol.value
     def loop(
         queue: List[String],
         seenTypes: List[String],
@@ -533,25 +576,27 @@ final class Analyzer(
             }
             val nextTypes = produced.flatMap(h.implicitDependencyHeads)
             loop(rest ::: nextTypes, tpe :: seenTypes, steps ::: newSteps)
-    ImplicitChain(typeSymbol, loop(List(typeSymbol), Nil, Nil).distinctBy(_.target.symbol))
+    ImplicitChain(sym, loop(List(sym), Nil, Nil).distinctBy(_.target.symbol))
 
   // --- call-graph path-find -------------------------------------------------
 
   /** Shortest call path `from -> ... -> to`, with the call-site edges that realize it. Empty `path`
     * means `to` is unreachable from `from`.
     */
-  def callPath(from: String, to: String): CallGraphPath =
+  def callPath(from: MethodSymbol, to: MethodSymbol): CallGraphPath =
+    val fromSym = from.value
+    val toSym = to.value
     val adjacency = callGraph
     def bfs(frontier: List[List[String]], seen: Set[String]): List[String] =
       frontier match
         case Nil => Nil
         case path :: rest =>
           val node = path.head
-          if node == to then path.reverse
+          if node == toSym then path.reverse
           else
             val nexts = adjacency.getOrElse(node, Nil).map(_._1).filterNot(seen.contains)
             bfs(rest ::: nexts.map(_ :: path), seen ++ nexts)
-    val nodes = if from == to then List(from) else bfs(List(List(from)), Set(from))
+    val nodes = if fromSym == toSym then List(fromSym) else bfs(List(List(fromSym)), Set(fromSym))
     val edges = nodes
       .zip(nodes.drop(1))
       .flatMap { (a, b) =>
@@ -559,7 +604,7 @@ final class Analyzer(
           CallEdge(h.symbolRef(a), h.symbolRef(b), loc)
         }
       }
-    CallGraphPath(h.symbolRef(from), h.symbolRef(to), nodes.map(h.symbolRef), edges)
+    CallGraphPath(h.symbolRef(fromSym), h.symbolRef(toSym), nodes.map(h.symbolRef), edges)
 
   /** Caller -> list of (callee, call-site) edges, attributing each method reference to the most
     * recent method definition in source order within its document.
@@ -571,13 +616,13 @@ final class Analyzer(
       )
       ordered
         .foldLeft((Option.empty[String], List.empty[(String, String, Location)])) {
-          case ((current, acc), occ) =>
-            val isDef = occ.role == s.SymbolOccurrence.Role.DEFINITION
-            val method = index.isMethod(occ.symbol)
-            if isDef && method then (Some(occ.symbol), acc)
-            else if method && current.exists(_ != occ.symbol) then
-              (current, (current.getOrElse(""), occ.symbol, h.location(doc.uri, occ.range)) :: acc)
-            else (current, acc)
+          case ((_, acc), occ)
+              if occ.role == s.SymbolOccurrence.Role.DEFINITION && index.isMethod(occ.symbol) =>
+            (Some(occ.symbol), acc)
+          case ((Some(current), acc), occ) if index.isMethod(occ.symbol) && current != occ.symbol =>
+            (Some(current), (current, occ.symbol, h.location(doc.uri, occ.range)) :: acc)
+          case (state, _) =>
+            state
         }
         ._2
         .reverse

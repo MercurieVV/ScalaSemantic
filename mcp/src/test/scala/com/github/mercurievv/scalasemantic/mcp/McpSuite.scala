@@ -25,9 +25,12 @@ class McpSuite extends munit.FunSuite:
 
   /** Invoke a tool and parse the JSON carried in its text content block. */
   private def call(name: String, args: ujson.Value): ujson.Value =
-    val resp = Mcp.handle(req("tools/call", ujson.Obj("name" -> name, "arguments" -> args)), tools)
+    val resp = callResponse(name, args)
     val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
     ujson.read(text)
+
+  private def callResponse(name: String, args: ujson.Value): Option[ujson.Value] =
+    Mcp.handle(req("tools/call", ujson.Obj("name" -> name, "arguments" -> args)), tools)
 
   test("initialize echoes the protocol version, advertises the server, and ships instructions") {
     val r = Mcp.handle(req("initialize", ujson.Obj("protocolVersion" -> "2025-06-18")), tools).get
@@ -282,6 +285,38 @@ class McpSuite extends munit.FunSuite:
       .handle(req("tools/call", ujson.Obj("name" -> "nope", "arguments" -> ujson.Obj())), tools)
       .get
     assert(r.obj.contains("error"), r.render())
+  }
+
+  test("invalid tool inputs are rejected at the MCP boundary") {
+    val badSymbol = callResponse("find_usages", ujson.Obj("symbol" -> "not a symbol"))
+      .getOrElse(fail("no response"))
+    assertEquals(badSymbol("result")("isError").bool, true)
+    assert(badSymbol("result")("content")(0)("text").str.contains("invalid SemanticDB symbol"))
+
+    val badLimit =
+      callResponse("find_symbol", ujson.Obj("query" -> "Animal", "limit" -> 0))
+        .getOrElse(fail("no response"))
+    assertEquals(badLimit("result")("isError").bool, true)
+    assert(badLimit("result")("content")(0)("text").str.contains("limit must be > 0"))
+
+    val badRename =
+      callResponse("rename_plan", ujson.Obj("symbol" -> Animal, "newName" -> "class"))
+        .getOrElse(fail("no response"))
+    assertEquals(badRename("result")("isError").bool, true)
+    assert(badRename("result")("content")(0)("text").str.contains("invalid Scala identifier"))
+
+    val badRange = callResponse(
+      "extract_method_plan",
+      ujson.Obj(
+        "uri" -> "Sample.scala",
+        "startLine" -> 5,
+        "startCharacter" -> 0,
+        "endLine" -> 4,
+        "endCharacter" -> 0
+      )
+    ).getOrElse(fail("no response"))
+    assertEquals(badRange("result")("isError").bool, true)
+    assert(badRange("result")("content")(0)("text").str.contains("range end"))
   }
 
   test("find_usages returns a count and paged references") {
