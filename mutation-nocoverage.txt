@@ -1,11 +1,10 @@
-# NoCoverage mutants: 317
-# generated from analysis/target/stryker4s-report/1782671061459/report.json
+# NoCoverage mutants: 275
+# generated from analysis/target/stryker4s-report/1782671913743/report.json
 #
 # by file:
 #    101 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala
 #     83 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala
 #     45 src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/DependencyGraphs.scala
-#     42 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala
 #     24 src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/GraphMetrics.scala
 #     22 src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala
 #
@@ -284,45 +283,3 @@ src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetri
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:115:90  [EqualityOperator] -> <
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:115:90  [EqualityOperator] -> ==
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/graph/StructureMetrics.scala:115:90  [EqualityOperator] -> >=
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:21:49  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:62:20  [StringLiteral] -> "Stryker was here!"
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:92:46  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:103:17  [EqualityOperator] -> <=
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:103:17  [EqualityOperator] -> ==
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:103:17  [EqualityOperator] -> >
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:103:24  [LogicalOperator] -> &&
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:104:20  [EqualityOperator] -> !=
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:104:28  [LogicalOperator] -> ||
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:104:46  [EqualityOperator] -> <
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:104:46  [EqualityOperator] -> ==
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:104:46  [EqualityOperator] -> >=
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:107:17  [EqualityOperator] -> <
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:107:17  [EqualityOperator] -> ==
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:107:17  [EqualityOperator] -> >=
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:107:24  [LogicalOperator] -> &&
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:108:20  [EqualityOperator] -> !=
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:108:28  [LogicalOperator] -> ||
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:108:46  [EqualityOperator] -> <
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:108:46  [EqualityOperator] -> ==
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:108:46  [EqualityOperator] -> >
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:129:51  [LogicalOperator] -> ||
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:210:34  [BooleanLiteral] -> false
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:211:34  [BooleanLiteral] -> false
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:212:34  [BooleanLiteral] -> true
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:228:14  [StringLiteral] -> "Stryker was here!"
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:229:14  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:230:14  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:231:14  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:232:14  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:233:14  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:234:35  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:247:14  [StringLiteral] -> "Stryker was here!"
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:248:14  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:249:14  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:250:14  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:251:14  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:252:14  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:253:14  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:254:36  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:264:14  [StringLiteral] -> ""
-src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala:265:14  [StringLiteral] -> ""
