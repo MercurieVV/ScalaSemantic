@@ -1,12 +1,11 @@
-# Survived mutants: 24
-# generated from analysis/target/stryker4s-report/1782678647242/report.json
+# Survived mutants: 23
+# generated from analysis/target/stryker4s-report/1782678825860/report.json
 #
 # by file:
 #     15 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala
 #      6 src/main/scala/com/github/mercurievv/scalasemantic/model/InputTypes.scala
-#      3 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala
+#      2 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala
 #
-src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:482:36  [LogicalOperator] -> ||
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:599:20  [ConditionalExpression] -> false
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/Analyzer.scala:622:74  [LogicalOperator] -> ||
 src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:119:10  [ConditionalExpression] -> false
