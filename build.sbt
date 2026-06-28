@@ -54,7 +54,7 @@ lazy val refined = "eu.timepit" %% "refined" % "0.11.3"
 // server on a clean JVM (no sbt → no stdout pollution of the JSON-RPC stream).
 lazy val mcpLauncher = taskKey[File]("Write a standalone MCP server launch script")
 lazy val mcpClientConfig =
-  taskKey[Unit]("Install the launcher + write .mcp.json pointing at it (jar auto-updates in bg)")
+  inputKey[Unit]("Install the launcher + write client config pointing at it (jar auto-updates in bg)")
 lazy val proguard = taskKey[File]("Run ProGuard to shrink the assembly JAR")
 lazy val testShrunk = taskKey[Unit]("Run tests using the shrunk ProGuard JAR")
 
@@ -264,20 +264,14 @@ lazy val mcp = (project in file("mcp"))
       script
     },
     mcpClientConfig := {
+      val args = sbt.complete.DefaultParsers.spaceDelimited("<client>").parsed
       val log = streams.value.log
-      // Install the STABLE auto-download launcher (the same script as scripts/install.sh) into
-      // ~/.local/bin. It survives `clean`, is independent of the clone location, and on every launch
-      // serves the newest cached fat jar immediately while forking a detached `--bg-fetch` updater
-      // that pulls the latest release for the NEXT launch. So the config points at this script — NOT
-      // a hard-coded jar path — and the jar stays current in the background without re-running this.
       val home = file(java.lang.System.getProperty("user.home"))
       val launcher = home / ".local" / "bin" / "scalasemantic-mcp.sh"
       val root = (ThisBuild / baseDirectory).value
       IO.copyFile(root / "scripts" / "scalasemantic-mcp.sh", launcher)
       val _ = launcher.setExecutable(true)
       log.info(s"MCP launcher installed: $launcher")
-      // Warm the jar cache NOW (best-effort) so the first client connect hits a ready jar instead of
-      // racing its connect timeout while the ~88 MB jar downloads. `--prefetch` fetches then exits.
       try {
         val rc = scala.sys.process.Process(Seq(launcher.getAbsolutePath, "--prefetch", ".")).!
         if (rc != 0) log.warn(s"jar prefetch returned $rc; it will download on first connect instead.")
@@ -285,21 +279,33 @@ lazy val mcp = (project in file("mcp"))
         case scala.util.control.NonFatal(e) =>
           log.warn(s"jar prefetch skipped (${e.getMessage}); it will download on first connect.")
       }
-      // Write the project-local .mcp.json that registers this server, pointing command at the
-      // launcher script (args = the SemanticDB root). Overwrites any prior entry for this repo.
-      val json =
-        s"""|{
-            |  "mcpServers": {
-            |    "scala-semantic": {
-            |      "command": "${launcher.getAbsolutePath}",
-            |      "args": ["${root.getAbsolutePath}"]
-            |    }
-            |  }
-            |}
-            |""".stripMargin
-      val outFile = root / ".mcp.json"
-      IO.write(outFile, json)
-      log.info(s"Wrote MCP config (launcher-backed, jar auto-updates): $outFile\n$json")
+
+      val cpFile = launcher.getParentFile / "scala-semantic-classpath.txt"
+      val argv = Seq(launcher.getAbsolutePath, root.getAbsolutePath, cpFile.getAbsolutePath, "--log", "--log-output")
+      val serverName = "scala-semantic"
+      val clientVal = args.headOption.getOrElse("claude")
+
+      val clients = if (clientVal.trim.toLowerCase == "all") {
+        Seq("claude", "codex", "gemini", "cline", "roo", "continue")
+      } else {
+        Seq(clientVal)
+      }
+
+      import com.github.mercurievv.scalasemantic.sbtplugin.ScalaSemanticConfigMerger
+      for (client <- clients) {
+        val target = ScalaSemanticConfigMerger.targetFor(client)
+        val outFile = root / target.relPath
+        val existing = if (outFile.exists) Some(IO.read(outFile)) else None
+        val merged = target.fmt match {
+          case ScalaSemanticConfigMerger.JsonFmt => ScalaSemanticConfigMerger.mergeJson(existing, serverName, argv, target.extraJson)
+          case ScalaSemanticConfigMerger.TomlFmt => ScalaSemanticConfigMerger.mergeToml(existing, serverName, argv)
+          case ScalaSemanticConfigMerger.YamlFmt => ScalaSemanticConfigMerger.mergeYaml(existing, serverName, argv)
+        }
+        IO.write(outFile, merged)
+        val verb = if (existing.isEmpty) "Wrote" else "Merged into"
+        log.info(s"$verb MCP config for server '$serverName': $outFile")
+        ScalaSemanticConfigMerger.writeRulesAndSteer(client, root, log)
+      }
     }
   )
 
@@ -313,6 +319,7 @@ lazy val sbtPlugin = (project in file("sbt-plugin"))
   .settings(commonSettings)
   .settings(
     name := "sbt-scalasemantic-mcp",
+    Compile / unmanagedSources += (ThisBuild / baseDirectory).value / "project" / "ScalaSemanticConfigMerger.scala",
     crossScalaVersions := Seq("2.12.21", scalaVersion.value),
     pluginCrossBuild / sbtVersion := {
       scalaBinaryVersion.value match {

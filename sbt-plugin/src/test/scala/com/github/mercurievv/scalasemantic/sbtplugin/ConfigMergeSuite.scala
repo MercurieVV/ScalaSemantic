@@ -1,8 +1,8 @@
 package com.github.mercurievv.scalasemantic.sbtplugin
 
-import ScalaSemanticMcpPlugin.mergeJson
-import ScalaSemanticMcpPlugin.mergeToml
-import ScalaSemanticMcpPlugin.mergeYaml
+import ScalaSemanticConfigMerger.mergeJson
+import ScalaSemanticConfigMerger.mergeToml
+import ScalaSemanticConfigMerger.mergeYaml
 
 /** Unit tests for the dependency-free config mergers in [[ScalaSemanticMcpPlugin]]. They exercise
   * the three on-disk formats (JSON / TOML / YAML) for: a fresh file, adding alongside an existing
@@ -201,7 +201,7 @@ class ConfigMergeSuite extends munit.FunSuite {
       def log(level: sbt.Level.Value, message: => String): Unit = ()
     }
     try {
-      ScalaSemanticMcpPlugin.writeRulesAndSteer("claude", tempDir, log)
+      ScalaSemanticConfigMerger.writeRulesAndSteer("claude", tempDir, log)
       val rulesFile = new sbt.File(tempDir, "SCALA_SEMANTIC_RULES.md")
       val claudeFile = new sbt.File(tempDir, "CLAUDE.md")
 
@@ -226,7 +226,7 @@ class ConfigMergeSuite extends munit.FunSuite {
       val agentsFile = new sbt.File(tempDir, "AGENTS.md")
       sbt.IO.write(agentsFile, "<INSTRUCTIONS>\n@SCALA_CODE_RULES.md\n</INSTRUCTIONS>")
 
-      ScalaSemanticMcpPlugin.writeRulesAndSteer("gemini", tempDir, log)
+      ScalaSemanticConfigMerger.writeRulesAndSteer("gemini", tempDir, log)
 
       val rulesFile = new sbt.File(tempDir, "SCALA_SEMANTIC_RULES.md")
       assert(rulesFile.exists())

@@ -23,10 +23,12 @@ or [GitHub Releases](https://github.com/MercurieVV/ScalaSemantic/releases/latest
  sbt mcpClientConfig
  ```
  
- This writes/merges the `scala-semantic` server configuration into your project's local config file (e.g., `.mcp.json`). You can also specify the client format directly as a command-line argument:
+ This writes/merges the `scala-semantic` server configuration into your project's local config file (e.g., `.mcp.json`). You can also specify the client format directly as a command-line argument (or pass `all` to generate configurations for all supported clients in one go):
  
  ```sh
  sbt "mcpClientConfig gemini"
+ # or
+ sbt "mcpClientConfig all"
  ```
  
  Running this task also automatically:
