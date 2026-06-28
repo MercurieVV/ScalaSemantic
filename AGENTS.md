@@ -1,0 +1,5 @@
+# AGENTS.md instructions
+
+<INSTRUCTIONS>
+@SCALA_CODE_RULES.md
+</INSTRUCTIONS>

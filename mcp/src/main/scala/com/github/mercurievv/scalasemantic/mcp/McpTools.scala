@@ -2,6 +2,7 @@ package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
 import com.github.mercurievv.scalasemantic.model.*
+import com.github.mercurievv.scalasemantic.model.InputTypes.*
 
 /** The analysis tools exposed over MCP, with token-lean JSON rendering.
   *
@@ -47,7 +48,7 @@ object McpTools:
       val withMetrics = argBool(a, "metrics", false)
       val results = az.findSymbol(
         q,
-        argInt(a, "limit", 50),
+        argPositiveInt(a, "limit", 50),
         argBool(a, "exact", false),
         a.obj.get("kind").map(_.str),
         a.obj.get("pathFilter").map(_.str)
@@ -89,14 +90,14 @@ object McpTools:
       ),
       List("symbol")
     ) { a =>
-      val symbol = argStr(a, "symbol")
-      val limit = argInt(a, "limit", 100)
-      val offset = argInt(a, "offset", 0)
+      val symbol = argSymbol(a, "symbol")
+      val limit = argPositiveInt(a, "limit", 100)
+      val offset = argNonNegativeInt(a, "offset", 0)
       val want = includeWant(a)
       val u = az.findUsages(symbol, a.obj.get("pathFilter").map(_.str))
-      val page = u.references.slice(offset, offset + limit)
+      val page = u.references.slice(offset.value, offset.value + limit.value)
       jobj(
-        Some("symbol" -> ujson.Str(symbol)),
+        Some("symbol" -> ujson.Str(symbol.value)),
         Some("name" -> ujson.Str(u.displayName)),
         opt(
           want("definitions") && u.definitions.nonEmpty,
@@ -105,8 +106,8 @@ object McpTools:
         Some("referenceCount" -> ujson.Num(u.references.size)),
         opt(want("references") && page.nonEmpty, "references" -> strs(page.map(loc))),
         opt(
-          want("references") && offset + limit < u.references.size,
-          "nextOffset" -> ujson.Num(offset + limit)
+          want("references") && offset.value + limit.value < u.references.size,
+          "nextOffset" -> ujson.Num(offset.value + limit.value)
         )
       )
     },
@@ -129,17 +130,22 @@ object McpTools:
       ),
       List("symbol")
     ) { a =>
-      val symbol = argStr(a, "symbol")
+      val symbol = argMethodSymbol(a, "symbol")
       // overlay category: a referenced return/param type may be defined in another file, so the
       // buffer is overlaid ONTO the whole index rather than queried in isolation.
       val engine = (a.obj.get("uri").map(_.str), a.obj.get("source").map(_.str)) match
-        case (Some(uri), Some(src)) => az.withBuffer(root.resolve(uri).toUri, src, uri)
-        case _                      => az
+        case (Some(_), Some(src)) =>
+          val uri = argUri(a, "uri")
+          az.withBuffer(root.resolve(uri.value).toUri, src, uri.value)
+        case _ => az
       engine.methodSignature(symbol) match
-        case None => notFound(symbol)
+        case None => notFound(symbol.value)
         case Some(m) =>
           if !argBool(a, "detailed", false) then
-            jobj(Some("symbol" -> ujson.Str(symbol)), Some("signature" -> ujson.Str(m.rendered)))
+            jobj(
+              Some("symbol" -> ujson.Str(symbol.value)),
+              Some("signature" -> ujson.Str(m.rendered))
+            )
           else
             val lists = m.parameterLists.map { pl =>
               jobj(
@@ -158,7 +164,7 @@ object McpTools:
               )
             }
             jobj(
-              Some("symbol" -> ujson.Str(symbol)),
+              Some("symbol" -> ujson.Str(symbol.value)),
               Some("signature" -> ujson.Str(m.rendered)),
               opt(m.typeParameters.nonEmpty, "typeParameters" -> strs(m.typeParameters)),
               opt(lists.nonEmpty, "parameterLists" -> ujson.Arr.from(lists)),
@@ -188,17 +194,17 @@ object McpTools:
       ),
       List("symbol")
     ) { a =>
-      val symbol = argStr(a, "symbol")
+      val symbol = argTypeSymbol(a, "symbol")
       val detailed = argBool(a, "detailed", false)
       val want = includeWant(a)
       az.classHierarchy(symbol, a.obj.get("pathFilter").map(_.str)) match
-        case None => notFound(symbol)
+        case None => notFound(symbol.value)
         case Some(h) =>
           jobj(
             (List(
-              Some("symbol" -> ujson.Str(symbol)),
+              Some("symbol" -> ujson.Str(symbol.value)),
               Some("name" -> ujson.Str(h.displayName))
-            ) ++ metricFields(az, symbol, argBool(a, "metrics", false)) ++ List(
+            ) ++ metricFields(az, symbol.value, argBool(a, "metrics", false)) ++ List(
               opt(want("parents") && h.parents.nonEmpty, "parents" -> refs(h.parents, detailed)),
               opt(
                 want("linearization") && h.linearization.nonEmpty,
@@ -218,7 +224,7 @@ object McpTools:
       List(("symbol", "string", "any one overload's symbol")),
       List("symbol")
     ) { a =>
-      val o = az.findOverloads(argStr(a, "symbol"))
+      val o = az.findOverloads(argMethodSymbol(a, "symbol"))
       jobj(
         Some("name" -> ujson.Str(o.name)),
         Some("overloads" -> strs(o.overloads.map(_.rendered)))
@@ -241,11 +247,11 @@ object McpTools:
       ),
       List("symbol")
     ) { a =>
-      val symbol = argStr(a, "symbol")
+      val symbol = argTypeSymbol(a, "symbol")
       val detailed = argBool(a, "detailed", false)
       val want = includeWant(a)
       az.members(symbol, a.obj.get("pathFilter").map(_.str)) match
-        case None => notFound(symbol)
+        case None => notFound(symbol.value)
         case Some(m) =>
           val declared =
             if detailed then ujson.Arr.from(m.declared.map(memberJson))
@@ -259,7 +265,7 @@ object McpTools:
               )
           })
           jobj(
-            Some("symbol" -> ujson.Str(symbol)),
+            Some("symbol" -> ujson.Str(symbol.value)),
             Some("name" -> ujson.Str(m.displayName)),
             opt(want("declared") && m.declared.nonEmpty, "declared" -> declared),
             opt(want("inherited") && m.inherited.nonEmpty, "inherited" -> inherited)
@@ -284,14 +290,14 @@ object McpTools:
       ),
       List("uri", "line", "character")
     ) { a =>
-      val uri = argStr(a, "uri")
+      val uri = argUri(a, "uri")
       // PC-only category: a position in one file is fully answered by the PC's regenerated document,
       // so with `source` we query THAT alone — not an overlay on the (stale-for-this-file) disk
       // index. `uri` is the index-form (relative) key; the PC needs the absolute on-disk path.
       val engine = a.obj.get("source").map(_.str) match
-        case Some(src) => az.bufferOnly(root.resolve(uri).toUri, src, uri).getOrElse(az)
+        case Some(src) => az.bufferOnly(root.resolve(uri.value).toUri, src, uri.value).getOrElse(az)
         case None      => az
-      engine.typeAtPosition(uri, argInt(a, "line", 0), argInt(a, "character", 0)) match
+      engine.typeAtPosition(uri, argPosition(a, "line", "character")) match
         case None => jobj(Some("found" -> ujson.Bool(false)))
         case Some(t) =>
           jobj(
@@ -307,10 +313,10 @@ object McpTools:
       List(("type", "string", "the wanted type's symbol, e.g. pkg/Show#")),
       List("type")
     ) { a =>
-      val typeSymbol = argStr(a, "type")
+      val typeSymbol = argTypeSymbol(a, "type")
       val r = az.resolveImplicits(typeSymbol)
       jobj(
-        Some("type" -> ujson.Str(typeSymbol)),
+        Some("type" -> ujson.Str(typeSymbol.value)),
         r.chosen.map(c => "chosen" -> ujson.Str(c.symbol)),
         Some(
           "candidates" -> ujson.Arr.from(
@@ -328,10 +334,10 @@ object McpTools:
       List(("type", "string", "the wanted type's symbol")),
       List("type")
     ) { a =>
-      val typeSymbol = argStr(a, "type")
+      val typeSymbol = argTypeSymbol(a, "type")
       val chain = az.traceImplicitChain(typeSymbol)
       jobj(
-        Some("type" -> ujson.Str(typeSymbol)),
+        Some("type" -> ujson.Str(typeSymbol.value)),
         Some(
           "steps" -> ujson.Arr.from(
             chain.steps.map(st =>
@@ -357,7 +363,7 @@ object McpTools:
       ),
       List("from", "to")
     ) { a =>
-      val p = az.callPath(argStr(a, "from"), argStr(a, "to"))
+      val p = az.callPath(argMethodSymbol(a, "from"), argMethodSymbol(a, "to"))
       val reachable = p.path.nonEmpty
       jobj(
         Some("from" -> ujson.Str(p.from.displayName)),
@@ -410,27 +416,17 @@ object McpTools:
       Nil
     ) { a =>
       val res = az.structure()
-      val dim = argStr(a, "dimension") match
-        case "" => "combined"
-        case d  => d
-      val sortKey = argStr(a, "sort") match
-        case "" => "afferent"
-        case s  => s
-      val keep = res.symbols.filter(s => moduleGlob(a, s.module))
-      val pick: SymbolStructure => DimensionMetrics =
-        s => if dim == "combined" then s.combined else s.perDimension.getOrElse(dim, s.combined)
-      val rank: DimensionMetrics => Double = m =>
-        sortKey match
-          case "efferent"    => m.efferent.toDouble
-          case "instability" => m.instability
-          case "layer"       => m.layer.toDouble
-          case "centrality"  => m.centrality
-          case "sccSize"     => m.sccSize.toDouble
-          case _             => m.afferent.toDouble
-      val ranked = keep.sortBy(s => -rank(pick(s))).take(argInt(a, "limit", 30))
+      val dim = argDimension(a, "dimension")
+      val sortKey = argSort(a, "sort")
+      val ranked = az.rankedStructureSymbols(
+        dim,
+        sortKey,
+        argPositiveInt(a, "limit", 30),
+        a.obj.get("pathFilter").map(_.str)
+      )
       jobj(
-        Some("dimension" -> ujson.Str(dim)),
-        Some("sort" -> ujson.Str(sortKey)),
+        Some("dimension" -> ujson.Str(dim.value)),
+        Some("sort" -> ujson.Str(sortKey.value)),
         Some(
           "modules" -> ujson.Arr.from(res.modules.map { m =>
             jobj(
@@ -453,8 +449,7 @@ object McpTools:
           )
         ),
         Some(
-          "symbols" -> ujson.Arr.from(ranked.map { s =>
-            val m = pick(s)
+          "symbols" -> ujson.Arr.from(ranked.map { (s, m) =>
             jobj(
               Some("symbol" -> ujson.Str(s.symbol)),
               Some("name" -> ujson.Str(s.displayName)),
@@ -504,12 +499,13 @@ object McpTools:
       ),
       List("uri")
     ) { a =>
-      val uri = argStr(a, "uri")
+      val uri = argUri(a, "uri")
       az.outline(uri) match
-        case None => jobj(Some("uri" -> ujson.Str(uri)), Some("found" -> ujson.Bool(false)))
+        case None =>
+          jobj(Some("uri" -> ujson.Str(uri.value)), Some("found" -> ujson.Bool(false)))
         case Some(entries) =>
           jobj(
-            Some("uri" -> ujson.Str(uri)),
+            Some("uri" -> ujson.Str(uri.value)),
             Some("outline" -> ujson.Arr.from(entries.map(outlineJson)))
           )
     },
@@ -530,19 +526,19 @@ object McpTools:
         :: SourceView.params,
       List("uri")
     ) { a =>
-      val uri = argStr(a, "uri")
-      val file = root.resolve(uri)
-      if !java.nio.file.Files.isRegularFile(file) then notFoundUri(uri)
+      val uri = argUri(a, "uri")
+      val file = root.resolve(uri.value)
+      if !java.nio.file.Files.isRegularFile(file) then notFoundUri(uri.value)
       else
         val lines = java.nio.file.Files.readString(file).split("\n", -1).toIndexedSeq
         az.sourceAnnotations(uri, lines) match
-          case None => notFoundUri(uri)
+          case None => notFoundUri(uri.value)
           case Some(anns) =>
             SourceView.result(
-              uri,
+              uri.value,
               lines,
               anns,
-              argStr(a, "format"),
+              argFormat(a, "format"),
               argBool(a, "annotationsOnly", false)
             )
     },
@@ -558,7 +554,7 @@ object McpTools:
       ),
       List("symbol", "newName")
     ) { a =>
-      val p = az.renamePlan(argStr(a, "symbol"), argStr(a, "newName"))
+      val p = az.renamePlan(argSymbol(a, "symbol"), argIdentifier(a, "newName"))
       jobj(
         Some("symbol" -> ujson.Str(p.symbol)),
         Some("rename" -> ujson.Str(s"${p.fromName} -> ${p.toName}")),
@@ -587,7 +583,7 @@ object McpTools:
       ),
       List("symbol", "newOwner")
     ) { a =>
-      val p = az.movePlan(argStr(a, "symbol"), argStr(a, "newOwner"))
+      val p = az.movePlan(argSymbol(a, "symbol"), argPackageSymbol(a, "newOwner"))
       jobj(
         Some("symbol" -> ujson.Str(p.symbol)),
         Some("move" -> ujson.Str(s"${p.fromFqn} -> ${p.toFqn}")),
@@ -630,24 +626,19 @@ object McpTools:
       ),
       List("uri", "startLine", "startCharacter", "endLine", "endCharacter")
     ) { a =>
-      val uri = argStr(a, "uri")
-      val name = argStr(a, "methodName") match
-        case "" => "extracted"
-        case n  => n
+      val uri = argUri(a, "uri")
+      val name = argIdentifier(a, "methodName", "extracted")
       // PC-only: extraction is a single-file analysis, so when `source` is given query the PC's
       // regenerated document alone rather than overlaying the (stale-for-this-file) disk index.
       val engine = a.obj.get("source").map(_.str) match
-        case Some(src) => az.bufferOnly(root.resolve(uri).toUri, src, uri).getOrElse(az)
+        case Some(src) => az.bufferOnly(root.resolve(uri.value).toUri, src, uri.value).getOrElse(az)
         case None      => az
       engine.extractMethodPlan(
         uri,
-        argInt(a, "startLine", 0),
-        argInt(a, "startCharacter", 0),
-        argInt(a, "endLine", 0),
-        argInt(a, "endCharacter", 0),
+        argRange(a),
         name
       ) match
-        case None => notFoundUri(uri)
+        case None => notFoundUri(uri.value)
         case Some(p) =>
           jobj(
             Some("uri" -> ujson.Str(p.uri)),
@@ -712,45 +703,41 @@ object McpTools:
         uri: String,
         lines: IndexedSeq[String],
         anns: List[SourceAnnotation],
-        format: String,
+        format: SourceFormat,
         annotationsOnly: Boolean
     ): ujson.Value =
-      val fmt = normalize(format)
       ujson.Obj(
         "uri" -> ujson.Str(uri),
-        "format" -> ujson.Str(fmt),
+        "format" -> ujson.Str(format.value),
         "annotationCount" -> ujson.Num(anns.size),
-        "legend" -> ujson.Str(legend(fmt)),
-        "source" -> ujson.Str(render(lines, anns, fmt, annotationsOnly))
+        "legend" -> ujson.Str(legend(format)),
+        "source" -> ujson.Str(render(lines, anns, format, annotationsOnly))
       )
-
-    private def normalize(format: String): String =
-      format match
-        case "compilable" => "compilable"
-        case "plain"      => "plain"
-        case _            => "annotated"
 
     /** Weave source lines and annotations into one string per the chosen format. */
     private def render(
         lines: IndexedSeq[String],
         anns: List[SourceAnnotation],
-        fmt: String,
+        fmt: SourceFormat,
         annotationsOnly: Boolean
     ): String =
       val byLine = anns.groupBy(_.line)
       // `plain` shows no notes, so `annotationsOnly` would be empty — ignore it there.
-      val onlyAnnotated = fmt != "plain" && annotationsOnly
-      val gutter = fmt != "compilable" // a line-number gutter is not valid Scala
+      val onlyAnnotated = fmt != SourceFormat.Plain && annotationsOnly
+      val gutter = fmt != SourceFormat.Compilable // a line-number gutter is not valid Scala
       lines.iterator.zipWithIndex
         .flatMap { case (src, i) =>
           val notes = byLine.getOrElse(i, Nil)
           if onlyAnnotated && notes.isEmpty then None
           else
             val base = if gutter then f"${i + 1}%5d  $src" else src
-            if notes.isEmpty || fmt == "plain" then Some(base)
+            if notes.isEmpty || fmt == SourceFormat.Plain then Some(base)
             else
               val joined = notes.map(noteText).mkString("; ")
-              Some(if fmt == "compilable" then s"$base  // ⟹ $joined" else s"$base   ⟹ $joined")
+              Some(
+                if fmt == SourceFormat.Compilable then s"$base  // ⟹ $joined"
+                else s"$base   ⟹ $joined"
+              )
         }
         .mkString("\n")
 
@@ -766,28 +753,20 @@ object McpTools:
     private def noteText(n: SourceAnnotation): String =
       if preciseColKinds.contains(n.kind) then s"col ${n.character + 1} ${n.text}" else n.text
 
-    private def legend(fmt: String): String =
+    private def legend(fmt: SourceFormat): String =
       val markers =
         "Notes show compiler insertions invisible in the source: `(using …)` implicit args, " +
           "`name(…)` implicit conversion, `[…]` inferred type args, `: T` inferred type; `col N` " +
           "(1-based) pins the call a note applies to."
       fmt match
-        case "compilable" =>
+        case SourceFormat.Compilable =>
           s"Valid Scala: each note is a trailing `// ⟹` comment, no line-number gutter. $markers"
-        case "plain" =>
+        case SourceFormat.Plain =>
           "The raw file with a 1-based line-number gutter (a READ-ONLY view — edit the real file " +
             "at uri, not this). No annotations in this format."
-        case _ =>
+        case SourceFormat.Annotated =>
           s"READ-ONLY view, NOT valid Scala — do NOT paste into code; edit the real file at uri " +
             s"(gutter line numbers map 1:1). ⟹ marks each note. $markers"
-
-  /** Keep a module when no `pathFilter` is given, or when the glob (`*` = any chars) matches it. */
-  private def moduleGlob(a: ujson.Value, module: String): Boolean =
-    a.obj.get("pathFilter").map(_.str).filter(_.nonEmpty) match
-      case None => true
-      case Some(glob) =>
-        val re = glob.split("\\*", -1).map(java.util.regex.Pattern.quote).mkString(".*").r
-        re.findFirstIn(module).isDefined
 
   private def round2(d: Double): Double = math.round(d * 100.0) / 100.0
   private def round3(d: Double): Double = math.round(d * 1000.0) / 1000.0
@@ -864,6 +843,61 @@ object McpTools:
     a.obj.get(k).map(_.num.toInt).getOrElse(d)
   private def argBool(a: ujson.Value, k: String, d: Boolean): Boolean =
     a.obj.get(k).map(_.bool).getOrElse(d)
+
+  private def argSymbol(a: ujson.Value, k: String): SemanticDbSymbol =
+    SemanticDbSymbol.from(argStr(a, k)).fold(error, identity)
+
+  private def argMethodSymbol(a: ujson.Value, k: String): MethodSymbol =
+    MethodSymbol.from(argStr(a, k)).fold(error, identity)
+
+  private def argTypeSymbol(a: ujson.Value, k: String): TypeSymbol =
+    TypeSymbol.from(argStr(a, k)).fold(error, identity)
+
+  private def argPackageSymbol(a: ujson.Value, k: String): PackageSymbol =
+    PackageSymbol.from(argStr(a, k)).fold(error, identity)
+
+  private def argUri(a: ujson.Value, k: String): DocumentUri =
+    DocumentUri.from(argStr(a, k)).fold(error, identity)
+
+  private def argIdentifier(a: ujson.Value, k: String): ScalaIdentifier =
+    ScalaIdentifier.from(argStr(a, k)).fold(error, identity)
+
+  private def argIdentifier(a: ujson.Value, k: String, default: String): ScalaIdentifier =
+    val raw = argStr(a, k)
+    ScalaIdentifier.from(if raw.isEmpty then default else raw).fold(error, identity)
+
+  private def argNonNegativeInt(a: ujson.Value, k: String, default: Int): NonNegativeInt =
+    NonNegativeInt.from(argInt(a, k, default), k).fold(error, identity)
+
+  private def argPositiveInt(a: ujson.Value, k: String, default: Int): PositiveInt =
+    PositiveInt.from(argInt(a, k, default), k).fold(error, identity)
+
+  private def argPosition(a: ujson.Value, lineKey: String, characterKey: String): SourcePosition =
+    SourcePosition
+      .from(argInt(a, lineKey, 0), argInt(a, characterKey, 0))
+      .fold(error, identity)
+
+  private def argRange(a: ujson.Value): SourceRange =
+    SourceRange
+      .from(
+        argInt(a, "startLine", 0),
+        argInt(a, "startCharacter", 0),
+        argInt(a, "endLine", 0),
+        argInt(a, "endCharacter", 0)
+      )
+      .fold(error, identity)
+
+  private def argDimension(a: ujson.Value, k: String): StructureDimension =
+    StructureDimension.from(argStr(a, k)).fold(error, identity)
+
+  private def argSort(a: ujson.Value, k: String): StructureSort =
+    StructureSort.from(argStr(a, k)).fold(error, identity)
+
+  private def argFormat(a: ujson.Value, k: String): SourceFormat =
+    SourceFormat.from(argStr(a, k))
+
+  private def error(message: String): Nothing =
+    sys.error(message)
 
   private def tool(
       name: String,

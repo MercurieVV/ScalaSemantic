@@ -1,5 +1,6 @@
 package com.github.mercurievv.scalasemantic.analysis
 
+import com.github.mercurievv.scalasemantic.model.InputTypes.*
 import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
@@ -32,6 +33,17 @@ class AnalyzerPcSuite extends munit.FunSuite:
   // Empty disk index: everything the queries below see comes from the PC overlay alone.
   private val az = new Analyzer(new SemanticIndex(Vector.empty), Some(backend))
 
+  private def meth(value: String): MethodSymbol =
+    MethodSymbol.from(value).fold(fail(_), identity)
+  private def doc(value: String): DocumentUri =
+    DocumentUri.from(value).fold(fail(_), identity)
+  private def pos(line: Int, character: Int): SourcePosition =
+    SourcePosition.from(line, character).fold(fail(_), identity)
+  private def range(startLine: Int, startCharacter: Int, endLine: Int, endCharacter: Int) =
+    SourceRange.from(startLine, startCharacter, endLine, endCharacter).fold(fail(_), identity)
+  private def id(value: String): ScalaIdentifier =
+    ScalaIdentifier.from(value).fold(fail(_), identity)
+
   test("withBuffer is a no-op without a PC backend") {
     val plain = new Analyzer(new SemanticIndex(Vector.empty))
     assert(plain.withBuffer(uri, source).findSymbol("Dog").isEmpty)
@@ -40,7 +52,7 @@ class AnalyzerPcSuite extends munit.FunSuite:
   test("method_signature resolves on an uncompiled buffer via the PC overlay") {
     val live = az.withBuffer(uri, source)
     val bark = live.findSymbol("bark").headOption.getOrElse(fail("bark not found in overlay"))
-    val sig = live.methodSignature(bark.symbol).getOrElse(fail("no signature for bark"))
+    val sig = live.methodSignature(meth(bark.symbol)).getOrElse(fail("no signature for bark"))
     assertEquals(sig.returnType, "Int")
     assert(sig.rendered.contains("loud: Boolean"), sig.rendered)
   }
@@ -48,7 +60,8 @@ class AnalyzerPcSuite extends munit.FunSuite:
   test("type_at_position resolves on an uncompiled buffer via the PC overlay") {
     val live = az.withBuffer(uri, source)
     // Line 3 (0-based), the `bark` definition occurrence: `  def bark(...)`.
-    val at = live.typeAtPosition(uri.toString, 3, 6).getOrElse(fail("nothing at bark position"))
+    val at =
+      live.typeAtPosition(doc(uri.toString), pos(3, 6)).getOrElse(fail("nothing at bark position"))
     assertEquals(at.displayName, "bark")
     assertEquals(at.tpe, "Int")
   }
@@ -72,7 +85,7 @@ class AnalyzerPcSuite extends munit.FunSuite:
     val live = az.bufferOnly(calcFile.toUri, calc, "Calc.scala").getOrElse(fail("no PC backend"))
     // Select lines 5..6 (`val b = a * 2` and `val c = b + a`); end is exclusive at (7, 0).
     val p = live
-      .extractMethodPlan("Calc.scala", 5, 0, 7, 0, "compute")
+      .extractMethodPlan(doc("Calc.scala"), range(5, 0, 7, 0), id("compute"))
       .getOrElse(fail("expected an extract plan"))
     // `a` is read inside but defined above the selection → a parameter.
     assertEquals(p.parameters.map(_.name), List("a"))

@@ -1,5 +1,6 @@
 package com.github.mercurievv.scalasemantic.analysis
 
+import com.github.mercurievv.scalasemantic.model.InputTypes.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
 import java.nio.file.Files
@@ -49,6 +50,12 @@ class CompatSuite extends munit.FunSuite:
       idx.symbols.keys
         .find(s => s.startsWith(pkg) && idx.displayName(s) == name && pred(s))
         .getOrElse(fail(s"[$version] no symbol named '$name'"))
+    def sym(value: String): SemanticDbSymbol =
+      SemanticDbSymbol.from(value).fold(fail(_), identity)
+    def tpe(value: String): TypeSymbol =
+      TypeSymbol.from(value).fold(fail(_), identity)
+    def meth(value: String): MethodSymbol =
+      MethodSymbol.from(value).fold(fail(_), identity)
 
     val isType = (s: String) => s.endsWith("#")
     // A global method symbol ends in `).` (incl. the `(+N)` overload disambiguator); parameter
@@ -58,7 +65,7 @@ class CompatSuite extends munit.FunSuite:
 
     test(s"[$version] class hierarchy: Dog <: Animal"):
       val dog = find("Dog", isType)
-      val h = az.classHierarchy(dog).getOrElse(fail(s"[$version] Dog has no hierarchy"))
+      val h = az.classHierarchy(tpe(dog)).getOrElse(fail(s"[$version] Dog has no hierarchy"))
       assert(
         h.parents.exists(_.displayName == "Animal"),
         s"parents=${h.parents.map(_.displayName)}"
@@ -66,12 +73,13 @@ class CompatSuite extends munit.FunSuite:
 
     test(s"[$version] known subtypes: Animal :> Dog, Fish"):
       val animal = find("Animal", isType)
-      val subs = az.classHierarchy(animal).map(_.knownSubtypes.map(_.displayName)).getOrElse(Nil)
+      val subs =
+        az.classHierarchy(tpe(animal)).map(_.knownSubtypes.map(_.displayName)).getOrElse(Nil)
       assert(subs.contains("Dog") && subs.contains("Fish"), s"subtypes=$subs")
 
     test(s"[$version] find-usages of Animal is non-empty"):
       val animal = find("Animal", isType)
-      val u = az.findUsages(animal)
+      val u = az.findUsages(sym(animal))
       assert(
         (u.definitions ++ u.references).nonEmpty,
         "expected at least the definition occurrence"
@@ -79,21 +87,22 @@ class CompatSuite extends munit.FunSuite:
 
     test(s"[$version] method signature renders with a return type"):
       val render = find("render", isMethod)
-      val sig = az.methodSignature(render).getOrElse(fail(s"[$version] render has no signature"))
+      val sig =
+        az.methodSignature(meth(render)).getOrElse(fail(s"[$version] render has no signature"))
       assert(sig.rendered.startsWith("def render"), sig.rendered)
       assertEquals(sig.returnType, "String", sig.rendered)
 
     test(s"[$version] overloads: over has two"):
       val over = find("over", isMethod)
-      val o = az.findOverloads(over)
+      val o = az.findOverloads(meth(over))
       assertEquals(o.overloads.size, 2, o.overloads.map(_.rendered).toString)
 
     test(s"[$version] members: Fish declares; Robot inherits greet"):
       val fish = find("Fish", isType)
-      val mf = az.members(fish).getOrElse(fail(s"[$version] Fish has no members"))
+      val mf = az.members(tpe(fish)).getOrElse(fail(s"[$version] Fish has no members"))
       assert(mf.declared.nonEmpty, "expected declared members on Fish")
       val robot = find("Robot", isType)
-      val mr = az.members(robot).getOrElse(fail(s"[$version] Robot has no members"))
+      val mr = az.members(tpe(robot)).getOrElse(fail(s"[$version] Robot has no members"))
       assert(
         mr.inherited.exists(_.displayName == "greet"),
         s"inherited=${mr.inherited.map(_.displayName)}"
@@ -101,19 +110,19 @@ class CompatSuite extends munit.FunSuite:
 
     test(s"[$version] resolve-implicits: Show has candidates"):
       val show = find("Show", isType)
-      val r = az.resolveImplicits(show)
+      val r = az.resolveImplicits(tpe(show))
       assert(r.candidates.nonEmpty, "expected at least intShow/listShow")
 
     test(s"[$version] call-path: Calls.a reaches Calls.c"):
       val a = find("a", isMethod)
       val c = find("c", isMethod)
-      val p = az.callPath(a, c)
+      val p = az.callPath(meth(a), meth(c))
       assert(p.path.nonEmpty, "expected a -> b -> c to be reachable")
 
     test(s"[$version] no method signature renders an empty type"):
       idx.symbols.keys
         .filter(s => s.startsWith(pkg) && isMethod(s) && !isCtor(s))
-        .flatMap(az.methodSignature)
+        .flatMap(s => az.methodSignature(meth(s)))
         .foreach { sig =>
           assert(!sig.returnType.isEmpty, s"[$version] empty return type in: ${sig.symbol}")
           sig.parameterLists.flatMap(_.parameters).foreach { p =>

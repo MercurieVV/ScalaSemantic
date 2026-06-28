@@ -1,6 +1,8 @@
 package com.github.mercurievv.scalasemantic.sbtplugin
 
-import ScalaSemanticMcpPlugin.{mergeJson, mergeToml, mergeYaml}
+import ScalaSemanticMcpPlugin.mergeJson
+import ScalaSemanticMcpPlugin.mergeToml
+import ScalaSemanticMcpPlugin.mergeYaml
 
 /** Unit tests for the dependency-free config mergers in [[ScalaSemanticMcpPlugin]]. They exercise
   * the three on-disk formats (JSON / TOML / YAML) for: a fresh file, adding alongside an existing
