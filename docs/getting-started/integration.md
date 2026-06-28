@@ -64,10 +64,7 @@ or the [latest GitHub release](https://github.com/MercurieVV/ScalaSemantic/relea
 
 The plugin enables SemanticDB and adds:
 
-- `sbt mcpInstall` — writes the bundled auto-download launcher (Option B's script) into `target/`.
-- `sbt mcpClientConfig` — runs `mcpInstall`, then writes the selected MCP client config (pointing at
-  that script) into a project-local file, merging this server's entry into any existing file without
-  disturbing other servers or settings.
+- `sbt mcpClientConfig` — runs `mcpInstall`, then writes/merges the selected MCP client config (pointing at that script) into a project-local file. You can pass the client name directly as a command-line argument, e.g., `sbt "mcpClientConfig gemini"`. Running this task also automatically generates a `SCALA_SEMANTIC_RULES.md` file in the project root and sets up LLM-specific rules pointing to it (like `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, etc.).
 - `sbt mcpRun` — runs the server in the foreground (stdio) for manual testing.
 
 So `enablePlugins` + `sbt mcpClientConfig` is the whole setup — no config to paste, no jar to download by hand; the
