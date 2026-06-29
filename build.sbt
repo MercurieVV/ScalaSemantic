@@ -47,6 +47,7 @@ lazy val commonSettings = Seq(
 )
 
 lazy val munit = "org.scalameta" %% "munit" % "1.2.4" % Test
+lazy val munitScalacheck = "org.scalameta" %% "munit-scalacheck" % "1.2.0" % Test
 lazy val upickle = "com.lihaoyi" %% "upickle" % "4.4.3"
 lazy val refined = "eu.timepit" %% "refined" % "0.11.3"
 
@@ -104,7 +105,7 @@ lazy val analysis = (project in file("analysis"))
   .settings(commonSettings)
   .settings(
     name := "scalasemantic-analysis",
-    libraryDependencies ++= Seq(upickle, refined, munit)
+    libraryDependencies ++= Seq(upickle, refined, munit, munitScalacheck)
   )
 
 // mcp: stdio JSON-RPC server + entrypoint. Test-depends on analysis so its fixtures (and their

@@ -62,4 +62,4 @@ gitignored). So note quality == PR-title quality — write good titles. Process:
 [`docs/RELEASING.md`](docs/RELEASING.md).
 
 ## Scala Code Rules
-Please follow the rules in [SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md).
+@SCALA_SEMANTIC_RULES.md

@@ -142,6 +142,9 @@ class AnalyzerToolsSuite extends munit.FunSuite:
     val plan = az.movePlan(sym, dest)
     assertEquals(plan.fromFqn, "m.pkg.Foo")
     assertEquals(plan.toFqn, "m.dest.Foo")
+    // the definition is the DEFINITION occurrence, not the first reference (kills `== DEFINITION`->`!=`)
+    assertEquals(plan.definition.map(_.uri), Some("pkg/a.scala"), "the def site, not a referrer")
+    assertEquals(plan.definition.map(_.range.start.character), Some(0))
     assertEquals(plan.references.size, 3, "every cross-file use")
     assertEquals(
       plan.imports.toSet,
@@ -228,6 +231,212 @@ class AnalyzerToolsSuite extends munit.FunSuite:
     val at = az.typeAtPosition(docUri("t.scala"), pos).getOrElse(fail("nothing at position"))
     assertEquals(at.symbol, "t/T#m().", "the tighter range wins")
     assertEquals(at.displayName, "m")
+
+  // ===================== find-symbol: ranking & exclusions ====================
+
+  test("findSymbol ranks exact > prefix > substring, excludes empty-named and <init>"):
+    val az = Analyzer(
+      index(
+        doc(
+          "r.scala",
+          Seq(
+            si("r/cat#", s.SymbolInformation.Kind.CLASS, "cat"), // exact
+            si("r/category#", s.SymbolInformation.Kind.CLASS, "category"), // prefix
+            si("r/scat#", s.SymbolInformation.Kind.CLASS, "scat"), // substring
+            si("r/empty#", s.SymbolInformation.Kind.CLASS, ""), // empty display -> excluded
+            si("r/Z#`<init>`().", s.SymbolInformation.Kind.METHOD, "<init>") // excluded by name
+          ),
+          Nil
+        )
+      )
+    )
+    assertEquals(
+      az.findSymbol("cat").map(_.displayName),
+      List("cat", "category", "scat"),
+      "exact first, then prefix, then substring — not by length alone"
+    )
+    assert(az.findSymbol("init").isEmpty, "<init> excluded by name even when it matches")
+    assert(!az.findSymbol("").map(_.displayName).contains(""), "empty display name excluded")
+
+  // ============== extract-method-plan: return arities & range-less ============
+
+  private def exLocal(n: String, display: String) =
+    si(n, s.SymbolInformation.Kind.LOCAL, display, s.ValueSignature(IntT))
+  private val exMethod =
+    si("ex/M#run().", s.SymbolInformation.Kind.METHOD, "run", s.MethodSignature(None, Nil, IntT))
+
+  test("extractMethodPlan: no escaping local → Unit return and a bare call"):
+    // local0 is defined and read only inside the selection: neither a param nor a return.
+    val occs = Seq(
+      occ("ex/M#run().", DEF, 0, 2, 0, 5),
+      occ("local0", DEF, 3, 4, 3, 5), // inside
+      occ("local0", REF, 3, 8, 3, 9) // inside
+    )
+    val az = Analyzer(index(doc("ex.scala", Seq(exMethod, exLocal("local0", "a")), occs)))
+    val range = SourceRange.from(2, 0, 5, 0).fold(fail(_), identity)
+    val name = ScalaIdentifier.from("ex0").fold(fail(_), identity)
+    val plan = az.extractMethodPlan(docUri("ex.scala"), range, name).getOrElse(fail("not indexed"))
+    assertEquals(plan.parameters, Nil)
+    assertEquals(plan.returns, Nil)
+    assertEquals(plan.returnType, "Unit")
+    assertEquals(plan.signature, "def ex0(): Unit")
+    assertEquals(plan.call, "ex0()")
+
+  test("extractMethodPlan: several escaping locals → tuple return and destructuring call"):
+    // a: free read (param). b, c: defined inside and read after (tuple return).
+    val symbols =
+      Seq(exMethod, exLocal("local0", "a"), exLocal("local1", "b"), exLocal("local2", "c"))
+    val occs = Seq(
+      occ("ex/M#run().", DEF, 0, 2, 0, 5),
+      occ("local0", DEF, 1, 8, 1, 9), // before selection
+      occ("local0", REF, 3, 10, 3, 11), // inside -> param a
+      occ("local1", DEF, 3, 4, 3, 5), // inside
+      occ("local2", DEF, 4, 4, 4, 5), // inside
+      occ("local1", REF, 6, 4, 6, 5), // after -> b escapes
+      occ("local2", REF, 7, 4, 7, 5) // after -> c escapes
+    )
+    val az = Analyzer(index(doc("ex.scala", symbols, occs)))
+    val range = SourceRange.from(2, 0, 5, 0).fold(fail(_), identity)
+    val name = ScalaIdentifier.from("ex2").fold(fail(_), identity)
+    val plan = az.extractMethodPlan(docUri("ex.scala"), range, name).getOrElse(fail("not indexed"))
+    assertEquals(plan.parameters.map(_.name), List("a"))
+    assertEquals(plan.returns.map(_.name), List("b", "c"))
+    assertEquals(plan.returnType, "(Int, Int)")
+    assertEquals(plan.signature, "def ex2(a: Int): (Int, Int)")
+    assertEquals(plan.call, "val (b, c) = ex2(a)")
+
+  test("extractMethodPlan: occurrences without a range never enter the selection sets"):
+    // Each range-less occurrence would flip an `exists`->`forall` mutant (forall is vacuously true
+    // on None), so the plan must ignore them entirely.
+    val symbols = Seq(
+      exMethod,
+      exLocal("local0", "p"), // genuine free-var param
+      exLocal("local1", "nd"), // DEF range-less -> must not count as defined-inside
+      exLocal("local2", "nr"), // REF range-less inside -> must not count as read-inside (no param)
+      exLocal("local3", "na") // REF range-less after -> must not count as read-after (no return)
+    )
+    val occs = Seq(
+      occ("ex/M#run().", DEF, 0, 2, 0, 5),
+      occ("local0", DEF, 1, 8, 1, 9), // before selection
+      occ("local0", REF, 3, 10, 3, 11), // inside -> p is a param
+      s.SymbolOccurrence(None, "local1", DEF), // range-less DEF
+      s.SymbolOccurrence(None, "local2", REF), // range-less REF
+      occ("local3", DEF, 3, 6, 3, 7), // inside
+      s.SymbolOccurrence(None, "local3", REF) // range-less REF (would be "after")
+    )
+    val az = Analyzer(index(doc("ex.scala", symbols, occs)))
+    val range = SourceRange.from(2, 0, 5, 0).fold(fail(_), identity)
+    val name = ScalaIdentifier.from("exn").fold(fail(_), identity)
+    val plan = az.extractMethodPlan(docUri("ex.scala"), range, name).getOrElse(fail("not indexed"))
+    assertEquals(plan.parameters.map(_.name), List("p"), "only the ranged free read is a param")
+    assertEquals(plan.returns, Nil, "no local is read after via a real range")
+
+  test("extractMethodPlan: two params render with separators; a param read after is not a return"):
+    // a and b are both free reads (params); a is also read after the selection but, being defined
+    // OUTSIDE, must NOT become a return (kills the `DEF && inSel`->`||` widening of the returns set).
+    val symbols = Seq(exMethod, exLocal("local0", "a"), exLocal("local1", "b"))
+    val occs = Seq(
+      occ("ex/M#run().", DEF, 0, 2, 0, 5),
+      occ("local0", DEF, 1, 8, 1, 9), // before
+      occ("local1", DEF, 1, 12, 1, 13), // before
+      occ("local0", REF, 3, 4, 3, 5), // inside -> a
+      occ("local1", REF, 3, 8, 3, 9), // inside -> b
+      occ("local0", REF, 6, 4, 6, 5) // a read after, but defined outside
+    )
+    val az = Analyzer(index(doc("ex.scala", symbols, occs)))
+    val range = SourceRange.from(2, 0, 5, 0).fold(fail(_), identity)
+    val name = ScalaIdentifier.from("exp").fold(fail(_), identity)
+    val plan = az.extractMethodPlan(docUri("ex.scala"), range, name).getOrElse(fail("not indexed"))
+    assertEquals(plan.parameters.map(_.name), List("a", "b"))
+    assertEquals(plan.returns, Nil, "a is defined outside, so reading it after is not a return")
+    assertEquals(plan.signature, "def exp(a: Int, b: Int): Unit")
+    assertEquals(plan.call, "exp(a, b)")
+
+  test("extractMethodPlan: range-less DEF occurrences are ignored for params and returns"):
+    // nd: a range-less DEF read inside -> still a free read, so a param (kills defInside exists->forall).
+    // rd: a range-less DEF read after -> must NOT be a return (kills returns exists->forall).
+    val symbols =
+      Seq(exMethod, exLocal("local0", "p"), exLocal("local1", "nd"), exLocal("local2", "rd"))
+    val occs = Seq(
+      occ("ex/M#run().", DEF, 0, 2, 0, 5),
+      occ("local0", DEF, 1, 8, 1, 9), // before
+      occ("local0", REF, 3, 4, 3, 5), // inside -> p
+      s.SymbolOccurrence(None, "local1", DEF), // range-less DEF
+      occ("local1", REF, 3, 8, 3, 9), // inside -> nd is a free read
+      s.SymbolOccurrence(None, "local2", DEF), // range-less DEF
+      occ("local2", REF, 6, 4, 6, 5) // read after
+    )
+    val az = Analyzer(index(doc("ex.scala", symbols, occs)))
+    val range = SourceRange.from(2, 0, 5, 0).fold(fail(_), identity)
+    val name = ScalaIdentifier.from("exr").fold(fail(_), identity)
+    val plan = az.extractMethodPlan(docUri("ex.scala"), range, name).getOrElse(fail("not indexed"))
+    assertEquals(
+      plan.parameters.map(_.name).toSet,
+      Set("p", "nd"),
+      "range-less DEF is not 'inside'"
+    )
+    assertEquals(plan.returns, Nil, "a range-less DEF is never a return")
+
+  test("extractMethodPlan: a range-less method definition is not chosen as the enclosing method"):
+    val symbols = Seq(
+      si(
+        "ex/M#lone().",
+        s.SymbolInformation.Kind.METHOD,
+        "lone",
+        s.MethodSignature(None, Nil, IntT)
+      ),
+      exLocal("local0", "a")
+    )
+    val occs = Seq(
+      s.SymbolOccurrence(None, "ex/M#lone().", DEF), // range-less method def
+      occ("local0", DEF, 3, 4, 3, 5),
+      occ("local0", REF, 3, 8, 3, 9)
+    )
+    val az = Analyzer(index(doc("ex.scala", symbols, occs)))
+    val range = SourceRange.from(2, 0, 5, 0).fold(fail(_), identity)
+    val name = ScalaIdentifier.from("exe").fold(fail(_), identity)
+    val plan = az.extractMethodPlan(docUri("ex.scala"), range, name).getOrElse(fail("not indexed"))
+    assertEquals(plan.enclosingMethod, None, "a range-less method def cannot enclose the selection")
+
+  // ==================== ranked structure symbols: path filter =================
+
+  test("rankedStructureSymbols: a non-empty pathFilter keeps only matching modules"):
+    // two modules: core/A and app/B(extends A). A filter of "core" must drop app/B.
+    val symbols = Seq(
+      si(
+        "core/A#",
+        s.SymbolInformation.Kind.CLASS,
+        "A",
+        s.ClassSignature(None, List(tref("java/lang/Object#")), s.Type.Empty, Some(s.Scope()))
+      ),
+      si(
+        "app/B#",
+        s.SymbolInformation.Kind.CLASS,
+        "B",
+        s.ClassSignature(None, List(tref("core/A#")), s.Type.Empty, Some(s.Scope()))
+      )
+    )
+    val az = Analyzer(
+      index(
+        doc("core/a.scala", Seq(symbols(0)), Seq(occ("core/A#", DEF, 0, 0, 0, 1))),
+        doc("app/b.scala", Seq(symbols(1)), Seq(occ("app/B#", DEF, 0, 0, 0, 1)))
+      )
+    )
+    val all = az
+      .rankedStructureSymbols(StructureDimension.Combined, StructureSort.Afferent, lim(10))
+      .map((sym, _) => sym.module)
+      .toSet
+    assertEquals(all, Set("core", "app"), "no filter keeps both modules")
+    val coreOnly = az
+      .rankedStructureSymbols(
+        StructureDimension.Combined,
+        StructureSort.Afferent,
+        lim(10),
+        Some("core")
+      )
+      .map((sym, _) => sym.module)
+      .toSet
+    assertEquals(coreOnly, Set("core"), "pathFilter 'core' drops the app module")
 
   // ========================= trace-implicit-chain =============================
 

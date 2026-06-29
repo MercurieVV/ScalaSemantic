@@ -1,14 +1,17 @@
 package com.github.mercurievv.scalasemantic.model
 
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
+import org.scalacheck.Gen
+import org.scalacheck.Prop.forAll
 
 /** Unit tests for the boundary-validation smart constructors in [[InputTypes]]. These are pure (no
   * SemanticDB needed), so they are cheap to exercise exhaustively — both the accept and reject
   * paths, plus the off-by-one boundaries of the position/range comparisons. They run under
   * Stryker's test-filter (alongside ModelsSuite) to kill the otherwise-uncovered validation
-  * mutants.
+  * mutants. A few invariants are checked with ScalaCheck where a property states the intent more
+  * sharply than examples (position ordering, package normalization).
   */
-class InputTypesSuite extends munit.FunSuite:
+class InputTypesSuite extends munit.ScalaCheckSuite:
 
   // Assert a Left whose message carries the given substring (kills StringLiteral mutations on the
   // error text, which survive when only `.isLeft` is checked).
@@ -20,6 +23,10 @@ class InputTypesSuite extends munit.FunSuite:
     assert(SemanticDbSymbol.from("com/example/Foo#").isRight)
     assert(SemanticDbSymbol.from("local0").isRight)
     assertLeft(SemanticDbSymbol.from("   "), "non-empty")
+    assertLeft(
+      SemanticDbSymbol.from("   "),
+      "SemanticDB symbol"
+    ) // the field name is in the message
     assertLeft(SemanticDbSymbol.from("foo"), "invalid SemanticDB symbol")
 
   test("MethodSymbol.from accepts a method, rejects a type and a non-global"):
@@ -36,10 +43,14 @@ class InputTypesSuite extends munit.FunSuite:
     assertEquals(PackageSymbol.from("  ").toOption.map(_.value), Some(""))
     assertEquals(PackageSymbol.from("com/example/").toOption.map(_.value), Some("com/example/"))
     assertEquals(PackageSymbol.from("com/example").toOption.map(_.value), Some("com/example/"))
+    // NOTE: scalameta's isGlobal/isPackage accept any non-empty string once a trailing '/' is
+    // appended, so PackageSymbol.from never reaches its Left branch for non-empty input — the
+    // reject path (and its guard/message mutants) is effectively dead code, not test-killable.
 
   test("DocumentUri.from: relative ok; rejects blank, absolute, and dot-dot"):
     assert(DocumentUri.from("src/Main.scala").isRight)
     assertLeft(DocumentUri.from("   "), "non-empty")
+    assertLeft(DocumentUri.from("   "), "document uri") // the field name is in the message
     assertLeft(DocumentUri.from("/etc/passwd"), "must be relative")
     assertLeft(DocumentUri.from("a/../b.scala"), "must not contain")
 
@@ -102,6 +113,7 @@ class InputTypesSuite extends munit.FunSuite:
     assertLeft(ScalaIdentifier.from("class"), "invalid Scala identifier")
     assertLeft(ScalaIdentifier.from("1abc"), "invalid Scala identifier")
     assertLeft(ScalaIdentifier.from("   "), "non-empty")
+    assertLeft(ScalaIdentifier.from("   "), "Scala identifier") // the field name is in the message
 
   test("StructureDimension.from maps every keyword and defaults blank to Combined"):
     import StructureDimension.*
@@ -130,3 +142,34 @@ class InputTypesSuite extends munit.FunSuite:
     assertEquals(SourceFormat.from("plain"), Plain)
     assertEquals(SourceFormat.from("annotated"), Annotated)
     assertEquals(SourceFormat.from("anything else"), Annotated)
+
+  // ============================ property-based invariants ======================
+
+  private val coord: Gen[Int] = Gen.choose(0, 6) // small range so pairs collide on the boundaries
+  private def posOf(l: Int, c: Int) = SourcePosition.from(l, c).toOption.get
+
+  property("SourcePosition.before is exactly strict lexicographic order on (line, character)"):
+    forAll(coord, coord, coord, coord) { (l1, c1, l2, c2) =>
+      val expected = l1 < l2 || (l1 == l2 && c1 < c2)
+      posOf(l1, c1).before(posOf(l2, c2)) == expected
+    }
+
+  property(
+    "atOrBefore and atOrAfter are the non-strict orders, mutually consistent at the boundary"
+  ):
+    forAll(coord, coord, coord, coord) { (l1, c1, l2, c2) =>
+      val p = posOf(l1, c1)
+      val atOrBefore = l1 < l2 || (l1 == l2 && c1 <= c2)
+      val atOrAfter = l1 > l2 || (l1 == l2 && c1 >= c2)
+      p.atOrBefore(l2, c2) == atOrBefore && p.atOrAfter(l2, c2) == atOrAfter
+    }
+
+  property("PackageSymbol normalization is slash-terminated (or empty) and idempotent"):
+    forAll(Gen.listOf(Gen.alphaLowerChar).map(_.mkString)) { name =>
+      val seg = if name.isEmpty then "" else s"pkg/$name"
+      PackageSymbol.from(seg).toOption.map(_.value) match
+        case Some("") => seg.isEmpty
+        case Some(out) =>
+          out.endsWith("/") && PackageSymbol.from(out).toOption.map(_.value).contains(out)
+        case None => false
+    }
