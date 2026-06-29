@@ -64,4 +64,5 @@ build/
 /.gemini/
 /.roo/
 /.worktrees/
+/worktrees/
 /chat-tool-usage.md

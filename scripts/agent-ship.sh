@@ -14,7 +14,7 @@ branch="${1:?branch required}"
 message="${2:-${branch}: automated implementation}"
 
 repo_root="$(git rev-parse --show-toplevel)"
-wt="${repo_root}/.claude/worktrees/${branch}"
+wt="${repo_root}/worktrees/${branch}"
 [[ -d "$wt" ]] || { echo "worktree not found: $wt" >&2; exit 1; }
 
 if ( cd "$wt" && ./tree2m "$branch" "$message" ); then
