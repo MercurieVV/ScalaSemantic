@@ -44,6 +44,8 @@ sbt prePush      # command alias: clean; scalafmtAll; scalafixAll; Test/testOnly
 sbt "mcp/runMain com.github.mercurievv.scalasemantic.mcpServer <root>"  # start the server
 ```
 
+Agent worktrees live at `./worktrees/<branch>` (visible path, not `.claude/worktrees/`). The visible path is required for `agy` compatibility — agy's `--add-dir` silently rejects any path component starting with `.` (hidden directories), falling back to its own scratch dir instead. See `scripts/worktree-new.sh`.
+
 For worktree PR flow, use `./tree2m [--remote origin] [--base master] [--title TITLE] [--body BODY] [--draft] <branch> <commit-message>`.
 `<branch>` is the new branch name, `<commit-message>` is passed to `git commit -m`, `--title`
 overrides the PR title, `--body` overrides the PR body, `--base` selects the target branch, and
