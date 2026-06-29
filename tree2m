@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+
+# Create or reuse a work branch, commit all current changes, push it, and open or reuse a PR.
+# Then wait for CI and merge the PR.
+#
+# Usage:
+#   ./tree2m [--remote origin] [--base BRANCH] [--title TITLE] [--body BODY] [--draft] <branch> <commit-message>
+#
+# Options must appear before <branch>. The PR title defaults to the commit message. If the branch
+# or PR already exists, tree2m reuses it instead of creating a duplicate.
+
+set -euo pipefail
+
+usage() {
+  sed -n '3,8p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+remote="origin"
+base=""
+title=""
+body=""
+draft=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --remote)
+      remote="${2:-}"
+      [[ -n "$remote" ]] || { echo "--remote requires a value" >&2; exit 1; }
+      shift 2
+      ;;
+    --base)
+      base="${2:-}"
+      [[ -n "$base" ]] || { echo "--base requires a value" >&2; exit 1; }
+      shift 2
+      ;;
+    --title)
+      title="${2:-}"
+      [[ -n "$title" ]] || { echo "--title requires a value" >&2; exit 1; }
+      shift 2
+      ;;
+    --body)
+      body="${2:-}"
+      [[ -n "$body" ]] || { echo "--body requires a value" >&2; exit 1; }
+      shift 2
+      ;;
+    --draft)
+      draft=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+branch="${1:-}"
+message="${2:-}"
+
+if [[ -z "$branch" || -z "$message" || $# -gt 2 ]]; then
+  usage >&2
+  exit 1
+fi
+
+command -v rtk >/dev/null 2>&1 || { echo "Missing required command: rtk" >&2; exit 1; }
+command -v git >/dev/null 2>&1 || { echo "Missing required command: git" >&2; exit 1; }
+command -v gh >/dev/null 2>&1 || { echo "Missing required command: gh" >&2; exit 1; }
+
+if [[ -z "$base" ]]; then
+  base="$(rtk git symbolic-ref --quiet --short "refs/remotes/${remote}/HEAD" 2>/dev/null | sed "s#^${remote}/##")"
+fi
+[[ -n "$base" ]] || base="master"
+[[ -n "$title" ]] || title="$message"
+[[ -n "$body" ]] || body="Created by ./tree2m."
+
+current_branch="$(rtk git branch --show-current)"
+if [[ "$current_branch" == "$branch" ]]; then
+  :
+elif rtk git show-ref --verify --quiet "refs/heads/${branch}"; then
+  rtk git switch "$branch"
+elif rtk git show-ref --verify --quiet "refs/remotes/${remote}/${branch}"; then
+  rtk git switch --track -c "$branch" "${remote}/${branch}"
+else
+  rtk git switch -c "$branch"
+fi
+
+rtk git add -A
+rtk git commit -m "$message"
+rtk git push -u "$remote" "$branch"
+
+existing_pr_url="$(rtk gh pr view "$branch" --json url --jq '.url' 2>/dev/null || true)"
+if [[ -n "$existing_pr_url" ]]; then
+  echo "$existing_pr_url"
+else
+  pr_args=(pr create --base "$base" --head "$branch" --title "$title" --body "$body")
+  if [[ "$draft" == "true" ]]; then
+    pr_args+=(--draft)
+  fi
+  rtk gh "${pr_args[@]}"
+fi
+
+pr_ref="$branch"
+if [[ "$draft" == "true" ]]; then
+  rtk gh pr ready "$pr_ref"
+fi
+rtk scripts/check-push-workflow.sh --branch "$branch"
+rtk gh pr merge "$pr_ref" --squash --delete-branch

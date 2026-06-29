@@ -55,3 +55,13 @@ build/
 *.log
 /.claude/worktrees/chore+scala-steward/
 /.codex/config.toml
+
+# Local agent/worktree metadata.
+/.agents/
+/.claude/worktrees/
+/.cline/
+/.continue/config.yaml
+/.gemini/
+/.roo/
+/.worktrees/
+/chat-tool-usage.md
