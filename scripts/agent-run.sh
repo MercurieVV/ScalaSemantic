@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
-# Run one external worker engine (codex|agy) on one task inside a fresh git worktree,
-# then ship via ./tree2m. Used by the /orchestrate conductor for non-Claude engines.
+# Run one external worker engine (codex|agy) on one task inside a fresh git worktree.
+# Does NOT commit, push, or merge — the conductor runs a sanity check on the worktree diff
+# first, then ships via scripts/agent-ship.sh. Used by /orchestrate for non-Claude engines.
 # (The "claude" engine is driven directly by the conductor via the Agent tool, not this script.)
 #
 # Usage:
@@ -11,7 +12,8 @@
 #     model      engine-specific model string ("" = engine default)
 #     task-file  path to a file containing the self-contained task description
 #
-# Exit 0 = shipped (PR merged by tree2m). Non-zero = failed (hooks/CI/engine error); not merged.
+# On success, prints the worktree path on the last line and leaves it in place (uncommitted
+# changes). Exit 0 = engine ran; non-zero = setup/engine error.
 
 set -euo pipefail
 
@@ -28,9 +30,6 @@ base="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | 
 [[ -n "$base" ]] || base="master"
 wt="${repo_root}/.claude/worktrees/${branch}"
 
-cleanup() { git -C "$repo_root" worktree remove --force "$wt" 2>/dev/null || true; }
-trap cleanup EXIT
-
 # Fresh worktree off the latest base.
 git -C "$repo_root" fetch origin "$base" --quiet || true
 git -C "$repo_root" worktree add -b "$branch" "$wt" "origin/${base}"
@@ -40,7 +39,9 @@ Implement ONLY this task, scoped and matching existing style:
 
 ${task}
 
-When done, build/test as the project expects. Do NOT commit or push — the orchestrator ships it."
+Touch only files this task requires. Do NOT add scratch files, build artifacts, notes,
+or unrelated edits. When done, build/test as the project expects. Do NOT commit or push —
+the orchestrator reviews and ships it."
 
 case "$engine" in
   codex)
@@ -53,5 +54,5 @@ case "$engine" in
     echo "unknown engine: $engine" >&2; exit 2 ;;
 esac
 
-# Ship from inside the worktree: hooks gate, push, CI, squash-merge.
-( cd "$wt" && ./tree2m "$branch" "${branch}: automated implementation" )
+# Leave the worktree dirty for the conductor's sanity check + ship step.
+echo "$wt"
