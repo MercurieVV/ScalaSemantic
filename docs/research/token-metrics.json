@@ -4,9 +4,9 @@
   "summary": {
     "queryCount": 5,
     "toolTokens": 415,
-    "baselineTokens": 4154,
-    "tokenDelta": 3739,
-    "savingsPercent": 90
+    "baselineTokens": 4324,
+    "tokenDelta": 3909,
+    "savingsPercent": 90.4
   },
   "queries": [
     {
@@ -15,11 +15,11 @@
       "tool": "find_usages",
       "baseline": "Text grep for Animal across fixture source trees.",
       "toolChars": 399,
-      "baselineChars": 10552,
+      "baselineChars": 11229,
       "toolTokens": 100,
-      "baselineTokens": 2638,
-      "tokenDelta": 2538,
-      "savingsPercent": 96.2
+      "baselineTokens": 2808,
+      "tokenDelta": 2708,
+      "savingsPercent": 96.4
     },
     {
       "id": "class-hierarchy-animal",
