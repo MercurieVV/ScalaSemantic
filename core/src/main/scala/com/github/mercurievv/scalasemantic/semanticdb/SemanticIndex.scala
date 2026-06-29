@@ -1,8 +1,12 @@
 package com.github.mercurievv.scalasemantic.semanticdb
 
+import java.io.IOException
+import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.nio.file.SimpleFileVisitor
+import java.nio.file.attribute.BasicFileAttributes
 import scala.jdk.CollectionConverters.*
 import scala.meta.internal.semanticdb as s
 import scala.meta.internal.semanticdb.Scala.*
@@ -100,9 +104,29 @@ object SemanticIndex:
   private def findSemanticdb(root: Path): Seq[Path] =
     if !Files.exists(root) then Nil
     else
-      val stream = Files.walk(root)
-      try
-        stream.iterator.asScala
-          .filter(p => Files.isRegularFile(p) && p.getFileName.toString.endsWith(".semanticdb"))
-          .toVector
-      finally stream.close()
+      val result = new java.util.ArrayList[Path]()
+      Files.walkFileTree(
+        root,
+        new SimpleFileVisitor[Path]:
+          override def preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
+            val name = Option(dir.getFileName)
+            name match
+              case Some(n) =>
+                val nameStr = n.toString
+                if dir != root && nameStr != "." && nameStr != ".." && (nameStr.startsWith(
+                    "."
+                  ) || nameStr == "worktrees")
+                then FileVisitResult.SKIP_SUBTREE
+                else FileVisitResult.CONTINUE
+              case None =>
+                FileVisitResult.CONTINUE
+
+          override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult =
+            if file.getFileName.toString.endsWith(".semanticdb") && Files.isRegularFile(file) then
+              val _ = result.add(file)
+            FileVisitResult.CONTINUE
+
+          override def visitFileFailed(file: Path, exc: IOException): FileVisitResult =
+            FileVisitResult.CONTINUE
+      )
+      result.asScala.toSeq
