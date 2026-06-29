@@ -11,11 +11,36 @@ import scala.util.Try
 
 object DuplicationAnalyzer:
 
+  /** The default set of AST node types considered as duplication candidates.
+    *
+    * Previously this predicate was inlined inside `findSubtrees`; naming it makes the choice
+    * visible and lets callers supply a narrower or wider predicate via the `nodeFilter` parameter
+    * of `analyze`.
+    */
+  val defaultCandidateNodeFilter: Tree => Boolean = {
+    case _: Term.Block | _: Defn.Def | _: Term.Match | _: Term.For | _: Term.If | _: Term.Try =>
+      true
+    case _ => false
+  }
+
+  /** The default strategy for identifying the "enclosing declaration" of a sub-tree.
+    *
+    * Only method definitions (`Defn.Def`) are tracked by default. Callers can supply a wider
+    * matcher — for example to also include `Defn.Object`, `Defn.Class`, or `Defn.Trait` — via the
+    * `enclosingDeclMatcher` parameter of `analyze`, without touching the core traversal logic.
+    */
+  val defaultEnclosingDeclMatcher: Tree => Option[Defn] = {
+    case d: Defn.Def => Some(d)
+    case _           => None
+  }
+
   def analyze(
       index: SemanticIndex,
       root: Path,
       minSize: Int,
-      pathFilter: Option[String] = None
+      pathFilter: Option[String] = None,
+      nodeFilter: Tree => Boolean = defaultCandidateNodeFilter,
+      enclosingDeclMatcher: Tree => Option[Defn] = defaultEnclosingDeclMatcher
   ): DuplicationsResult =
     val h = AnalyzerHelpers(index)
     val keepUri = h.globMatcher(pathFilter.filter(_.nonEmpty))
@@ -36,9 +61,10 @@ object DuplicationAnalyzer:
         else
           Try(dialects.Scala3(text).parse[Source].get).toOption match
             case Some(sourceTree) =>
-              findSubtrees(sourceTree, minSize).iterator.map { case (t, enclosing) =>
-                (doc, t, enclosing)
-              }
+              findSubtrees(sourceTree, minSize, nodeFilter, enclosingDeclMatcher).iterator
+                .map { case (t, enclosing) =>
+                  (doc, t, enclosing)
+                }
             case None =>
               Iterator.empty
       }
@@ -76,7 +102,7 @@ object DuplicationAnalyzer:
           ModelPosition(pos.endLine, pos.endColumn)
         )
         val location = Location(doc.uri, range)
-        val enclosingName = enclosing.map(_.name.value)
+        val enclosingName = enclosing.flatMap(enclosingDeclName)
         DuplicateOccurrence(location, enclosingName)
       }
       DuplicationGroup(occurrences.size, astNodeCount, occurrences)
@@ -86,25 +112,49 @@ object DuplicationAnalyzer:
     val sortedGroups = groups.sortBy(g => (-g.astNodeCount, -g.size))
     DuplicationsResult(sortedGroups)
 
+  /** Extract a display name from an enclosing declaration node.
+    *
+    * Handles the most common declaration kinds that carry a single identifier name. Returns `None`
+    * for declarations without a simple name (e.g. anonymous givens, pattern vals with complex
+    * patterns).
+    */
+  private def enclosingDeclName(defn: Defn): Option[String] = defn match
+    case d: Defn.Def    => Some(d.name.value).filter(_.nonEmpty)
+    case d: Defn.Object => Some(d.name.value).filter(_.nonEmpty)
+    case d: Defn.Class  => Some(d.name.value).filter(_.nonEmpty)
+    case d: Defn.Trait  => Some(d.name.value).filter(_.nonEmpty)
+    case d: Defn.Val =>
+      d.pats.headOption.collect { case Pat.Var(n) => n.value }.filter(_.nonEmpty)
+    case d: Defn.Var =>
+      d.pats.headOption.collect { case Pat.Var(n) => n.value }.filter(_.nonEmpty)
+    case _ => None
+
   private def nodeCount(tree: Tree): Int =
     1 + tree.children.map(nodeCount).sum
 
-  private def findSubtrees(tree: Tree, minSize: Int): List[(Tree, Option[Defn.Def])] =
-    def traverse(t: Tree, currentMethod: Option[Defn.Def]): List[(Tree, Option[Defn.Def])] =
-      val nextMethod = t match
-        case d: Defn.Def => Some(d)
-        case _           => currentMethod
+  /** Collect all sub-trees of `tree` with at least `minSize` AST nodes that pass `nodeFilter`.
+    *
+    * @param nodeFilter
+    *   Predicate controlling which node kinds are eligible candidates. Defaults to
+    *   [[defaultCandidateNodeFilter]].
+    * @param enclosingDeclMatcher
+    *   Returns `Some(defn)` when a tree node should be tracked as the new enclosing declaration.
+    *   Defaults to [[defaultEnclosingDeclMatcher]] (tracks only `Defn.Def`).
+    */
+  private def findSubtrees(
+      tree: Tree,
+      minSize: Int,
+      nodeFilter: Tree => Boolean,
+      enclosingDeclMatcher: Tree => Option[Defn]
+  ): List[(Tree, Option[Defn])] =
+    def traverse(t: Tree, currentEnclosing: Option[Defn]): List[(Tree, Option[Defn])] =
+      val nextEnclosing = enclosingDeclMatcher(t) orElse currentEnclosing
 
       val current =
-        if (nodeCount(t) >= minSize)
-          t match
-            case _: Term.Block | _: Defn.Def | _: Term.Match | _: Term.For | _: Term.If |
-                _: Term.Try =>
-              List((t, currentMethod))
-            case _ => Nil
+        if (nodeCount(t) >= minSize && nodeFilter(t)) List((t, currentEnclosing))
         else Nil
 
-      current ++ t.children.flatMap(c => traverse(c, nextMethod))
+      current ++ t.children.flatMap(c => traverse(c, nextEnclosing))
 
     traverse(tree, None)
 
@@ -135,7 +185,13 @@ object DuplicationAnalyzer:
         case other                              => other.children.flatMap(loop)
     loop(tree).distinct
 
-  def normalize(tree: Tree, enclosingMethod: Option[Defn.Def]): String =
+  /** Produce a structural fingerprint for `tree` that is invariant under local-name renaming.
+    *
+    * @param enclosingMethod
+    *   The enclosing declaration whose local names should be replaced with stable placeholders.
+    *   Accepts any [[Defn]] (was previously restricted to [[Defn.Def]]).
+    */
+  def normalize(tree: Tree, enclosingMethod: Option[Defn]): String =
     val scopeTree = enclosingMethod.getOrElse(tree)
     val localNames = collectLocalNames(scopeTree)
     val referencedNames = collectReferencedNames(tree)
