@@ -39,6 +39,32 @@ jobs:
       - name: Test
         run: sbt test
 
+  verify:
+    name: Stainless verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: sbt
+      - uses: sbt/setup-sbt@v1
+      # Cache the standalone Stainless distribution (bundled z3/cvc5) so we don't re-download the
+      # ~80MB asset every run. Keyed on the version the script defaults to.
+      - name: Cache Stainless tool
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/scalasemantic/stainless
+          key: stainless-0.9.9.3
+      - name: Verify contracts
+        # sbt task shells out to scripts/stainless-verify.sh; fails iff a VC is INVALID (the
+        # nonlinear rangeSpan VC that the bundled solver can only mark `unknown` is tolerated).
+        # Generous per-VC timeout here (prePush uses a tighter default for speed).
+        run: sbt stainlessVerify
+        env:
+          STAINLESS_TIMEOUT: '30'
+
   docs-site:
     name: Publish docs site (GitHub Pages)
     needs: [build]
@@ -82,7 +108,7 @@ jobs:
 
   publish:
     name: Publish to Sonatype Central
-    needs: [build]
+    needs: [build, verify]
     # On a vX.Y.Z tag push (release), or a manual run (workflow_dispatch) which publishes a
     # -SNAPSHOT to dry-run credentials + signing without cutting a release.
     if: >-
@@ -132,7 +158,7 @@ jobs:
 
   release:
     name: GitHub Release (fat jar)
-    needs: [build]
+    needs: [build, verify]
     # Only on a vX.Y.Z tag push: build the standalone `java -jar` fat jar and attach it to a
     # GitHub Release so the auto-download launcher scripts can fetch the latest asset.
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')

@@ -5,6 +5,7 @@ import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
 import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import stainless.annotation.pure
 
 import java.net.URI
 import scala.meta.internal.semanticdb as s
@@ -75,6 +76,7 @@ final class Analyzer(
     */
   def structure(): StructureResult = structureResult
 
+  @pure
   def rankedStructureSymbols(
       dimension: StructureDimension,
       sort: StructureSort,
@@ -87,12 +89,14 @@ final class Analyzer(
       .map(sym => sym -> selectedMetrics(sym, dimension))
       .sortBy((_, metrics) => -rankStructureMetrics(metrics, sort))
       .take(limit.value)
+      .ensuring(res => res.size <= limit.value)
 
   private lazy val structureResult: StructureResult = StructureMetrics(index).result()
 
   private lazy val structureBySymbol: Map[String, SymbolStructure] =
     structureResult.symbols.iterator.map(sym => sym.symbol -> sym).toMap
 
+  @pure
   private def selectedMetrics(
       symbol: SymbolStructure,
       dimension: StructureDimension
@@ -101,6 +105,7 @@ final class Analyzer(
       case StructureDimension.Combined => symbol.combined
       case other => symbol.perDimension.getOrElse(other.value, symbol.combined)
 
+  @pure
   private def rankStructureMetrics(metrics: DimensionMetrics, sort: StructureSort): Double =
     sort match
       case StructureSort.Afferent    => metrics.afferent.toDouble
@@ -113,6 +118,7 @@ final class Analyzer(
   /** The structural metrics for one type symbol, if it is an in-project type node — for badging the
     * results of other tools (find_symbol, class_hierarchy) with its layer/centrality/cycle status.
     */
+  @pure
   def metricsOf(symbol: String): Option[SymbolStructure] = structureBySymbol.get(symbol)
 
   // --- document outline -----------------------------------------------------
@@ -184,6 +190,7 @@ final class Analyzer(
     * the over-match a textual rename suffers. The MCP server is read-only, so this returns a plan
     * for the caller to apply.
     */
+  @pure
   def renamePlan(symbol: SemanticDbSymbol, newName: ScalaIdentifier): RenamePlan =
     val sym = symbol.value
     val name = newName.value
@@ -203,6 +210,7 @@ final class Analyzer(
       .toList
       .sortBy(e => (e.uri, e.range.start.line, e.range.start.character))
     RenamePlan(sym, oldName, name, edits.size, edits)
+      .ensuring(res => res.editCount == res.edits.size)
 
   // --- move plan ------------------------------------------------------------
 
@@ -218,6 +226,7 @@ final class Analyzer(
     * `references` carries every resolved use (so the caller sees calls/usages, not just the body).
     * `newOwner` is a package symbol (`com/foo/bar/`); the symbol's simple name is preserved.
     */
+  @pure
   def movePlan(symbol: SemanticDbSymbol, newOwner: PackageSymbol): MovePlan =
     val sym = symbol.value
     val name = index.displayName(sym)
@@ -521,6 +530,7 @@ final class Analyzer(
   // --- type-at-position -----------------------------------------------------
 
   /** The most specific symbol whose occurrence range covers the given 0-based position. */
+  @pure
   def typeAtPosition(uri: DocumentUri, position: SourcePosition): Option[TypeAtPosition] =
     val docUri = uri.value
     index
@@ -530,7 +540,7 @@ final class Analyzer(
       .filter(occ =>
         occ.range.exists(h.rangeContains(_, position.lineValue, position.characterValue))
       )
-      .minByOption(occ => occ.range.map(h.rangeSpan).getOrElse(Int.MaxValue))
+      .minByOption(occ => occ.range.map(h.rangeSpan).getOrElse(Long.MaxValue))
       .map { occ =>
         TypeAtPosition(
           h.location(docUri, occ.range),
@@ -539,6 +549,7 @@ final class Analyzer(
           h.typeString(occ.symbol)
         )
       }
+      .ensuring(res => res.forall(_.location.uri == uri.value))
 
   // --- resolve-implicits ----------------------------------------------------
 
@@ -546,6 +557,7 @@ final class Analyzer(
     * object this is a parent it extends; for a `given def` it is the (possibly synthetic) return
     * type's parent. `chosen` is set only when exactly one candidate exists.
     */
+  @pure
   def resolveImplicits(typeSymbol: TypeSymbol): ImplicitResolution =
     val sym = typeSymbol.value
     val candidates = h.implicitsProducing(sym).map { si =>
@@ -559,6 +571,11 @@ final class Analyzer(
       case one :: Nil => Some(one.target)
       case _          => None
     ImplicitResolution(sym, chosen, candidates)
+      .ensuring(res =>
+        res.chosen.isDefined == (res.candidates.size == 1) && res.chosen.forall(c =>
+          res.candidates.headOption.exists(_.target == c)
+        )
+      )
 
   // --- trace-implicit-chain -------------------------------------------------
 

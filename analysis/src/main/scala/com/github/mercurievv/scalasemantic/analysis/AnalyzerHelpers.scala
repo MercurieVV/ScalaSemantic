@@ -2,6 +2,7 @@ package com.github.mercurievv.scalasemantic.analysis
 
 import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import stainless.annotation.pure
 
 import scala.meta.internal.semanticdb as s
 
@@ -128,11 +129,25 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
 
   // --- move plan ------------------------------------------------------------
 
-  /** A package symbol (`com/foo/bar/`) as a dotted name (`com.foo.bar`); empty for the root. */
+  /** A package symbol (`com/foo/bar/`) as a dotted name (`com.foo.bar`); empty for the root.
+    *
+    * Stainless: `@pure` — no side effects, result depends only on the input string. The standalone
+    * tool can verify purity of the `stripSuffix`/`replace` pipeline.
+    */
+  @pure
   def packageDotted(pkgSymbol: String): String =
     pkgSymbol.stripSuffix("/").replace('/', '.')
 
+  /** Joins a package prefix and a simple name with a `.` separator, or returns the name alone when
+    * the package is empty (top-level declaration).
+    *
+    * Stainless contract:
+    *   - Precondition: `name` must not be empty (a valid identifier).
+    *   - `@pure` — deterministic, no heap effects.
+    */
+  @pure
   def joinFqn(pkg: String, name: String): String =
+    require(name.nonEmpty)
     if pkg.isEmpty then name else s"$pkg.$name"
 
   /** The package a document belongs to: the owner of its first top-level global definition. `None`
@@ -291,13 +306,60 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
   def memberInfo(member: String, declaredIn: String): MemberInfo =
     MemberInfo(member, index.displayName(member), kindName(member), symbolRef(declaredIn))
 
+  /** Whether the 0-based `(line, character)` position lies inside the half-open range `r`
+    * (inclusive of start, exclusive of end).
+    *
+    * Stainless contract (formally verified — see [[StainlessContracts.rangeContains]]):
+    *   - Precondition: `r` is well-formed (`start <= end`, non-negative) and the position is
+    *     non-negative.
+    *   - Postcondition: the result is exactly `afterStart && beforeEnd`; a contained position lies
+    *     within the line span; and an EMPTY range (`start == end`) contains nothing — the half-open
+    *     invariant at its degenerate point. The clauses use `!A || B` for `A ==> B` to avoid
+    *     importing `stainless.lang` into production code.
+    */
+  @pure
   def rangeContains(r: s.Range, line: Int, character: Int): Boolean =
+    require(
+      r.startLine >= 0 && r.startCharacter >= 0 &&
+        r.endLine >= r.startLine &&
+        (r.endLine > r.startLine || r.endCharacter >= r.startCharacter) &&
+        line >= 0 && character >= 0
+    )
     val afterStart = line > r.startLine || (line == r.startLine && character >= r.startCharacter)
     val beforeEnd = line < r.endLine || (line == r.endLine && character < r.endCharacter)
-    afterStart && beforeEnd
+    (afterStart && beforeEnd).ensuring { res =>
+      (res == (afterStart && beforeEnd)) &&
+      (!res || (line >= r.startLine && line <= r.endLine)) && // res ==> inside line span
+      // empty range contains nothing
+      (!(r.startLine == r.endLine && r.startCharacter == r.endCharacter) || !res)
+    }
 
-  def rangeSpan(r: s.Range): Int =
-    (r.endLine - r.startLine) * 10000 + (r.endCharacter - r.startCharacter)
+  /** A range's span as a single sortable key: lines dominate (×10000), columns break ties. Used by
+    * [[Analyzer.typeAtPosition]] to pick the most specific (smallest-span) occurrence covering a
+    * position, so the key MUST stay non-negative — `minByOption` would otherwise prefer a bogus
+    * negative span.
+    *
+    * Computed in `Long`: the original `Int` form
+    * `(endLine - startLine) * 10000 + (endChar - startChar)` is UNSOUND — Stainless finds a
+    * concrete `Addition overflow` counter-example that flips the result negative. Widening the line
+    * term to `Long` makes overflow impossible for any 32-bit position (the maximum, ~2^31·10^4, is
+    * far inside `Long`). See [[StainlessContracts.rangeSpan]].
+    *
+    * Stainless contract: well-formed non-negative range, with a multi-line column delta no more
+    * negative than -10000 (columns never shrink by more than a line's worth), ⟹ result ≥ 0. The
+    * overflow VCs are `valid`; the nonlinear multiplication VC is `unknown` (timeout) under the
+    * bundled `smt-z3`, `valid` under native Z3 — see [[StainlessContracts.rangeSpan]].
+    */
+  @pure
+  def rangeSpan(r: s.Range): Long =
+    require(
+      r.startLine >= 0 && r.endLine >= r.startLine &&
+        r.startCharacter >= 0 && r.endCharacter >= 0 &&
+        (if r.endLine == r.startLine then r.endCharacter >= r.startCharacter
+         else r.endCharacter - r.startCharacter >= -10000)
+    )
+    ((r.endLine.toLong - r.startLine) * 10000L + (r.endCharacter.toLong - r.startCharacter))
+      .ensuring(res => res >= 0L)
 
   /** A symbol's type as text: a method's return, a value's type, else the symbol's own name. */
   def typeString(symbol: String): String =

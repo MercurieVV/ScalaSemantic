@@ -66,4 +66,9 @@ build/
 /.worktrees/
 /worktrees/
 /chat-tool-usage.md
+# Stainless: the VC cache written by `stainlessVerify`, and the local maven repo a manual
+# install-stainless-lib step may drop here. Neither belongs in git (the library jar we DO need is
+# checked in at analysis/lib/stainless-library.jar).
+/.stainless-cache/
+/stainless/
 /.claire/

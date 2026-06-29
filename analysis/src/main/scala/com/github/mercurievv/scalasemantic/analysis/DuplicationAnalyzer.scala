@@ -3,6 +3,7 @@ package com.github.mercurievv.scalasemantic.analysis
 import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.model.Position as ModelPosition
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import stainless.annotation.pure
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -121,8 +122,9 @@ object DuplicationAnalyzer:
       d.pats.headOption.collect { case Pat.Var(n) => n.value }.filter(_.nonEmpty)
     case _ => None
 
+  @pure
   private def nodeCount(tree: Tree): Int =
-    1 + tree.children.map(nodeCount).sum
+    (1 + tree.children.map(nodeCount).sum).ensuring(res => res >= 1)
 
   /** Collect all sub-trees of `tree` with at least `minSize` AST nodes that pass `nodeFilter`.
     *
@@ -161,6 +163,7 @@ object DuplicationAnalyzer:
         new String(Files.readAllBytes(p), java.nio.charset.StandardCharsets.UTF_8)
       else ""
 
+  @pure
   private def isDescendant(child: Tree, parent: Tree): Boolean =
     if (child eq parent) false
     else parent.children.exists(c => (c eq child) || isDescendant(child, c))
