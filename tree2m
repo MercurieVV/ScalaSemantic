@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 
 # Create or reuse a work branch, commit all current changes, push it, and open or reuse a PR.
+# Then wait for CI and merge the PR.
 #
 # Usage:
-#   ./treepr [--remote origin] [--base BRANCH] [--title TITLE] [--body BODY] [--draft] <branch> <commit-message>
+#   ./tree2m [--remote origin] [--base BRANCH] [--title TITLE] [--body BODY] [--draft] <branch> <commit-message>
 #
 # Options must appear before <branch>. The PR title defaults to the commit message. If the branch
-# or PR already exists, treepr reuses it instead of creating a duplicate.
+# or PR already exists, tree2m reuses it instead of creating a duplicate.
 
 set -euo pipefail
 
@@ -82,7 +83,7 @@ if [[ -z "$base" ]]; then
 fi
 [[ -n "$base" ]] || base="master"
 [[ -n "$title" ]] || title="$message"
-[[ -n "$body" ]] || body="Created by ./treepr."
+[[ -n "$body" ]] || body="Created by ./tree2m."
 
 current_branch="$(rtk git branch --show-current)"
 if [[ "$current_branch" == "$branch" ]]; then
@@ -109,3 +110,10 @@ else
   fi
   rtk gh "${pr_args[@]}"
 fi
+
+pr_ref="$branch"
+if [[ "$draft" == "true" ]]; then
+  rtk gh pr ready "$pr_ref"
+fi
+rtk gh pr checks "$pr_ref" --watch --fail-fast
+rtk gh pr merge "$pr_ref" --merge --delete-branch

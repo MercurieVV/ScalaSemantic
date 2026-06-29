@@ -44,16 +44,16 @@ sbt prePush      # command alias: clean; scalafmtAll; scalafixAll; Test/testOnly
 sbt "mcp/runMain com.github.mercurievv.scalasemantic.mcpServer <root>"  # start the server
 ```
 
-For worktree PR flow, use `./treepr [--remote origin] [--base master] [--title TITLE] [--body BODY] [--draft] <branch> <commit-message>`.
+For worktree PR flow, use `./tree2m [--remote origin] [--base master] [--title TITLE] [--body BODY] [--draft] <branch> <commit-message>`.
 `<branch>` is the new branch name, `<commit-message>` is passed to `git commit -m`, `--title`
 overrides the PR title, `--body` overrides the PR body, `--base` selects the target branch, and
-`--draft` opens a draft PR. The script creates the branch, stages all files, commits, pushes, and
-opens the PR using a strict fail-fast chain. If the branch or PR already exists, `treepr` reuses it:
-it adds another commit to the existing branch, pushes, and prints the existing PR URL instead of
-creating a duplicate. Do not pre-run sbt checks (`compile`, `test`, `scalafmt`, `scalafix`) before
-`treepr`; the repository pre-push hook already runs them. When an LLM/agent is asked to run
-`treepr`, it should generate an appropriate branch name, commit message, PR title, and PR body from
-the current change instead of asking the user for those parameters.
+`--draft` opens a draft PR. The script creates the branch, stages all files, commits, pushes, waits
+for CI to pass, and merges the PR using a strict fail-fast chain. If the branch or PR already
+exists, `tree2m` reuses it: it adds another commit to the existing branch, pushes, and reuses the
+existing PR instead of creating a duplicate. Do not pre-run sbt checks (`compile`, `test`,
+`scalafmt`, `scalafix`) before `tree2m`; the repository pre-push hook already runs them. When an
+LLM/agent is asked to run `tree2m`, it should generate an appropriate branch name, commit message,
+PR title, and PR body from the current change instead of asking the user for those parameters.
 
 ## Releasing
 PR-based: branch protection on master, squash-merge PRs with **Conventional-Commit titles**
