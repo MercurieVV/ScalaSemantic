@@ -43,9 +43,15 @@ class InputTypesSuite extends munit.ScalaCheckSuite:
     assertEquals(PackageSymbol.from("  ").toOption.map(_.value), Some(""))
     assertEquals(PackageSymbol.from("com/example/").toOption.map(_.value), Some("com/example/"))
     assertEquals(PackageSymbol.from("com/example").toOption.map(_.value), Some("com/example/"))
-    // NOTE: scalameta's isGlobal/isPackage accept any non-empty string once a trailing '/' is
-    // appended, so PackageSymbol.from never reaches its Left branch for non-empty input — the
-    // reject path (and its guard/message mutants) is effectively dead code, not test-killable.
+    assertEquals(PackageSymbol.from("_root_/").toOption.map(_.value), Some("_root_/"))
+    // non-package symbols are rejected: a type (#), a method (()), a multi (;), a dotted name (.),
+    // and whitespace are all invalid package descriptors.
+    assertLeft(PackageSymbol.from("com/Foo#"), "invalid package symbol")
+    assertLeft(PackageSymbol.from("com/Foo#bar()."), "invalid package symbol")
+    assertLeft(PackageSymbol.from("a;b"), "invalid package symbol")
+    assertLeft(PackageSymbol.from("com.example"), "invalid package symbol")
+    assertLeft(PackageSymbol.from("a b"), "invalid package symbol")
+    assertLeft(PackageSymbol.from("com//example"), "invalid package symbol")
 
   test("DocumentUri.from: relative ok; rejects blank, absolute, and dot-dot"):
     assert(DocumentUri.from("src/Main.scala").isRight)

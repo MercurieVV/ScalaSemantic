@@ -143,8 +143,8 @@ object DuplicationAnalyzer:
 
     val rootName = scopeTree match
       case d: Defn.Def => Some(d.name.value)
-      case v: Defn.Val => Some(v.pats.headOption.map(_.syntax).getOrElse("val"))
-      case v: Defn.Var => Some(v.pats.headOption.map(_.syntax).getOrElse("var"))
+      case v: Defn.Val => v.pats.headOption.map(_.syntax)
+      case v: Defn.Var => v.pats.headOption.map(_.syntax)
       case _           => None
 
     val localReferencedNamesNoRoot = localReferencedNames.filter(n => !rootName.contains(n))
