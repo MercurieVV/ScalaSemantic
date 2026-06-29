@@ -14,13 +14,19 @@ import scala.meta.internal.semanticdb as s
   */
 final class DependencyGraphs(index: SemanticIndex):
 
-  /** Types defined in this project (have a DEFINITION occurrence and a class signature). */
+  /** Types defined in this project (have a DEFINITION occurrence and a class signature).
+    *
+    * Only top-level types are included: nested/inner classes (whose owner is another type, not a
+    * package) are excluded. Nested classes always carry an implicit reference to their enclosing
+    * class, which would create spurious owner↔nested cycles in the dependency graph and corrupt the
+    * structural metrics.
+    */
   val nodes: Set[String] =
     val defined = index.occurrences.collect {
       case (_, occ) if occ.role == s.SymbolOccurrence.Role.DEFINITION => occ.symbol
     }.toSet
     index.symbols.values.iterator.collect {
-      case si if defined.contains(si.symbol) && isClass(si) => si.symbol
+      case si if defined.contains(si.symbol) && isClass(si) && isTopLevel(si.symbol) => si.symbol
     }.toSet
 
   /** The four edge dimensions, each a directed graph over [[nodes]]. */
@@ -105,6 +111,14 @@ final class DependencyGraphs(index: SemanticIndex):
     si.signature match
       case _: s.ClassSignature => true
       case _                   => false
+
+  /** Returns true if the symbol is a top-level type (its owner is a package, not another type).
+    * Inner/nested classes whose owner is a type always form a synthetic owner↔nested cycle (the
+    * nested class implicitly references the outer), so they must be excluded from the node set.
+    */
+  private def isTopLevel(symbol: String): Boolean =
+    val owner = index.owner(symbol)
+    owner.isEmpty || owner.endsWith("/")
 
   private def parentsOf(symbol: String): List[String] =
     index.info(symbol).map(_.signature).toList.collect { case c: s.ClassSignature => c }.flatMap {
