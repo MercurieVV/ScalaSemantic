@@ -619,6 +619,33 @@ final class Analyzer(
       }
     CallGraphPath(h.symbolRef(fromSym), h.symbolRef(toSym), nodes.map(h.symbolRef), edges)
 
+  // --- call hierarchy -------------------------------------------------------
+
+  /** The call hierarchy for `symbol` as a tree, up to `depth` levels, in the given `direction`
+    * ("callers" = incoming, "callees" = outgoing). Cycles are broken by tracking visited symbols
+    * per path so that a recursive call appears as a leaf with no children.
+    */
+  def callHierarchy(
+      symbol: MethodSymbol,
+      depth: PositiveInt,
+      direction: String
+  ): CallHierarchy =
+    val sym = symbol.value
+    val adj: Map[String, List[(String, Location)]] =
+      if direction == "callers" then reverseCallGraph else callGraph
+
+    def buildNode(current: String, at: Option[Location], remaining: Int, visited: Set[String]): CallHierarchyNode =
+      val children =
+        if remaining <= 0 || visited.contains(current) then Nil
+        else
+          adj.getOrElse(current, Nil).map { (child, loc) =>
+            buildNode(child, Some(loc), remaining - 1, visited + current)
+          }
+      CallHierarchyNode(h.symbolRef(current), at, children)
+
+    val root = buildNode(sym, None, depth.value, Set.empty)
+    CallHierarchy(sym, index.displayName(sym), direction, depth.value, root)
+
   /** Caller -> list of (callee, call-site) edges, attributing each method reference to the most
     * recent method definition in source order within its document.
     */
@@ -641,3 +668,9 @@ final class Analyzer(
         .reverse
     }
     edges.toList.groupMap(_._1)(e => (e._2, e._3))
+
+  /** Callee -> list of (caller, call-site) edges: the reverse of `callGraph`. */
+  private lazy val reverseCallGraph: Map[String, List[(String, Location)]] =
+    callGraph.toList.flatMap { (caller, callees) =>
+      callees.map { (callee, loc) => callee -> (caller, loc) }
+    }.groupMap(_._1)(_._2)
