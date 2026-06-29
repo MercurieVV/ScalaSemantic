@@ -83,15 +83,15 @@ final class Analyzer(
   ): List[(SymbolStructure, DimensionMetrics)] =
     val keepModule = h.globMatcher(pathFilter.filter(_.nonEmpty))
     structureResult.symbols
-      .filter(s => keepModule(s.module))
-      .map(s => s -> selectedMetrics(s, dimension))
+      .filter(sym => keepModule(sym.module))
+      .map(sym => sym -> selectedMetrics(sym, dimension))
       .sortBy((_, metrics) => -rankStructureMetrics(metrics, sort))
       .take(limit.value)
 
   private lazy val structureResult: StructureResult = StructureMetrics(index).result()
 
   private lazy val structureBySymbol: Map[String, SymbolStructure] =
-    structureResult.symbols.iterator.map(s => s.symbol -> s).toMap
+    structureResult.symbols.iterator.map(sym => sym.symbol -> sym).toMap
 
   private def selectedMetrics(
       symbol: SymbolStructure,
@@ -132,8 +132,7 @@ final class Analyzer(
         .distinctBy(_._1)
       val definedSet = defs.map(_._1).toSet
       def parentOf(sym: String): Option[String] =
-        val o = index.owner(sym)
-        if definedSet.contains(o) then Some(o) else None
+        Some(index.owner(sym)).filter(definedSet.contains)
       def build(sym: String, line: Int): OutlineEntry =
         val kids = defs.filter((c, _) => parentOf(c).contains(sym)).sortBy(_._2)
         OutlineEntry(
@@ -599,14 +598,12 @@ final class Analyzer(
     def bfs(frontier: List[List[String]], seen: Set[String]): List[String] =
       frontier match
         case Nil => Nil
-        case path :: rest =>
-          path match
-            case node :: _ =>
-              if node == toSym then path.reverse
-              else
-                val nexts = adjacency.getOrElse(node, Nil).map(_._1).filterNot(seen.contains)
-                bfs(rest ::: nexts.map(_ :: path), seen ++ nexts)
-            case Nil => bfs(rest, seen)
+        case (path @ (node :: _)) :: rest =>
+          if node == toSym then path.reverse
+          else
+            val nexts = adjacency.getOrElse(node, Nil).map(_._1).filterNot(seen.contains)
+            bfs(rest ::: nexts.map(_ :: path), seen ++ nexts)
+        case _ :: rest => bfs(rest, seen) // unreachable: paths are always non-empty
     // bfs already yields List(fromSym) when fromSym == toSym (it matches on the first node), so no
     // special case is needed for the trivial path.
     val nodes = bfs(List(List(fromSym)), Set(fromSym))

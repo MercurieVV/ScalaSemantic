@@ -49,14 +49,7 @@ object DuplicationAnalyzer:
     val candidateSubtrees = index.documents.iterator
       .filter(doc => keepUri(doc.uri))
       .flatMap { doc =>
-        val text =
-          if (doc.text.nonEmpty) doc.text
-          else {
-            val p = root.resolve(doc.uri)
-            if (Files.exists(p))
-              new String(Files.readAllBytes(p), java.nio.charset.StandardCharsets.UTF_8)
-            else ""
-          }
+        val text = readSourceText(doc.text, doc.uri, root)
         if (text.isEmpty) Iterator.empty
         else
           Try(dialects.Scala3(text).parse[Source].get).toOption match
@@ -78,7 +71,6 @@ object DuplicationAnalyzer:
     // 3. Filter groups with size > 1 (i.e. duplicates exist)
     val duplicateGroups = grouped.values.iterator
       .filter(_.size > 1)
-      .map(_.map { case (doc, tree, enclosing) => (doc, tree, enclosing) })
       .toList
 
     // 4. Filter out groups that are completely subsumed by another larger group
@@ -157,6 +149,17 @@ object DuplicationAnalyzer:
       current ++ t.children.flatMap(c => traverse(c, nextEnclosing))
 
     traverse(tree, None)
+
+  /** Read the source text for a document: use the embedded text when available, otherwise read from
+    * disk. Returns an empty string when the file does not exist.
+    */
+  private def readSourceText(docText: String, docUri: String, root: Path): String =
+    if docText.nonEmpty then docText
+    else
+      val p = root.resolve(docUri)
+      if Files.exists(p) then
+        new String(Files.readAllBytes(p), java.nio.charset.StandardCharsets.UTF_8)
+      else ""
 
   private def isDescendant(child: Tree, parent: Tree): Boolean =
     if (child eq parent) false
