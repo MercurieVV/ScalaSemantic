@@ -178,13 +178,9 @@ object InputTypes:
         start <- SourcePosition.from(startLine, startCharacter)
         end <- SourcePosition.from(endLine, endCharacter)
         range <-
-          if before(start, end) then Right(SourceRange(start, end))
+          if start.before(end) then Right(SourceRange(start, end))
           else Left("range end must be after range start")
       yield range
-
-    @pure
-    private def before(start: SourcePosition, end: SourcePosition): Boolean =
-      start.before(end)
 
   opaque type ScalaIdentifier = NonEmptyString
   object ScalaIdentifier:
