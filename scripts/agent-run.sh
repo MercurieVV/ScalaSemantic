@@ -25,14 +25,10 @@ task_file="${4:?task-file required}"
 [[ -f "$task_file" ]] || { echo "task-file not found: $task_file" >&2; exit 1; }
 task="$(cat "$task_file")"
 
-repo_root="$(git rev-parse --show-toplevel)"
-base="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
-[[ -n "$base" ]] || base="master"
-wt="${repo_root}/.claude/worktrees/${branch}"
+script_dir="$(cd "$(dirname "$0")" && pwd)"
 
-# Fresh worktree off the latest base.
-git -C "$repo_root" fetch origin "$base" --quiet || true
-git -C "$repo_root" worktree add -b "$branch" "$wt" "origin/${base}"
+# Fresh worktree off the latest base (shared with the claude engine via the same script).
+wt="$("$script_dir/worktree-new.sh" "$branch")"
 
 prompt="You are one developer working in this checkout: ${wt}
 Implement ONLY this task, scoped and matching existing style:

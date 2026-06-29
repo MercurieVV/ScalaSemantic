@@ -19,6 +19,18 @@ Routing knowledge: `.claude/orchestrate-routing.md`. Read it once at start.
 - Feed sub-agents the minimum: a branch, a path, the self-contained `task`, expected `touched_areas` — not the whole repo or prior conversation.
 - Don't re-read files you just wrote; don't re-triage a task you already routed.
 
+## Reusable scripts — one call per phase
+
+Every recurring git chain in this flow is a script. Call the script; never re-issue the steps one-by-one as separate Bash calls (each round-trip costs tokens). If you find yourself repeating a new multi-step chain across tasks, add a script for it under `scripts/` (mirror `tree2m`: `rtk`, quiet output) instead of paying the round-trips again.
+
+| Phase | Script (one call) |
+|-------|-------------------|
+| new isolated workspace | `scripts/worktree-new.sh <branch>` → prints worktree path |
+| run codex/agy worker | `scripts/agent-run.sh <engine> <branch> "<model>" <task-file>` |
+| sanity signal for the gate | `scripts/worktree-diff.sh <wt>` |
+| ship after sanity pass | `scripts/agent-ship.sh <branch> "<msg>"` (tree2m + cleanup) |
+| scoped commit+push (no merge) | `scripts/commit-push.sh <branch> "<msg>" <paths…>` |
+
 ## State
 
 `state.json` (scratchpad) with arrays `pool`, `inflight`, `done`, `failed`.
@@ -42,8 +54,7 @@ Each task: `{issue, branch, title, engine, model, difficulty, touched_areas, tas
 
 All engines work in a dedicated worktree off fresh `origin/master` and leave it **uncommitted** for the sanity gate.
 
-- **engine `claude`**: create the worktree first —
-  `git worktree add -b <branch> .claude/worktrees/<branch> origin/master` (record path in `state.json` `worktree`).
+- **engine `claude`**: create the worktree with `scripts/worktree-new.sh <branch>` (prints the path; record in `state.json` `worktree`).
   Then `Agent` tool, `subagent_type: "scala-coder"`, `model: <model>`, `run_in_background: true`. Prompt = the `task`, the worktree path, and "work only in that path; do not commit/push/tree2m; stop and report changed files."
 - **engine `codex` / `agy`**: write `task` to a scratchpad file, then `Bash` `run_in_background: true`:
   `scripts/agent-run.sh <engine> <branch> "<model>" <task-file>`
