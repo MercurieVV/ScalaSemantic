@@ -423,7 +423,7 @@ lazy val sbtPlugin = (project in file("sbt-plugin"))
   .settings(
     name := "sbt-scalasemantic-mcp",
     Compile / unmanagedSources += (ThisBuild / baseDirectory).value / "project" / "ScalaSemanticConfigMerger.scala",
-    crossScalaVersions := Seq("2.12.21", scalaVersion.value),
+    crossScalaVersions := Seq("2.13.18", scalaVersion.value),
     pluginCrossBuild / sbtVersion := {
       scalaBinaryVersion.value match {
         case "2.12" => "1.11.6"
