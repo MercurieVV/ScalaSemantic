@@ -115,5 +115,5 @@ pr_ref="$branch"
 if [[ "$draft" == "true" ]]; then
   rtk gh pr ready "$pr_ref"
 fi
-rtk gh pr checks "$pr_ref" --watch --fail-fast
+rtk scripts/check-push-workflow.sh --branch "$branch"
 rtk gh pr merge "$pr_ref" --merge --delete-branch
