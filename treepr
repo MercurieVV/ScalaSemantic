@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 
-# Create a work branch, commit all current changes, push it, and open a PR.
+# Create or reuse a work branch, commit all current changes, push it, and open or reuse a PR.
 #
 # Usage:
 #   ./treepr [--remote origin] [--base BRANCH] [--title TITLE] [--body BODY] [--draft] <branch> <commit-message>
 #
-# Options must appear before <branch>. The PR title defaults to the commit message.
+# Options must appear before <branch>. The PR title defaults to the commit message. If the branch
+# or PR already exists, treepr reuses it instead of creating a duplicate.
 
 set -euo pipefail
 
@@ -17,7 +18,7 @@ remote="origin"
 base=""
 title=""
 body=""
-draft_args=()
+draft=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -42,7 +43,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --draft)
-      draft_args=(--draft)
+      draft=true
       shift
       ;;
     -h|--help)
@@ -83,8 +84,28 @@ fi
 [[ -n "$title" ]] || title="$message"
 [[ -n "$body" ]] || body="Created by ./treepr."
 
-rtk git switch -c "$branch"
+current_branch="$(rtk git branch --show-current)"
+if [[ "$current_branch" == "$branch" ]]; then
+  :
+elif rtk git show-ref --verify --quiet "refs/heads/${branch}"; then
+  rtk git switch "$branch"
+elif rtk git show-ref --verify --quiet "refs/remotes/${remote}/${branch}"; then
+  rtk git switch --track -c "$branch" "${remote}/${branch}"
+else
+  rtk git switch -c "$branch"
+fi
+
 rtk git add -A
 rtk git commit -m "$message"
 rtk git push -u "$remote" "$branch"
-rtk gh pr create --base "$base" --head "$branch" --title "$title" --body "$body" "${draft_args[@]}"
+
+existing_pr_url="$(rtk gh pr view "$branch" --json url --jq '.url' 2>/dev/null || true)"
+if [[ -n "$existing_pr_url" ]]; then
+  echo "$existing_pr_url"
+else
+  pr_args=(pr create --base "$base" --head "$branch" --title "$title" --body "$body")
+  if [[ "$draft" == "true" ]]; then
+    pr_args+=(--draft)
+  fi
+  rtk gh "${pr_args[@]}"
+fi

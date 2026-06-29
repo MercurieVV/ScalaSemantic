@@ -48,10 +48,12 @@ For worktree PR flow, use `./treepr [--remote origin] [--base master] [--title T
 `<branch>` is the new branch name, `<commit-message>` is passed to `git commit -m`, `--title`
 overrides the PR title, `--body` overrides the PR body, `--base` selects the target branch, and
 `--draft` opens a draft PR. The script creates the branch, stages all files, commits, pushes, and
-opens the PR using a strict fail-fast chain. Do not pre-run sbt checks (`compile`, `test`,
-`scalafmt`, `scalafix`) before `treepr`; the repository pre-push hook already runs them. When an
-LLM/agent is asked to run `treepr`, it should generate an appropriate branch name, commit message,
-PR title, and PR body from the current change instead of asking the user for those parameters.
+opens the PR using a strict fail-fast chain. If the branch or PR already exists, `treepr` reuses it:
+it adds another commit to the existing branch, pushes, and prints the existing PR URL instead of
+creating a duplicate. Do not pre-run sbt checks (`compile`, `test`, `scalafmt`, `scalafix`) before
+`treepr`; the repository pre-push hook already runs them. When an LLM/agent is asked to run
+`treepr`, it should generate an appropriate branch name, commit message, PR title, and PR body from
+the current change instead of asking the user for those parameters.
 
 ## Releasing
 PR-based: branch protection on master, squash-merge PRs with **Conventional-Commit titles**
