@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+
+# Create a work branch, commit all current changes, push it, and open a PR.
+#
+# Usage:
+#   ./treepr [--remote origin] [--base BRANCH] [--title TITLE] [--body BODY] [--draft] <branch> <commit-message>
+#
+# Options must appear before <branch>. The PR title defaults to the commit message.
+
+set -euo pipefail
+
+usage() {
+  sed -n '3,8p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+remote="origin"
+base=""
+title=""
+body=""
+draft_args=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --remote)
+      remote="${2:-}"
+      [[ -n "$remote" ]] || { echo "--remote requires a value" >&2; exit 1; }
+      shift 2
+      ;;
+    --base)
+      base="${2:-}"
+      [[ -n "$base" ]] || { echo "--base requires a value" >&2; exit 1; }
+      shift 2
+      ;;
+    --title)
+      title="${2:-}"
+      [[ -n "$title" ]] || { echo "--title requires a value" >&2; exit 1; }
+      shift 2
+      ;;
+    --body)
+      body="${2:-}"
+      [[ -n "$body" ]] || { echo "--body requires a value" >&2; exit 1; }
+      shift 2
+      ;;
+    --draft)
+      draft_args=(--draft)
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+branch="${1:-}"
+message="${2:-}"
+
+if [[ -z "$branch" || -z "$message" || $# -gt 2 ]]; then
+  usage >&2
+  exit 1
+fi
+
+command -v rtk >/dev/null 2>&1 || { echo "Missing required command: rtk" >&2; exit 1; }
+command -v git >/dev/null 2>&1 || { echo "Missing required command: git" >&2; exit 1; }
+command -v gh >/dev/null 2>&1 || { echo "Missing required command: gh" >&2; exit 1; }
+
+if [[ -z "$base" ]]; then
+  base="$(rtk git symbolic-ref --quiet --short "refs/remotes/${remote}/HEAD" 2>/dev/null | sed "s#^${remote}/##")"
+fi
+[[ -n "$base" ]] || base="master"
+[[ -n "$title" ]] || title="$message"
+[[ -n "$body" ]] || body="Created by ./treepr."
+
+rtk git switch -c "$branch"
+rtk git add -A
+rtk git commit -m "$message"
+rtk git push -u "$remote" "$branch"
+rtk gh pr create --base "$base" --head "$branch" --title "$title" --body "$body" "${draft_args[@]}"

@@ -44,6 +44,15 @@ sbt prePush      # command alias: clean; scalafmtAll; scalafixAll; Test/testOnly
 sbt "mcp/runMain com.github.mercurievv.scalasemantic.mcpServer <root>"  # start the server
 ```
 
+For worktree PR flow, use `./treepr [--remote origin] [--base master] [--title TITLE] [--body BODY] [--draft] <branch> <commit-message>`.
+`<branch>` is the new branch name, `<commit-message>` is passed to `git commit -m`, `--title`
+overrides the PR title, `--body` overrides the PR body, `--base` selects the target branch, and
+`--draft` opens a draft PR. The script creates the branch, stages all files, commits, pushes, and
+opens the PR using a strict fail-fast chain. Do not pre-run sbt checks (`compile`, `test`,
+`scalafmt`, `scalafix`) before `treepr`; the repository pre-push hook already runs them. When an
+LLM/agent is asked to run `treepr`, it should generate an appropriate branch name, commit message,
+PR title, and PR body from the current change instead of asking the user for those parameters.
+
 ## Releasing
 PR-based: branch protection on master, squash-merge PRs with **Conventional-Commit titles**
 (`feat:`, `fix:`, `perf:`, `feat(scope)!:` for breaking; `docs/refactor/test/chore/ci/build/style`
