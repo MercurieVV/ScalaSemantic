@@ -1,5 +1,12 @@
+import com.github.sbt.git.SbtGit.GitKeys.*
+
 ThisBuild / scalaVersion := "3.8.4"
 useReadableConsoleGit
+
+Global / excludeLintKeys ++= Set(
+  ThisBuild / gitUncommittedChanges,
+  gitDescribedVersion
+)
 
 ThisBuild / scalafixDependencies += "org.typelevel" %% "typelevel-scalafix" % "0.5.0"
 
@@ -11,7 +18,12 @@ ThisBuild / organizationName := "mercurievv"
 ThisBuild / homepage := Some(url("https://github.com/mercurievv/ScalaSemantic"))
 ThisBuild / licenses := Seq("MIT" -> url("https://opensource.org/licenses/MIT"))
 ThisBuild / developers := List(
-  Developer("mercurievv", "Viktor Skalinins", "mercurievv@gmail.com", url("https://github.com/mercurievv"))
+  Developer(
+    "mercurievv",
+    "Viktor Skalinins",
+    "mercurievv@gmail.com",
+    url("https://github.com/mercurievv")
+  )
 )
 ThisBuild / scmInfo := Some(
   ScmInfo(
@@ -23,15 +35,61 @@ ThisBuild / versionScheme := Some("early-semver")
 // New Sonatype accounts publish through the Central Portal: the host is supplied to `ci-release`
 // via the SONATYPE_CREDENTIAL_HOST=central.sonatype.com env var in the release workflow.
 
+lazy val strictCompileWarts = Seq(
+  Wart.ArrayEquals,
+  Wart.ArrayToString,
+  Wart.EitherProjectionPartial,
+  Wart.Enumeration,
+  Wart.IterableOps,
+  Wart.JavaNetURLConstructors,
+  Wart.LeakingSealed,
+  Wart.ListAppend,
+  Wart.MapUnit,
+  Wart.ObjectThrowable,
+  Wart.OptionPartial,
+  Wart.PartialFunctionApply,
+  Wart.SeqApply,
+  Wart.StringPlusAny,
+  Wart.TripleQuestionMark,
+  Wart.TryPartial,
+  Wart.While
+)
+lazy val strictCompileWartNames = Set(
+  "ArrayEquals",
+  "ArrayToString",
+  "EitherProjectionPartial",
+  "Enumeration",
+  "IterableOps",
+  "JavaNetURLConstructors",
+  "LeakingSealed",
+  "ListAppend",
+  "MapUnit",
+  "ObjectThrowable",
+  "OptionPartial",
+  "PartialFunctionApply",
+  "SeqApply",
+  "StringPlusAny",
+  "TripleQuestionMark",
+  "TryPartial",
+  "While"
+)
+
 // Shared across all modules: SemanticDB emission (for dogfooding + scalafix) and wart rules.
 lazy val commonSettings = Seq(
   // Required by OrganizeImports scalafix rule. Scala 2.12 uses the old spelling.
   scalacOptions ++= {
     CrossVersion.partialVersion(scalaVersion.value) match {
-      case Some((2, 12)) => Seq("-Ywarn-unused-import")
-      case _             => Seq("-Wunused:imports")
+      case Some((2, 12)) =>
+        Seq(
+          "-Xfatal-warnings",
+          "-Ywarn-unused:imports",
+          "-Ywarn-unused:locals",
+          "-Ywarn-unused:patvars",
+          "-Ywarn-unused:privates"
+        )
+      case _ => Seq("-Werror", "-Wunused:all")
     }
-  },
+  } :+ "-Wconf:msg=.*unused.*:e",
   semanticdbEnabled := true,
   semanticdbVersion := scalafixSemanticdb.revision,
   wartremoverWarnings ++= Seq(
@@ -43,7 +101,13 @@ lazy val commonSettings = Seq(
     Wart.AsInstanceOf,
     Wart.IsInstanceOf,
     Wart.Null
-  )
+  ),
+  Compile / wartremoverErrors ++= strictCompileWarts,
+  Test / wartremoverErrors --= strictCompileWarts,
+  Test / scalacOptions := (Test / scalacOptions).value.filterNot { opt =>
+    opt.startsWith("-P:wartremover:traverser:") &&
+    strictCompileWartNames.exists(name => opt.endsWith(s".$name"))
+  }
 )
 
 lazy val munit = "org.scalameta" %% "munit" % "1.2.4" % Test
@@ -55,7 +119,9 @@ lazy val refined = "eu.timepit" %% "refined" % "0.11.3"
 // server on a clean JVM (no sbt → no stdout pollution of the JSON-RPC stream).
 lazy val mcpLauncher = taskKey[File]("Write a standalone MCP server launch script")
 lazy val mcpClientConfig =
-  inputKey[Unit]("Install the launcher + write client config pointing at it (jar auto-updates in bg)")
+  inputKey[Unit](
+    "Install the launcher + write client config pointing at it (jar auto-updates in bg)"
+  )
 lazy val proguard = taskKey[File]("Run ProGuard to shrink the assembly JAR")
 lazy val testShrunk = taskKey[Unit]("Run tests using the shrunk ProGuard JAR")
 
@@ -131,7 +197,8 @@ lazy val mcp = (project in file("mcp"))
     assembly / assemblyMergeStrategy := {
       case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
       case PathList("META-INF", xs @ _*)
-          if xs.lastOption.exists(s => s.endsWith(".SF") || s.endsWith(".DSA") || s.endsWith(".RSA")) =>
+          if xs.lastOption
+            .exists(s => s.endsWith(".SF") || s.endsWith(".DSA") || s.endsWith(".RSA")) =>
         MergeStrategy.discard
       case x if x.endsWith("module-info.class") => MergeStrategy.discard
       // The `pc` backend pulls scala3-presentation-compiler → the 2.13 compiler, whose bundled
@@ -140,7 +207,7 @@ lazy val mcp = (project in file("mcp"))
       case PathList("scala", "tools", "asm", _*) => MergeStrategy.first
       // Version/marker .properties duplicated across compiler/reflect/compat/coursier jars.
       case x if x.endsWith(".properties") => MergeStrategy.first
-      case x => (assembly / assemblyMergeStrategy).value.apply(x)
+      case x                              => (assembly / assemblyMergeStrategy).value.apply(x)
     },
     // --- ProGuard Custom Task ---
     proguard := Def.uncached {
@@ -153,36 +220,61 @@ lazy val mcp = (project in file("mcp"))
       log.info(s"Running ProGuard on $inputJar...")
 
       val args = Array(
-        "-injars", inputJar.getAbsolutePath,
-        "-outjars", outputJar.getAbsolutePath,
-        "-libraryjars", s"${System.getProperty("java.home")}/jmods/java.base.jmod(!**.jar;!module-info.class)",
+        "-injars",
+        inputJar.getAbsolutePath,
+        "-outjars",
+        outputJar.getAbsolutePath,
+        "-libraryjars",
+        s"${System.getProperty("java.home")}/jmods/java.base.jmod(!**.jar;!module-info.class)",
         "-dontobfuscate",
         "-dontoptimize",
         "-ignorewarnings",
         "-dontnote",
         "-dontwarn",
-        "-keepattributes", "Exceptions,InnerClasses,Signature,Deprecated,SourceFile,LineNumberTable,*Annotation*,EnclosingMethod",
-        "-keep", "public class com.github.mercurievv.scalasemantic.mcpServer { public static void main(java.lang.String[]); }",
-        "-keep", "class com.github.mercurievv.scalasemantic.mcpServer$ { *; }",
-        "-keep", "class com.github.mercurievv.scalasemantic.** { *; }",
-        "-keepclassmembers", "class * { public static ** MODULE$; }",
-        "-keep", "class scala.Dynamic { *; }",
-        "-keep", "class * extends upickle.core.Reader { *; }",
-        "-keep", "class * extends upickle.core.Writer { *; }",
-        "-keepclassmembers", "class scala.** { *; }",
-        "-keepclassmembers", "class dotty.tools.** { *; }",
-        "-keepclassmembers", "class org.scalameta.** { *; }",
-        "-keep", "class scala.meta.internal.metals.** { *; }",
-        "-keep", "class dotty.tools.pc.** { *; }",
-        "-keepclassmembers", "class upickle.** { *; }",
-        "-keepclassmembers", "class ujson.** { *; }",
-        "-keepclassmembers", "class upack.** { *; }",
-        "-keepclassmembers", "class com.google.protobuf.** { *; }",
-        "-keepclassmembers", "class fastparse.** { *; }",
-        "-keepclassmembers", "class geny.** { *; }",
-        "-keepclassmembers", "class sourcecode.** { *; }",
-        "-keep", "class xsbti.** { *; }",
-        "-keep", "class org.eclipse.lsp4j.** { *; }"
+        "-keepattributes",
+        "Exceptions,InnerClasses,Signature,Deprecated,SourceFile,LineNumberTable,*Annotation*,EnclosingMethod",
+        "-keep",
+        "public class com.github.mercurievv.scalasemantic.mcpServer { public static void main(java.lang.String[]); }",
+        "-keep",
+        "class com.github.mercurievv.scalasemantic.mcpServer$ { *; }",
+        "-keep",
+        "class com.github.mercurievv.scalasemantic.** { *; }",
+        "-keepclassmembers",
+        "class * { public static ** MODULE$; }",
+        "-keep",
+        "class scala.Dynamic { *; }",
+        "-keep",
+        "class * extends upickle.core.Reader { *; }",
+        "-keep",
+        "class * extends upickle.core.Writer { *; }",
+        "-keepclassmembers",
+        "class scala.** { *; }",
+        "-keepclassmembers",
+        "class dotty.tools.** { *; }",
+        "-keepclassmembers",
+        "class org.scalameta.** { *; }",
+        "-keep",
+        "class scala.meta.internal.metals.** { *; }",
+        "-keep",
+        "class dotty.tools.pc.** { *; }",
+        "-keepclassmembers",
+        "class upickle.** { *; }",
+        "-keepclassmembers",
+        "class ujson.** { *; }",
+        "-keepclassmembers",
+        "class upack.** { *; }",
+        "-keepclassmembers",
+        "class com.google.protobuf.** { *; }",
+        "-keepclassmembers",
+        "class fastparse.** { *; }",
+        "-keepclassmembers",
+        "class geny.** { *; }",
+        "-keepclassmembers",
+        "class sourcecode.** { *; }",
+        "-keep",
+        "class xsbti.** { *; }",
+        "-keep",
+        "class org.eclipse.lsp4j.** { *; }"
       )
 
       try {
@@ -202,41 +294,41 @@ lazy val mcp = (project in file("mcp"))
     testShrunk := Def.uncached {
       val log = streams.value.log
       val converter = fileConverter.value
-      
+
       // Get the compile classpath of the mcp project to know what was packaged in the fat jar
       val compileCp = (Compile / fullClasspath).value
         .map(af => converter.toPath(af.data).toAbsolutePath.toFile.getCanonicalPath)
         .toSet
-      
+
       // Combine test classpaths from pc and mcp modules (to include all tests)
       val pcTestCp = (pc / Test / fullClasspath).value
         .map(af => converter.toPath(af.data).toAbsolutePath.toFile.getCanonicalPath)
-      
+
       val mcpTestCp = (Test / fullClasspath).value
         .map(af => converter.toPath(af.data).toAbsolutePath.toFile.getCanonicalPath)
-      
+
       val testCp = (pcTestCp ++ mcpTestCp).distinct
-      
+
       // The shrunk jar generated by our proguard task
       val shrunkJar = proguard.value.getCanonicalPath
-      
+
       // Remove all compile-classpath dependencies (they are inside the shrunk jar)
       // and add the shrunk JAR instead. Keep test dependencies and test-classes.
       val filteredTestCp = testCp.filterNot(compileCp.contains) :+ shrunkJar
-      
+
       log.info(s"Running tests on the shrunk ProGuard JAR ($shrunkJar)...")
-      
+
       val testSuites = Seq(
         "com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackendSuite",
         "com.github.mercurievv.scalasemantic.analysis.AnalyzerPcSuite",
         "com.github.mercurievv.scalasemantic.mcp.McpSuite"
       )
-      
+
       val cpString = filteredTestCp.mkString(java.io.File.pathSeparator)
       val forkOptions = ForkOptions()
         .withOutputStrategy(Some(StdoutOutput))
         .withConnectInput(false)
-      
+
       val runArgs = Seq("-cp", cpString, "org.junit.runner.JUnitCore") ++ testSuites
       val exitCode = Fork.java(forkOptions, runArgs)
       if (exitCode != 0) {
@@ -275,14 +367,21 @@ lazy val mcp = (project in file("mcp"))
       log.info(s"MCP launcher installed: $launcher")
       try {
         val rc = scala.sys.process.Process(Seq(launcher.getAbsolutePath, "--prefetch", ".")).!
-        if (rc != 0) log.warn(s"jar prefetch returned $rc; it will download on first connect instead.")
+        if (rc != 0)
+          log.warn(s"jar prefetch returned $rc; it will download on first connect instead.")
       } catch {
         case scala.util.control.NonFatal(e) =>
           log.warn(s"jar prefetch skipped (${e.getMessage}); it will download on first connect.")
       }
 
       val cpFile = launcher.getParentFile / "scala-semantic-classpath.txt"
-      val argv = Seq(launcher.getAbsolutePath, root.getAbsolutePath, cpFile.getAbsolutePath, "--log", "--log-output")
+      val argv = Seq(
+        launcher.getAbsolutePath,
+        root.getAbsolutePath,
+        cpFile.getAbsolutePath,
+        "--log",
+        "--log-output"
+      )
       val serverName = "scala-semantic"
       val clientVal = args.headOption.getOrElse("claude")
 
@@ -298,9 +397,12 @@ lazy val mcp = (project in file("mcp"))
         val outFile = root / target.relPath
         val existing = if (outFile.exists) Some(IO.read(outFile)) else None
         val merged = target.fmt match {
-          case ScalaSemanticConfigMerger.JsonFmt => ScalaSemanticConfigMerger.mergeJson(existing, serverName, argv, target.extraJson)
-          case ScalaSemanticConfigMerger.TomlFmt => ScalaSemanticConfigMerger.mergeToml(existing, serverName, argv)
-          case ScalaSemanticConfigMerger.YamlFmt => ScalaSemanticConfigMerger.mergeYaml(existing, serverName, argv)
+          case ScalaSemanticConfigMerger.JsonFmt =>
+            ScalaSemanticConfigMerger.mergeJson(existing, serverName, argv, target.extraJson)
+          case ScalaSemanticConfigMerger.TomlFmt =>
+            ScalaSemanticConfigMerger.mergeToml(existing, serverName, argv)
+          case ScalaSemanticConfigMerger.YamlFmt =>
+            ScalaSemanticConfigMerger.mergeYaml(existing, serverName, argv)
         }
         IO.write(outFile, merged)
         val verb = if (existing.isEmpty) "Wrote" else "Merged into"
@@ -375,7 +477,8 @@ lazy val compatFixtures = (project in file("compat-fixtures"))
     }
   )
 
-lazy val compatGolden = taskKey[Unit]("Copy emitted SemanticDB into versioned golden test resources")
+lazy val compatGolden =
+  taskKey[Unit]("Copy emitted SemanticDB into versioned golden test resources")
 
 // Regenerate the golden SemanticDB for every compat Scala version in one shot. CI runs this and fails
 // if the committed golden files drift, keeping the cross-version fixtures honest as compilers bump.
@@ -399,7 +502,7 @@ addCommandAlias(
 // if there are no tags or git is unavailable (e.g. a shallow CI checkout without tags), fall back to
 // the `x.y.z` placeholder so the build never fails on this.
 lazy val latestReleaseVersion: String =
-  try
+  try {
     scala.sys.process
       .Process(Seq("git", "tag", "--list", "v*"))
       .!!
@@ -407,10 +510,15 @@ lazy val latestReleaseVersion: String =
       .map(_.trim.stripPrefix("v"))
       .filter(_.matches("""\d+\.\d+\.\d+"""))
       .toSeq
-      .sortBy { v => val p = v.split('.').map(_.toInt); (p(0), p(1), p(2)) }
+      .sortBy { v =>
+        val p = v.split('.').map(_.toInt)
+        (p(0), p(1), p(2))
+      }
       .lastOption
       .getOrElse("x.y.z")
-  catch case _: Throwable => "x.y.z"
+  } catch {
+    case _: Throwable => "x.y.z"
+  }
 
 lazy val docs = (project in file("mdoc-docs"))
   .disablePlugins(wartremover.WartRemover)

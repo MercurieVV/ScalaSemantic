@@ -47,11 +47,12 @@ object ScalaSemanticConfigMerger {
   // --- JSON -------------------------------------------------------------------------------------
 
   private def jsonEntry(argv: Seq[String], extraFields: Seq[(String, String)]): String = {
-    val argsJson = argv.tail.map(jsonString).mkString("[", ", ", "]")
+    val (command, args) = splitArgv(argv)
+    val argsJson = args.map(jsonString).mkString("[", ", ", "]")
     val extra =
       extraFields.map { case (name, value) => s",\n      ${jsonString(name)}: $value" }.mkString
     s"""|{
-        |      "command": ${jsonString(argv.head)},
+        |      "command": ${jsonString(command)},
         |      "args": $argsJson$extra
         |    }""".stripMargin
   }
@@ -110,6 +111,12 @@ object ScalaSemanticConfigMerger {
     s.replaceAll("\\R+\\z", "") + "\n"
 
   private def leadingSpaces(line: String): Int = line.takeWhile(_ == ' ').length
+
+  private def splitArgv(argv: Seq[String]): (String, Seq[String]) =
+    argv match {
+      case command +: args => command -> args
+      case _               => "" -> Seq.empty
+    }
 
   private def jsonValueEnd(s: String, vs: Int, limit: Int): Int =
     s.charAt(vs) match {
@@ -190,9 +197,10 @@ object ScalaSemanticConfigMerger {
   // --- TOML -------------------------------------------------------------------------------------
 
   private def renderCodexToml(serverName: String, argv: Seq[String]): String = {
-    val argsToml = argv.tail.map(tomlString).mkString("[", ", ", "]")
+    val (command, args) = splitArgv(argv)
+    val argsToml = args.map(tomlString).mkString("[", ", ", "]")
     s"""|[mcp_servers.${tomlKey(serverName)}]
-        |command = ${tomlString(argv.head)}
+        |command = ${tomlString(command)}
         |args = $argsToml
         |startup_timeout_sec = 60
         |tool_timeout_sec = 60""".stripMargin
@@ -228,11 +236,12 @@ object ScalaSemanticConfigMerger {
   // --- YAML (Continue) --------------------------------------------------------------------------
 
   private def continueItem(serverName: String, argv: Seq[String]): String = {
+    val (command, argvArgs) = splitArgv(argv)
     val args =
-      if (argv.tail.isEmpty) ""
-      else argv.tail.map(a => s"\n      - ${yamlString(a)}").mkString("\n    args:", "", "")
+      if (argvArgs.isEmpty) ""
+      else argvArgs.map(a => s"\n      - ${yamlString(a)}").mkString("\n    args:", "", "")
     s"""|  - name: ${yamlString(serverName)}
-        |    command: ${yamlString(argv.head)}$args
+        |    command: ${yamlString(command)}$args
         |    connectionTimeout: 60000""".stripMargin
   }
 
@@ -266,12 +275,18 @@ object ScalaSemanticConfigMerger {
               case e  => e
             }
           val nameLine = s"- name: ${yamlString(serverName)}"
-          val itemIdx = (msIdx + 1 until blockEnd).find(i => lines(i).trim == nameLine)
+          val itemIdx =
+            (msIdx + 1).until(blockEnd).find(i => lines.lift(i).exists(_.trim == nameLine))
           itemIdx match {
             case Some(s0) =>
-              val indent = leadingSpaces(lines(s0))
-              val e = (s0 + 1 until blockEnd)
-                .find(i => leadingSpaces(lines(i)) == indent && lines(i).trim.startsWith("- "))
+              val indent = lines.lift(s0).fold(0)(leadingSpaces)
+              val e = (s0 + 1)
+                .until(blockEnd)
+                .find(i =>
+                  lines
+                    .lift(i)
+                    .exists(line => leadingSpaces(line) == indent && line.trim.startsWith("- "))
+                )
                 .getOrElse(blockEnd)
               (lines.take(s0) ++ item.split("\n", -1) ++ lines.drop(e)).mkString("\n")
             case None =>
