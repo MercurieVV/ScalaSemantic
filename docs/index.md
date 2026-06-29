@@ -24,29 +24,28 @@ types, usages, inheritance, implicits, members, and call paths.
 
 ### Get started
 
-- [Quickstart](getting-started/quickstart.md) — shortest sbt setup path.
-- [Integration](getting-started/integration.md) — register the server with an MCP client.
-- [FAQ](getting-started/faq.md) — MCP, AI-agent, and SemanticDB basics for Scala developers.
+- [Quickstart](getting-started/quickstart.md) — shortest sbt setup path (5 minutes).
+- [Integration](getting-started/integration.md) — sbt plugin, launcher script, plain jar, and logging.
+- [FAQ](getting-started/faq.md) — SemanticDB, compile freshness, Metals/LSP, and install choices.
 
-### Reference and usage
+### Reference
 
-- [Tool reference](reference/tools.md) — MCP tools, SemanticDB symbol grammar, and request shape.
-- [Examples](usage/examples.md) — sample MCP queries, responses, and grep comparisons.
+- [Tool reference](reference/tools.md) — MCP tools, SemanticDB symbol grammar, request shape.
+- [Examples](usage/examples.md) — representative MCP calls and responses.
 
-### Explanation
+### Understand the trade-offs
 
-- [ScalaSemantic vs grep](explanation/scala-semantic-vs-grep.md) — trade-offs, measured context cost, and Metals/LSP scope.
+- [ScalaSemantic vs grep](explanation/scala-semantic-vs-grep.md) — exact symbols vs text search, token savings, Metals scope.
+- [The motivation](articles/it-hurts-to-watch-ai-grep-my-scala.md) — why SemanticDB beats grep for code understanding.
 
-### Project
+### Project & Development
 
-- [Development](project/development.md) — modules, build, cross-version testing, and this site.
-- [Design decisions](project/design.md) — implementation notes and future extension points.
+- [Development](project/development.md) — repository layout, build, test, cross-version compatibility.
+- [Design decisions](project/design.md) — implementation approach and extension points.
 - [Releasing](project/releasing.md) — Sonatype Central release process.
-- [Release notes](project/release-notes.md) — user-facing changes per version.
 
-### Research
+### Research & Backlog
 
-- [Claude interaction study](research/claude-interaction-study.md) — measured agent behavior used to rank
-  future tool work.
-- [LLM steering investigation](research/llm-steering-investigation.md) — strategies for making popular LLM agents prefer ScalaSemantic tools over text search.
-- [Plan & tracker](research/plan.md) — implementation history, backlog, and known decisions.
+- [Claude interaction study](research/claude-interaction-study.md) — measured tool usage to guide future work.
+- [LLM steering](research/llm-steering-investigation.md) — how to encourage agents to use semantic tools.
+- [Plan & tracker](research/plan.md) — roadmap, implemented decisions, and known limitations.
