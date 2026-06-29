@@ -35,6 +35,12 @@ require_cmd curl
 run_id="$(gh run list --repo "$repo" --workflow "$workflow_name" --branch "$branch_name" \
   --event push --limit 1 --json databaseId --jq '.[0].databaseId')"
 
+# Fall back to pull_request-triggered run if push run is absent or already failed
+if [[ -z "$run_id" || "$run_id" == "null" ]]; then
+  run_id="$(gh run list --repo "$repo" --workflow "$workflow_name" --branch "$branch_name" \
+    --event pull_request --limit 1 --json databaseId --jq '.[0].databaseId')"
+fi
+
 if [[ -z "$run_id" || "$run_id" == "null" ]]; then
   echo "No push-triggered run of '$workflow_name' on '$branch_name'." >&2
   exit 1

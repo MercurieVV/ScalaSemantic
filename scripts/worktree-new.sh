@@ -15,5 +15,5 @@ base="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | 
 wt="${repo_root}/.claude/worktrees/${branch}"
 
 git -C "$repo_root" fetch origin "$base" --quiet || true
-git -C "$repo_root" worktree add -b "$branch" "$wt" "origin/${base}"
+git -C "$repo_root" worktree add -b "$branch" "$wt" "origin/${base}" >&2
 echo "$wt"

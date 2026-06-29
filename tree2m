@@ -97,7 +97,7 @@ else
 fi
 
 rtk git add -A
-rtk git commit -m "$message"
+rtk git commit -m "$message" || echo "nothing new to commit; resuming with existing branch state"
 rtk git push -u "$remote" "$branch"
 
 existing_pr_url="$(rtk gh pr view "$branch" --json url --jq '.url' 2>/dev/null || true)"
