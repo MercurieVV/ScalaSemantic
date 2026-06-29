@@ -12,8 +12,9 @@ Routing knowledge: `.claude/orchestrate-routing.md`. Read it once at start.
 
 ## Token discipline (applies to the whole flow)
 
-Tokens are a budget — spend them where they change the outcome.
-- Stay thin: state lives in `state.json`, not your message history. Don't echo full diffs/issue bodies back into your context.
+ Tokens are a budget — spend them where they change the outcome. You (the conductor) run on an expensive model; your context is the costliest tokens in the system. Protect it.
+- **Delegate down whenever it's safe.** Any sub-step that is mechanical or low-judgment — parsing an issue, summarizing a diff, generating a branch slug or commit message, wrangling JSON, classifying difficulty — should be handed to a cheap helper agent (Haiku), not done inline in your context. Spend your own reasoning only on scheduling, routing decisions, and handling failures. If a cheaper model would do it without harming the result, use the cheaper model.
+- Stay thin: state lives in `state.json`, not your message history. Don't echo full diffs/issue bodies back into your context — let a Haiku helper read them and return only the verdict/summary you need.
 - Cheapest capable model per step: triage = Haiku, sanity = Haiku, workers per routing table (escalate only on retry).
 - Feed sub-agents the minimum: a branch, a path, the self-contained `task`, expected `touched_areas` — not the whole repo or prior conversation.
 - Don't re-read files you just wrote; don't re-triage a task you already routed.
