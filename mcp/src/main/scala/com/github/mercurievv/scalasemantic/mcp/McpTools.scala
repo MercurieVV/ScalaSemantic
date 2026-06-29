@@ -803,7 +803,7 @@ object McpTools:
           "The raw file with a 1-based line-number gutter (a READ-ONLY view — edit the real file " +
             "at uri, not this). No annotations in this format."
         case SourceFormat.Annotated =>
-          s"READ-ONLY view, NOT valid Scala — do NOT paste into code; edit the real file at uri " +
+          "READ-ONLY view, NOT valid Scala — do NOT paste into code; edit the real file at uri " +
             s"(gutter line numbers map 1:1). ⟹ marks each note. $markers"
 
   private def round2(d: Double): Double = math.round(d * 100.0) / 100.0

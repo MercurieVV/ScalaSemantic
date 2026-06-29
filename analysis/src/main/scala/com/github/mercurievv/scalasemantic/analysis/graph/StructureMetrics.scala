@@ -33,7 +33,7 @@ final class StructureMetrics(index: SemanticIndex):
       .sortBy(_.symbol)
 
     val cycles =
-      (dimensionNames.map(d => d -> graphs.dimensions(d)) :+ ("combined" -> graphs.combined))
+      (dimensionNames.map(d => d -> graphs.dimensions(d)) ++ List("combined" -> graphs.combined))
         .flatMap { (name, g) =>
           GraphMetrics
             .stronglyConnectedComponents(nodes, g)

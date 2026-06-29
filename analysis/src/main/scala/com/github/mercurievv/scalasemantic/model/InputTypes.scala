@@ -1,5 +1,6 @@
 package com.github.mercurievv.scalasemantic.model
 
+import eu.timepit.refined.api.RefType
 import eu.timepit.refined.api.Refined
 import eu.timepit.refined.collection.NonEmpty
 import eu.timepit.refined.numeric.NonNegative
@@ -86,7 +87,9 @@ object InputTypes:
 
   type PositiveInt = Int Refined Positive
   object PositiveInt:
-    val DefaultLimit: PositiveInt = refineV[Positive](50).toOption.get
+    val DefaultLimit: PositiveInt = RefType.applyRef[PositiveInt](50) match
+      case Right(value) => value
+      case Left(error)  => sys.error(error)
 
     def from(value: Int, name: String): Either[String, PositiveInt] =
       refineV[Positive](value).left.map(_ => s"$name must be > 0: $value")

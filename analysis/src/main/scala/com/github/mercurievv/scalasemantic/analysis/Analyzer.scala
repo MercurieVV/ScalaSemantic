@@ -600,11 +600,13 @@ final class Analyzer(
       frontier match
         case Nil => Nil
         case path :: rest =>
-          val node = path.head
-          if node == toSym then path.reverse
-          else
-            val nexts = adjacency.getOrElse(node, Nil).map(_._1).filterNot(seen.contains)
-            bfs(rest ::: nexts.map(_ :: path), seen ++ nexts)
+          path match
+            case node :: _ =>
+              if node == toSym then path.reverse
+              else
+                val nexts = adjacency.getOrElse(node, Nil).map(_._1).filterNot(seen.contains)
+                bfs(rest ::: nexts.map(_ :: path), seen ++ nexts)
+            case Nil => bfs(rest, seen)
     val nodes = if fromSym == toSym then List(fromSym) else bfs(List(List(fromSym)), Set(fromSym))
     val edges = nodes
       .zip(nodes.drop(1))

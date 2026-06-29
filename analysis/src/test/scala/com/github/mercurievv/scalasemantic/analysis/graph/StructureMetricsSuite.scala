@@ -191,3 +191,147 @@ class StructureMetricsSuite extends munit.FunSuite:
     assertEquals(byMod("app").instability, 1.0)
     assertEquals(byMod("core").afferent, 1)
     assert(r.moduleEdges.exists(e => e.from == "app" && e.to == "core" && e.weight == 2))
+    // acyclic project: no module is in a cycle, and no module edge is flagged cyclic.
+    assert(!byMod("app").inCycle, "app is acyclic")
+    assert(!byMod("core").inCycle, "core is acyclic")
+    assert(
+      !r.moduleEdges.find(e => e.from == "app" && e.to == "core").get.inCycle,
+      "an edge between acyclic modules is not cyclic"
+    )
+    // the per-type X<->Y cycle is reported in the combined overlay too, not only `extends`.
+    assert(
+      r.cycles.exists(dc => dc.dimension == "combined" && dc.members == List("core/X#", "core/Y#")),
+      r.cycles.toString
+    )
+    // exactly the one real cycle per dimension — acyclic singletons are NOT reported as cycles.
+    assertEquals(r.cycles.count(_.dimension == "extends"), 1, r.cycles.toString)
+
+  // ============================ GraphMetrics: cycles & layering ================
+
+  test("stronglyConnectedComponents detects a 3-node cycle as one component"):
+    val g = Map("a" -> Set("b"), "b" -> Set("c"), "c" -> Set("a"), "d" -> Set("a"))
+    val comps =
+      GraphMetrics.stronglyConnectedComponents(Set("a", "b", "c", "d"), g).map(_.toList.sorted)
+    assertEquals(comps.length, 2, comps.toString)
+    assert(comps.contains(List("a", "b", "c")), comps.toString)
+    assert(comps.contains(List("d")), comps.toString)
+
+  test("layers: cross-component edges set the level around a condensed cycle"):
+    // cycle x<->y; the cycle depends on foundation a; p depends on the cycle.
+    val g = Map("x" -> Set("y", "a"), "y" -> Set("x"), "p" -> Set("x"))
+    val l = GraphMetrics.layers(Set("a", "x", "y", "p"), g)
+    assertEquals(l("a"), 0, "foundation")
+    assertEquals(l("x"), 1, "cycle sits one level above the foundation")
+    assertEquals(l("y"), 1, "cycle members share a level")
+    assertEquals(l("p"), 2, "p depends on the cycle, so one level above it")
+
+  // ============================ StructureMetrics: module cycles ================
+
+  // Two modules in a cycle (m1/P extends m2/Q, m2/Q extends m1/P), plus m1/P also extends an
+  // acyclic foundation m3/R. Exercises module-level cycle flags and the cyclic-edge classifier.
+  private val cycP = s.TextDocument(
+    uri = "m1/p.scala",
+    symbols = Vector(cls("m1/P#", List(tref("m2/Q#"), tref("m3/R#")))),
+    occurrences = Vector(defn("m1/P#", 0))
+  )
+  private val cycQ = s.TextDocument(
+    uri = "m2/q.scala",
+    symbols = Vector(cls("m2/Q#", List(tref("m1/P#")))),
+    occurrences = Vector(defn("m2/Q#", 0))
+  )
+  private val cycR = s.TextDocument(
+    uri = "m3/r.scala",
+    symbols = Vector(cls("m3/R#", List(ObjectT))),
+    occurrences = Vector(defn("m3/R#", 0))
+  )
+  private val cycIndex = SemanticIndex(Vector(cycP, cycQ, cycR))
+
+  test("StructureMetrics: a module cycle flags its modules and edges, acyclic ones stay clean"):
+    val r = new StructureMetrics(cycIndex).result()
+    val byMod = r.modules.map(m => m.module -> m).toMap
+    assertEquals(byMod("m1").sccSize, 2, "m1 and m2 form a module cycle")
+    assert(byMod("m1").inCycle, "m1 is in the module cycle")
+    assert(byMod("m2").inCycle, "m2 is in the module cycle")
+    assert(!byMod("m3").inCycle, "m3 (foundation) is not in a cycle")
+    def edge(from: String, to: String) =
+      r.moduleEdges.find(e => e.from == from && e.to == to).getOrElse(fail(s"no edge $from->$to"))
+    assert(edge("m1", "m2").inCycle, "edge inside the module cycle is cyclic")
+    assert(edge("m2", "m1").inCycle, "edge inside the module cycle is cyclic")
+    assert(
+      !edge("m1", "m3").inCycle,
+      "an edge from a cyclic module to an acyclic one is not itself cyclic"
+    )
+
+  // ============================ DependencyGraphs: edge-filter edge cases =======
+
+  test("callGraph: a reference to a non-method member does not create a call edge"):
+    // T#m() references U#x. (a non-method member of node U). The caller-state machine must keep
+    // edges only to methods, so no T->U call edge is produced.
+    val doc = s.TextDocument(
+      uri = "cm/lib.scala",
+      symbols = Vector(
+        cls("cm/T#", List(ObjectT), List("cm/T#m().")),
+        method("cm/T#m().", methodSig(s.Type.Empty)),
+        cls("cm/U#", List(ObjectT))
+      ),
+      occurrences = Vector(
+        defn("cm/T#", 0),
+        defn("cm/T#m().", 1),
+        ref("cm/U#x.", 2), // non-method member reference inside m
+        defn("cm/U#", 5)
+      )
+    )
+    val g = new DependencyGraphs(SemanticIndex(Vector(doc)))
+    assertEquals(g.dimensions("call").getOrElse("cm/T#", Set.empty), Set.empty[String])
+
+  test("implicitGraph: a non-implicit method with an implicit param creates no implicit edge"):
+    // O#foo is NOT implicit, though it takes an implicit B. Only givens/implicits seed edges.
+    val doc = s.TextDocument(
+      uri = "i9/lib.scala",
+      symbols = Vector(
+        cls("i9/O#", List(ObjectT), List("i9/O#foo().")),
+        method(
+          "i9/O#foo().",
+          methodSig(s.Type.Empty, Seq(param("i9/O#foo().(p)", tref("i9/B#"), IMPL))),
+          props = 0
+        ),
+        cls("i9/B#", List(ObjectT))
+      ),
+      occurrences = Vector(defn("i9/O#", 0), defn("i9/O#foo().", 1), defn("i9/B#", 2))
+    )
+    val g = new DependencyGraphs(SemanticIndex(Vector(doc)))
+    assertEquals(g.dimensions("implicit"), Map.empty[String, Set[String]])
+
+  test("implicitGraph: an implicit whose owner is not a project node is dropped"):
+    // g is implicit but lives under p/o. (no class node), so it must not appear as an edge source.
+    val doc = s.TextDocument(
+      uri = "i6/lib.scala",
+      symbols = Vector(
+        cls("i6/B#", List(ObjectT)),
+        method(
+          "i6/p.g().",
+          methodSig(s.Type.Empty, Seq(param("i6/p.g().(x)", tref("i6/B#"), IMPL))),
+          props = IMPL
+        )
+      ),
+      occurrences = Vector(defn("i6/B#", 0), defn("i6/p.g().", 1))
+    )
+    val g = new DependencyGraphs(SemanticIndex(Vector(doc)))
+    assertEquals(g.dimensions("implicit"), Map.empty[String, Set[String]])
+
+  test("implicitGraph: a given depending on its own type creates no self-edge"):
+    // O#mk is an implicit taking an implicit O — the self-dependency must be filtered out.
+    val doc = s.TextDocument(
+      uri = "i8/lib.scala",
+      symbols = Vector(
+        cls("i8/O#", List(ObjectT), List("i8/O#mk().")),
+        method(
+          "i8/O#mk().",
+          methodSig(s.Type.Empty, Seq(param("i8/O#mk().(s)", tref("i8/O#"), IMPL))),
+          props = IMPL
+        )
+      ),
+      occurrences = Vector(defn("i8/O#", 0), defn("i8/O#mk().", 1))
+    )
+    val g = new DependencyGraphs(SemanticIndex(Vector(doc)))
+    assert(!g.dimensions("implicit").getOrElse("i8/O#", Set.empty).contains("i8/O#"))

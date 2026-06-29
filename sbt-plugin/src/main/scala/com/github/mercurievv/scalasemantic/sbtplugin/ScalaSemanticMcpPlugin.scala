@@ -187,11 +187,12 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
     if (!target.isDirectory) false
     else
       try {
-        var stream: java.util.stream.Stream[java.nio.file.Path] = null
-        try {
-          stream = java.nio.file.Files.walk(target.toPath)
-          stream.anyMatch(p => p.getFileName.toString.endsWith(".semanticdb"))
-        } finally if (stream != null) stream.close()
+        def withPathStream(stream: java.util.stream.Stream[java.nio.file.Path]): Boolean =
+          try
+            stream.anyMatch(p => p.getFileName.toString.endsWith(".semanticdb"))
+          finally stream.close()
+
+        withPathStream(java.nio.file.Files.walk(target.toPath))
       } catch { case _: Throwable => false }
   }
 

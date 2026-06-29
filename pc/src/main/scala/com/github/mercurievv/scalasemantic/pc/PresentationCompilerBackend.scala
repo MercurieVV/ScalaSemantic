@@ -94,8 +94,9 @@ object PresentationCompilerBackend:
       .filter(_.nonEmpty)
       .flatMap(p => scala.util.Try(java.nio.file.Paths.get(p)).toOption)
     val fromLoaders = Iterator
-      .iterate(Thread.currentThread.getContextClassLoader: ClassLoader)(_.getParent)
-      .takeWhile(_ != null)
+      .unfold(Thread.currentThread.getContextClassLoader: ClassLoader)(loader =>
+        Option(loader).map(current => current -> current.getParent)
+      )
       .collect { case u: java.net.URLClassLoader => u.getURLs.toSeq }
       .flatten
       .flatMap(url => scala.util.Try(java.nio.file.Paths.get(url.toURI)).toOption)

@@ -32,6 +32,10 @@ class McpSuite extends munit.FunSuite:
   private def callResponse(name: String, args: ujson.Value): Option[ujson.Value] =
     Mcp.handle(req("tools/call", ujson.Obj("name" -> name, "arguments" -> args)), tools)
 
+  @SuppressWarnings(Array("org.wartremover.warts.MutableDataStructures"))
+  private def jsonArray(value: ujson.Value): Vector[ujson.Value] =
+    value.arr.toVector
+
   test("initialize echoes the protocol version, advertises the server, and ships instructions") {
     val r = Mcp.handle(req("initialize", ujson.Obj("protocolVersion" -> "2025-06-18")), tools).get
     assertEquals(r("result")("protocolVersion").str, "2025-06-18")
@@ -69,7 +73,7 @@ class McpSuite extends munit.FunSuite:
   test("find_symbol resolves a plain name to ranked SemanticDB symbols") {
     val r = call("find_symbol", ujson.Obj("query" -> "Animal"))
     assert(r("count").num > 0)
-    val syms = r("symbols").arr.map(_("symbol").str)
+    val syms = jsonArray(r("symbols")).map(_("symbol").str)
     assert(syms.contains(Animal), syms.toString)
     // exact match ranks first
     assertEquals(r("symbols")(0)("name").str, "Animal")
@@ -88,7 +92,7 @@ class McpSuite extends munit.FunSuite:
         "find_symbol",
         ujson.Obj("query" -> "Animal", "kind" -> "TRAIT", "pathFilter" -> "*compat*")
       )
-    val syms = scoped("symbols").arr.map(_("symbol").str)
+    val syms = jsonArray(scoped("symbols")).map(_("symbol").str)
     assertEquals(syms.toList, List("com/github/mercurievv/scalasemantic/compat/Animal#"))
   }
 
@@ -97,21 +101,21 @@ class McpSuite extends munit.FunSuite:
     val mods = r("modules").arr.map(_("module").str).toSet
     assert(Set("core", "analysis", "mcp").subsetOf(mods), mods.toString)
     // default sort is afferent (fan-in) descending
-    val cas = r("symbols").arr.map(_("ca").num)
+    val cas = jsonArray(r("symbols")).map(_("ca").num)
     assertEquals(cas.toList, cas.toList.sortBy(-_), "symbols must be ranked by Ca desc")
     // every symbol carries the core metrics, including the Phase-2 layer
     assert(r("symbols").arr.forall(s => s.obj.contains("instability") && s.obj.contains("layer")))
     assert(r("modules").arr.forall(_.obj.contains("layer")), "modules carry a layer")
     // sorting by layer is accepted and ranks descending
     val byLayer = call("structure", ujson.Obj("sort" -> "layer", "limit" -> 5))
-    val layers = byLayer("symbols").arr.map(_("layer").num)
+    val layers = jsonArray(byLayer("symbols")).map(_("layer").num)
     assertEquals(layers.toList, layers.toList.sortBy(-_), "symbols ranked by layer desc")
 
     // Phase 3: centrality on every symbol, the module coupling surface, and sort=centrality.
     assert(r("symbols").arr.forall(_.obj.contains("centrality")), "symbols carry centrality")
     assert(r.obj.contains("moduleEdges") && r("moduleEdges").arr.nonEmpty, r.render())
     val byCent = call("structure", ujson.Obj("sort" -> "centrality", "limit" -> 5))
-    val cents = byCent("symbols").arr.map(_("centrality").num)
+    val cents = jsonArray(byCent("symbols")).map(_("centrality").num)
     assertEquals(cents.toList, cents.toList.sortBy(-_), "symbols ranked by centrality desc")
 
     // detailed adds the per-dimension breakdown with all four dimensions
