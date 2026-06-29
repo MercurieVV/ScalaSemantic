@@ -66,3 +66,4 @@ build/
 /.worktrees/
 /worktrees/
 /chat-tool-usage.md
+/.claire/
