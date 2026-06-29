@@ -116,7 +116,7 @@ object DuplicationAnalyzer:
     case d: Defn.Object => Some(d.name.value).filter(_.nonEmpty)
     case d: Defn.Class  => Some(d.name.value).filter(_.nonEmpty)
     case d: Defn.Trait  => Some(d.name.value).filter(_.nonEmpty)
-    case d: Defn.Val =>
+    case d: Defn.Val    =>
       d.pats.headOption.collect { case Pat.Var(n) => n.value }.filter(_.nonEmpty)
     case d: Defn.Var =>
       d.pats.headOption.collect { case Pat.Var(n) => n.value }.filter(_.nonEmpty)
@@ -175,7 +175,7 @@ object DuplicationAnalyzer:
         case Pat.Var(Term.Name(value)) if value.nonEmpty      => List(value)
         case param: Type.Param if param.name.value.nonEmpty   => List(param.name.value)
         case defn: Defn.Def if defn.name.value.nonEmpty       => List(defn.name.value)
-        case Defn.Val(_, pats, _, _) =>
+        case Defn.Val(_, pats, _, _)                          =>
           pats.collect { case Pat.Var(Term.Name(value)) if value.nonEmpty => value }
         case defn: Defn.Var =>
           defn.pats.collect { case Pat.Var(Term.Name(value)) if value.nonEmpty => value }

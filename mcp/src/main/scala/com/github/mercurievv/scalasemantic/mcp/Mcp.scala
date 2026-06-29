@@ -131,7 +131,7 @@ object Mcp:
           val name = params.obj.get("name").map(_.str).getOrElse("")
           val args = params.obj.getOrElse("arguments", ujson.Obj())
           tools.find(_.name == name) match
-            case None => err(id, -32602, s"Unknown tool: $name")
+            case None       => err(id, -32602, s"Unknown tool: $name")
             case Some(tool) =>
               onToolCall(name, args)
               scala.util.Try(tool.run(args)) match

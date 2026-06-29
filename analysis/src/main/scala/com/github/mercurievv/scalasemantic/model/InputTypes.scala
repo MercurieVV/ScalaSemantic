@@ -69,7 +69,7 @@ object InputTypes:
     def from(value: String): Either[String, PackageSymbol] =
       value.trim match
         case "" => Right("")
-        case s =>
+        case s  =>
           val normalized = if s.endsWith("/") then s else s"$s/"
           if packagePattern.matches(normalized) then Right(normalized)
           else Left(s"invalid package symbol: $value")

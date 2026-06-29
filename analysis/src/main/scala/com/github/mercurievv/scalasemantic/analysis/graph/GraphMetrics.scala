@@ -96,7 +96,7 @@ object GraphMetrics:
     def level(c: Int, memo: Map[Int, Int]): (Int, Map[Int, Int]) =
       memo.get(c) match
         case Some(v) => (v, memo)
-        case None =>
+        case None    =>
           val (lv, m) =
             condensed.getOrElse(c, Set.empty).foldLeft((0, memo)) { case ((acc, mm), s) =>
               val (sv, mm2) = level(s, mm)
