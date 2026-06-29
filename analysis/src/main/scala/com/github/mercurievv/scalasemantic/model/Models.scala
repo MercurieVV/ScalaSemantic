@@ -276,8 +276,8 @@ case class CallGraphPath(
 
 // --- call hierarchy --------------------------------------------------------
 
-/** One node in the call hierarchy tree: the method itself, optional call-site location, and its
-  * own callers/callees one level deeper.
+/** One node in the call hierarchy tree: the method itself, optional call-site location, and its own
+  * callers/callees one level deeper.
   */
 case class CallHierarchyNode(
     method: SymbolRef,

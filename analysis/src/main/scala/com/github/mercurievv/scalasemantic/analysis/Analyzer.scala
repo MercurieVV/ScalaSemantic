@@ -634,7 +634,12 @@ final class Analyzer(
     val adj: Map[String, List[(String, Location)]] =
       if direction == "callers" then reverseCallGraph else callGraph
 
-    def buildNode(current: String, at: Option[Location], remaining: Int, visited: Set[String]): CallHierarchyNode =
+    def buildNode(
+        current: String,
+        at: Option[Location],
+        remaining: Int,
+        visited: Set[String]
+    ): CallHierarchyNode =
       val children =
         if remaining <= 0 || visited.contains(current) then Nil
         else
@@ -671,6 +676,8 @@ final class Analyzer(
 
   /** Callee -> list of (caller, call-site) edges: the reverse of `callGraph`. */
   private lazy val reverseCallGraph: Map[String, List[(String, Location)]] =
-    callGraph.toList.flatMap { (caller, callees) =>
-      callees.map { (callee, loc) => callee -> (caller, loc) }
-    }.groupMap(_._1)(_._2)
+    callGraph.toList
+      .flatMap { (caller, callees) =>
+        callees.map { (callee, loc) => callee -> (caller, loc) }
+      }
+      .groupMap(_._1)(_._2)
