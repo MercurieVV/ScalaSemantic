@@ -23,7 +23,7 @@ class AnalyzerCoreSuite extends munit.FunSuite:
       symbol: String,
       kind: s.SymbolInformation.Kind,
       displayName: String,
-      signature: s.Signature = s.NoSignature,
+      signature: s.Signature,
       properties: Int = 0
   ): s.SymbolInformation =
     s.SymbolInformation(

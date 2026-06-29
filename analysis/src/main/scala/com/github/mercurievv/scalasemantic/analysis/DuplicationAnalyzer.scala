@@ -68,8 +68,7 @@ object DuplicationAnalyzer:
 
     // 5. Build DuplicationGroups
     val groups = filteredGroups.map { g =>
-      val firstTree = g.head._2
-      val astNodeCount = nodeCount(firstTree)
+      val astNodeCount = g.map(_._2).headOption.fold(0)(nodeCount)
       val occurrences = g.map { case (doc, tree, enclosing) =>
         val pos = tree.pos
         val range = Range(
@@ -116,14 +115,14 @@ object DuplicationAnalyzer:
   private def collectLocalNames(tree: Tree): List[String] =
     def loop(t: Tree): List[String] =
       val current = t match
-        case Term.Param(_, name, _, _) if name.value.nonEmpty       => List(name.value)
-        case Pat.Var(Term.Name(value)) if value.nonEmpty            => List(value)
-        case Type.Param(_, name, _, _, _, _) if name.value.nonEmpty => List(name.value)
-        case Defn.Def(_, name, _, _, _, _) if name.value.nonEmpty   => List(name.value)
+        case Term.Param(_, name, _, _) if name.value.nonEmpty => List(name.value)
+        case Pat.Var(Term.Name(value)) if value.nonEmpty      => List(value)
+        case param: Type.Param if param.name.value.nonEmpty   => List(param.name.value)
+        case defn: Defn.Def if defn.name.value.nonEmpty       => List(defn.name.value)
         case Defn.Val(_, pats, _, _) =>
           pats.collect { case Pat.Var(Term.Name(value)) if value.nonEmpty => value }
-        case Defn.Var(_, pats, _, _) =>
-          pats.collect { case Pat.Var(Term.Name(value)) if value.nonEmpty => value }
+        case defn: Defn.Var =>
+          defn.pats.collect { case Pat.Var(Term.Name(value)) if value.nonEmpty => value }
         case _ => Nil
       current ++ t.children.flatMap(loop)
 

@@ -25,7 +25,11 @@ class CompatSuite extends munit.FunSuite:
   private val compatRoot: Option[Path] =
     val rels = List("analysis/src/test/resources/compat", "src/test/resources/compat")
     val start = Paths.get("").toAbsolutePath
-    val bases = Iterator.iterate(start)(_.getParent).takeWhile(_ != null).take(8).toList
+    val bases =
+      Iterator
+        .unfold(start)(path => Option(path).map(current => current -> current.getParent))
+        .take(8)
+        .toList
     (for base <- bases.iterator; rel <- rels.iterator; p = base.resolve(rel) if Files.isDirectory(p)
     yield p).nextOption()
 
