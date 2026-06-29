@@ -8,6 +8,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import scala.meta.*
 import scala.util.Try
+import stainless.annotation.pure
 
 object DuplicationAnalyzer:
 
@@ -129,8 +130,9 @@ object DuplicationAnalyzer:
       d.pats.headOption.collect { case Pat.Var(n) => n.value }.filter(_.nonEmpty)
     case _ => None
 
+  @pure
   private def nodeCount(tree: Tree): Int =
-    1 + tree.children.map(nodeCount).sum
+    (1 + tree.children.map(nodeCount).sum).ensuring(res => res >= 1)
 
   /** Collect all sub-trees of `tree` with at least `minSize` AST nodes that pass `nodeFilter`.
     *
@@ -158,6 +160,7 @@ object DuplicationAnalyzer:
 
     traverse(tree, None)
 
+  @pure
   private def isDescendant(child: Tree, parent: Tree): Boolean =
     if (child eq parent) false
     else parent.children.exists(c => (c eq child) || isDescendant(child, c))

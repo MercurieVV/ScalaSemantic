@@ -25,3 +25,13 @@ libraryDependencies += "com.guardsquare" % "proguard-base" % "7.9.1"
 if (sys.props.get("stryker").contains("true") || sys.env.contains("STRYKER"))
   Seq(addSbtPlugin("io.stryker-mutator" % "sbt-stryker4s" % "0.0.0+1-2c0f5bd7-SNAPSHOT"))
 else Seq.empty[Setting[?]]
+
+// Stainless formal verification (issue #68).
+// `sbt-stainless` from https://github.com/epfl-lara/stainless/releases/tag/v0.9.9.3 ships only
+// an sbt-1.x plugin JAR (compiled against Scala 2.12 / sbt 1.x ABI); loading it under sbt 2.0
+// throws `Binary incompatibility in plugins detected`.  Verification is therefore driven by the
+// standalone Stainless tool instead (see analysis/lib/stainless-library.jar and the stainless/
+// local ivy snapshot).  If a future Stainless release publishes an sbt-2.0-compatible plugin,
+// re-enable with:
+//   addSbtPlugin("ch.epfl.lara" % "sbt-stainless" % "<version>")
+// and set `stainlessEnabled := true` in the analysis module's settings.

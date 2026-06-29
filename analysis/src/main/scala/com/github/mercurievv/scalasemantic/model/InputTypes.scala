@@ -6,6 +6,7 @@ import eu.timepit.refined.collection.NonEmpty
 import eu.timepit.refined.numeric.NonNegative
 import eu.timepit.refined.numeric.Positive
 import eu.timepit.refined.refineV
+import stainless.annotation.pure
 
 import scala.meta.internal.semanticdb.Scala.*
 
@@ -103,20 +104,31 @@ object InputTypes:
       refineV[Positive](value).left.map(_ => s"$name must be > 0: $value")
 
   final case class SourcePosition(line: NonNegativeInt, character: NonNegativeInt):
+    @pure
     def lineValue: Int = line.value
+    @pure
     def characterValue: Int = character.value
 
+    @pure
     def before(other: SourcePosition): Boolean =
-      lineValue < other.lineValue ||
-        (lineValue == other.lineValue && characterValue < other.characterValue)
+      (lineValue < other.lineValue ||
+        (lineValue == other.lineValue && characterValue < other.characterValue))
+        .ensuring(res =>
+          (if (this == other) !res else true) &&
+            (if (res) !other.before(this) else true)
+        )
 
+    @pure
     def atOrBefore(line: Int, character: Int): Boolean =
+      require(line >= 0 && character >= 0)
       lineValue < line ||
-        (lineValue == line && characterValue <= character)
+      (lineValue == line && characterValue <= character)
 
+    @pure
     def atOrAfter(line: Int, character: Int): Boolean =
+      require(line >= 0 && character >= 0)
       lineValue > line ||
-        (lineValue == line && characterValue >= character)
+      (lineValue == line && characterValue >= character)
 
   object SourcePosition:
     def from(line: Int, character: Int): Either[String, SourcePosition] =
@@ -126,21 +138,33 @@ object InputTypes:
       yield SourcePosition(l, c)
 
   final case class SourceRange(start: SourcePosition, end: SourcePosition):
+    @pure
     def startLine: Int = start.lineValue
+    @pure
     def startCharacter: Int = start.characterValue
+    @pure
     def endLine: Int = end.lineValue
+    @pure
     def endCharacter: Int = end.characterValue
 
+    @pure
     def contains(
         startLine: Int,
         startCharacter: Int,
         endLine: Int,
         endCharacter: Int
     ): Boolean =
+      require(
+        startLine >= 0 && startCharacter >= 0 &&
+          endLine >= startLine &&
+          (endLine > startLine || endCharacter >= startCharacter)
+      )
       start.atOrBefore(startLine, startCharacter) &&
-        end.atOrAfter(endLine, endCharacter)
+      end.atOrAfter(endLine, endCharacter)
 
+    @pure
     def startsAtOrAfterEnd(line: Int, character: Int): Boolean =
+      require(line >= 0 && character >= 0)
       end.atOrBefore(line, character)
 
   object SourceRange:
@@ -158,6 +182,7 @@ object InputTypes:
           else Left("range end must be after range start")
       yield range
 
+    @pure
     private def before(start: SourcePosition, end: SourcePosition): Boolean =
       start.before(end)
 

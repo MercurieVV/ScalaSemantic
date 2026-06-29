@@ -88,8 +88,8 @@ class AnalyzerHelpersSuite extends munit.FunSuite:
     assert(!h.rangeContains(r, 4, 0), "a later line is excluded")
 
   test("rangeSpan weights lines over characters"):
-    assertEquals(h.rangeSpan(s.Range(1, 0, 3, 5)), 20005)
-    assertEquals(h.rangeSpan(s.Range(2, 4, 2, 9)), 5)
+    assertEquals(h.rangeSpan(s.Range(1, 0, 3, 5)), 20005L)
+    assertEquals(h.rangeSpan(s.Range(2, 4, 2, 9)), 5L)
 
   test("alreadyAscribed finds a top-level colon before the body's ="):
     assert(h.alreadyAscribed("val x: Int = 1", 4), "explicit ascription")

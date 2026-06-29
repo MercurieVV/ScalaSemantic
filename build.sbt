@@ -166,12 +166,39 @@ lazy val pc = (project in file("pc"))
 
 // analysis: the query engine + result models (upickle), built on core, with the PC backend as a
 // second (in-memory, error-tolerant) source of SemanticDB for the position-local tools.
+//
+// Stainless library: `stainless-library_3` is NOT published to Maven Central, so we DON'T depend on
+// it as a managed artifact (that would fail to resolve in a clean CI checkout). Instead the v0.9.9.3
+// release jar is checked in at `analysis/lib/stainless-library.jar` and picked up as an UNMANAGED
+// dependency (sbt auto-includes jars under a module's `lib/`). It is compile-only in spirit — it
+// supplies @pure/@opaque and stainless.lang for the contracts — and is explicitly excluded from the
+// mcp fat jar below so it never ships at runtime. The sbt-stainless plugin from the same release is
+// sbt-1.x-only and can't load under sbt 2.0, so verification runs via the standalone tool
+// (`sbt stainlessVerify`), not at compile time.
+
+// Formal-verification gate: run the standalone Stainless tool over StainlessContracts.scala via
+// scripts/stainless-verify.sh (which downloads + caches the tool, bundled solvers included). The
+// script fails iff a VC is INVALID, tolerating the `unknown`/timeout VCs the bundled smt-z3 cannot
+// discharge. CI runs `sbt stainlessVerify`; devs can too.
+lazy val stainlessVerify =
+  taskKey[Unit]("Formally verify StainlessContracts.scala with the standalone Stainless tool")
+
 lazy val analysis = (project in file("analysis"))
   .dependsOn(core, pc)
   .settings(commonSettings)
   .settings(
     name := "scalasemantic-analysis",
-    libraryDependencies ++= Seq(upickle, refined, munit, munitScalacheck)
+    // stainless-library is supplied as an unmanaged jar from analysis/lib/ (see note above), so it
+    // is NOT listed here as a managed dependency.
+    libraryDependencies ++= Seq(upickle, refined, munit, munitScalacheck),
+    stainlessVerify := {
+      val log = streams.value.log
+      val root = (ThisBuild / baseDirectory).value
+      val script = root / "scripts" / "stainless-verify.sh"
+      log.info(s"Running $script ...")
+      val rc = scala.sys.process.Process(Seq("bash", script.getAbsolutePath), root).!
+      if (rc != 0) sys.error(s"stainlessVerify failed (exit $rc) — see output above")
+    }
   )
 
 // mcp: stdio JSON-RPC server + entrypoint. Test-depends on analysis so its fixtures (and their
@@ -194,6 +221,16 @@ lazy val mcp = (project in file("mcp"))
     // to GitHub Releases. Pin the main class (the module has two @main) so the manifest is correct.
     assembly / mainClass := Some("com.github.mercurievv.scalasemantic.mcpServer"),
     assembly / assemblyJarName := "scalasemantic-mcp.jar",
+    // stainless-library reaches this classpath as an unmanaged jar from analysis/lib/ (it backs the
+    // compile-time @pure/@opaque contracts only). Keep it out of the runtime fat jar — the
+    // annotations are never resolved at runtime and the contracts are verified offline.
+    assembly / assemblyExcludedJars := {
+      // sbt 2.0 classpath entries are virtual-file refs; resolve to real paths to match by name.
+      val converter = fileConverter.value
+      (assembly / fullClasspath).value.filter { af =>
+        converter.toPath(af.data).getFileName.toString == "stainless-library.jar"
+      }
+    },
     assembly / assemblyMergeStrategy := {
       case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
       case PathList("META-INF", xs @ _*)
@@ -546,4 +583,7 @@ lazy val root = (project in file("."))
 // than silently rewriting files (a pre-push rewrite lands post-commit and never gets pushed — CI then
 // rejects it). Formatting is applied earlier by the pre-commit hook; here we only confirm it stuck.
 // `testOnly *` forces the full suite (sbt 2.0 `test` is cached testQuick — see docs/research/plan.md).
-addCommandAlias("prePush", "clean; scalafmtCheckAll; scalafixAll --check; Test/testOnly *")
+addCommandAlias(
+  "prePush",
+  "clean; scalafmtCheckAll; scalafixAll --check; Test/testOnly *; stainlessVerify"
+)
