@@ -605,7 +605,9 @@ final class Analyzer(
           else
             val nexts = adjacency.getOrElse(node, Nil).map(_._1).filterNot(seen.contains)
             bfs(rest ::: nexts.map(_ :: path), seen ++ nexts)
-    val nodes = if fromSym == toSym then List(fromSym) else bfs(List(List(fromSym)), Set(fromSym))
+    // bfs already yields List(fromSym) when fromSym == toSym (it matches on the first node), so no
+    // special case is needed for the trivial path.
+    val nodes = bfs(List(List(fromSym)), Set(fromSym))
     val edges = nodes
       .zip(nodes.drop(1))
       .flatMap { (a, b) =>

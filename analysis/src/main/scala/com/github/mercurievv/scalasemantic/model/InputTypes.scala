@@ -57,12 +57,20 @@ object InputTypes:
 
   opaque type PackageSymbol = String
   object PackageSymbol:
+    // A SemanticDB package symbol is a run of `name/` descriptors and nothing else: slash-separated,
+    // non-empty segments with no type (`#`), term (`.`), method (`()`), multi (`;`) or type-arg
+    // (`[]`) descriptor characters and no whitespace. The root package is the empty string.
+    // NB: scalameta's `isGlobal`/`isPackage` cannot be used to validate this — once a trailing `/`
+    // is appended they accept any non-empty string — so the structure is checked explicitly here.
+    private val packagePattern = """([^\s/.#;()\[\],]+/)+""".r
+
     def from(value: String): Either[String, PackageSymbol] =
-      val normalized = value.trim match
-        case "" => ""
-        case s  => if s.endsWith("/") then s else s"$s/"
-      if normalized.isEmpty || (normalized.isGlobal && normalized.isPackage) then Right(normalized)
-      else Left(s"invalid package symbol: $value")
+      value.trim match
+        case "" => Right("")
+        case s =>
+          val normalized = if s.endsWith("/") then s else s"$s/"
+          if packagePattern.matches(normalized) then Right(normalized)
+          else Left(s"invalid package symbol: $value")
 
     extension (symbol: PackageSymbol) def value: String = symbol
 
