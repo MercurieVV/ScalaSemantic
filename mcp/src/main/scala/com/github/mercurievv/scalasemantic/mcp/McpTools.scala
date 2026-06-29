@@ -379,6 +379,47 @@ object McpTools:
       )
     },
     tool(
+      "method_call_hierarchy",
+      "The call hierarchy for a method — callers (incoming) or callees (outgoing) — as a hierarchical " +
+        "tree. `direction` is \"callers\" (who calls this method, transitively) or \"callees\" (what this " +
+        "method calls, transitively). `depth` controls how many levels to expand (default 3). Cycles " +
+        "are broken: a recursive call appears as a leaf with no further children. Use `call_path` to " +
+        "find a shortest path between two specific methods.",
+      List(
+        ("symbol", "string", "method symbol"),
+        (
+          "direction",
+          "string",
+          "\"callers\" (incoming — who calls this) or \"callees\" (outgoing — what this calls); default \"callees\""
+        ),
+        ("depth", "integer", "how many levels to expand (default 3)")
+      ),
+      List("symbol")
+    ) { a =>
+      val symbol = argMethodSymbol(a, "symbol")
+      val direction = argStr(a, "direction") match
+        case "callers" => "callers"
+        case _         => "callees"
+      val depth = argPositiveInt(a, "depth", 3)
+      val h = az.callHierarchy(symbol, depth, direction)
+
+      def nodeJson(node: CallHierarchyNode): ujson.Value =
+        jobj(
+          Some("symbol" -> ujson.Str(node.method.symbol)),
+          Some("name" -> ujson.Str(node.method.displayName)),
+          node.at.map(l => "at" -> ujson.Str(loc(l))),
+          opt(node.children.nonEmpty, "children" -> ujson.Arr.from(node.children.map(nodeJson)))
+        )
+
+      jobj(
+        Some("symbol" -> ujson.Str(h.symbol)),
+        Some("name" -> ujson.Str(h.displayName)),
+        Some("direction" -> ujson.Str(h.direction)),
+        Some("depth" -> ujson.Num(h.depth)),
+        Some("hierarchy" -> nodeJson(h.root))
+      )
+    },
+    tool(
       "structure",
       "Whole-project dependency metrics from the symbol graph — use to judge what matters and where " +
         "to start. Per in-project type: afferent coupling Ca (fan-in = how many depend on it), " +

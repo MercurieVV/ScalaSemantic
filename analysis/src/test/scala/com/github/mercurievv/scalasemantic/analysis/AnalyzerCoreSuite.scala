@@ -194,3 +194,94 @@ class AnalyzerCoreSuite extends munit.FunSuite:
     assertEquals(self.path.map(_.displayName), List("a"))
     val unreachable = az.callPath(method(s"${P}M#c()."), method(s"${P}M#a()."))
     assertEquals(unreachable.path, Nil)
+
+  // --- call hierarchy -------------------------------------------------------
+
+  private def positiveInt(v: Int) = PositiveInt.from(v, "depth").fold(fail(_), identity)
+
+  test("callHierarchy callees: expands outgoing edges depth-first up to depth limit"):
+    // a -> b -> c; c -> d; a -> d
+    val a = meth(s"${P}M#a().", "a")
+    val b = meth(s"${P}M#b().", "b")
+    val c = meth(s"${P}M#c().", "c")
+    val d = meth(s"${P}M#d().", "d")
+    val az = analyzer(a, b, c, d)(
+      occ(s"${P}M#a().", DEFINITION, 0),
+      occ(s"${P}M#b().", REFERENCE, 1),
+      occ(s"${P}M#d().", REFERENCE, 2),
+      occ(s"${P}M#b().", DEFINITION, 3),
+      occ(s"${P}M#c().", REFERENCE, 4),
+      occ(s"${P}M#c().", DEFINITION, 5),
+      occ(s"${P}M#d().", REFERENCE, 6),
+      occ(s"${P}M#d().", DEFINITION, 7)
+    )
+    val h = az.callHierarchy(method(s"${P}M#a()."), positiveInt(2), "callees")
+    assertEquals(h.direction, "callees")
+    assertEquals(h.depth, 2)
+    val rootChildren = h.root.children.map(_.method.displayName).sorted
+    assert(rootChildren.contains("b"), "a calls b")
+    assert(rootChildren.contains("d"), "a calls d")
+    val bNode = h.root.children.find(_.method.displayName == "b").get
+    assertEquals(bNode.children.map(_.method.displayName), List("c"), "b calls c at depth 2")
+
+  test("callHierarchy callers: expands incoming edges"):
+    // a -> b -> c
+    val a = meth(s"${P}M#a().", "a")
+    val b = meth(s"${P}M#b().", "b")
+    val c = meth(s"${P}M#c().", "c")
+    val az = analyzer(a, b, c)(
+      occ(s"${P}M#a().", DEFINITION, 0),
+      occ(s"${P}M#b().", REFERENCE, 1),
+      occ(s"${P}M#b().", DEFINITION, 2),
+      occ(s"${P}M#c().", REFERENCE, 3),
+      occ(s"${P}M#c().", DEFINITION, 4)
+    )
+    val h = az.callHierarchy(method(s"${P}M#c()."), positiveInt(3), "callers")
+    assertEquals(h.direction, "callers")
+    val rootChildren = h.root.children.map(_.method.displayName)
+    assertEquals(rootChildren, List("b"), "c is called by b")
+    val bCallers = h.root.children.head.children.map(_.method.displayName)
+    assertEquals(bCallers, List("a"), "b is called by a")
+
+  test("callHierarchy: depth=1 shows only direct callers/callees, not deeper"):
+    val a = meth(s"${P}M#a().", "a")
+    val b = meth(s"${P}M#b().", "b")
+    val c = meth(s"${P}M#c().", "c")
+    val az = analyzer(a, b, c)(
+      occ(s"${P}M#a().", DEFINITION, 0),
+      occ(s"${P}M#b().", REFERENCE, 1),
+      occ(s"${P}M#b().", DEFINITION, 2),
+      occ(s"${P}M#c().", REFERENCE, 3),
+      occ(s"${P}M#c().", DEFINITION, 4)
+    )
+    val h = az.callHierarchy(method(s"${P}M#a()."), positiveInt(1), "callees")
+    assertEquals(h.root.children.map(_.method.displayName), List("b"), "one level: b only")
+    assertEquals(h.root.children.head.children, Nil, "no deeper expansion at depth 1")
+
+  test("callHierarchy: recursive call appears as a leaf (cycle breaking)"):
+    // a -> b -> a  (recursive cycle)
+    val a = meth(s"${P}M#a().", "a")
+    val b = meth(s"${P}M#b().", "b")
+    val az = analyzer(a, b)(
+      occ(s"${P}M#a().", DEFINITION, 0),
+      occ(s"${P}M#b().", REFERENCE, 1),
+      occ(s"${P}M#b().", DEFINITION, 2),
+      occ(s"${P}M#a().", REFERENCE, 3)
+    )
+    val h = az.callHierarchy(method(s"${P}M#a()."), positiveInt(5), "callees")
+    val bNode = h.root.children.find(_.method.displayName == "b").get
+    // b calls a, but a is already visited — it appears as a leaf
+    assertEquals(
+      bNode.children.map(_.method.displayName),
+      List("a"),
+      "a appears as leaf child of b"
+    )
+    assertEquals(bNode.children.head.children, Nil, "recursive node has no further children")
+
+  test("callHierarchy: method with no callees/callers returns empty children"):
+    val a = meth(s"${P}M#a().", "a")
+    val az = analyzer(a)(occ(s"${P}M#a().", DEFINITION, 0))
+    val outgoing = az.callHierarchy(method(s"${P}M#a()."), positiveInt(3), "callees")
+    assertEquals(outgoing.root.children, Nil, "no outgoing calls")
+    val incoming = az.callHierarchy(method(s"${P}M#a()."), positiveInt(3), "callers")
+    assertEquals(incoming.root.children, Nil, "no incoming calls")

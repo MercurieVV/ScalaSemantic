@@ -274,6 +274,28 @@ case class CallGraphPath(
     edges: List[CallEdge]
 ) derives ReadWriter
 
+// --- call hierarchy --------------------------------------------------------
+
+/** One node in the call hierarchy tree: the method itself, optional call-site location, and its own
+  * callers/callees one level deeper.
+  */
+case class CallHierarchyNode(
+    method: SymbolRef,
+    at: Option[Location],
+    children: List[CallHierarchyNode]
+) derives ReadWriter
+
+/** The call hierarchy for a method in one direction (callers or callees), as a tree rooted at the
+  * queried symbol.
+  */
+case class CallHierarchy(
+    symbol: String,
+    displayName: String,
+    direction: String,
+    depth: Int,
+    root: CallHierarchyNode
+) derives ReadWriter
+
 // --- smart-code-duplications -----------------------------------------------
 
 case class DuplicateOccurrence(
