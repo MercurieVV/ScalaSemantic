@@ -5,10 +5,10 @@ import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
 import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import stainless.annotation.pure
 
 import java.net.URI
 import scala.meta.internal.semanticdb as s
-import stainless.annotation.pure
 
 /** The semantic query engine: turns a [[SemanticIndex]] into the result models that back the MCP
   * tools. Phase 3 covers find-usages, method-signature, and class-hierarchy.

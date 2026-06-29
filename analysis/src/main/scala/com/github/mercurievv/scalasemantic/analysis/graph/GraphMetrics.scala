@@ -1,6 +1,7 @@
 package com.github.mercurievv.scalasemantic.analysis.graph
 
-import stainless.annotation.{opaque, pure}
+import stainless.annotation.opaque
+import stainless.annotation.pure
 
 /** Pure graph algorithms over a directed graph `node -> out-neighbours`, restricted to a fixed node
   * set. Written functionally (immutable accumulators, no mutation) to satisfy the project's

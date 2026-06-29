@@ -3,12 +3,12 @@ package com.github.mercurievv.scalasemantic.analysis
 import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.model.Position as ModelPosition
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import stainless.annotation.pure
 
 import java.nio.file.Files
 import java.nio.file.Path
 import scala.meta.*
 import scala.util.Try
-import stainless.annotation.pure
 
 object DuplicationAnalyzer:
 
