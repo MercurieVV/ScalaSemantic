@@ -46,9 +46,9 @@ When an LLM/agent creates tasks, examples, fixtures, or test scenarios for this 
 
 ## Claude agentic task flow
 When using Claude/agentic workflows to organize project tasks:
-- Use `.claude/skills/task-planning/SKILL.md` before implementation to fetch open tasks, prioritize
-  them, identify dependencies, create per-task implementation plans, choose the preferred LLM/model
-  for every plan step, and write those notes back into task comments.
+- Use `.claude/skills/task-splitting-evaluation/SKILL.md` before implementation to evaluate open
+  tasks, split broad work into bounded subtasks, choose the preferred LLM/model for every executable
+  leaf, and write those notes back into task comments.
 - The flow is implemented by `.claude/agents/task-prioritizer.md` and
   `.claude/agents/task-plan-architect.md`.
 
