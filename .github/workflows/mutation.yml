@@ -1,0 +1,72 @@
+name: Mutation Testing
+
+on:
+  pull_request:
+    branches: ['**']
+    paths:
+      - 'analysis/**'
+    paths-ignore:
+      - 'reports/mutation/**'
+
+permissions:
+  contents: write
+
+env:
+  STRYKER4S_COMMIT: '2c0f5bd7'
+
+jobs:
+  stryker:
+    name: Stryker4s (analysis)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: sbt
+
+      - uses: sbt/setup-sbt@v1
+
+      # sbt-stryker4s 0.21.0 has an ABI incompatibility with sbt 2.0.0 final; we use a snapshot
+      # built from master at commit 2c0f5bd7. Cache the published local ivy artifacts; on miss,
+      # clone and publishLocal. See project/plugins.sbt for context.
+      - name: Restore stryker4s local ivy cache
+        id: stryker-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ivy2/local/io.stryker-mutator
+          key: stryker4s-${{ env.STRYKER4S_COMMIT }}
+
+      - name: Build and publishLocal stryker4s (cache miss only)
+        if: steps.stryker-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone https://github.com/stryker-mutator/stryker4s.git /tmp/stryker4s
+          cd /tmp/stryker4s
+          git checkout ${{ env.STRYKER4S_COMMIT }}
+          sbt sbtPlugin3/publishLocal
+
+      - name: Compile (generates SemanticDB used by tests)
+        run: sbt compile
+
+      - name: Run stryker4s on analysis module
+        run: sbt "analysis/stryker"
+        env:
+          STRYKER: 'true'
+
+      - name: Collect report
+        run: |
+          mkdir -p reports/mutation
+          cp analysis/target/stryker4s-report/report.json reports/mutation/report.json
+
+      - name: Commit mutation report
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add reports/mutation/report.json
+          git diff --staged --quiet || git commit -m "chore: update mutation report [skip ci]"
+          git push
