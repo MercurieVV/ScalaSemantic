@@ -234,8 +234,7 @@ class McpSuite extends munit.FunSuite:
         |""".stripMargin
     java.nio.file.Files.writeString(file, source)
 
-    val backend = PresentationCompilerBackend.fromCurrentJvm(workspace = Some(root))
-    try
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
       val pcTools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
       val resp = Mcp.handle(
         req(
@@ -259,7 +258,7 @@ class McpSuite extends munit.FunSuite:
       assertEquals(r("signature").str, "def compute(a: Int): Int")
       assertEquals(r("call").str, "val c = compute(a)")
       assertEquals(r("enclosingMethod").str, "run")
-    finally backend.close()
+    }
   }
 
   test("tools/call invokes the debug-logging hook with the tool name and args") {
@@ -438,8 +437,7 @@ class McpSuite extends munit.FunSuite:
         |""".stripMargin
     java.nio.file.Files.writeString(file, source)
 
-    val backend = PresentationCompilerBackend.fromCurrentJvm(workspace = Some(root))
-    try
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
       val pcTools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
       def pcCall(tool: String, args: ujson.Value): ujson.Value =
         val resp =
@@ -472,7 +470,7 @@ class McpSuite extends munit.FunSuite:
           ujson.Obj("symbol" -> area, "uri" -> "Widget.scala", "source" -> source)
         )
       assertEquals(sig("signature").str, "def area(w: Int): Int")
-    finally backend.close()
+    }
   }
 
   test("process maps a request stream to responses, skipping blanks and notifications") {
