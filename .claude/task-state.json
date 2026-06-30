@@ -1,0 +1,911 @@
+{
+  "meta": {
+    "flow": "task-splitting-evaluation → orchestrate",
+    "roots": [
+      71,
+      72,
+      73,
+      79,
+      80,
+      105,
+      106,
+      108,
+      111,
+      112
+    ],
+    "orphans": [],
+    "started_at": "2026-06-30T19:44:08.565730Z",
+    "last_update": "2026-06-30T21:59:31Z"
+  },
+  "tree": {
+    "158": {
+      "parent": 79,
+      "children": [],
+      "depth": 1
+    },
+    "157": {
+      "parent": 79,
+      "children": [],
+      "depth": 1
+    },
+    "156": {
+      "parent": 80,
+      "children": [],
+      "depth": 1
+    },
+    "155": {
+      "parent": 79,
+      "children": [],
+      "depth": 1
+    },
+    "154": {
+      "parent": 80,
+      "children": [],
+      "depth": 1
+    },
+    "153": {
+      "parent": 80,
+      "children": [],
+      "depth": 1
+    },
+    "152": {
+      "parent": 79,
+      "children": [],
+      "depth": 1
+    },
+    "151": {
+      "parent": 80,
+      "children": [],
+      "depth": 1
+    },
+    "150": {
+      "parent": 71,
+      "children": [],
+      "depth": 1
+    },
+    "149": {
+      "parent": 71,
+      "children": [],
+      "depth": 1
+    },
+    "148": {
+      "parent": 71,
+      "children": [],
+      "depth": 1
+    },
+    "147": {
+      "parent": 71,
+      "children": [],
+      "depth": 1
+    },
+    "146": {
+      "parent": 71,
+      "children": [],
+      "depth": 1
+    },
+    "145": {
+      "parent": 71,
+      "children": [],
+      "depth": 1
+    },
+    "144": {
+      "parent": 71,
+      "children": [],
+      "depth": 1
+    },
+    "143": {
+      "parent": 71,
+      "children": [],
+      "depth": 1
+    },
+    "142": {
+      "parent": 106,
+      "children": [],
+      "depth": 1
+    },
+    "141": {
+      "parent": 106,
+      "children": [],
+      "depth": 1
+    },
+    "140": {
+      "parent": 106,
+      "children": [],
+      "depth": 1
+    },
+    "139": {
+      "parent": 106,
+      "children": [],
+      "depth": 1
+    },
+    "138": {
+      "parent": 71,
+      "children": [],
+      "depth": 1
+    },
+    "137": {
+      "parent": 71,
+      "children": [],
+      "depth": 1
+    },
+    "136": {
+      "parent": 72,
+      "children": [],
+      "depth": 1
+    },
+    "135": {
+      "parent": 73,
+      "children": [],
+      "depth": 1
+    },
+    "134": {
+      "parent": 108,
+      "children": [],
+      "depth": 1
+    },
+    "133": {
+      "parent": 112,
+      "children": [],
+      "depth": 1
+    },
+    "132": {
+      "parent": 112,
+      "children": [],
+      "depth": 1
+    },
+    "131": {
+      "parent": 108,
+      "children": [],
+      "depth": 1
+    },
+    "130": {
+      "parent": 112,
+      "children": [],
+      "depth": 1
+    },
+    "129": {
+      "parent": 108,
+      "children": [],
+      "depth": 1
+    },
+    "128": {
+      "parent": 112,
+      "children": [],
+      "depth": 1
+    },
+    "112": {
+      "parent": null,
+      "children": [
+        128,
+        130,
+        132,
+        133
+      ],
+      "depth": 0
+    },
+    "111": {
+      "parent": null,
+      "children": [],
+      "depth": 0
+    },
+    "108": {
+      "parent": null,
+      "children": [
+        129,
+        131,
+        134
+      ],
+      "depth": 0
+    },
+    "106": {
+      "parent": null,
+      "children": [
+        139,
+        140,
+        141,
+        142
+      ],
+      "depth": 0
+    },
+    "105": {
+      "parent": null,
+      "children": [],
+      "depth": 0
+    },
+    "80": {
+      "parent": null,
+      "children": [
+        151,
+        153,
+        154,
+        156
+      ],
+      "depth": 0
+    },
+    "79": {
+      "parent": null,
+      "children": [
+        152,
+        155,
+        157,
+        158
+      ],
+      "depth": 0
+    },
+    "73": {
+      "parent": null,
+      "children": [
+        135
+      ],
+      "depth": 0
+    },
+    "72": {
+      "parent": null,
+      "children": [
+        136
+      ],
+      "depth": 0
+    },
+    "71": {
+      "parent": null,
+      "children": [
+        137,
+        138,
+        143,
+        144,
+        145,
+        146,
+        147,
+        148,
+        149,
+        150
+      ],
+      "depth": 0
+    }
+  },
+  "tasks": {
+    "158": {
+      "issue": 158,
+      "title": "Docs reverification: verify post-shrink structure coherence, fix links, update index.md TOC",
+      "parent": 79,
+      "children": [],
+      "executor": "codex / o4-mini",
+      "status": "pending",
+      "depends_on": [
+        157
+      ],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "157": {
+      "issue": 157,
+      "title": "Docs restructuring & shrinking: execute strategic shrink/merge across all /docs + README, preserve accuracy",
+      "parent": 79,
+      "children": [],
+      "executor": "agy / Gemini 3.5 Flash (High)",
+      "status": "pending",
+      "depends_on": [
+        155
+      ],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "156": {
+      "issue": 156,
+      "title": "Refactor compat fixtures: apply reuse strategy, add custom bundles, verify cross-version",
+      "parent": 80,
+      "children": [],
+      "executor": "claude / sonnet",
+      "status": "pending",
+      "depends_on": [
+        154
+      ],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "155": {
+      "issue": 155,
+      "title": "Docs content prioritization: importance-score every topic across using/understanding/contributing, define shrink plan",
+      "parent": 79,
+      "children": [],
+      "executor": "claude / sonnet",
+      "status": "completed",
+      "depends_on": [
+        152
+      ],
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/155#issuecomment-4848382159",
+      "error": null,
+      "attempts": 1
+    },
+    "154": {
+      "issue": 154,
+      "title": "Strategy: decide reuse vs custom compat fixtures and target layout",
+      "parent": 80,
+      "children": [],
+      "executor": "agy / Gemini 3.1 Pro (High)",
+      "status": "pending",
+      "depends_on": [
+        153
+      ],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "153": {
+      "issue": 153,
+      "title": "Compatibility/coverage audit of compat fixtures across Scala 2.13 and 3",
+      "parent": 80,
+      "children": [],
+      "executor": "claude / sonnet",
+      "status": "pending",
+      "depends_on": [
+        151
+      ],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "152": {
+      "issue": 152,
+      "title": "Docs audit & structure analysis: catalog all /docs + README + AGENTS.md, map duplication per use case",
+      "parent": 79,
+      "children": [],
+      "executor": "agy / Gemini 3.1 Pro (High)",
+      "status": "completed",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/152#issuecomment-4848192605",
+      "error": null,
+      "attempts": 1
+    },
+    "151": {
+      "issue": 151,
+      "title": "Research existing Scala/SemanticDB test-code corpora reusable as compat fixtures",
+      "parent": 80,
+      "children": [],
+      "executor": "agy / Gemini 3.1 Pro (High)",
+      "status": "pending",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "150": {
+      "issue": 150,
+      "title": "Token metrics: write findings report docs page with methodology, data, results table",
+      "parent": 71,
+      "children": [],
+      "executor": "claude / sonnet",
+      "status": "pending",
+      "depends_on": [
+        71
+      ],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "149": {
+      "issue": 149,
+      "title": "PB testing: migrate top-priority suites to property-based/golden tests",
+      "parent": 71,
+      "children": [],
+      "executor": "claude / sonnet",
+      "status": "pending",
+      "depends_on": [
+        71
+      ],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "148": {
+      "issue": 148,
+      "title": "Readability cleanup phase 4 (optional): document adopted patterns & guidelines",
+      "parent": 71,
+      "children": [],
+      "executor": "claude / sonnet",
+      "status": "pending",
+      "depends_on": [
+        71
+      ],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "147": {
+      "issue": 147,
+      "title": "PB testing: prioritized conversion roadmap & effort estimates",
+      "parent": 71,
+      "children": [],
+      "executor": "agy / Gemini 3.5 Flash (High)",
+      "status": "pending",
+      "depends_on": [
+        71
+      ],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "146": {
+      "issue": 146,
+      "title": "PB testing: lock framework (Hedgehog vs munit-scalacheck) + reusable Gen helpers & 2-3 demo properties",
+      "parent": 71,
+      "children": [],
+      "executor": "codex / o3",
+      "status": "pending",
+      "depends_on": [
+        71
+      ],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "145": {
+      "issue": 145,
+      "title": "PB testing: audit test suites & select conversion candidates",
+      "parent": 71,
+      "children": [],
+      "executor": "agy / Gemini 3.1 Pro (High)",
+      "status": "completed",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/pull/167",
+      "error": null,
+      "attempts": 1
+    },
+    "144": {
+      "issue": 144,
+      "title": "Token metrics: pick target project and run measurements (baseline + ScalaSemantic, multi-engine)",
+      "parent": 71,
+      "children": [],
+      "executor": "agy / Gemini 3.5 Flash (High)",
+      "status": "pending",
+      "depends_on": [
+        71
+      ],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "143": {
+      "issue": 143,
+      "title": "Readability cleanup phase 3: implement selected simplification patterns & verify tests",
+      "parent": 71,
+      "children": [],
+      "executor": "agy / Gemini 3.5 Flash (High)",
+      "status": "pending",
+      "depends_on": [
+        71
+      ],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "142": {
+      "issue": 142,
+      "title": "Adopt IOApp for mcp stdio JSON-RPC loop (conditional on PC effect-boundary decision)",
+      "parent": 106,
+      "children": [],
+      "executor": "claude / sonnet",
+      "status": "completed",
+      "depends_on": [
+        139
+      ],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": "deferred per #139 ADR (IOApp not needed)",
+      "attempts": 0
+    },
+    "141": {
+      "issue": 141,
+      "title": "Migrate PC consumers and tests to new lifecycle API (Mcp.scala + pc/analysis/mcp tests)",
+      "parent": 106,
+      "children": [],
+      "executor": "agy / Claude Sonnet 4.6 (Thinking)",
+      "status": "completed",
+      "depends_on": [
+        140
+      ],
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/141",
+      "error": null,
+      "attempts": 0
+    },
+    "140": {
+      "issue": 140,
+      "title": "Implement PresentationCompilerBackend lifecycle via chosen effect boundary (acquire/release + blocking calls)",
+      "parent": 106,
+      "children": [],
+      "executor": "claude / sonnet",
+      "status": "completed",
+      "depends_on": [
+        139
+      ],
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/140",
+      "error": null,
+      "attempts": 0
+    },
+    "139": {
+      "issue": 139,
+      "title": "Decide PC effect-boundary approach: cats-effect Resource vs AutoCloseable/Using + IOApp scope (ADR gate)",
+      "parent": 106,
+      "children": [],
+      "executor": "claude / sonnet",
+      "status": "completed",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/139",
+      "error": null,
+      "attempts": 0
+    },
+    "138": {
+      "issue": 138,
+      "title": "Token metrics: build measurement harness (Scala suite + driver script)",
+      "parent": 71,
+      "children": [],
+      "executor": "codex / o3",
+      "status": "pending",
+      "depends_on": [
+        71
+      ],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "137": {
+      "issue": 137,
+      "title": "Readability cleanup phase 2: prioritize catalog & select 2-3 patterns to implement",
+      "parent": 71,
+      "children": [],
+      "executor": "codex / o3",
+      "status": "pending",
+      "depends_on": [
+        71
+      ],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "136": {
+      "issue": 136,
+      "title": "Token metrics: design measurement methodology (token counting, baseline, tools)",
+      "parent": 72,
+      "children": [],
+      "executor": "agy / Gemini 3.1 Pro (High)",
+      "status": "completed",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 1
+    },
+    "135": {
+      "issue": 135,
+      "title": "Readability cleanup phase 1: scan & catalog construct-level simplification opportunities",
+      "parent": 73,
+      "children": [],
+      "executor": "claude / sonnet",
+      "status": "completed",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/135#issuecomment-4848015497",
+      "error": null,
+      "attempts": 1
+    },
+    "134": {
+      "issue": 134,
+      "title": "Migration effort estimate + decision: recommend/defer/reject sbt->mill",
+      "parent": 108,
+      "children": [],
+      "executor": "claude / sonnet",
+      "status": "halted",
+      "depends_on": [
+        131
+      ],
+      "blocked_by": [
+        108
+      ],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "133": {
+      "issue": 133,
+      "title": "Implement stryker4s across all modules + CI: thresholds, alert wiring, report artifacts",
+      "parent": 112,
+      "children": [],
+      "executor": "codex / o3",
+      "status": "halted",
+      "depends_on": [
+        130
+      ],
+      "blocked_by": [
+        112
+      ],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "132": {
+      "issue": 132,
+      "title": "Design stryker4s alert strategy: break threshold, fail-vs-notify, CI cadence, metrics exposure",
+      "parent": 112,
+      "children": [],
+      "executor": "agy / Gemini 3.1 Pro (High)",
+      "status": "halted",
+      "depends_on": [
+        128
+      ],
+      "blocked_by": [
+        112
+      ],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "131": {
+      "issue": 131,
+      "title": "Mill capability comparison: map sbt features to mill, find gaps and new wins",
+      "parent": 108,
+      "children": [],
+      "executor": "agy / Gemini 3.1 Pro (High)",
+      "status": "halted",
+      "depends_on": [
+        129
+      ],
+      "blocked_by": [
+        108
+      ],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "130": {
+      "issue": 130,
+      "title": "POC: add sbt-stryker4s to one module (analysis), measure score, runtime, SemanticDB safety",
+      "parent": 112,
+      "children": [],
+      "executor": "codex / o3",
+      "status": "halted",
+      "depends_on": [
+        128
+      ],
+      "blocked_by": [
+        112
+      ],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "129": {
+      "issue": 129,
+      "title": "Audit current sbt setup: plugins, custom tasks, CI, release pipeline",
+      "parent": 108,
+      "children": [],
+      "executor": "codex / o3",
+      "status": "halted",
+      "depends_on": [],
+      "blocked_by": [
+        108
+      ],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "128": {
+      "issue": 128,
+      "title": "Research stryker4s: sbt 2.0 setup, target/ vs worktree placement, threshold semantics",
+      "parent": 112,
+      "children": [],
+      "executor": "agy / Gemini 3.1 Pro (High)",
+      "status": "halted",
+      "depends_on": [],
+      "blocked_by": [
+        112
+      ],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "112": {
+      "issue": 112,
+      "title": "Stryker4s alerts",
+      "parent": null,
+      "children": [
+        128,
+        130,
+        132,
+        133
+      ],
+      "executor": "agy / Gemini 3.1 Pro (High)",
+      "status": "halted",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": "setup_error: symlink path wrong (.worktrees vs worktrees)",
+      "attempts": 1,
+      "worktree": ".worktrees/stryker4s-alerts",
+      "last_stdout_line": "(running)"
+    },
+    "111": {
+      "issue": 111,
+      "title": "feat: value_flow — data-flow graph for a val across upstream/downstream/horizontal call boundaries",
+      "parent": null,
+      "children": [],
+      "executor": "claude / sonnet",
+      "status": "completed",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/111",
+      "error": null,
+      "attempts": 1
+    },
+    "108": {
+      "issue": 108,
+      "title": "think is it worth to switch from sbt to mill",
+      "parent": null,
+      "children": [
+        129,
+        131,
+        134
+      ],
+      "executor": "codex / o3",
+      "status": "halted",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": "merge_conflict (tree2m): branch conflicts with master",
+      "attempts": 1,
+      "worktree": ".worktrees/sbt-to-mill",
+      "last_stdout_line": "(running)"
+    },
+    "106": {
+      "issue": 106,
+      "title": "Manage PresentationCompilerBackend lifecycle as Resource[IO] (effect boundary)",
+      "parent": null,
+      "children": [
+        139,
+        140,
+        141,
+        142
+      ],
+      "executor": "claude / sonnet",
+      "status": "completed",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/106",
+      "error": null,
+      "attempts": 1,
+      "worktree": ".worktrees/manage-presentationc",
+      "last_stdout_line": "(launching)"
+    },
+    "105": {
+      "issue": 105,
+      "title": "in sbt plugin, remove logging by default. also in README",
+      "parent": null,
+      "children": [],
+      "executor": "codex / o4-mini",
+      "status": "halted",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": "merge_conflict (tree2m): branch conflicts with master",
+      "attempts": 1,
+      "worktree": ".worktrees/remove-logging",
+      "last_stdout_line": "(running)"
+    },
+    "80": {
+      "issue": 80,
+      "title": "Replace test code examples to code bundles created specially for testing. SemanticDb should have test set of code and scala comiler.",
+      "parent": null,
+      "children": [
+        151,
+        153,
+        154,
+        156
+      ],
+      "executor": "agy / Gemini 3.1 Pro (High)",
+      "status": "pending",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "79": {
+      "issue": 79,
+      "title": "Make docs more structurized and compact",
+      "parent": null,
+      "children": [
+        152,
+        155,
+        157,
+        158
+      ],
+      "executor": "agy / Gemini 3.1 Pro (High)",
+      "status": "pending",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "73": {
+      "issue": 73,
+      "title": "Think about code optimization (from perspective of radability) and cleanup? maybe restructurizing, trying without failing tests",
+      "parent": null,
+      "children": [
+        135
+      ],
+      "executor": "claude / sonnet",
+      "status": "completed",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/73",
+      "error": null,
+      "attempts": 1,
+      "worktree": ".worktrees/think-about-code-opt",
+      "last_stdout_line": "(launching)"
+    },
+    "72": {
+      "issue": 72,
+      "title": "From tokens consumptions perspective. Think to write tests and records some metrics, comparing using of ScalaSemantics and not using it",
+      "parent": null,
+      "children": [
+        136
+      ],
+      "executor": "agy / Gemini 3.1 Pro (High)",
+      "status": "pending",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "71": {
+      "issue": 71,
+      "title": "think to replace usual tests with property-based (can use heedgehog) and some golden values",
+      "parent": null,
+      "children": [
+        137,
+        138,
+        143,
+        144,
+        145,
+        146,
+        147,
+        148,
+        149,
+        150
+      ],
+      "executor": "agy / Gemini 3.1 Pro (High)",
+      "status": "started",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 1,
+      "worktree": "worktrees/pb-testing"
+    }
+  }
+}
