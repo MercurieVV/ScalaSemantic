@@ -84,25 +84,29 @@ final class DependencyGraphs(index: SemanticIndex):
         }
         ._2
     }
-    val lifted = typeEdges.toList.flatMap { (caller, callee) =>
-      val from = index.owner(caller)
-      val to = index.owner(callee)
-      if from != to && nodes.contains(from) && nodes.contains(to) then List(from -> to) else Nil
-    }
-    lifted.groupMap(_._1)(_._2).view.mapValues(_.toSet).toMap
+    typeEdges.toList
+      .flatMap { (caller, callee) =>
+        val from = index.owner(caller)
+        val to = index.owner(callee)
+        Option.when(from != to && nodes.contains(from) && nodes.contains(to))(from -> to)
+      }
+      .groupMap(_._1)(_._2)
+      .view
+      .mapValues(_.toSet)
+      .toMap
 
   /** `implicit`: a type that declares a given/implicit → the in-project types that given pulls in
     * through its implicit parameters.
     */
   private def implicitGraph: Graph =
-    val edges = index.symbols.values.toList.flatMap { si =>
-      if !isImplicit(si) then Nil
-      else
-        val owner = if nodes.contains(si.symbol) then si.symbol else index.owner(si.symbol)
-        if !nodes.contains(owner) then Nil
-        else
-          implicitDependencyTypes(si).filter(t => t != owner && nodes.contains(t)).map(owner -> _)
-    }
+    val edges = for
+      si <- index.symbols.values.toList
+      if isImplicit(si)
+      owner = if nodes.contains(si.symbol) then si.symbol else index.owner(si.symbol)
+      if nodes.contains(owner)
+      t <- implicitDependencyTypes(si)
+      if t != owner && nodes.contains(t)
+    yield owner -> t
     edges.groupMap(_._1)(_._2).view.mapValues(_.toSet).toMap
 
   // --- semanticdb helpers (local, to keep this module self-contained) -------
@@ -121,15 +125,18 @@ final class DependencyGraphs(index: SemanticIndex):
     owner.isEmpty || owner.endsWith("/")
 
   private def parentsOf(symbol: String): List[String] =
-    index.info(symbol).map(_.signature).toList.collect { case c: s.ClassSignature => c }.flatMap {
-      _.parents.flatMap(typeHead)
+    index.info(symbol).toList.flatMap { si =>
+      si.signature match
+        case c: s.ClassSignature => c.parents.flatMap(typeHead)
+        case _                   => Nil
     }
 
   private def declarationSymbols(symbol: String): List[String] =
     index
       .info(symbol)
-      .map(_.signature)
-      .collect { case c: s.ClassSignature => scopeInfos(c.declarations).map(_.symbol).toList }
+      .flatMap(_.signature match
+        case c: s.ClassSignature => Some(scopeInfos(c.declarations).map(_.symbol).toList)
+        case _                   => None)
       .getOrElse(Nil)
 
   /** All in-project type symbols referenced by a member's signature (return/value type, parameter

@@ -109,17 +109,12 @@ object SemanticIndex:
         root,
         new SimpleFileVisitor[Path]:
           override def preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
-            val name = Option(dir.getFileName)
-            name match
-              case Some(n) =>
-                val nameStr = n.toString
-                if dir != root && nameStr != "." && nameStr != ".." && (nameStr.startsWith(
-                    "."
-                  ) || nameStr == "worktrees")
-                then FileVisitResult.SKIP_SUBTREE
-                else FileVisitResult.CONTINUE
-              case None =>
-                FileVisitResult.CONTINUE
+            val skip = Option(dir.getFileName).exists { n =>
+              val nameStr = n.toString
+              dir != root && nameStr != "." && nameStr != ".." &&
+              (nameStr.startsWith(".") || nameStr == "worktrees")
+            }
+            if skip then FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
 
           override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult =
             if file.getFileName.toString.endsWith(".semanticdb") && Files.isRegularFile(file) then
