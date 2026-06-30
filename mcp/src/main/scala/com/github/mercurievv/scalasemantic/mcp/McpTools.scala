@@ -776,7 +776,10 @@ object McpTools:
               )
             ),
             opt(r.stoppedAt.nonEmpty, "stoppedAt" -> ujson.Arr.from(r.stoppedAt.map(termJson))),
-            opt(r.truncatedAt.nonEmpty, "truncatedAt" -> ujson.Arr.from(r.truncatedAt.map(termJson)))
+            opt(
+              r.truncatedAt.nonEmpty,
+              "truncatedAt" -> ujson.Arr.from(r.truncatedAt.map(termJson))
+            )
           )
     },
     tool(
