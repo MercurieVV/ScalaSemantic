@@ -108,4 +108,7 @@ class AnalyzerValueFlowSuite extends munit.FunSuite:
 
     assertEquals(r.nodes.map(_.symbol).toSet, Set(aSym, bSym))
     assertEquals(r.edges.map(e => (e.from, e.to)).toSet, Set((aSym, bSym)))
-    assertEquals(r.truncatedAt.map(t => (t.symbol, t.classification)).toSet, Set((bSym, "depth_limit")))
+    assertEquals(
+      r.truncatedAt.map(t => (t.symbol, t.classification)).toSet,
+      Set((bSym, "depth_limit"))
+    )

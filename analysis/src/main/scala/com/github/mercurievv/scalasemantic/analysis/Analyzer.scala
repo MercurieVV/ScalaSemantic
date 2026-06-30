@@ -670,9 +670,9 @@ final class Analyzer(
   /** Trace how the value held by a val/binding/parameter propagates through the codebase: a BFS
     * from `symbol` over its references, classifying each as a flow relation and following it across
     * method boundaries — into a renamed parameter when the value is passed as an argument, into a
-    * fresh local when it is re-bound, etc. A node with no outgoing flow is a terminal, classified by
-    * how the value left it (`function_result`, `method_receiver`, `external_boundary`, `discarded`);
-    * a flow into a binding of a different head type is recorded but not expanded when
+    * fresh local when it is re-bound, etc. A node with no outgoing flow is a terminal, classified
+    * by how the value left it (`function_result`, `method_receiver`, `external_boundary`,
+    * `discarded`); a flow into a binding of a different head type is recorded but not expanded when
     * `stopOnTypeWidening` (terminal `type_widened`); nodes reached at `maxDepth` are reported in
     * `truncatedAt` (`depth_limit`).
     *
@@ -761,7 +761,7 @@ final class Analyzer(
       def maxByStartCol(occs: Seq[s.SymbolOccurrence]): Option[s.SymbolOccurrence] =
         occs.foldLeft(Option.empty[s.SymbolOccurrence]) { (acc, x) =>
           acc match
-            case None => Some(x)
+            case None      => Some(x)
             case Some(max) => if startCol(x) > startCol(max) then Some(x) else Some(max)
         }
 
@@ -778,14 +778,16 @@ final class Analyzer(
           val before = onLine.filter(o => startCol(o) < col)
           val methodBefore = before.filter(o => o.role == REFERENCE && index.isMethod(o.symbol))
           val localDefBefore =
-            before.filter(o => o.role == DEFINITION && index.isLocal(o.symbol) && isValueRef(o.symbol))
+            before.filter(o =>
+              o.role == DEFINITION && index.isLocal(o.symbol) && isValueRef(o.symbol)
+            )
           val maxLocalDef = maxByStartCol(localDefBefore)
           val maxMethodBefore = maxByStartCol(methodBefore)
           maxMethodBefore match
             case None =>
               maxLocalDef match
                 case Some(ld) => Flow("assigned_to", Some(ld.symbol), at)
-                case None =>
+                case None     =>
                   if isTailReturn(doc, occ) then Flow("returned_from", None, at)
                   else Flow("discarded", None, at)
             case Some(callee) =>
@@ -797,7 +799,7 @@ final class Analyzer(
               val allParams = valueParamSymbols(callee.symbol)
               allParams.lift(argIndex) match
                 case Some(p) =>
-                  val pName  = index.displayName(p)
+                  val pName = index.displayName(p)
                   val coPars = allParams.filterNot(_ == p).map(index.displayName)
                   Flow("passed_as_arg", Some(p), at, Some(pName), coPars)
                 case None => Flow("passed_as_arg", None, at)
@@ -830,9 +832,14 @@ final class Analyzer(
         edges: List[ValueFlowEdge],
         stopped: List[ValueFlowTerminal],
         truncated: List[ValueFlowTerminal]
-    ): (List[ValueFlowNode], List[ValueFlowEdge], List[ValueFlowTerminal], List[ValueFlowTerminal]) =
+    ): (
+        List[ValueFlowNode],
+        List[ValueFlowEdge],
+        List[ValueFlowTerminal],
+        List[ValueFlowTerminal]
+    ) =
       queue match
-        case Nil                    => (nodes.reverse, edges.reverse, stopped.reverse, truncated.reverse)
+        case Nil => (nodes.reverse, edges.reverse, stopped.reverse, truncated.reverse)
         case (sym, _) :: rest if visited(sym) =>
           loop(rest, visited, nodes, edges, stopped, truncated)
         case (sym, depth) :: rest =>
@@ -854,7 +861,9 @@ final class Analyzer(
             val realEdges =
               edgeFlows
                 .flatMap(f =>
-                  f.to.map(to => ValueFlowEdge(sym, to, f.relation, f.at, f.paramName, f.coParameters))
+                  f.to.map(to =>
+                    ValueFlowEdge(sym, to, f.relation, f.at, f.paramName, f.coParameters)
+                  )
                 )
                 .distinct
             val targets = edgeFlows.flatMap(_.to).distinct
