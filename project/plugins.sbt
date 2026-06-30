@@ -26,6 +26,11 @@ if (sys.props.get("stryker").contains("true") || sys.env.contains("STRYKER"))
   Seq(addSbtPlugin("io.stryker-mutator" % "sbt-stryker4s" % "0.0.0+1-2c0f5bd7-SNAPSHOT"))
 else Seq.empty[Setting[?]]
 
+// SLF4J NOP binding to silence the StaticLoggerBinder warning during sbt initialization.
+// The warning occurs because io.get-coursier:interface pulls in org.slf4j:slf4j-api, and without
+// a binding implementation, SLF4J defaults to NOP and prints a warning to stderr.
+libraryDependencies += "org.slf4j" % "slf4j-nop" % "1.7.36"
+
 // Stainless formal verification (issue #68).
 // `sbt-stainless` from https://github.com/epfl-lara/stainless/releases/tag/v0.9.9.3 ships only
 // an sbt-1.x plugin JAR (compiled against Scala 2.12 / sbt 1.x ABI); loading it under sbt 2.0
