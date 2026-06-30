@@ -1,14 +1,39 @@
 # Design decisions
 
-## Extensibility: adding tools from an external jar (research note — not yet built)
+## Architecture
 
-Today the tool list is hard-coded in `McpTools.all(az)`. A future design to let a separate jar
-contribute tools without forking:
+Three layers, strict dependency direction:
 
-- Define a small public SPI, e.g. `trait ToolProvider { def tools(az: Analyzer): List[Tool] }`.
-- Discover providers at startup with `java.util.ServiceLoader[ToolProvider]` over the classpath, and/or
-  a child classloader scanning a plugins dir (e.g. `~/.config/scalasemantic/plugins/*.jar`).
-- `Mcp.serve` concatenates the built-in tools with the discovered ones.
+```
+mcp       — stdio JSON-RPC server, tool registry, entry point
+  analysis  — Analyzer, query methods, upickle result models
+    core    — SemanticIndex: loads and indexes *.semanticdb files
+```
 
-The cost is turning `Tool`, `Analyzer`, and the `model` types into a *stable public API* (they are
-internal today). That is the real commitment, so this stays a research note until there is demand.
+`core` has no JSON or MCP dependencies. `analysis` adds upickle models. `mcp` is the only module that speaks the protocol.
+
+## Key choices
+
+**SemanticDB as the data source.** The server reads compiler-emitted `*.semanticdb` files. It does not parse source ASTs or invoke the compiler at query time. This makes queries fast (indexed once at startup) and exact (compiler-resolved, not text-matched). The tradeoff: answers are only as fresh as the last `compile`.
+
+**Presentation compiler as a second backend.** Position-local tools (`type_at_position`, `annotated_source`) can use the live presentation compiler when the caller provides the current source text. This overlays fresh in-memory SemanticDB for one buffer on top of the compiled project index. The build tool remains responsible for full compiles; the presentation compiler only serves per-file, per-request queries.
+
+**Lean-by-default responses.** Tool results omit empty fields, compact locations to `uri:line:col`, and render signatures as one line. Callers opt into richer output with `"detailed": true`, `"include": [...]`, or `"annotationsOnly": true`. This keeps context cost low for the common case.
+
+**stdio process model.** The MCP client spawns the server as a child process and owns the lifecycle. Stdout is JSON-RPC only — no log lines, no sbt build output. Logging, when enabled, goes to a file. This is intentional: one stray line on stdout corrupts the protocol stream.
+
+**No Scala MCP SDK.** JSON-RPC is hand-rolled with upickle. The protocol surface is small enough that a dependency on a hypothetical MCP Scala library would add more risk than value.
+
+**Symbol grammar is SemanticDB's.** Tool parameters use SemanticDB symbol strings (`#` for types, `.` for terms, `().` for methods) rather than dotted class names. This avoids ambiguity between overloads, avoids re-doing name resolution, and keeps the tools composable: `find_symbol` resolves a name to a symbol; other tools take that symbol directly.
+
+**Input validation at the MCP boundary.** The `InputTypes` module validates all raw JSON strings entering the domain (`SemanticDbSymbol`, `DocumentUri`, `ScalaIdentifier`, etc.) using smart constructors returning `Either[String, T]`. Internal layers (index, analysis) operate on already-validated types, so no re-validation is needed inside query logic.
+
+## Future: external tool plugins
+
+Today the tool list is hard-coded in `McpTools.all(az)`. A future design to let a separate jar contribute tools without forking:
+
+- Define a public SPI: `trait ToolProvider { def tools(az: Analyzer): List[Tool] }`.
+- Discover providers at startup with `java.util.ServiceLoader[ToolProvider]`, and/or scan a plugins directory (`~/.config/scalasemantic/plugins/*.jar`).
+- `Mcp.serve` concatenates built-in tools with discovered ones.
+
+The cost is stabilizing `Tool`, `Analyzer`, and the model types as a public API (they are internal today). This stays a research note until there is concrete demand.

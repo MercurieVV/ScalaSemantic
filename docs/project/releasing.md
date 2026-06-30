@@ -1,100 +1,60 @@
 # Releasing
 
-CI ([`.github/workflows/ci.yml`](https://github.com/MercurieVV/ScalaSemantic/blob/master/.github/workflows/ci.yml))
-builds and tests every push/PR, and
-**publishes to Sonatype Central on a `vX.Y.Z` tag** via `sbt ci-release` (sbt-dynver derives the
-version from the tag; sbt-ci-release signs and uploads). Artifacts publish under
-`io.github.mercurievv`.
+CI builds and tests every push/PR, and **publishes to Sonatype Central on a `vX.Y.Z` tag** via `sbt ci-release`. Artifacts publish under `io.github.mercurievv`. Published modules: `core`, `analysis`, `mcp`, `sbt-plugin` (the `root` aggregate skips publish).
 
-All helper scripts read project-specific values from
-[`scripts/config.sh`](https://github.com/MercurieVV/ScalaSemantic/blob/master/scripts/config.sh)
-(repo, first version, Central host, artifact metadata URL, the secret list) — override any with an
-env var of the same name, so the scripts are reusable across projects.
+Scripts read defaults from [`scripts/config.sh`](https://github.com/MercurieVV/ScalaSemantic/blob/master/scripts/config.sh); override any value with an env var of the same name.
 
 ## One-time repo setup
 
 ```sh
-# PGP_SECRET = the RAW armored key; the script base64-encodes it (PGP_SECRET_BASE64_ENCODE=true in
-# config.sh) because ci-release imports via `base64 --decode | gpg --import`.
+# Set GitHub Actions secrets (credentials from env vars or 1Password):
 PGP_SECRET="$(gpg --armor --export-secret-keys <KEYID>)" PGP_PASSPHRASE=... \
 SONATYPE_USERNAME=... SONATYPE_PASSWORD=... \
-  scripts/setup-gh-repo.sh                 # sets the repo secrets + enables the dependency graph
-# or pull the values from 1Password (one item, or split GPG / Sonatype items):
+  scripts/setup-gh-repo.sh
+
+# 1Password variant:
 scripts/setup-gh-repo.sh --op-item op://Vault/ScalaSemantic-release
-scripts/setup-gh-repo.sh --op-gpg-item op://Personal/GPG --op-sonatype-item op://Personal/Sonatype
-# (item refs can also be preset in config.sh: OP_ITEM / OP_GPG_ITEM / OP_SONATYPE_ITEM)
-scripts/install-git-hooks.sh               # optional: run `sbt prePush` on every push
+
+# Optional: install pre-push hook to run sbt prePush locally:
+scripts/install-git-hooks.sh
 ```
 
-If you supply a value that is *already* base64, set `PGP_SECRET_BASE64_ENCODE=false`.
+`PGP_SECRET` is the raw armored key; `config.sh` has `PGP_SECRET_BASE64_ENCODE=true` so the script base64-encodes it before storing. If you supply an already-base64 value, set `PGP_SECRET_BASE64_ENCODE=false`.
 
-## Cut a release
-
-Development is PR-based (branch protection on `master`, squash-merge). A release is just a tag on the
-latest `origin/master` commit; the bump script tags that remote commit directly and pushes the tag
-(unconditionally — pushing is the whole point):
-
-```sh
-scripts/bump-version.sh minor            # or bump-fix/bump-minor/bump-major — tags vX.Y.Z and pushes
-scripts/check-push-workflow.sh           # wait for CI, report the latest published version
-scripts/retry-last-tag.sh --push         # move the tag to HEAD to retry a release that failed early
-```
-
-Docs do not pin a concrete version, so there is nothing to bump per release:
-
-- `docs/getting-started/integration.md` (an mdoc page) uses the `@VERSION@` site variable, filled at
-  site-build time
-  with the highest `v*` git tag (computed in `build.sbt` as `latestReleaseVersion`, passed to
-  `DocsMain` via `-Dscalasemantic.docs.version`). Always current on the rendered site; the raw source
-  shows the literal `@VERSION@`.
-- `README.md` (rendered raw by GitHub — no build step, so no `@VERSION@`) shows an `x.y.z` placeholder
-  plus the Maven Central badge / latest-release link for the real number.
-
-`scripts/update-doc-versions.sh` is a retired no-op kept only so the existing post-release CI step
-keeps succeeding; remove that step from `ci.yml` whenever the workflow is next touched.
-
-## Release notes
-
-Notes are **generated, not written.**
-[`scripts/changelog.sh`](https://github.com/MercurieVV/ScalaSemantic/blob/master/scripts/changelog.sh)
-reads the
-commit subjects in a range and keeps only user-facing Conventional-Commit types — `feat`, `fix`,
-`perf`, and breaking changes (`type!:`) — grouping them under headings. Everything else (`docs`,
-`refactor`, `test`, `chore`, `ci`, `build`, `style`, and non-Conventional subjects) is **omitted**,
-so a release shows just its highlights and an all-maintenance release reads "no user-facing changes".
-Because squash-merge uses the PR title as the commit subject, **note quality == PR-title quality**.
-
-The same renderer feeds two surfaces:
-
-- **GitHub Release body** — the `release` CI job runs `changelog.sh <prevTag>..<tag>` and passes it
-  as the release body (no GitHub auto-notes, so the label-less filtering is exact).
-- **Docs site** ([Release notes](release-notes.md)) —
-  [`scripts/gen-release-notes.sh`](https://github.com/MercurieVV/ScalaSemantic/blob/master/scripts/gen-release-notes.sh)
-  loops every tag through `changelog.sh` to (re)build `docs/project/release-notes.md`. It is gitignored and
-  regenerated by the docs-site CI job before the Docusaurus build, so a protected `master` needs no
-  notes commit. Preview locally with `scripts/gen-release-notes.sh` before `sbt docs/run`.
-
-No LLM is involved — the notes are deterministic from PR titles. (If you want a prose headline for a
-big release, edit that one GitHub Release by hand; the site mirror will still show the structured list.)
+Publish the matching PGP **public key** to a keyserver (e.g. `keys.openpgp.org`) so Central can verify signatures.
 
 ## Required GitHub Actions secrets
 
-Settings → Secrets and variables → Actions:
-
-| Secret | What |
-|--------|------|
+| Secret | Value |
+|--------|-------|
 | `SONATYPE_USERNAME` / `SONATYPE_PASSWORD` | Central Portal user token (central.sonatype.com → Account → Generate User Token) |
-| `PGP_SECRET` | base64 of your armored secret key: `gpg --armor --export-secret-keys <KEYID> \| base64` |
+| `PGP_SECRET` | `gpg --armor --export-secret-keys <KEYID> \| base64` |
 | `PGP_PASSPHRASE` | passphrase for that key |
 
-Publish the matching **public** key to a keyserver (e.g. `keys.openpgp.org`) so Central can verify
-signatures. The namespace `io.github.mercurievv` must be verified once under your account.
+## Cut a release
+
+Development is PR-based (branch protection on `master`, squash-merge). A release is a tag on the latest `origin/master` commit:
+
+```sh
+scripts/bump-version.sh minor       # tags vX.Y.Z on origin/master and pushes unconditionally
+scripts/check-push-workflow.sh      # wait for CI; reports the latest published version
+scripts/retry-last-tag.sh --push    # move the tag to HEAD to retry a failed release
+```
+
+## Version in docs
+
+- `docs/getting-started/integration.md` uses `@VERSION@`, filled at site-build time from the highest `v*` git tag.
+- `README.md` shows an `x.y.z` placeholder plus the Maven Central badge for the real number.
+- `scripts/update-doc-versions.sh` is a retired no-op kept to avoid breaking the post-release CI step.
+
+## Release notes
+
+Notes are **generated from PR titles**, not hand-written. [`scripts/changelog.sh`](https://github.com/MercurieVV/ScalaSemantic/blob/master/scripts/changelog.sh) keeps only user-facing Conventional-Commit types (`feat`, `fix`, `perf`, breaking `type!:`) and omits `docs`/`refactor`/`test`/`chore`/`ci`/`build`/`style`. An all-maintenance release reads "no user-facing changes".
+
+The same renderer feeds:
+- **GitHub Release body** — CI runs `changelog.sh <prevTag>..<tag>` as the release body.
+- **Docs site** — [`scripts/gen-release-notes.sh`](https://github.com/MercurieVV/ScalaSemantic/blob/master/scripts/gen-release-notes.sh) rebuilds `docs/project/release-notes.md` (gitignored; regenerated before each Docusaurus build).
 
 ## Dry run
 
-Trigger the workflow manually (Actions → CI → *Run workflow*, i.e. `workflow_dispatch`) to build and
-publish a `-SNAPSHOT` — this exercises the secrets, signing, and upload without cutting a release.
-
-## What publishes
-
-`core`, `analysis`, `mcp`, and `sbt-plugin`. The `root` aggregate sets `publish / skip := true`.
+Actions → CI → Run workflow (`workflow_dispatch`) builds and publishes a `-SNAPSHOT` to exercise secrets, signing, and upload without cutting a release.

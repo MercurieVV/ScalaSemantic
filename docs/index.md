@@ -1,51 +1,32 @@
-# ScalaSemantic
+# ScalaSemantic — Documentation
 
-Deep semantic analysis of Scala projects over [MCP](https://modelcontextprotocol.io). It reads
-compiler-emitted **SemanticDB**, so answers reflect what the compiler resolved — not text matching.
+ScalaSemantic gives AI coding agents compiler-resolved Scala facts over MCP.
+It reads compiler-emitted **SemanticDB**, so answers reflect what the compiler resolved — not text matching.
 
-ScalaSemantic is for AI coding agents working on Scala. Instead of asking the agent to grep source
-text and guess which matches are real, it gives the agent compiler-resolved queries for symbols,
-types, usages, inheritance, implicits, members, and call paths.
+## Get started
 
-## Start here
+- [Quickstart](getting-started/quickstart.md) — sbt setup in 5 minutes
+- [Integration](getting-started/integration.md) — sbt plugin, launcher, plain jar, logging
+- [FAQ](getting-started/faq.md) — compile freshness, Metals/LSP, install choices
 
-- **Install it fast:** [Quickstart](getting-started/quickstart.md) is the shortest sbt path.
-- **Wire a custom setup:** [Integration](getting-started/integration.md) covers the sbt plugin,
-  auto-download launcher, plain `java -jar`, logging, and manual stdio checks.
-- **See the tool surface:** [Tool reference](reference/tools.md) lists every MCP tool and the symbol
-  format they use.
-- **Try the tools:** [Examples](usage/examples.md) shows representative MCP calls and compact responses.
-- **Decide when to use it:** [ScalaSemantic vs grep](explanation/scala-semantic-vs-grep.md) explains where semantic queries
-  win, where text search still wins, and the measured token/context cost.
-- **Answer common setup questions:** [FAQ](getting-started/faq.md) covers SemanticDB, compile freshness, Metals/LSP,
-  and install-option choice.
+## Reference
 
-## Documentation map
+- [Tool reference](reference/tools.md) — all MCP tools and SemanticDB symbol grammar
+- [Examples](usage/examples.md) — representative MCP calls and responses
 
-### Get started
+## Understanding the trade-offs
 
-- [Quickstart](getting-started/quickstart.md) — shortest sbt setup path (5 minutes).
-- [Integration](getting-started/integration.md) — sbt plugin, launcher script, plain jar, and logging.
-- [FAQ](getting-started/faq.md) — SemanticDB, compile freshness, Metals/LSP, and install choices.
+- [ScalaSemantic vs grep](explanation/scala-semantic-vs-grep.md) — where each wins; measured token savings
+- [The motivation](articles/it-hurts-to-watch-ai-grep-my-scala.md) — why SemanticDB matters
 
-### Reference
+## Project & Development
 
-- [Tool reference](reference/tools.md) — MCP tools, SemanticDB symbol grammar, request shape.
-- [Examples](usage/examples.md) — representative MCP calls and responses.
+- [Development](project/development.md) — repository layout, build, test, cross-version
+- [Design decisions](project/design.md) — implementation approach and extension points
+- [Releasing](project/releasing.md) — Sonatype Central release process
 
-### Understand the trade-offs
+## Research & Backlog
 
-- [ScalaSemantic vs grep](explanation/scala-semantic-vs-grep.md) — exact symbols vs text search, token savings, Metals scope.
-- [The motivation](articles/it-hurts-to-watch-ai-grep-my-scala.md) — why SemanticDB beats grep for code understanding.
-
-### Project & Development
-
-- [Development](project/development.md) — repository layout, build, test, cross-version compatibility.
-- [Design decisions](project/design.md) — implementation approach and extension points.
-- [Releasing](project/releasing.md) — Sonatype Central release process.
-
-### Research & Backlog
-
-- [Claude interaction study](research/claude-interaction-study.md) — measured tool usage to guide future work.
-- [LLM steering](research/llm-steering-investigation.md) — how to encourage agents to use semantic tools.
-- [Plan & tracker](research/plan.md) — roadmap, implemented decisions, and known limitations.
+- [Claude interaction study](research/claude-interaction-study.md) — measured tool usage, tool recommendations
+- [LLM steering](research/llm-steering-investigation.md) — steering agents toward semantic tools
+- [Plan & tracker](research/plan.md) — roadmap, decisions, known limitations
