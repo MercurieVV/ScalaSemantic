@@ -326,6 +326,62 @@ case class CallHierarchy(
     root: CallHierarchyNode
 ) derives ReadWriter
 
+// --- value flow -------------------------------------------------------------
+
+/** One node in a value-flow graph: a position where the traced value lives. `symbol` is the
+  * SemanticDB symbol string for the binding/parameter/local the value occupies, `displayName` its
+  * human name, `tpe` its rendered type, `location` its definition site (when known), `depth` how
+  * many BFS hops it sits from the root, `enclosingMethod` the display name of the method that owns
+  * this binding (None for top-level or unknown), and `kind` the SemanticDB symbol kind (LOCAL,
+  * PARAMETER, FIELD, METHOD, …).
+  */
+case class ValueFlowNode(
+    symbol: String,
+    displayName: String,
+    tpe: String,
+    location: Option[Location],
+    depth: Int,
+    enclosingMethod: Option[String],
+    kind: String
+) derives ReadWriter
+
+/** A directed flow edge: the value held by `from` reaches `to` via `relation` (`assigned_to`,
+  * `passed_as_arg`, `method_receiver`, `returned_from`, `field_access`, `destructured`), observed
+  * at the source position `at`. For `passed_as_arg`, `paramName` names the receiving parameter and
+  * `coParameters` lists the other parameters at the same call site.
+  */
+case class ValueFlowEdge(
+    from: String,
+    to: String,
+    relation: String,
+    at: Location,
+    paramName: Option[String],
+    coParameters: List[String]
+) derives ReadWriter
+
+/** A leaf in the flow: `symbol` stops propagating with the given `classification`
+  * (`function_result`, `method_receiver`, `type_widened`, `discarded`, `external_boundary`,
+  * `depth_limit`), `at` its definition site when known. Used for both `stoppedAt` (a natural
+  * terminal) and `truncatedAt` (cut off by the depth limit).
+  */
+case class ValueFlowTerminal(
+    symbol: String,
+    classification: String,
+    at: Option[Location]
+) derives ReadWriter
+
+/** The result of tracing a value: the `root` binding, every `node` the value reaches, the `edges`
+  * that carried it, the `stoppedAt` terminals (where it naturally stops), and the `truncatedAt`
+  * nodes cut off by the `maxDepth` limit.
+  */
+case class ValueFlowResult(
+    root: ValueFlowNode,
+    nodes: List[ValueFlowNode],
+    edges: List[ValueFlowEdge],
+    stoppedAt: List[ValueFlowTerminal],
+    truncatedAt: List[ValueFlowTerminal]
+) derives ReadWriter
+
 // --- smart-code-duplications -----------------------------------------------
 
 case class DuplicateOccurrence(
