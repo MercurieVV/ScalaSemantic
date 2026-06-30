@@ -4,10 +4,12 @@
 # Then wait for CI and merge the PR.
 #
 # Usage:
-#   ./tree2m [--remote origin] [--base BRANCH] [--title TITLE] [--body BODY] [--draft] <branch> <commit-message>
+#   ./tree2m [--remote origin] [--base BRANCH] [--title TITLE] [--body BODY] [--draft] [--auto] <branch> <commit-message>
 #
 # Options must appear before <branch>. The PR title defaults to the commit message. If the branch
 # or PR already exists, tree2m reuses it instead of creating a duplicate.
+# --auto: use GitHub merge queue / auto-merge instead of immediate merge. Requires merge queue
+#         or auto-merge to be enabled in the repo's branch protection settings.
 
 set -euo pipefail
 
@@ -20,6 +22,7 @@ base=""
 title=""
 body=""
 draft=false
+auto=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -45,6 +48,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --draft)
       draft=true
+      shift
+      ;;
+    --auto)
+      auto=true
       shift
       ;;
     -h|--help)
@@ -89,16 +96,16 @@ current_branch="$(rtk git branch --show-current)"
 if [[ "$current_branch" == "$branch" ]]; then
   :
 elif rtk git show-ref --verify --quiet "refs/heads/${branch}"; then
-  rtk git switch "$branch"
+  rtk git switch --quiet "$branch"
 elif rtk git show-ref --verify --quiet "refs/remotes/${remote}/${branch}"; then
-  rtk git switch --track -c "$branch" "${remote}/${branch}"
+  rtk git switch --quiet --track -c "$branch" "${remote}/${branch}"
 else
-  rtk git switch -c "$branch"
+  rtk git switch --quiet -c "$branch"
 fi
 
 rtk git add -A
-rtk git commit -m "$message" || echo "nothing new to commit; resuming with existing branch state"
-rtk git push -u "$remote" "$branch"
+rtk git commit --quiet -m "$message" 2>/dev/null || true  # nothing-to-commit is fine
+rtk git push --quiet -u "$remote" "$branch"
 
 existing_pr_url="$(rtk gh pr view "$branch" --json url --jq '.url' 2>/dev/null || true)"
 if [[ -n "$existing_pr_url" ]]; then
@@ -108,12 +115,22 @@ else
   if [[ "$draft" == "true" ]]; then
     pr_args+=(--draft)
   fi
-  rtk gh "${pr_args[@]}"
+  rtk gh "${pr_args[@]}" | grep -E '^https://' || true  # only PR URL
 fi
 
 pr_ref="$branch"
 if [[ "$draft" == "true" ]]; then
-  rtk gh pr ready "$pr_ref"
+  rtk gh pr ready "$pr_ref" >/dev/null
 fi
-rtk scripts/check-push-workflow.sh --branch "$branch"
-rtk gh pr merge "$pr_ref" --squash --delete-branch
+if [[ "$auto" == "true" ]]; then
+  rtk gh pr merge "$pr_ref" --auto --squash --delete-branch >/dev/null
+  while true; do
+    state="$(rtk gh pr view "$pr_ref" --json state --jq '.state' 2>/dev/null || echo "MERGED")"
+    [[ "$state" == "MERGED" ]] && break
+    [[ "$state" == "CLOSED" ]] && { echo "PR closed without merging" >&2; exit 1; }
+    sleep 30
+  done
+else
+  rtk scripts/check-push-workflow.sh --branch "$branch"
+  rtk gh pr merge "$pr_ref" --squash --delete-branch >/dev/null
+fi

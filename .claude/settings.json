@@ -1,4 +1,48 @@
 {
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "MultiEdit",
+      "Glob",
+      "Grep",
+      "Bash(git *)",
+      "Bash(sbt *)",
+      "Bash(gh *)",
+      "Bash(./tree2m *)",
+      "Bash(scripts/*)",
+      "Bash(./scripts/*)",
+      "Bash(mkdir *)",
+      "Bash(rm *)",
+      "Bash(mv *)",
+      "Bash(cp *)",
+      "Bash(chmod *)",
+      "Bash(ls *)",
+      "Bash(pwd)",
+      "Bash(cd *)",
+      "Bash(cat *)",
+      "Bash(echo *)",
+      "Bash(which *)",
+      "Bash(mktemp*)",
+      "mcp__scala-semantic__find_symbol",
+      "mcp__scala-semantic__find_usages",
+      "mcp__scala-semantic__class_hierarchy",
+      "mcp__scala-semantic__members",
+      "mcp__scala-semantic__method_signature",
+      "mcp__scala-semantic__document_outline",
+      "mcp__scala-semantic__annotated_source",
+      "mcp__scala-semantic__call_path",
+      "mcp__scala-semantic__resolve_implicits",
+      "mcp__scala-semantic__trace_implicit_chain",
+      "mcp__scala-semantic__type_at_position",
+      "mcp__scala-semantic__find_overloads",
+      "mcp__scala-semantic__structure",
+      "mcp__scala-semantic__rename_plan",
+      "mcp__scala-semantic__move_plan",
+      "mcp__scala-semantic__extract_method_plan"
+    ]
+  },
   "hooks": {
     "PostToolUse": [
       {

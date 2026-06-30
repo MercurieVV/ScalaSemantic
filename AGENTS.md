@@ -13,17 +13,22 @@
 
 **Module Layout**:
 - `core/`: Loads and indexes SemanticDB (`SemanticIndex`).
-- `analysis/`: Result models and analyzer engine (depends on `core`).
+- `analysis/`: Result models and analyzer engine (depends on `core`). **Default module for ambiguous tasks.**
 - `mcp/`: JSON-RPC server and stdio entrypoint (depends on `analysis`).
 
 **Core Commands**:
-- Compile: `sbt compile` (regenerates SemanticDB)
-- Test: `sbt test` (unforked tests run with cwd = repo root)
-- Pre-push check: `sbt prePush` (clean, format, fix, test)
+- Compile + SemanticDB: `sbt --error compile` (run first — required before any semantic analysis)
+- Test: `sbt --error test`
+- Pre-push check: `sbt prePush` (clean, format, fix, test — full gate)
 - Run MCP server: `sbt "mcp/runMain com.github.mercurievv.scalasemantic.mcpServer <root>"`
-- Worktree PR flow: `./tree2m <branch> "<commit-message>"` (creates branch, commits, pushes, merges)
+- Worktree PR flow: `./tree2m --auto <branch> "<commit-message>"` (commits, pushes, enters merge queue)
 
-**Conventions**: Follow [SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md) for Scala code rules. Use Conventional Commit titles for PRs (`feat:`, `fix:`, `perf:`).
+**Startup sequence** (always in your assigned worktree):
+1. `cd <worktree-path>` — stay here, never touch main checkout
+2. `sbt --error compile` — must run before semantic analysis tools
+3. Implement → `sbt --error test` → `./tree2m --auto <branch> "<message>"`
 
-For detailed technical instructions, architecture, and additional context, read [CLAUDE.md](CLAUDE.md).
+**Conventions**: Follow [SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md). Conventional Commit PR titles (`feat:`, `fix:`, `perf:`). Default module scope: `analysis/`.
+
+For detailed technical instructions and architecture, read [CLAUDE.md](CLAUDE.md).
 
