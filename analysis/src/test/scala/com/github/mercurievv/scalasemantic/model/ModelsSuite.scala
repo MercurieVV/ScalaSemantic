@@ -37,7 +37,9 @@ class ModelsSuite extends munit.FunSuite:
 
   test("hierarchy, members, implicits, call graph round-trip") {
     roundTrip(ClassHierarchy("a/B#", "B", List(ref), List(ref), Nil))
-    roundTrip(MembersResult("a/B#", "B", List(MemberInfo("a/B#f().", "f", SymbolKind.Method, ref)), Nil))
+    roundTrip(
+      MembersResult("a/B#", "B", List(MemberInfo("a/B#f().", "f", SymbolKind.Method, ref)), Nil)
+    )
     roundTrip(
       ImplicitResolution("a/Show#", Some(ref), List(ImplicitCandidate(ref, "a/Show#", false)))
     )
