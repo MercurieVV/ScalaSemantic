@@ -184,7 +184,7 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
     */
   def globMatcher(pattern: Option[String]): String => Boolean =
     pattern match
-      case None => _ => true
+      case None       => _ => true
       case Some(glob) =>
         val regex = glob.split("\\*", -1).map(java.util.regex.Pattern.quote).mkString(".*").r
         uri => regex.findFirstIn(uri).isDefined
@@ -195,7 +195,7 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
     */
   def bySymbolPath(pattern: Option[String]): String => Boolean =
     pattern match
-      case None => _ => true
+      case None    => _ => true
       case Some(_) =>
         val keepUri = globMatcher(pattern)
         sym => definitionUri(sym).exists(keepUri)
@@ -220,7 +220,7 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
     @annotation.tailrec
     def loop(queue: List[String], seen: Set[String], acc: List[String]): List[String] =
       queue match
-        case Nil => acc.reverse
+        case Nil          => acc.reverse
         case head :: tail =>
           if seen.contains(head) then loop(tail, seen, acc)
           else loop(parentsOf(head) ::: tail, seen + head, head :: acc)

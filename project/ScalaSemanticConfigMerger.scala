@@ -121,7 +121,7 @@ object ScalaSemanticConfigMerger {
   private def jsonValueEnd(s: String, vs: Int, limit: Int): Int =
     s.charAt(vs) match {
       case '{' | '[' => matchBracket(s, vs) + 1
-      case '"' =>
+      case '"'       =>
         @tailrec def str(i: Int, esc: Boolean): Int =
           if (i >= limit) limit
           else {

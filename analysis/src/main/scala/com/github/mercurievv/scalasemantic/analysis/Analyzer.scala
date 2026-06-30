@@ -590,7 +590,7 @@ final class Analyzer(
         steps: List[ImplicitChainStep]
     ): List[ImplicitChainStep] =
       queue match
-        case Nil => steps
+        case Nil         => steps
         case tpe :: rest =>
           if seenTypes.contains(tpe) then loop(rest, seenTypes, steps)
           else
@@ -614,7 +614,7 @@ final class Analyzer(
     val adjacency = callGraph
     def bfs(frontier: List[List[String]], seen: Set[String]): List[String] =
       frontier match
-        case Nil => Nil
+        case Nil                          => Nil
         case (path @ (node :: _)) :: rest =>
           if node == toSym then path.reverse
           else

@@ -35,7 +35,7 @@ class CompatSuite extends munit.FunSuite:
 
   private val versionDirs: List[Path] =
     compatRoot match
-      case None => Nil
+      case None    => Nil
       case Some(r) =>
         val s = Files.list(r)
         try s.iterator.asScala.filter(Files.isDirectory(_)).toList.sortBy(_.getFileName.toString)

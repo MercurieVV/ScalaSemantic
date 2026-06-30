@@ -139,7 +139,7 @@ object McpTools:
           az.withBuffer(root.resolve(uri.value).toUri, src, uri.value)
         case _ => az
       engine.methodSignature(symbol) match
-        case None => notFound(symbol.value)
+        case None    => notFound(symbol.value)
         case Some(m) =>
           if !argBool(a, "detailed", false) then
             jobj(
@@ -198,7 +198,7 @@ object McpTools:
       val detailed = argBool(a, "detailed", false)
       val want = includeWant(a)
       az.classHierarchy(symbol, a.obj.get("pathFilter").map(_.str)) match
-        case None => notFound(symbol.value)
+        case None    => notFound(symbol.value)
         case Some(h) =>
           jobj(
             (List(
@@ -251,7 +251,7 @@ object McpTools:
       val detailed = argBool(a, "detailed", false)
       val want = includeWant(a)
       az.members(symbol, a.obj.get("pathFilter").map(_.str)) match
-        case None => notFound(symbol.value)
+        case None    => notFound(symbol.value)
         case Some(m) =>
           val declared =
             if detailed then ujson.Arr.from(m.declared.map(memberJson))
@@ -298,7 +298,7 @@ object McpTools:
         case Some(src) => az.bufferOnly(root.resolve(uri.value).toUri, src, uri.value).getOrElse(az)
         case None      => az
       engine.typeAtPosition(uri, argPosition(a, "line", "character")) match
-        case None => jobj(Some("found" -> ujson.Bool(false)))
+        case None    => jobj(Some("found" -> ujson.Bool(false)))
         case Some(t) =>
           jobj(
             Some("symbol" -> ujson.Str(t.symbol)),
@@ -573,7 +573,7 @@ object McpTools:
       else
         val lines = java.nio.file.Files.readString(file).split("\n", -1).toIndexedSeq
         az.sourceAnnotations(uri, lines) match
-          case None => notFoundUri(uri.value)
+          case None       => notFoundUri(uri.value)
           case Some(anns) =>
             SourceView.result(
               uri.value,
@@ -679,7 +679,7 @@ object McpTools:
         argRange(a),
         name
       ) match
-        case None => notFoundUri(uri.value)
+        case None    => notFoundUri(uri.value)
         case Some(p) =>
           jobj(
             Some("uri" -> ujson.Str(p.uri)),

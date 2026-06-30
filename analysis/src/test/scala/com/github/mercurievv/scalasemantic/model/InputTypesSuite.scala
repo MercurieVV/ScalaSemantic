@@ -174,7 +174,7 @@ class InputTypesSuite extends munit.ScalaCheckSuite:
     forAll(Gen.listOf(Gen.alphaLowerChar).map(_.mkString)) { name =>
       val seg = if name.isEmpty then "" else s"pkg/$name"
       PackageSymbol.from(seg).toOption.map(_.value) match
-        case Some("") => seg.isEmpty
+        case Some("")  => seg.isEmpty
         case Some(out) =>
           out.endsWith("/") && PackageSymbol.from(out).toOption.map(_.value).contains(out)
         case None => false

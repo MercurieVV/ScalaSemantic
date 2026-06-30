@@ -137,7 +137,7 @@ final class DependencyGraphs(index: SemanticIndex):
     */
   private def signatureTypeRefs(sig: s.Signature): Set[String] =
     sig match
-      case v: s.ValueSignature => typeRefs(v.tpe)
+      case v: s.ValueSignature  => typeRefs(v.tpe)
       case m: s.MethodSignature =>
         typeRefs(m.returnType) ++
           m.parameterLists.flatMap(pl => scopeInfos(Some(pl))).flatMap(p => typeRefs(valueType(p)))
