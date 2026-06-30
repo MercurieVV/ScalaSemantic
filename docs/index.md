@@ -24,8 +24,13 @@ It reads compiler-emitted **SemanticDB**, so answers reflect what the compiler r
 - [Development](project/development.md) — repository layout, build, test, cross-version
 - [Design decisions](project/design.md) — implementation approach and extension points
 - [Releasing](project/releasing.md) — Sonatype Central release process
+- [Property-based testing audit](testing/pb-audit.md) — conversion candidates for property/golden tests
 
-## Research & Backlog
+## Research & Planning
 
 - [Claude interaction study](research/claude-interaction-study.md) — measured tool usage, tool recommendations
-
+- [Token metrics methodology](research/token-metrics-methodology.md) — measurement definitions and generated results
+- [Compat fixture sources](research/compat-fixtures-sources.md) — reusable Scala/SemanticDB fixture corpora
+- [sbt build inventory](research/sbt-build-inventory.md) — baseline for sbt-to-Mill comparison
+- [Docs audit](audit-results.md) — pre-shrink catalog and duplication map
+- [Docs prioritization plan](prioritization-plan.md) — shrink budgets, canonical homes, and merge plan
