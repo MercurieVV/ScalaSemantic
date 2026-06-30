@@ -63,7 +63,7 @@ object McpTools:
                 (List(
                   Some("symbol" -> ujson.Str(r.symbol)),
                   Some("name" -> ujson.Str(r.displayName)),
-                  Some("kind" -> ujson.Str(r.kind))
+                  Some("kind" -> ujson.Str(r.kind.value))
                 ) ++ metricFields(az, r.symbol, withMetrics))*
               )
             )
@@ -743,7 +743,7 @@ object McpTools:
   private def outlineJson(e: OutlineEntry): ujson.Value =
     jobj(
       Some("name" -> ujson.Str(e.name)),
-      Some("kind" -> ujson.Str(e.kind)),
+      Some("kind" -> ujson.Str(e.kind.value)),
       Some("line" -> ujson.Num(e.line)),
       opt(e.signature.nonEmpty, "signature" -> ujson.Str(e.signature)),
       Some("symbol" -> ujson.Str(e.symbol)),
@@ -875,7 +875,7 @@ object McpTools:
   private def memberJson(mi: MemberInfo): ujson.Value =
     jobj(
       Some("name" -> ujson.Str(mi.displayName)),
-      Some("kind" -> ujson.Str(mi.kind)),
+      Some("kind" -> ujson.Str(mi.kind.value)),
       Some("symbol" -> ujson.Str(mi.symbol)),
       Some("from" -> ujson.Str(mi.declaredIn.displayName))
     )
@@ -887,7 +887,7 @@ object McpTools:
           jobj(
             Some("symbol" -> ujson.Str(r.symbol)),
             Some("name" -> ujson.Str(r.displayName)),
-            Some("kind" -> ujson.Str(r.kind))
+            Some("kind" -> ujson.Str(r.kind.value))
           )
         )
       )

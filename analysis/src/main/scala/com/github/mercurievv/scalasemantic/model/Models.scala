@@ -1,12 +1,42 @@
 package com.github.mercurievv.scalasemantic.model
 
 import upickle.default.ReadWriter
+import upickle.default.readwriter
 
 /** Wire models returned by the analysis engine and serialized as the MCP tool results.
   *
   * Everything derives upickle `ReadWriter` so a result is one `write(value)` away from JSON.
   * Positions are 0-based (LSP / SemanticDB convention): `endCharacter` is exclusive.
   */
+
+/** The declaration kind of a symbol, mirroring SemanticDB's `SymbolInformation.Kind` (e.g. CLASS,
+  * TRAIT, METHOD). `value` is the SemanticDB enum name and is what serializes, so JSON stays
+  * byte-identical to the previous raw-string field. `Unknown` absorbs any kind SemanticDB did not
+  * record (including its `UNKNOWN_KIND`).
+  */
+enum SymbolKind(val value: String):
+  case Class extends SymbolKind("CLASS")
+  case Trait extends SymbolKind("TRAIT")
+  case Interface extends SymbolKind("INTERFACE")
+  case Object extends SymbolKind("OBJECT")
+  case Method extends SymbolKind("METHOD")
+  case Constructor extends SymbolKind("CONSTRUCTOR")
+  case Macro extends SymbolKind("MACRO")
+  case Type extends SymbolKind("TYPE")
+  case Field extends SymbolKind("FIELD")
+  case Package extends SymbolKind("PACKAGE")
+  case PackageObject extends SymbolKind("PACKAGE_OBJECT")
+  case Parameter extends SymbolKind("PARAMETER")
+  case SelfParameter extends SymbolKind("SELF_PARAMETER")
+  case TypeParameter extends SymbolKind("TYPE_PARAMETER")
+  case Local extends SymbolKind("LOCAL")
+  case Unknown extends SymbolKind("UNKNOWN")
+
+object SymbolKind:
+  /** The kind for a SemanticDB enum name (`_.kind.toString`), falling back to [[Unknown]]. */
+  def from(raw: String): SymbolKind = values.find(_.value == raw).getOrElse(Unknown)
+
+  given ReadWriter[SymbolKind] = readwriter[String].bimap(_.value, from)
 
 /** A point in a source file. */
 case class Position(line: Int, character: Int) derives ReadWriter
@@ -18,7 +48,7 @@ case class Range(start: Position, end: Position) derives ReadWriter
 case class Location(uri: String, range: Range) derives ReadWriter
 
 /** A reference to a symbol: its SemanticDB string, human name, and kind (e.g. CLASS, METHOD). */
-case class SymbolRef(symbol: String, displayName: String, kind: String) derives ReadWriter
+case class SymbolRef(symbol: String, displayName: String, kind: SymbolKind) derives ReadWriter
 
 // --- find-usages ------------------------------------------------------------
 
@@ -61,7 +91,7 @@ case class ClassHierarchy(
 case class MemberInfo(
     symbol: String,
     displayName: String,
-    kind: String,
+    kind: SymbolKind,
     declaredIn: SymbolRef
 ) derives ReadWriter
 
@@ -175,7 +205,7 @@ case class StructureResult(
 case class OutlineEntry(
     symbol: String,
     name: String,
-    kind: String,
+    kind: SymbolKind,
     line: Int,
     signature: String,
     children: List[OutlineEntry]
@@ -228,7 +258,7 @@ case class MoveImport(uri: String, removeImport: String, addImport: String) deri
 case class MovePlan(
     symbol: String,
     displayName: String,
-    kind: String,
+    kind: SymbolKind,
     fromOwner: String,
     toOwner: String,
     fromFqn: String,

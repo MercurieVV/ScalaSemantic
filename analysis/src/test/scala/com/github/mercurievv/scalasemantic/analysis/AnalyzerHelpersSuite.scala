@@ -187,8 +187,8 @@ class AnalyzerHelpersSuite extends munit.FunSuite:
     assert(!hi.includeInOutline("a/Missing#"), "unknown symbol excluded")
 
   test("kindName returns the kind or UNKNOWN"):
-    assertEquals(hi.kindName("a/Dog#"), "CLASS")
-    assertEquals(hi.kindName("a/Missing#"), "UNKNOWN")
+    assertEquals(hi.kindName("a/Dog#"), SymbolKind.Class)
+    assertEquals(hi.kindName("a/Missing#"), SymbolKind.Unknown)
 
   test("linearize and knownSubtypes walk the parent relation"):
     assertEquals(hi.linearize("a/Dog#"), List("a/Animal#"))

@@ -45,7 +45,7 @@ class ModelsPropertySuite extends munit.ScalaCheckSuite:
     for
       sym <- nonEmptyStr
       name <- nonEmptyStr
-      kind <- Gen.oneOf("CLASS", "TRAIT", "METHOD", "OBJECT", "FIELD")
+      kind <- Gen.oneOf(SymbolKind.values.toSeq)
     yield SymbolRef(sym, name, kind)
 
   private val genParameter: Gen[Parameter] =

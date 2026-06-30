@@ -12,7 +12,7 @@ class ModelsSuite extends munit.FunSuite:
     assertEquals(read[A](write(value)), value)
 
   private val loc = Location("file:///A.scala", Range(Position(1, 2), Position(1, 8)))
-  private val ref = SymbolRef("a/B#", "B", "CLASS")
+  private val ref = SymbolRef("a/B#", "B", SymbolKind.Class)
 
   test("locations and symbol refs round-trip") {
     roundTrip(loc)
@@ -37,7 +37,9 @@ class ModelsSuite extends munit.FunSuite:
 
   test("hierarchy, members, implicits, call graph round-trip") {
     roundTrip(ClassHierarchy("a/B#", "B", List(ref), List(ref), Nil))
-    roundTrip(MembersResult("a/B#", "B", List(MemberInfo("a/B#f().", "f", "METHOD", ref)), Nil))
+    roundTrip(
+      MembersResult("a/B#", "B", List(MemberInfo("a/B#f().", "f", SymbolKind.Method, ref)), Nil)
+    )
     roundTrip(
       ImplicitResolution("a/Show#", Some(ref), List(ImplicitCandidate(ref, "a/Show#", false)))
     )
