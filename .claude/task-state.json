@@ -1,6 +1,6 @@
 {
   "meta": {
-    "flow": "task-splitting-evaluation \u2192 orchestrate",
+    "flow": "task-splitting-evaluation → orchestrate",
     "roots": [
       71,
       72,
@@ -15,7 +15,7 @@
     ],
     "orphans": [],
     "started_at": "2026-06-30T19:44:08.565730Z",
-    "last_update": "2026-06-30T21:52:17.096455Z"
+    "last_update": "2026-06-30T21:59:31Z"
   },
   "tree": {
     "158": {
@@ -315,14 +315,14 @@
       "parent": 79,
       "children": [],
       "executor": "claude / sonnet",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         152
       ],
       "blocked_by": [],
-      "result_comment_url": null,
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/155#issuecomment-4848382159",
       "error": null,
-      "attempts": 0
+      "attempts": 1
     },
     "154": {
       "issue": 154,
@@ -461,10 +461,10 @@
       "parent": 71,
       "children": [],
       "executor": "agy / Gemini 3.1 Pro (High)",
-      "status": "started",
+      "status": "completed",
       "depends_on": [],
       "blocked_by": [],
-      "result_comment_url": null,
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/pull/167",
       "error": null,
       "attempts": 1
     },
@@ -592,7 +592,7 @@
       "parent": 72,
       "children": [],
       "executor": "agy / Gemini 3.1 Pro (High)",
-      "status": "started",
+      "status": "completed",
       "depends_on": [],
       "blocked_by": [],
       "result_comment_url": null,
@@ -749,7 +749,7 @@
     },
     "111": {
       "issue": 111,
-      "title": "feat: value_flow \u2014 data-flow graph for a val across upstream/downstream/horizontal call boundaries",
+      "title": "feat: value_flow — data-flow graph for a val across upstream/downstream/horizontal call boundaries",
       "parent": null,
       "children": [],
       "executor": "claude / sonnet",
@@ -899,12 +899,13 @@
         150
       ],
       "executor": "agy / Gemini 3.1 Pro (High)",
-      "status": "pending",
+      "status": "started",
       "depends_on": [],
       "blocked_by": [],
       "result_comment_url": null,
       "error": null,
-      "attempts": 0
+      "attempts": 1,
+      "worktree": "worktrees/pb-testing"
     }
   }
 }
