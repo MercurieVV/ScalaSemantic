@@ -2,6 +2,7 @@ package com.github.mercurievv.scalasemantic.analysis
 
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
 import com.github.mercurievv.scalasemantic.model.MoveImport
+import com.github.mercurievv.scalasemantic.model.SymbolKind
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
 import scala.meta.internal.semanticdb as s
@@ -55,7 +56,7 @@ class AnalyzerSuite extends munit.FunSuite:
   test("findSymbol kind filters to a single SymbolInformation kind") {
     val traits = az.findSymbol("Animal", kind = Some("TRAIT")).map(_.symbol).toSet
     assertEquals(traits, Set(Animal, CompatAnimal))
-    assert(az.findSymbol("Animal", kind = Some("TRAIT")).forall(_.kind == "TRAIT"))
+    assert(az.findSymbol("Animal", kind = Some("TRAIT")).forall(_.kind == SymbolKind.Trait))
   }
 
   test("findSymbol exact matches the whole display name only") {

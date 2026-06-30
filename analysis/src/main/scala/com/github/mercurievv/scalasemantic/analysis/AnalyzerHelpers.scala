@@ -347,8 +347,8 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
   def symbolRef(symbol: String): SymbolRef =
     SymbolRef(symbol, index.displayName(symbol), kindName(symbol))
 
-  def kindName(symbol: String): String =
-    index.info(symbol).map(_.kind.toString).getOrElse("UNKNOWN")
+  def kindName(symbol: String): SymbolKind =
+    SymbolKind.from(index.info(symbol).map(_.kind.toString).getOrElse("UNKNOWN"))
 
   def parentSymbol(tpe: s.Type): Option[String] =
     tpe match
