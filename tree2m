@@ -118,7 +118,7 @@ else
   rtk gh "${pr_args[@]}" | grep -E '^https://' || true  # only PR URL
 fi
 
-pr_ref="$branch"
+pr_ref="$(rtk gh pr view "$branch" --json number --jq '.number' 2>/dev/null || echo "$branch")"
 if [[ "$draft" == "true" ]]; then
   rtk gh pr ready "$pr_ref" >/dev/null
 fi
