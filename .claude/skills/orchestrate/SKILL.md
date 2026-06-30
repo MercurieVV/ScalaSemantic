@@ -1,106 +1,228 @@
 ---
 name: orchestrate
-description: Multi-agent GitHub-issue pool. Conductor pulls issues, triages each to the best worker engine+model (claude/codex/agy), runs up to 3 in parallel in isolated git worktrees. Each task agent owns its full lifecycle (worktree → implement → self-sanity → ship → merge). Conductor handles scheduling, conflict resolution, and failure retry. Use when the user wants to work through a batch of GitHub issues with the parallel agent pool.
+description: Tree-aware multi-agent GitHub-issue pool. Conductor manages task-tree from task-splitting-evaluation, executing depth-first per branch while parallelizing roots/orphans. Each worker agent owns its subtree lifecycle. Conductor tracks state (pending/started/in-progress/completed/halted) in GitHub + .claude/task-state.json, passes context from parent issue comments, auto-halts dependents. Use after task-splitting-evaluation to execute the resulting task tree.
 ---
 
-# Orchestrate — parallel multi-agent issue pool
+# Orchestrate — tree-aware multi-agent execution
 
-You are the **conductor**. You do NOT implement tasks. You triage, schedule, handle failures, resolve PR conflicts, and report.
+You are the **conductor**. You do NOT implement tasks. You manage the task tree from task-splitting-evaluation, schedule workers, track state, handle failures, and report.
 
-**Task agents own the full lifecycle** — worktree creation, implementation, self-sanity-check, commit, push, and merge. You act only when an agent finishes (parse result) or fails (retry/escalate).
+**Worker agents own their subtree lifecycle** — one worker per tree root/orphan, each walks depth-first, fetching context from issue comments, executing sequentially respecting dependencies, and updating GitHub + `.claude/task-state.json`.
 
 Routing knowledge: `.claude/orchestrate-routing.md`. Read it once at start.
 **Default to codex/agy. Use claude (scala-coder) ONLY for hard Scala tasks needing scala-semantic MCP.**
 
+## Tree structure (from task-splitting-evaluation)
+
+Each task is a GitHub issue with:
+- **task-tree-marker comment**: Status (leaf-ready), Parent, Children, Preferred executor
+- **Body**: Task description, Acceptance criteria, Dependencies (e.g., "depends on #129")
+- **Dependencies**: explicitly listed in issue body (e.g., "Depends: #129 → read from comment")
+
+Root issues (no parent): #111, #105, #112, #108, #106, #79, #73, #72, #80, #71
+- Leaf issues (no children): all others (30+ children from expansion)
+- Orphan issues (if any): leaves not linked to any parent via marker
+
 ## Invocation modes
 
 ### Normal
-`/orchestrate` — triage all open issues, build pool, execute.
+`/orchestrate` — build task tree, schedule workers, execute depth-first per branch with root/orphan parallelization.
 
 ### Dry-run
-`/orchestrate --dry-run` (or user says "preview"/"plan only") — triage all issues but do NOT launch any task agents. Print the routing plan as a table and stop:
+`/orchestrate --dry-run` (or user says "preview"/"plan only") — build task tree, print execution plan but do NOT launch workers. Show:
 
-| Issue | Branch | Engine | Model | Difficulty | Depends on | touched_areas |
-|-------|--------|--------|-------|-----------|------------|---------------|
-| #N    | ...    | codex  | o3    | small      | —          | analysis/src  |
+| Root | Tree depth | Leaf count | First task | Executor | Status |
+|------|-----------|-----------|-----------|----------|--------|
+| #112 | 1 | 4 | #128 (research) | agy | pending |
+| #111 | 0 | 1 | #111 (value_flow) | claude | pending |
 
-Let the user inspect and approve before executing. Only spend triage (Haiku) tokens.
+Let user inspect and approve before executing. Only spend tree-building (Haiku) tokens.
+
+### Resume (partial failure)
+`/orchestrate --resume` — read `.claude/task-state.json`, continue from last halted/incomplete task, skip done tasks.
 
 ### Merge queue
-`./tree2m --auto` is used by all task agents. Requires "Allow auto-merge" enabled in the repo's GitHub branch protection settings (Settings → General → "Allow auto-merge"). Enable once; all agents benefit automatically. Without it, `--auto` will error — remove the flag from task prompts if not enabled.
+`./tree2m --auto` is used by all task agents. Requires "Allow auto-merge" enabled in repo branch protection (Settings → General → "Allow auto-merge"). Without it, remove `--auto` flag from task prompts.
 
 ## Token discipline
 
 Your context is the costliest in the system. Protect it.
 - Delegate mechanical steps to Haiku helpers or scripts.
-- State lives in `state.json`, not your message history.
+- State lives in `.claude/task-state.json`, not your message history.
 - Never echo full diffs or issue bodies — let helpers summarize.
-- Feed sub-agents minimum: branch, worktree path, task, touched_areas.
-- Don't re-read files you just wrote; don't re-triage a routed task.
-
-## Scripts — one call per phase
-
-| Phase | Script |
-|-------|--------|
-| triage | `triage` subagent (Haiku) |
-| run codex/agy task (full lifecycle) | `scripts/agent-run.sh <engine> <branch> <model> <task-file> <touched-areas-json>` |
-| run conflict-resolution task | same `scripts/agent-run.sh` with a conflict-resolution task file |
-
-The `claude` (scala-coder) engine is launched via the Agent tool (see Launching section).
-
-If you find yourself repeating a new multi-step shell chain across tasks, add a script under `scripts/` instead of paying per-call round-trips.
+- Feed worker agents minimum: issue#, task URL, dependency context URLs.
+- Don't re-read issues you just dispatched; trust worker agents to fetch context.
+- Build task tree once at start; reuse until all done or halted.
 
 ## State
 
-`state.json` (scratchpad) with arrays `pool`, `inflight`, `done`, `failed`.
+`.claude/task-state.json` (source of truth for tree execution):
 
-Each task object:
 ```json
 {
-  "issue": 0, "branch": "...", "title": "...",
-  "engine": "claude|codex|agy", "model": "...",
-  "difficulty": "trivial|small|medium|hard",
-  "touched_areas": ["module/path"],
-  "depends_on": [0],
-  "task": "<self-contained description>",
-  "attempts": 0,
-  "status": "pool|inflight|done|failed",
-  "pr_url": ""
+  "meta": {
+    "flow": "task-splitting-evaluation → orchestrate",
+    "roots": [111, 105, 112, 108, 106, 79, 73, 72, 80, 71],
+    "orphans": [],
+    "started_at": "2026-06-30T22:15:00Z",
+    "last_update": "2026-06-30T22:16:45Z"
+  },
+  "tree": {
+    "111": { "parent": null, "children": [], "depth": 0 },
+    "128": { "parent": 112, "children": [], "depth": 1 },
+    "130": { "parent": 112, "children": [], "depth": 1, "depends_on": [128] },
+    ...
+  },
+  "tasks": {
+    "111": {
+      "issue": 111, "title": "feat: value_flow BFS tool",
+      "parent": null, "children": [],
+      "executor": "claude/sonnet",
+      "status": "pending|started|in-progress|completed|halted",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    "128": {
+      "issue": 128, "title": "Research stryker4s setup",
+      "parent": 112, "children": [],
+      "executor": "agy/Gemini 3.1 Pro",
+      "status": "pending|started|in-progress|completed|halted",
+      "depends_on": [],
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/128#issuecomment-...",
+      "error": null,
+      "attempts": 1
+    },
+    "131": {
+      "issue": 131, "title": "Mill capability comparison",
+      "parent": 108, "children": [],
+      "executor": "agy/Gemini 3.1 Pro",
+      "status": "pending",
+      "depends_on": [129],
+      "blocked_by": [129],
+      "result_comment_url": null,
+      "error": null,
+      "attempts": 0
+    },
+    ...
+  }
 }
 ```
 
+Each task status:
+- **pending**: in queue, deps not resolved
+- **started**: worker agent just launched
+- **in-progress**: worker actively executing
+- **completed**: done, result in `result_comment_url`
+- **halted**: parent halted, or task failed after max attempts
+
 ## Loop
 
-### 1. Build pool
-`gh issue list --state open --json number,title,labels` (or the user-named set). One entry per issue.
+### 1. Build task tree
+Read `.claude/task-state.json` (if exists) or build from GitHub:
+- `gh issue list --state open --json number,title,body` (or user-named set)
+- Parse task-tree-marker comments to extract: parent, children, executor, dependencies
+- Build `tree{}` mapping (issue → parent/children/depth)
+- Build `tasks{}` mapping (issue → status/executor/depends_on)
+- Identify roots (parent=null) and orphans (no parent link found)
 
-### 2. Triage (sequential, cheap)
-Spawn `triage` subagent (Haiku) per issue → parse JSON → fill task object. Serial keeps routing clean.
+### 2. Initialize state file
+Create `.claude/task-state.json` with meta, tree, tasks. Persist after each change.
 
-### 3. Schedule
-A task is **eligible** when ALL of:
-- Its `depends_on` issue numbers are all in `done[]`
-- Its `touched_areas` do NOT overlap any inflight task's `touched_areas`
+### 3. Schedule workers (parallel roots + depth-first per branch)
+**Eligible to start**: parent (if exists) is `completed`, all `depends_on` issues are `completed`, task status is `pending`.
 
-While `pool` not empty:
-- Fill free slots (max 3 inflight) with eligible tasks (cheapest/smallest first within eligible set).
-- If no eligible tasks exist, wait for a slot to free or a dependency to complete.
-- **When a slot frees: immediately fill it from the pool — don't idle.**
-- **Agent reuse preference**: assign next task to the same engine that just freed. Exception: if freed engine is `claude` and next task suits `codex`/`agy`, use the cheaper engine.
+**While roots or orphans remain unstarted or in-progress**:
+- Spawn one worker agent per eligible root/orphan (up to 3 total workers)
+- Each worker agent:
+  - Walks its subtree depth-first
+  - Fetches task from issue comment/body
+  - Fetches dependency context from previous issue comment (reads obligatory, must be present)
+  - Executes task
+  - Posts result to issue comment
+  - Updates `task-tree-marker` status in own issue
+  - Moves to next eligible child (wait if children blocked by siblings' deps)
+- **When a worker finishes a task**: immediately try next task in its subtree (depth-first)
+- **When a worker finishes its subtree**: move to next eligible root/orphan (if any)
 
-### 4. On task agent completion
-Each agent emits a JSON result. Parse it:
-
-**`"status": "success"`** → move inflight→done; record `pr_url`. Immediately schedule next pool task.
-
-**`"status": "merge_conflict"`** → implementation is done but PR can't merge. Create a conflict-resolution task (see below), add to pool. Move original task to done (implementation complete).
-
-**`"status": "error"`** → retry policy below.
+### 4. Auto-halt dependents
+When task status → `halted`:
+- Mark all children with `status: halted` and `blocked_by: [parent]`
+- Mark all tasks that `depends_on: [halted-issue]` with `status: halted`
+- Post comment to each halted issue: "Auto-halted: parent #N halted"
+- Update `.claude/task-state.json`
 
 ### 5. Finish
-When `pool` and `inflight` both empty: report done PRs + failed tasks with reasons.
+When all roots + orphans and all their descendants are `completed` or `halted`: report summary
+- Completed tasks + PR URLs
+- Halted tasks + reason
+- Failed tasks + error
 
-## Launching a task agent
+## Launching worker agents
+
+**One worker per root/orphan**, each manages its subtree depth-first.
+
+### Worker agent prompt (all engines)
+
+```
+Tree task: #<root-issue>
+Subtree: <list of all child issues in this root's tree>
+Executor: <engine/model for this root>
+
+Your job:
+1. Walk your subtree depth-first (see below for order)
+2. For each task:
+   a. Fetch issue #N body & comments from GitHub
+   b. Extract task description from issue body or "Task:" section in task-tree-marker comment
+   c. Check "Depends on: #M" note in issue body
+   d. If task depends on other issue, read the result comment from #M (search for "Status: completed" marker)
+   e. Implement the task using dependency context as input
+   f. Post result to issue comment (see "Result comment format" below)
+   g. Update the issue's task-tree-marker status field to "in-progress" then "completed"
+   h. If task has children, move to first unblocked child
+   i. If no children, backtrack to sibling or parent's next unblocked sibling
+3. On error: post error comment, update status to "halted", STOP (do not process siblings/children)
+
+Subtree depth-first order:
+<traversal list, e.g.
+#128 (leaf) →
+#130 (leaf, depends #128) →
+#132 (leaf, depends #128) →
+#133 (leaf, depends #130, #132) →
+>
+
+**CRITICAL: Dependency context is obligatory.** If a task depends on #M and #M's result comment is missing or incomplete, halt with error: "Missing dependency context from #M"
+```
+
+### Result comment format
+
+Post to issue as a new comment:
+
+```markdown
+### Task execution result
+
+Status: completed|in-progress|halted
+Executor: <engine/model>
+Duration: <time>
+
+**Output:**
+<deliverable summary, e.g., "Created pr/mcp.go with 450 LoC", or "Wrote docs/findings.md with token comparison table">
+
+**Result:**
+<if code: PR link and summary>
+<if doc: inline summary or link>
+<if analysis: key findings>
+
+**Context for next task:**
+<if this task has children, provide summary they need as input, e.g. "Stryker4s setup works on module M with X% mutation score">
+
+**Status field to update in task-tree-marker:** ✓ Completed
+```
+
+Also update the task-tree-marker comment's `Status:` field to match (in-progress, completed, halted).
 
 ### Engine `claude` (scala-coder)
 ```
@@ -108,82 +230,63 @@ Agent tool:
   subagent_type: "scala-coder"
   model: <model from routing table>
   run_in_background: true
-  prompt: |
-    Branch: <branch>
-    Worktree: .worktrees/<branch>
-    touched_areas: <list>
-
-    Task: <full self-contained task description>
+  prompt: <worker agent prompt above>
 ```
-The scala-coder agent creates its own worktree, implements, self-sanity-checks (spawns sanity-check Haiku agent), ships via tree2m, and emits result JSON.
+
+The scala-coder agent creates its own worktree, implements each task depth-first, updates GitHub + state.json, and emits final summary.
 
 ### Engine `codex` or `agy`
-Write task to a scratchpad file, then:
+Write worker prompt to scratchpad file, then:
 ```bash
-scripts/agent-run.sh <engine> <branch> "<model>" <task-file> '<touched-areas-json>'
+scripts/agent-run.sh <engine> <branch> "<model>" <worker-prompt-file> '<subtree-issues-json>'
 ```
-Run with `run_in_background: true`. The script owns the full lifecycle and prints result JSON on stdout when done.
+Run with `run_in_background: true`. Script handles full lifecycle, posts result comments, and notifies conductor on completion.
 
-Both engines notify you on completion — do NOT poll in a sleep loop.
+Both engines notify conductor on completion — conductor does NOT poll.
 
-## Analytic tasks
+## Analytic & research tasks
 
-Triage emits `"type": "analytic"` for investigation/research/metrics tasks. These are handled differently — they are NOT sent to a single task agent.
+Some tasks in the tree are pure research (no code changes), marked with executor `agy/Gemini` or `claude/sonnet` and status `leaf-ready`.
 
-### Flow
+Worker agents handle them the same way as implementation tasks:
+- Fetch task description from issue
+- Execute (read docs, research, analyze)
+- Post findings to issue comment
+- Update status to `completed`
+- Pass findings to dependent tasks (e.g., #131 reads #129's research findings from its result comment)
 
-1. **Plan** — spawn a cheap planner (Haiku or Sonnet depending on complexity) with the task description. Ask it to break the analysis into sequential steps. Each step must have:
-   - A clear input (what it receives from the previous step, or the initial data)
-   - A clear output (what it produces for the next step)
-   - A difficulty estimate
+No special handling — tree execution applies to all task types.
 
-   Example planner prompt:
-   ```
-   Break this analytic task into sequential steps. For each step state: description, input, output, difficulty (trivial/small/medium/hard).
-   Task: <task>
-   Output JSON array of steps.
-   ```
+## Merge conflicts
 
-2. **Evaluate** — for each step, consult `.claude/orchestrate-routing.md` analytic step routing table to pick engine+model.
+If a task successfully implements but PR can't merge (conflict with master):
+- Worker agent attempts `git rebase origin/master` and posts conflict markers to issue comment
+- Conductor detects conflict marker in result comment
+- Conductor creates conflict-resolution task (new issue or sub-issue) as a child of the original task
+- Mark original task as `completed` (implementation done), new conflict task as `pending`
+- Next worker picks up conflict-resolution task when eligible
+- Conflict resolver rebases, resolves, and runs tree2m
 
-3. **Execute sequentially** — run each step one at a time, passing the previous step's output as input to the next. Each step is a sub-agent call (not background — sequential). Collect outputs.
+## Failure & retry
 
-4. **Synthesize** — after all steps complete, produce a final summary. Assign to `agy` with `Gemini 3.5 Flash (High)` or `codex o4-mini` unless the synthesis requires deep reasoning.
+When worker reports task error:
+- Update task status to `halted`
+- Post error to issue comment with trace
+- Auto-halt all dependent tasks (children, tasks depending on this issue)
+- Update `.claude/task-state.json`: `status: halted`, `error: "<trace>"`, `attempts: <n>`
+- **Retry policy**: on first failure, increment `attempts` and mark `halted` (conductor can retry later via `--resume`)
+- Max 2 attempts per task. After 2nd failure, mark permanently `halted` with reason
+- Don't loop forever; halt early, let user decide if restart is worth it
 
-5. **Report** — emit findings to the user (or open a GitHub issue/comment if the task originated from one). Analytic tasks do NOT go through tree2m unless the analysis produces concrete code changes as a follow-up.
-
-Analytic tasks occupy ONE inflight slot while their sequential steps run (they still count toward the 3-slot limit).
-
-## Conflict resolution
-
-When a task reports `merge_conflict`, create a new resolution task and route per the conflict table in `.claude/orchestrate-routing.md`:
-
-```
-Branch: <original-branch>  (branch and PR already exist — do NOT create a new branch)
-Task: Resolve the merge conflict on branch <branch> against master.
-  1. If a worktree for <branch> exists at .worktrees/<branch>, use it.
-     Otherwise: git fetch origin <branch> && git worktree add .worktrees/<branch> <branch>
-  2. cd .worktrees/<branch>
-  3. git fetch origin && git rebase origin/master
-  4. Resolve all conflicts. Match surrounding code style.
-  5. Run ./tree2m <branch> "fix: resolve merge conflict with master" from the worktree.
-  6. Report result JSON.
-touched_areas: <same as original task>
-```
-
-Assign to the appropriate engine+model per the conflict routing table. The resolution agent uses the EXISTING branch (not a new one off master), since the PR already exists.
-
-## Retry policy (cost-aware)
-
-- `attempts` starts 0. On `error`, if `attempts < 2`: escalate (stronger model, or codex/agy → claude), move back to `pool`, `attempts++`.
-- For sanity failures: include offending paths in retry task so worker avoids them.
-- Before retry: remove stale worktree (`git worktree remove --force .worktrees/<branch>`).
-- 2nd failure → `failed[]` with captured reason. Don't loop forever.
-- Never escalate a passing task. Never send a mechanical task to `opus`.
+Conductor offers `--resume` mode to retry halted tasks (with fresh context, escalated model if desired).
 
 ## Guardrails
 
-- Max 3 inflight. More worktrees = more conflicts and cost with little speedup.
-- If `gh`, `codex`, or `agy` is missing, report and continue with available engines.
-- Do NOT bypass pre-push hooks — correctness is owned by them at ship time.
-- Trust agents to self-sanity-check. Don't re-verify their diffs in your own context.
+- **Tree integrity**: never modify the task-tree structure during execution (don't create new issues or unlink parents/children)
+- **Max 3 workers** in flight simultaneously (one per root/orphan, up to 3 parallel subtree walks)
+- **Dependency obligatory**: if a task lists "depends on #M", #M's result comment MUST exist before starting. Worker halts if missing.
+- **Auto-halt propagation**: mark all dependents as halted immediately, don't wait for their turn
+- **State file**: `.claude/task-state.json` is source of truth. Read before each decision, write after each state change
+- **GitHub as audit log**: result comments and task-tree-marker updates are immutable; state file can be rolled back but GitHub is the record
+- **Do NOT bypass pre-push hooks** — correctness owned by them at ship time
+- **Trust worker agents**: don't re-verify their diffs in conductor context; conductor owns scheduling/state, workers own execution
