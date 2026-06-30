@@ -6,8 +6,8 @@ import org.scalacheck.Prop.forAll
 /** Property-based tests for the pure graph algorithms in [[GraphMetrics]].
   *
   * These algorithms are fast, deterministic, and parameter-free (no on-disk index needed), so they
-  * are ideal candidates for ScalaCheck: interesting behaviour emerges only from the graph structure,
-  * which a generator can vary far more systematically than hand-picked fixtures.
+  * are ideal candidates for ScalaCheck: interesting behaviour emerges only from the graph
+  * structure, which a generator can vary far more systematically than hand-picked fixtures.
   *
   * Properties covered:
   *   - **instability**: always in [0, 1]; formula is Ce/(Ca+Ce); 0 for isolated nodes.
@@ -127,10 +127,7 @@ class GraphMetricsPropertySuite extends munit.ScalaCheckSuite:
         // for every edge n -> m where both are in nodes and not in a cycle,
         // n's layer must be >= m's layer + 1 OR they share the same SCC level
         val comps = GraphMetrics.stronglyConnectedComponents(nodes, graph)
-        val sccOf = comps
-          .zipWithIndex
-          .flatMap { (comp, idx) => comp.map(_ -> idx) }
-          .toMap
+        val sccOf = comps.zipWithIndex.flatMap { (comp, idx) => comp.map(_ -> idx) }.toMap
         nodes.forall { n =>
           graph.getOrElse(n, Set.empty).intersect(nodes).forall { m =>
             // cross-SCC edge: n's layer must be strictly above m's
@@ -168,7 +165,9 @@ class GraphMetricsPropertySuite extends munit.ScalaCheckSuite:
   // coupling properties
   // ---------------------------------------------------------------------------
 
-  property("coupling: afferent count equals the number of in-project nodes that point to this node"):
+  property(
+    "coupling: afferent count equals the number of in-project nodes that point to this node"
+  ):
     forAll(genNodeGraph) { (nodes, graph) =>
       if nodes.isEmpty then true
       else

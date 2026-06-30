@@ -582,7 +582,38 @@ lazy val root = (project in file("."))
   .settings(
     name := "ScalaSemantic",
     publish / skip := true,
-    libraryDependencies += slf4jNop
+    libraryDependencies += slf4jNop,
+    initialize := {
+      val _ = initialize.value
+      try {
+        val appConfig = appConfiguration.value
+        val bootDir = appConfig.provider.scalaProvider.launcher.bootDirectory
+        val scalaVersion = appConfig.provider.scalaProvider.version
+        val sbtVersion = appConfig.provider.id.version
+        val targetDir = new java.io.File(bootDir, s"scala-$scalaVersion/org.scala-sbt/sbt/$sbtVersion")
+        if (targetDir.exists() && targetDir.isDirectory) {
+          val binderClass = Class.forName("org.slf4j.impl.StaticLoggerBinder")
+          val codeSource = binderClass.getProtectionDomain.getCodeSource
+          if (codeSource != null) {
+            val jarUrl = codeSource.getLocation
+            val jarFile = new java.io.File(jarUrl.toURI)
+            if (jarFile.getName.startsWith("slf4j-nop")) {
+              val destFile = new java.io.File(targetDir, jarFile.getName)
+              if (!destFile.exists()) {
+                java.nio.file.Files.copy(
+                  jarFile.toPath,
+                  destFile.toPath,
+                  java.nio.file.StandardCopyOption.REPLACE_EXISTING
+                )
+                println(s"[info] Silencing SLF4J warnings by copying NOP logger to sbt boot directory: ${destFile.getName}")
+              }
+            }
+          }
+        }
+      } catch {
+        case _: Throwable => // ignore any failures during bootstrap log silencing
+      }
+    }
   )
 
 // Pre-push gate. A command alias (not a task) so the steps aggregate across all modules. This is a

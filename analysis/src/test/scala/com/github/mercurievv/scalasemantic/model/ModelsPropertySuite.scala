@@ -31,48 +31,48 @@ class ModelsPropertySuite extends munit.ScalaCheckSuite:
   private val genRange: Gen[Range] =
     for
       start <- genPosition
-      end   <- genPosition
+      end <- genPosition
     yield Range(start, end)
 
   private val genLocation: Gen[Location] =
     for
-      uri   <- nonEmptyStr
+      uri <- nonEmptyStr
       range <- genRange
     yield Location(uri, range)
 
   private val genSymbolRef: Gen[SymbolRef] =
     for
-      sym  <- nonEmptyStr
+      sym <- nonEmptyStr
       name <- nonEmptyStr
       kind <- Gen.oneOf(SymbolKind.values.toSeq)
     yield SymbolRef(sym, name, kind)
 
   private val genParameter: Gen[Parameter] =
     for
-      name       <- nonEmptyStr
-      tpe        <- nonEmptyStr
+      name <- nonEmptyStr
+      tpe <- nonEmptyStr
       isImplicit <- Gen.oneOf(true, false)
     yield Parameter(name, tpe, isImplicit)
 
   private val genParameterList: Gen[ParameterList] =
     for
-      params     <- Gen.listOf(genParameter)
+      params <- Gen.listOf(genParameter)
       isImplicit <- Gen.oneOf(true, false)
     yield ParameterList(params, isImplicit)
 
   private val genMethodSignature: Gen[MethodSignature] =
     for
-      sym      <- nonEmptyStr
-      name     <- nonEmptyStr
+      sym <- nonEmptyStr
+      name <- nonEmptyStr
       tyParams <- Gen.listOf(nonEmptyStr)
-      pLists   <- Gen.listOf(genParameterList)
-      ret      <- nonEmptyStr
+      pLists <- Gen.listOf(genParameterList)
+      ret <- nonEmptyStr
       rendered <- nonEmptyStr
     yield MethodSignature(sym, name, tyParams, pLists, ret, rendered)
 
   private val genUsagesResult: Gen[UsagesResult] =
     for
-      sym  <- nonEmptyStr
+      sym <- nonEmptyStr
       name <- nonEmptyStr
       defs <- Gen.listOf(genLocation)
       refs <- Gen.listOf(genLocation)
@@ -80,22 +80,22 @@ class ModelsPropertySuite extends munit.ScalaCheckSuite:
 
   private val genClassHierarchy: Gen[ClassHierarchy] =
     for
-      sym  <- nonEmptyStr
+      sym <- nonEmptyStr
       name <- nonEmptyStr
-      par  <- Gen.listOf(genSymbolRef)
-      lin  <- Gen.listOf(genSymbolRef)
+      par <- Gen.listOf(genSymbolRef)
+      lin <- Gen.listOf(genSymbolRef)
       subs <- Gen.listOf(genSymbolRef)
     yield ClassHierarchy(sym, name, par, lin, subs)
 
   private val genOverloadsResult: Gen[OverloadsResult] =
     for
-      name      <- nonEmptyStr
+      name <- nonEmptyStr
       overloads <- Gen.listOf(genMethodSignature)
     yield OverloadsResult(name, overloads)
 
   private val genMemberInfo: Gen[MemberInfo] =
     for
-      sym  <- nonEmptyStr
+      sym <- nonEmptyStr
       name <- nonEmptyStr
       kind <- Gen.oneOf(SymbolKind.values.toSeq)
       decl <- genSymbolRef
@@ -103,105 +103,105 @@ class ModelsPropertySuite extends munit.ScalaCheckSuite:
 
   private val genMembersResult: Gen[MembersResult] =
     for
-      sym       <- nonEmptyStr
-      name      <- nonEmptyStr
-      declared  <- Gen.listOf(genMemberInfo)
+      sym <- nonEmptyStr
+      name <- nonEmptyStr
+      declared <- Gen.listOf(genMemberInfo)
       inherited <- Gen.listOf(genMemberInfo)
     yield MembersResult(sym, name, declared, inherited)
 
   private val genImplicitCandidate: Gen[ImplicitCandidate] =
     for
-      target             <- genSymbolRef
-      tpe                <- nonEmptyStr
+      target <- genSymbolRef
+      tpe <- nonEmptyStr
       fromExplicitImport <- Gen.oneOf(true, false)
     yield ImplicitCandidate(target, tpe, fromExplicitImport)
 
   private val genImplicitResolution: Gen[ImplicitResolution] =
     for
-      queryType  <- nonEmptyStr
-      chosen     <- Gen.option(genSymbolRef)
+      queryType <- nonEmptyStr
+      chosen <- Gen.option(genSymbolRef)
       candidates <- Gen.listOf(genImplicitCandidate)
     yield ImplicitResolution(queryType, chosen, candidates)
 
   private val genImplicitChainStep: Gen[ImplicitChainStep] =
     for
-      target    <- genSymbolRef
-      tpe       <- nonEmptyStr
+      target <- genSymbolRef
+      tpe <- nonEmptyStr
       dependsOn <- Gen.listOf(nonEmptyStr)
     yield ImplicitChainStep(target, tpe, dependsOn)
 
   private val genImplicitChain: Gen[ImplicitChain] =
     for
       queryType <- nonEmptyStr
-      steps     <- Gen.listOf(genImplicitChainStep)
+      steps <- Gen.listOf(genImplicitChainStep)
     yield ImplicitChain(queryType, steps)
 
   private val genTypeAtPosition: Gen[TypeAtPosition] =
     for
-      location    <- genLocation
-      symbol      <- nonEmptyStr
+      location <- genLocation
+      symbol <- nonEmptyStr
       displayName <- nonEmptyStr
-      tpe         <- nonEmptyStr
+      tpe <- nonEmptyStr
     yield TypeAtPosition(location, symbol, displayName, tpe)
 
   private val genCallEdge: Gen[CallEdge] =
     for
       from <- genSymbolRef
-      to   <- genSymbolRef
-      at   <- genLocation
+      to <- genSymbolRef
+      at <- genLocation
     yield CallEdge(from, to, at)
 
   private val genCallGraphPath: Gen[CallGraphPath] =
     for
-      from  <- genSymbolRef
-      to    <- genSymbolRef
-      path  <- Gen.listOf(genSymbolRef)
+      from <- genSymbolRef
+      to <- genSymbolRef
+      path <- Gen.listOf(genSymbolRef)
       edges <- Gen.listOf(genCallEdge)
     yield CallGraphPath(from, to, path, edges)
 
   private val genRenameEdit: Gen[RenameEdit] =
     for
-      uri     <- nonEmptyStr
-      range   <- genRange
+      uri <- nonEmptyStr
+      range <- genRange
       oldText <- nonEmptyStr
       newText <- nonEmptyStr
     yield RenameEdit(uri, range, oldText, newText)
 
   private val genRenamePlan: Gen[RenamePlan] =
     for
-      symbol   <- nonEmptyStr
+      symbol <- nonEmptyStr
       fromName <- nonEmptyStr
-      toName   <- nonEmptyStr
-      edits    <- Gen.listOf(genRenameEdit)
+      toName <- nonEmptyStr
+      edits <- Gen.listOf(genRenameEdit)
     yield RenamePlan(symbol, fromName, toName, edits.size, edits)
 
   private val genMoveImport: Gen[MoveImport] =
     for
-      uri          <- nonEmptyStr
+      uri <- nonEmptyStr
       removeImport <- Gen.alphaStr
-      addImport    <- Gen.alphaStr
+      addImport <- Gen.alphaStr
     yield MoveImport(uri, removeImport, addImport)
 
   private val genExtractBinding: Gen[ExtractBinding] =
     for
       name <- nonEmptyStr
-      tpe  <- nonEmptyStr
+      tpe <- nonEmptyStr
     yield ExtractBinding(name, tpe)
 
   private val genDependencyCycle: Gen[DependencyCycle] =
     for
       dimension <- nonEmptyStr
-      members   <- Gen.listOf(nonEmptyStr)
+      members <- Gen.listOf(nonEmptyStr)
     yield DependencyCycle(dimension, members)
 
   private val genDimensionMetrics: Gen[DimensionMetrics] =
     for
-      afferent   <- Gen.chooseNum(0, 100)
-      efferent   <- Gen.chooseNum(0, 100)
-      layer      <- Gen.chooseNum(0, 10)
+      afferent <- Gen.chooseNum(0, 100)
+      efferent <- Gen.chooseNum(0, 100)
+      layer <- Gen.chooseNum(0, 10)
       centrality <- Gen.chooseNum(0.0, 1.0)
-      sccSize    <- Gen.chooseNum(1, 5)
-      inCycle    <- Gen.oneOf(true, false)
+      sccSize <- Gen.chooseNum(1, 5)
+      inCycle <- Gen.oneOf(true, false)
     yield
       val instability =
         if afferent + efferent == 0 then 0.0
@@ -223,15 +223,15 @@ class ModelsPropertySuite extends munit.ScalaCheckSuite:
 
   private val genDuplicateOccurrence: Gen[DuplicateOccurrence] =
     for
-      location        <- genLocation
+      location <- genLocation
       enclosingMethod <- Gen.option(nonEmptyStr)
     yield DuplicateOccurrence(location, enclosingMethod)
 
   private val genDuplicationGroup: Gen[DuplicationGroup] =
     for
-      size         <- Gen.chooseNum(2, 5)
+      size <- Gen.chooseNum(2, 5)
       astNodeCount <- Gen.chooseNum(1, 100)
-      occurrences  <- Gen.listOfN(size, genDuplicateOccurrence)
+      occurrences <- Gen.listOfN(size, genDuplicateOccurrence)
     yield DuplicationGroup(size, astNodeCount, occurrences)
 
   private val genDuplicationsResult: Gen[DuplicationsResult] =
@@ -356,7 +356,9 @@ class ModelsPropertySuite extends munit.ScalaCheckSuite:
   property("MethodSignature JSON uses named fields"):
     forAll(genMethodSignature) { sig =>
       val json = write(sig)
-      json.contains("\"symbol\"") && json.contains("\"returnType\"") && json.contains("\"rendered\"")
+      json.contains("\"symbol\"") && json.contains("\"returnType\"") && json.contains(
+        "\"rendered\""
+      )
     }
 
   property("ClassHierarchy JSON uses named fields"):

@@ -38,7 +38,7 @@ class AnalyzerHelpersPropertySuite extends munit.ScalaCheckSuite:
     for
       sl <- Gen.chooseNum(0, 8)
       sc <- Gen.chooseNum(0, 8)
-      el <- Gen.chooseNum(0, 8).map(d => sl + d)   // endLine >= startLine
+      el <- Gen.chooseNum(0, 8).map(d => sl + d) // endLine >= startLine
       ec <- Gen.chooseNum(0, 8).flatMap { d =>
         if el == sl then Gen.const(sc + d) // endChar >= startChar on same line
         else Gen.chooseNum(0, 8)
@@ -63,14 +63,17 @@ class AnalyzerHelpersPropertySuite extends munit.ScalaCheckSuite:
       val expected =
         if ql < r.startLine then false
         else if ql > r.endLine then false
-        else if ql == r.startLine && ql == r.endLine then qc >= r.startCharacter && qc < r.endCharacter
+        else if ql == r.startLine && ql == r.endLine then
+          qc >= r.startCharacter && qc < r.endCharacter
         else if ql == r.startLine then qc >= r.startCharacter
         else if ql == r.endLine then qc < r.endCharacter
         else true
       h.rangeContains(r, ql, qc) == expected
     }
 
-  property("rangeContains: a point at exactly the start position is always inside (unless empty range)"):
+  property(
+    "rangeContains: a point at exactly the start position is always inside (unless empty range)"
+  ):
     forAll(genValidRange) { r =>
       val startIsInside = h.rangeContains(r, r.startLine, r.startCharacter)
       // An empty (degenerate) range where start == end contains nothing
