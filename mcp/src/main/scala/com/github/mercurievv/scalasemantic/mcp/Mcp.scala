@@ -65,6 +65,7 @@ object Mcp:
       |  the exact edits to rename a symbol safely            → rename_plan
       |  the edits to move a symbol to another package        → move_plan
       |  the edits to extract a code range into a new method  → extract_method_plan
+      |  where a val/binding flows across method boundaries   → value_flow
       |
       |Symbols: every tool except find_symbol and type_at_position takes a SemanticDB symbol string
       |(grammar: package `foo/`, type `Foo#`, term `foo.`, method `foo().`, overloads `foo().(+1)`).

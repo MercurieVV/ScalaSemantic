@@ -698,6 +698,88 @@ object McpTools:
           )
     },
     tool(
+      "value_flow",
+      "Trace how the value held by a val/binding/parameter propagates through the codebase — a BFS " +
+        "over the value's references that follows it across method boundaries (into a RENAMED " +
+        "parameter when passed as an argument, into a fresh local when re-bound) and classifies how " +
+        "it leaves each node. Returns a graph: `nodes` (positions where the value lives, with " +
+        "`depth`), `edges` (`relation` = assigned_to | passed_as_arg | returned_from | " +
+        "method_receiver), `stoppedAt` (terminals: function_result | method_receiver | type_widened " +
+        "| discarded | external_boundary) and `truncatedAt` (nodes cut by `maxDepth`). Identify the " +
+        "start binding by `symbol`, or by `file` + `line` + `column` (0-based) for a source position.",
+      List(
+        ("symbol", "string", "SemanticDB symbol of the val/binding/parameter to trace"),
+        (
+          "file",
+          "string",
+          "document uri (relative to project root); with `line`/`column`, an alternative to `symbol`"
+        ),
+        ("line", "integer", "0-based line of the binding (with `file` + `column`)"),
+        ("column", "integer", "0-based column of the binding (with `file` + `line`)"),
+        ("maxDepth", "integer", "max flow hops to follow from the root (default 5)"),
+        (
+          "stopOnTypeWidening",
+          "boolean",
+          "do not expand a flow into a binding of a different (widened) type (default true)"
+        )
+      ),
+      Nil
+    ) { a =>
+      val symOpt: Option[SemanticDbSymbol] =
+        a.obj.get("symbol").map(_.str).filter(_.nonEmpty) match
+          case Some(_) => Some(argSymbol(a, "symbol"))
+          case None    =>
+            a.obj.get("file").map(_.str).filter(_.nonEmpty).flatMap { _ =>
+              az.typeAtPosition(argUri(a, "file"), argPosition(a, "line", "column"))
+                .flatMap(t => SemanticDbSymbol.from(t.symbol).toOption)
+            }
+      symOpt match
+        case None      => jobj(Some("found" -> ujson.Bool(false)))
+        case Some(sym) =>
+          val r = az.valueFlow(
+            sym,
+            argPositiveInt(a, "maxDepth", 5),
+            argBool(a, "stopOnTypeWidening", true)
+          )
+          def nodeJson(n: ValueFlowNode): ujson.Value =
+            jobj(
+              Some("symbol" -> ujson.Str(n.symbol)),
+              Some("name" -> ujson.Str(n.displayName)),
+              opt(n.tpe.nonEmpty, "type" -> ujson.Str(n.tpe)),
+              n.location.map(l => "at" -> ujson.Str(loc(l))),
+              Some("depth" -> ujson.Num(n.depth)),
+              n.enclosingMethod.map(m => "enclosingMethod" -> ujson.Str(m)),
+              opt(n.kind.nonEmpty, "kind" -> ujson.Str(n.kind))
+            )
+          def termJson(t: ValueFlowTerminal): ujson.Value =
+            jobj(
+              Some("symbol" -> ujson.Str(t.symbol)),
+              Some("classification" -> ujson.Str(t.classification)),
+              t.at.map(l => "at" -> ujson.Str(loc(l)))
+            )
+          jobj(
+            Some("root" -> nodeJson(r.root)),
+            Some("nodes" -> ujson.Arr.from(r.nodes.map(nodeJson))),
+            opt(
+              r.edges.nonEmpty,
+              "edges" -> ujson.Arr.from(
+                r.edges.map(e =>
+                  jobj(
+                    Some("from" -> ujson.Str(e.from)),
+                    Some("to" -> ujson.Str(e.to)),
+                    Some("relation" -> ujson.Str(e.relation)),
+                    Some("at" -> ujson.Str(loc(e.at))),
+                    e.paramName.map(p => "paramName" -> ujson.Str(p)),
+                    opt(e.coParameters.nonEmpty, "coParameters" -> strs(e.coParameters))
+                  )
+                )
+              )
+            ),
+            opt(r.stoppedAt.nonEmpty, "stoppedAt" -> ujson.Arr.from(r.stoppedAt.map(termJson))),
+            opt(r.truncatedAt.nonEmpty, "truncatedAt" -> ujson.Arr.from(r.truncatedAt.map(termJson)))
+          )
+    },
+    tool(
       "smart_code_duplications",
       "Analyze code duplications (clones) across the project or scoped by path. Normalizes ASTs " +
         "by abstracting over variable/internal names, literal values, and types, reporting identical " +

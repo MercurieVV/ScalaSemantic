@@ -665,6 +665,227 @@ final class Analyzer(
     val root = buildNode(sym, None, depth.value, Set.empty)
     CallHierarchy(sym, index.displayName(sym), direction, depth.value, root)
 
+  // --- value flow -----------------------------------------------------------
+
+  /** Trace how the value held by a val/binding/parameter propagates through the codebase: a BFS
+    * from `symbol` over its references, classifying each as a flow relation and following it across
+    * method boundaries — into a renamed parameter when the value is passed as an argument, into a
+    * fresh local when it is re-bound, etc. A node with no outgoing flow is a terminal, classified by
+    * how the value left it (`function_result`, `method_receiver`, `external_boundary`, `discarded`);
+    * a flow into a binding of a different head type is recorded but not expanded when
+    * `stopOnTypeWidening` (terminal `type_widened`); nodes reached at `maxDepth` are reported in
+    * `truncatedAt` (`depth_limit`).
+    *
+    * Classification is occurrence-grounded (no AST): per reference, co-located occurrences on the
+    * same line decide the relation — a preceding local definition with no intervening call is an
+    * assignment; a preceding method reference makes the value an argument, positionally matched to
+    * that method's value parameter; a method reference immediately after the value is a receiver
+    * use; a value in tail position of its enclosing method body is a return.
+    */
+  def valueFlow(
+      symbol: SemanticDbSymbol,
+      maxDepth: PositiveInt,
+      stopOnTypeWidening: Boolean
+  ): ValueFlowResult =
+    val start = symbol.value
+    val limit = maxDepth.value
+    import s.SymbolOccurrence.Role.{DEFINITION, REFERENCE}
+    import scala.math.Ordering.Implicits.infixOrderingOps
+
+    final case class Flow(
+        relation: String,
+        to: Option[String],
+        at: Location,
+        paramName: Option[String] = None,
+        coParameters: List[String] = Nil
+    )
+
+    def isValueRef(sym: String): Boolean =
+      !index.isMethod(sym) && !index.isType(sym) && !index.isPackage(sym)
+
+    def headType(sym: String): Option[String] =
+      index.info(sym).map(h.valueType).flatMap(h.parentSymbol)
+
+    def widened(from: String, to: String): Boolean =
+      (headType(from), headType(to)) match
+        case (Some(a), Some(b)) => a != b
+        case _                  => false
+
+    def definitionLocation(sym: String): Option[Location] =
+      index.occurrencesOf(sym).collectFirst {
+        case (uri, occ) if occ.role == DEFINITION => h.location(uri, occ.range)
+      }
+
+    def node(sym: String, depth: Int): ValueFlowNode =
+      val encMethodSym = index.ownerChain(sym).find(index.isMethod)
+      ValueFlowNode(
+        sym,
+        index.displayName(sym),
+        h.typeString(sym),
+        definitionLocation(sym),
+        depth,
+        encMethodSym.map(index.displayName),
+        h.kindName(sym).value
+      )
+
+    def valueParamSymbols(methodSym: String): List[String] =
+      index
+        .info(methodSym)
+        .map(_.signature)
+        .collect { case m: s.MethodSignature =>
+          m.parameterLists.flatMap(sc => h.scopeInfos(Some(sc)).map(_.symbol)).toList
+        }
+        .getOrElse(Nil)
+
+    def startCol(o: s.SymbolOccurrence): Int = o.range.map(_.startCharacter).getOrElse(0)
+    def endCol(o: s.SymbolOccurrence): Int = o.range.map(_.endCharacter).getOrElse(0)
+    def pos(o: s.SymbolOccurrence): (Int, Int) =
+      (o.range.map(_.startLine).getOrElse(0), startCol(o))
+
+    // Is `occ` the last value reference in its enclosing method body — a tail/return position?
+    def isTailReturn(doc: s.TextDocument, occ: s.SymbolOccurrence): Boolean =
+      val ordered = doc.occurrences.sortBy(pos)
+      val methodDefs = ordered.filter(o => o.role == DEFINITION && index.isMethod(o.symbol))
+      val p = pos(occ)
+      methodDefs.filter(m => pos(m) <= p).lastOption.exists { enclosing =>
+        val mPos = pos(enclosing)
+        val nextDef = methodDefs.find(d => pos(d) > mPos).map(pos)
+        val body = ordered.filter { o =>
+          val q = pos(o)
+          q > mPos && nextDef.forall(q < _) && o.role == REFERENCE && isValueRef(o.symbol)
+        }
+        body.lastOption.contains(occ)
+      }
+
+    def classifyRef(uri: String, doc: s.TextDocument, occ: s.SymbolOccurrence): Option[Flow] =
+      def maxByStartCol(occs: Seq[s.SymbolOccurrence]): Option[s.SymbolOccurrence] =
+        occs.foldLeft(Option.empty[s.SymbolOccurrence]) { (acc, x) =>
+          acc match
+            case None => Some(x)
+            case Some(max) => if startCol(x) > startCol(max) then Some(x) else Some(max)
+        }
+
+      occ.range.map { r =>
+        val col = r.startCharacter
+        val rEnd = r.endCharacter
+        val at = h.location(uri, Some(r))
+        val onLine = doc.occurrences.filter(_.range.exists(_.startLine == r.startLine))
+        val receiver = onLine.exists(o =>
+          o.role == REFERENCE && index.isMethod(o.symbol) && startCol(o) == rEnd + 1
+        )
+        if receiver then Flow("method_receiver", None, at)
+        else
+          val before = onLine.filter(o => startCol(o) < col)
+          val methodBefore = before.filter(o => o.role == REFERENCE && index.isMethod(o.symbol))
+          val localDefBefore =
+            before.filter(o => o.role == DEFINITION && index.isLocal(o.symbol) && isValueRef(o.symbol))
+          val maxLocalDef = maxByStartCol(localDefBefore)
+          val maxMethodBefore = maxByStartCol(methodBefore)
+          maxMethodBefore match
+            case None =>
+              maxLocalDef match
+                case Some(ld) => Flow("assigned_to", Some(ld.symbol), at)
+                case None =>
+                  if isTailReturn(doc, occ) then Flow("returned_from", None, at)
+                  else Flow("discarded", None, at)
+            case Some(callee) =>
+              val calleeEnd = endCol(callee)
+              val argIndex = onLine.count(o =>
+                o.role == REFERENCE && isValueRef(o.symbol) &&
+                  o.range.exists(rg => rg.startCharacter > calleeEnd && rg.startCharacter < col)
+              )
+              val allParams = valueParamSymbols(callee.symbol)
+              allParams.lift(argIndex) match
+                case Some(p) =>
+                  val pName  = index.displayName(p)
+                  val coPars = allParams.filterNot(_ == p).map(index.displayName)
+                  Flow("passed_as_arg", Some(p), at, Some(pName), coPars)
+                case None => Flow("passed_as_arg", None, at)
+      }
+
+    def classify(sym: String): List[Flow] =
+      index
+        .occurrencesOf(sym)
+        .iterator
+        .collect { case (uri, occ) if occ.role == REFERENCE => (uri, occ) }
+        .flatMap((uri, occ) => index.document(uri).flatMap(classifyRef(uri, _, occ)))
+        .toList
+
+    def terminalClass(flows: List[Flow]): String =
+      val cs = flows.map {
+        case Flow("returned_from", _, _, _, _)    => "function_result"
+        case Flow("method_receiver", _, _, _, _)  => "method_receiver"
+        case Flow("passed_as_arg", None, _, _, _) => "external_boundary"
+        case _                                    => "discarded"
+      }
+      List("function_result", "method_receiver", "external_boundary", "discarded")
+        .find(cs.contains)
+        .getOrElse("discarded")
+
+    @annotation.tailrec
+    def loop(
+        queue: List[(String, Int)],
+        visited: Set[String],
+        nodes: List[ValueFlowNode],
+        edges: List[ValueFlowEdge],
+        stopped: List[ValueFlowTerminal],
+        truncated: List[ValueFlowTerminal]
+    ): (List[ValueFlowNode], List[ValueFlowEdge], List[ValueFlowTerminal], List[ValueFlowTerminal]) =
+      queue match
+        case Nil                    => (nodes.reverse, edges.reverse, stopped.reverse, truncated.reverse)
+        case (sym, _) :: rest if visited(sym) =>
+          loop(rest, visited, nodes, edges, stopped, truncated)
+        case (sym, depth) :: rest =>
+          val visited2 = visited + sym
+          val n = node(sym, depth)
+          val nodes2 = n :: nodes
+          if depth >= limit then
+            loop(
+              rest,
+              visited2,
+              nodes2,
+              edges,
+              stopped,
+              ValueFlowTerminal(sym, "depth_limit", n.location) :: truncated
+            )
+          else
+            val flows = classify(sym)
+            val edgeFlows = flows.filter(_.to.isDefined)
+            val realEdges =
+              edgeFlows
+                .flatMap(f =>
+                  f.to.map(to => ValueFlowEdge(sym, to, f.relation, f.at, f.paramName, f.coParameters))
+                )
+                .distinct
+            val targets = edgeFlows.flatMap(_.to).distinct
+            val (widenTargets, flowTargets) =
+              if stopOnTypeWidening then targets.partition(widened(sym, _)) else (Nil, targets)
+            val widenNodes = widenTargets.map(node(_, depth + 1))
+            val widenTerms =
+              widenTargets.map(t => ValueFlowTerminal(t, "type_widened", definitionLocation(t)))
+            val symTerminal =
+              if edgeFlows.nonEmpty then Nil
+              else List(ValueFlowTerminal(sym, terminalClass(flows), n.location))
+            val enqueue = flowTargets.filterNot(visited2).map((_, depth + 1))
+            loop(
+              rest ++ enqueue,
+              visited2,
+              widenNodes.reverse ::: nodes2,
+              realEdges.reverse ::: edges,
+              widenTerms.reverse ::: symTerminal.reverse ::: stopped,
+              truncated
+            )
+
+    val (nodes, edges, stopped, truncated) =
+      loop(List(start -> 0), Set.empty, Nil, Nil, Nil, Nil)
+    ValueFlowResult(
+      node(start, 0),
+      nodes.distinctBy(_.symbol),
+      edges.distinct,
+      stopped.distinctBy(t => (t.symbol, t.classification)),
+      truncated.distinctBy(_.symbol)
+    )
+
   /** Caller -> list of (callee, call-site) edges, attributing each method reference to the most
     * recent method definition in source order within its document.
     */
