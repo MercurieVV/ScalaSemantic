@@ -4,8 +4,22 @@ on:
   push:
     branches: ['**']
     tags: ['v*']
+    paths-ignore:
+      - 'docs/**'
+      - 'website/**'
+      - 'mdoc-docs/**'
+      - '*.md'
+      - '.gitignore'
+      - '.agents/**'
   pull_request:
     branches: ['**']
+    paths-ignore:
+      - 'docs/**'
+      - 'website/**'
+      - 'mdoc-docs/**'
+      - '*.md'
+      - '.gitignore'
+      - '.agents/**'
   workflow_dispatch: # manual dry-run: builds, then publishes a -SNAPSHOT (exercises creds + signing)
 
 concurrency:
