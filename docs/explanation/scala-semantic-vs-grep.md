@@ -50,7 +50,7 @@ The 7.8× is only the first request. Grep's bloat compounds: the 71 wrong hits r
 
 Prompt caching narrows the *price* gap but not the *context* gap — a cached token still occupies the context window, and the cache is frequently cold in agent edit loops.
 
-More per-query measurements: [token-metrics.md](../research/token-metrics.md).
+More per-query measurements: [token-metrics-methodology.md](../research/token-metrics-methodology.md).
 
 ## Limitations
 

@@ -28,5 +28,4 @@ It reads compiler-emitted **SemanticDB**, so answers reflect what the compiler r
 ## Research & Backlog
 
 - [Claude interaction study](research/claude-interaction-study.md) — measured tool usage, tool recommendations
-- [LLM steering](research/llm-steering-investigation.md) — steering agents toward semantic tools
-- [Plan & tracker](research/plan.md) — roadmap, decisions, known limitations
+

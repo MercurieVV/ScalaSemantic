@@ -9,21 +9,20 @@
 
 Works with Scala 2.13.* and 3.*.*, any sbt/Mill/Gradle project, and any MCP-compatible agent (Claude Code, Codex, Gemini CLI, Cline, Roo Code, Continue…).
 
-## Quick install (sbt)
+## Quick setup
+
+Add the plugin to your sbt project and generate rules:
 
 ```scala
 // project/plugins.sbt
 addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "@VERSION@")
-// build.sbt
-enablePlugins(ScalaSemanticMcpPlugin)
 ```
 
 ```sh
-sbt mcpClientConfig   # writes MCP config + SCALA_SEMANTIC_RULES.md
-sbt compile           # emits SemanticDB
+sbt mcpClientConfig compile
 ```
 
-Other setups: [Integration guide](docs/getting-started/integration.md).
+For other build tools, manual setups, or advanced options, see the [Integration guide](docs/getting-started/integration.md).
 
 ## Tools
 

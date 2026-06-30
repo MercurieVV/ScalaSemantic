@@ -618,7 +618,7 @@ lazy val root = (project in file("."))
 // VERIFY-ONLY gate (mirrors CI): scalafmtCheckAll + scalafixAll --check FAIL the push on drift rather
 // than silently rewriting files (a pre-push rewrite lands post-commit and never gets pushed — CI then
 // rejects it). Formatting is applied earlier by the pre-commit hook; here we only confirm it stuck.
-// `testOnly *` forces the full suite (sbt 2.0 `test` is cached testQuick — see docs/research/plan.md).
+// `testOnly *` forces the full suite (sbt 2.0 `test` is cached testQuick — see docs/project/development.md).
 addCommandAlias(
   "prePush",
   "clean; scalafmtCheckAll; scalafixAll --check; Test/testOnly *; stainlessVerify"

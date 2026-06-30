@@ -42,30 +42,5 @@ Use `find_symbol` to resolve a human name to its symbol; use `type_at_position` 
 
 ## Request shape
 
-MCP clients call tools for you. For a manual stdio check or direct integration, a `tools/call` request looks like:
+MCP clients call tools automatically. For manual stdio checks, direct integrations, and full request/response JSON examples for every tool, see [Examples](../usage/examples.md).
 
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "tools/call",
-  "params": {
-    "name": "find_symbol",
-    "arguments": { "query": "Animal" }
-  }
-}
-```
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 2,
-  "method": "tools/call",
-  "params": {
-    "name": "class_hierarchy",
-    "arguments": { "symbol": "com/example/Animal#" }
-  }
-}
-```
-
-See [Examples](../usage/examples.md) for full request/response pairs for every tool.

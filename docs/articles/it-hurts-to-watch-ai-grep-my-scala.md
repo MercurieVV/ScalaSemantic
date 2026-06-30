@@ -56,21 +56,10 @@ Responses are lean by default: `uri:line:col` locations, one-line signatures, em
 
 The server runs as its own JVM process. stdout is JSON-RPC only; logs go to a file. One stray log line on stdout corrupts the protocol stream, so this boundary is strict.
 
-## Setup for an sbt project
+## Setup
 
-```scala
-// project/plugins.sbt
-addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "x.y.z")
-// build.sbt
-enablePlugins(ScalaSemanticMcpPlugin)
-```
+For details on adding the sbt plugin, setting up automatic or manual launcher configurations, or integrating with other build tools, see the [Integration guide](../getting-started/integration.md).
 
-```sh
-sbt compile          # emits SemanticDB
-sbt mcpClientConfig  # writes .mcp.json + SCALA_SEMANTIC_RULES.md
-```
-
-Supported clients: `claude` (default), `codex`, `gemini`, `antigravity`, `cline`, `roo`, `continue`, `generic-json`, `all`. Recompile when code changes; project-wide answers come from compiler output on disk.
 
 ---
 

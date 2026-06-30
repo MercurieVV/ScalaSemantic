@@ -37,3 +37,17 @@ Today the tool list is hard-coded in `McpTools.all(az)`. A future design to let 
 - `Mcp.serve` concatenates built-in tools with discovered ones.
 
 The cost is stabilizing `Tool`, `Analyzer`, and the model types as a public API (they are internal today). This stays a research note until there is concrete demand.
+
+## Opaque Types Decision
+
+Based on a candidate survey:
+- **Boundary Validation**: The `InputTypes` module validates raw JSON strings entering the domain (e.g., `SemanticDbSymbol`, `DocumentUri`, `ScalaIdentifier`) using smart constructors returning `Either[String, T]`.
+- **No Internal Wrapping**: Internal data structures (e.g., internal symbols in `SemanticIndex`, wire models in `Models.scala`, path filters, dependency graphs) remain as standard types (like `String` or `Map`). Wrapping these internal structures does not provide additional safety benefits since they are already valid by construction, and doing so would introduce significant refactoring overhead and complexity.
+- **Future Distinction**: If internal symbol strings need distinguishing in the future, a dedicated `core`-layer opaque type should be introduced in a separate PR.
+
+## Agent Steering Strategy
+
+To steer LLM agents away from grep and toward ScalaSemantic, we use a two-pronged approach:
+1. **Server-Level MCP Instructions**: The server returns custom instructions in the `instructions` field of the MCP `InitializeResult`. Compliant clients inject these instructions directly into the LLM system prompt, ensuring out-of-the-box steering without repository changes.
+2. **Repository Configuration Files**: We generate `SCALA_SEMANTIC_RULES.md` along with client-specific rule file stubs (like `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, etc.) via `sbt mcpClientConfig`. This handles clients that do not support MCP instructions and provides a human-readable source of truth in the repository.
+
