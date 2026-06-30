@@ -58,6 +58,7 @@ build/
 
 # Local agent/worktree metadata.
 /.agents/mcp_config.json
+/worktrees/
 /.claude/worktrees/
 /.cline/
 /.continue/config.yaml

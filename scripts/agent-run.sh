@@ -76,7 +76,12 @@ case "$engine" in
     output=$(cd "$wt" && codex exec ${model:+--model "$model"} --dangerously-bypass-approvals-and-sandbox "$prompt" 2>&1) || engine_exit=$?
     ;;
   agy)
-    output=$(agy --print --add-dir "$wt" ${model:+--model "$model"} --dangerously-skip-permissions "$prompt" 2>&1) || engine_exit=$?
+    # agy --add-dir silently falls back when any path component starts with '.'.
+    # .worktrees/<branch> has a hidden component, so use a visible symlink instead.
+    agy_wt="${repo_root}/worktrees/${branch}"
+    ln -sfn "$wt" "$agy_wt"
+    output=$(agy --print --add-dir "$agy_wt" ${model:+--model "$model"} --dangerously-skip-permissions "$prompt" 2>&1) || engine_exit=$?
+    rm -f "$agy_wt"
     ;;
   *)
     echo "unknown engine: $engine" >&2; exit 2 ;;
