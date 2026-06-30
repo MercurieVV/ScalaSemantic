@@ -102,7 +102,7 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
         val _ = Process(launcherCommand(launcher) :+ "--prefetch").!
       } catch {
         case scala.util.control.NonFatal(_) =>
-          // Silently continue if prefetch fails; the server will download on first connect
+        // Silently continue if prefetch fails; the server will download on first connect
       }
       // Reference the classpath file by PATH only — do NOT depend on `mcpClasspathFile`, which
       // evaluates `Compile / fullClasspath` and so forces a full compile. Printing a config entry

@@ -245,8 +245,7 @@ object Mcp:
         if logging.logOutputs then log(s"out $line")
         out.println(line)
       }
-    finally
-      backend.foreach(_.close())
+    finally backend.foreach(_.close())
 
   /** Resolve the classpath spec (arg or `SCALASEMANTIC_CLASSPATH`) to a list of paths. A spec that
     * names an existing file is read as its contents (newline- or path-separator-delimited);
