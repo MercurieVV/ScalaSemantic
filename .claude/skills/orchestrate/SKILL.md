@@ -41,6 +41,17 @@ Let user inspect and approve before executing. Only spend tree-building (Haiku) 
 ### Resume (partial failure)
 `/orchestrate --resume` — read `.claude/task-state.json`, continue from last halted/incomplete task, skip done tasks.
 
+### Resume (interruption)
+If a task is still `started` or `in-progress` and was not marked `halted`, treat a new launch for
+the same branch as an interrupted worker resume. Do not discard the worktree or start over. The
+replacement worker must inspect the existing worktree, state files, GitHub comments, git status,
+recent commits, and the last recorded live status line, then continue from the earliest step that is
+not proven complete.
+
+The conductor chooses the worktree for every child agent. Child agents do not pick or create an
+arbitrary worktree by themselves. If `.claude/state.json` has a non-halted `inflight[]` item with a
+usable `worktree`, assign the replacement worker to that exact path.
+
 ### Merge queue
 `./tree2m --auto` is used by all task agents. Requires "Allow auto-merge" enabled in repo branch protection (Settings → General → "Allow auto-merge"). Without it, remove `--auto` flag from task prompts.
 
@@ -137,6 +148,13 @@ Create `.claude/task-state.json` with meta, tree, tasks. Persist after each chan
 
 **While roots or orphans remain unstarted or in-progress**:
 - Spawn one worker agent per eligible root/orphan (up to 3 total workers)
+- If a root/orphan already has a non-halted `inflight[]` record and its previous worker is gone or
+  interrupted, relaunch the same branch in resume mode and assign the new worker to the recorded
+  `worktree`/`agent_workdir` instead of creating a fresh task.
+- Before launching any worker, choose its worktree path:
+  - Prefer the existing non-halted `inflight[].worktree` when resuming.
+  - Otherwise use `<repo-root>/.worktrees/<branch>`.
+  - Include the chosen path in the worker prompt and live status update.
 - Each worker agent:
   - Walks its subtree depth-first
   - Fetches task from issue comment/body
@@ -171,10 +189,19 @@ When all roots + orphans and all their descendants are `completed` or `halted`: 
 Tree task: #<root-issue>
 Subtree: <list of all child issues in this root's tree>
 Executor: <engine/model for this root>
+Assigned worktree: <absolute path chosen by conductor>
 
 Your job:
-1. Walk your subtree depth-first (see below for order)
-2. For each task:
+1. Detect resume state before doing task work:
+   a. Use the assigned worktree from the conductor. Do not choose a different worktree.
+   b. If this branch has an existing worktree or `.claude/state.json` `inflight[]` entry with status
+      `started`/`in-progress` and no halted/error marker, assume a prior run was interrupted.
+   c. Inspect the worktree, `git status --short`, recent commits, open PR/result comments, task-tree
+      marker status, `.claude/task-state.json`, and the last `last_stdout_line`/`last_update`.
+   d. Decide the last proven completed step and continue from the earliest unsafe/incomplete step.
+      Keep useful existing work; remove only clear junk or out-of-scope edits.
+2. Walk your subtree depth-first (see below for order)
+3. For each task:
    a. Fetch issue #N body & comments from GitHub
    b. Extract task description from issue body or "Task:" section in task-tree-marker comment
    c. Check "Depends on: #M" note in issue body
@@ -184,7 +211,7 @@ Your job:
    g. Update the issue's task-tree-marker status field to "in-progress" then "completed"
    h. If task has children, move to first unblocked child
    i. If no children, backtrack to sibling or parent's next unblocked sibling
-3. On error: post error comment, update status to "halted", STOP (do not process siblings/children)
+4. On error: post error comment, update status to "halted", STOP (do not process siblings/children)
 
 Subtree depth-first order:
 <traversal list, e.g.
@@ -233,14 +260,41 @@ Agent tool:
   prompt: <worker agent prompt above>
 ```
 
-The scala-coder agent creates its own worktree, implements each task depth-first, updates GitHub + state.json, and emits final summary.
+The conductor chooses or reuses the worktree path before launch and passes it to scala-coder.
+Scala-coder implements each task depth-first, updates GitHub + state.json, and emits final summary.
+It may create the exact assigned path only if the conductor assigned it and it does not exist; it
+must not pick another path.
+
+Live status for `.claude/state.json`: when launching a claude/scala-coder worker, include the branch
+name and tell it to update its matching `inflight[]` item with:
+
+```bash
+scripts/agent-status.sh <branch> \
+  --worktree "$PWD" \
+  --agent-workdir "$PWD" \
+  --last-stdout-line "<latest command or agent status>"
+```
+
+The first update must happen immediately after the worker creates or enters its worktree. During
+long commands, update `last_stdout_line` with the last meaningful stdout/stderr line so running
+flows show `worktree`, `agent_workdir`, `last_stdout_line`, and `last_update`.
+
+If the worktree already exists and the task was not halted, launch the scala-coder worker with an
+explicit resume instruction: it must inspect the existing worktree and GitHub/task state, infer the
+last completed step, and continue from that point.
 
 ### Engine `codex` or `agy`
 Write worker prompt to scratchpad file, then:
 ```bash
-scripts/agent-run.sh <engine> <branch> "<model>" <worker-prompt-file> '<subtree-issues-json>'
+scripts/agent-run.sh <engine> <branch> "<model>" <worker-prompt-file> '<subtree-issues-json>' '<assigned-worktree>'
 ```
 Run with `run_in_background: true`. Script handles full lifecycle, posts result comments, and notifies conductor on completion.
+It also updates `.claude/state.json` `inflight[]` entries with `worktree`, `agent_workdir`,
+`last_stdout_line`, and `last_update` while the worker runs.
+If the assigned worktree or branch already exists, `agent-run.sh` reuses it and injects an
+interruption-resume context into the worker prompt. If the conductor omits `<assigned-worktree>`,
+`agent-run.sh` falls back to any non-halted `inflight[].worktree`, then to
+`<repo-root>/.worktrees/<branch>`.
 
 Both engines notify conductor on completion — conductor does NOT poll.
 
