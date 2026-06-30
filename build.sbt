@@ -114,6 +114,7 @@ lazy val munit = "org.scalameta" %% "munit" % "1.3.3" % Test
 lazy val munitScalacheck = "org.scalameta" %% "munit-scalacheck" % "1.3.0" % Test
 lazy val upickle = "com.lihaoyi" %% "upickle" % "4.4.3"
 lazy val refined = "eu.timepit" %% "refined" % "0.11.3"
+lazy val slf4jNop = "org.slf4j" % "slf4j-nop" % "1.7.36" % Runtime
 
 // Generate a standalone, build-tool-agnostic launcher for the MCP server: a script that runs the
 // server on a clean JVM (no sbt → no stdout pollution of the JSON-RPC stream).
@@ -160,7 +161,8 @@ lazy val pc = (project in file("pc"))
     Test / fork := true,
     libraryDependencies ++= Seq(
       "org.scala-lang" %% "scala3-presentation-compiler" % "3.8.4",
-      munit
+      munit,
+      slf4jNop
     )
   )
 
@@ -577,7 +579,11 @@ lazy val docs = (project in file("mdoc-docs"))
 
 lazy val root = (project in file("."))
   .aggregate(core, pc, analysis, mcp, sbtPlugin)
-  .settings(name := "ScalaSemantic", publish / skip := true)
+  .settings(
+    name := "ScalaSemantic",
+    publish / skip := true,
+    libraryDependencies += slf4jNop
+  )
 
 // Pre-push gate. A command alias (not a task) so the steps aggregate across all modules. This is a
 // VERIFY-ONLY gate (mirrors CI): scalafmtCheckAll + scalafixAll --check FAIL the push on drift rather
