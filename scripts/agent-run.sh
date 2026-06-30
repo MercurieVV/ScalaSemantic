@@ -139,6 +139,12 @@ Steps:
 7. Run './tree2m --auto ${branch} <Conventional-Commit message>' from inside ${wt} to commit, push, and merge.
 8. Print the PR URL on the last line of your output.
 
+Output discipline:
+- Keep stdout quiet. Print only errors, prompts/questions that need attention, final summaries,
+  PR/result URLs, and other explicitly important status.
+- Do not stream routine command chatter, progress narration, full diffs, issue bodies, or bulk logs
+  unless they are needed to diagnose a failure.
+
 If tree2m fails because the PR is not mergeable (merge conflict), print exactly:
 MERGE_CONFLICT: <list conflicting files>
 Then stop. Do NOT attempt to resolve the conflict — the orchestrator handles it."
