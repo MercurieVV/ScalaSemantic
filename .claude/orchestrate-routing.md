@@ -36,11 +36,11 @@ Verify available models: `codex --help` or `codex models`.
 | `GPT-OSS 120B (Medium)` | strong OSS | second opinion, bulk medium |
 
 ### claude (`model:` in Agent tool)
-| Model ID | Tier | Use when |
-|---|---|---|
+| Model ID                              | Tier | Use when |
+|---------------------------------------|---|---|
 | `haiku` (`claude-haiku-4-5-20251001`) | cheapest | triage, sanity-check helpers |
-| `sonnet` (`claude-sonnet-4-6`) | mid | medium-hard Scala with scala-semantic needed |
-| `opus` (`claude-opus-4-8`) | costliest | hard: deep type/implicit reasoning, complex refactors |
+| `sonnet` (`claude-sonnet-5`)          | mid | medium-hard Scala with scala-semantic needed |
+| `opus` (`claude-opus-4-8`)            | costliest | hard: deep type/implicit reasoning, complex refactors |
 
 ## Routing rules (cheapest engine that clears the bar)
 
