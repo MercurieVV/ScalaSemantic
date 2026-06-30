@@ -45,6 +45,8 @@ The plugin adds two tasks:
 
 The launcher downloads and caches the server jar on first spawn. To pin a specific jar, override `mcpServerCommand` in `build.sbt`.
 
+Logging is silent by default. If you need diagnostics, edit the `args` in the generated config file to add `--log` and/or `--log-output` flags. See [Logging](#logging) for details.
+
 #### Supported clients
 
 ```scala
