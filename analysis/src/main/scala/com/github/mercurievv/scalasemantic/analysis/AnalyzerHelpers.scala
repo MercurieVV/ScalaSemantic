@@ -297,11 +297,10 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
 
   /** Member symbols declared in a type's `ClassSignature.declarations` scope. */
   def declarationSymbols(symbol: String): List[String] =
-    index
-      .info(symbol)
-      .map(_.signature)
-      .collect { case c: s.ClassSignature => scopeInfos(c.declarations).map(_.symbol).toList }
-      .getOrElse(Nil)
+    index.info(symbol).flatMap(_.signature match
+      case c: s.ClassSignature => Some(scopeInfos(c.declarations).map(_.symbol).toList)
+      case _                   => None
+    ).getOrElse(Nil)
 
   def memberInfo(member: String, declaredIn: String): MemberInfo =
     MemberInfo(member, index.displayName(member), kindName(member), symbolRef(declaredIn))

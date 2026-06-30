@@ -86,7 +86,7 @@ object GraphMetrics:
         .flatMap((from, to) =>
           val ci = componentOf(from)
           val cj = componentOf(to)
-          if ci != cj then List(ci -> cj) else Nil
+          Option.when(ci != cj)(ci -> cj)
         )
         .groupMap(_._1)(_._2)
         .view
