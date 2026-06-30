@@ -64,6 +64,9 @@ Your context is the costliest in the system. Protect it.
 - Feed worker agents minimum: issue#, task URL, dependency context URLs.
 - Don't re-read issues you just dispatched; trust worker agents to fetch context.
 - Build task tree once at start; reuse until all done or halted.
+- Parent/conductor agents must listen to child-agent stdout and live status updates, treat them as
+  control signals, and react promptly to errors, prompts/questions, merge-conflict markers, PR URLs,
+  completion summaries, and other explicitly important output.
 - Child agents must keep stdout quiet. They should print only errors, prompts/questions that need
   attention, final summaries, PR/result URLs, and other explicitly important status. Routine command
   chatter, progress narration, full diffs, and bulk logs belong in files or should be omitted.
@@ -151,6 +154,9 @@ Create `.claude/task-state.json` with meta, tree, tasks. Persist after each chan
 
 **While roots or orphans remain unstarted or in-progress**:
 - Spawn one worker agent per eligible root/orphan (up to 3 total workers)
+- Listen to each child agent's stdout and `.claude/state.json` `last_stdout_line`/`last_update`
+  while it runs. React immediately when a child emits an error, prompt/question, merge-conflict
+  marker, PR URL, completion summary, or other explicitly important signal.
 - If a root/orphan already has a non-halted `inflight[]` record and its previous worker is gone or
   interrupted, relaunch the same branch in resume mode and assign the new worker to the recorded
   `worktree`/`agent_workdir` instead of creating a fresh task.
@@ -219,6 +225,8 @@ Your job:
 Output discipline:
 - Keep stdout quiet. Print only errors, prompts/questions that need attention, final summaries,
   PR/result URLs, and other explicitly important status.
+- Treat stdout as a parent-agent control channel: anything printed there should be something the
+  parent/conductor may need to react to.
 - Do not stream routine command chatter, progress narration, full diffs, issue bodies, or bulk logs
   unless they are needed to diagnose a failure.
 
