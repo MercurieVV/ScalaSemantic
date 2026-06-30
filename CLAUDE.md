@@ -36,6 +36,22 @@ rename-plan, move-plan, extract-method-plan.
 - Result types are `upickle` case classes with derived `ReadWriter`.
 - Validate every feature by dogfooding against this repo's own SemanticDB.
 
+## LLM task design
+When an LLM/agent creates tasks, examples, fixtures, or test scenarios for this project:
+- Make them representative of real Scala codebases and workflows, not toy-only cases.
+- Write for Scala coders as the primary audience; use idiomatic Scala terminology and examples.
+- Prefer tasks that save LLM tokens/context by producing compact, high-signal semantic answers.
+- For tests, use the best available practices for this repo: dogfood against SemanticDB output,
+  cover realistic edge cases, and keep assertions focused on externally useful behavior.
+
+## Claude agentic task flow
+When using Claude/agentic workflows to organize project tasks:
+- Use `.claude/skills/task-planning/SKILL.md` before implementation to fetch open tasks, prioritize
+  them, identify dependencies, create per-task implementation plans, choose the preferred LLM/model
+  for every plan step, and write those notes back into task comments.
+- The flow is implemented by `.claude/agents/task-prioritizer.md` and
+  `.claude/agents/task-plan-architect.md`.
+
 ## Build / test
 ```
 sbt compile      # regenerates SemanticDB for all modules
