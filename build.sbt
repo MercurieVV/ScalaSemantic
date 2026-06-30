@@ -416,9 +416,7 @@ lazy val mcp = (project in file("mcp"))
       val argv = Seq(
         launcher.getAbsolutePath,
         root.getAbsolutePath,
-        cpFile.getAbsolutePath,
-        "--log",
-        "--log-output"
+        cpFile.getAbsolutePath
       )
       val serverName = "scala-semantic"
       val clientVal = args.headOption.getOrElse("claude")
