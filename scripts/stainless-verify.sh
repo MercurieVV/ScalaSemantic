@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Formal-verification gate: run the standalone Stainless tool over the project's verifiable
-# contracts (analysis/.../StainlessContracts.scala) and fail iff any verification condition is
-# INVALID.
+# contracts (analysis/.../PureKernels.scala — the production numeric/geometric kernels, verified
+# in place, no mirror) and fail iff any verification condition is INVALID.
 #
 # Why parse the summary instead of trusting Stainless's exit code: the tool exits non-zero on
 # `unknown` (solver timeout) as well as `invalid`. One contract — `rangeSpan` — has a nonlinear
@@ -16,7 +16,7 @@
 set -euo pipefail
 
 VERSION="${STAINLESS_VERSION:-0.9.9.3}"
-TARGET="analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/StainlessContracts.scala"
+TARGET="analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala"
 CACHE_DIR="${STAINLESS_CACHE_DIR:-$HOME/.cache/scalasemantic/stainless}"
 # Per-VC timeout. Default kept low so the local/prePush path stays snappy: every genuinely-valid
 # VC is discharged in well under this, an INVALID yields its counter-example near-instantly, and the

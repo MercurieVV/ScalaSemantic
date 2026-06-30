@@ -307,59 +307,28 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
     MemberInfo(member, index.displayName(member), kindName(member), symbolRef(declaredIn))
 
   /** Whether the 0-based `(line, character)` position lies inside the half-open range `r`
-    * (inclusive of start, exclusive of end).
-    *
-    * Stainless contract (formally verified — see [[StainlessContracts.rangeContains]]):
-    *   - Precondition: `r` is well-formed (`start <= end`, non-negative) and the position is
-    *     non-negative.
-    *   - Postcondition: the result is exactly `afterStart && beforeEnd`; a contained position lies
-    *     within the line span; and an EMPTY range (`start == end`) contains nothing — the half-open
-    *     invariant at its degenerate point. The clauses use `!A || B` for `A ==> B` to avoid
-    *     importing `stainless.lang` into production code.
+    * (inclusive of start, exclusive of end). Thin `s.Range` adapter over the formally-verified
+    * [[PureKernels.rangeContains]] — this method only localizes the SemanticDB `s.Range` shape; the
+    * geometry (and its `[start, end)` half-open contract) is verified there.
     */
-  @pure
   def rangeContains(r: s.Range, line: Int, character: Int): Boolean =
-    require(
-      r.startLine >= 0 && r.startCharacter >= 0 &&
-        r.endLine >= r.startLine &&
-        (r.endLine > r.startLine || r.endCharacter >= r.startCharacter) &&
-        line >= 0 && character >= 0
+    PureKernels.rangeContains(
+      r.startLine,
+      r.startCharacter,
+      r.endLine,
+      r.endCharacter,
+      line,
+      character
     )
-    val afterStart = line > r.startLine || (line == r.startLine && character >= r.startCharacter)
-    val beforeEnd = line < r.endLine || (line == r.endLine && character < r.endCharacter)
-    (afterStart && beforeEnd).ensuring { res =>
-      (res == (afterStart && beforeEnd)) &&
-      (!res || (line >= r.startLine && line <= r.endLine)) && // res ==> inside line span
-      // empty range contains nothing
-      (!(r.startLine == r.endLine && r.startCharacter == r.endCharacter) || !res)
-    }
 
   /** A range's span as a single sortable key: lines dominate (×10000), columns break ties. Used by
     * [[Analyzer.typeAtPosition]] to pick the most specific (smallest-span) occurrence covering a
-    * position, so the key MUST stay non-negative — `minByOption` would otherwise prefer a bogus
-    * negative span.
-    *
-    * Computed in `Long`: the original `Int` form
-    * `(endLine - startLine) * 10000 + (endChar - startChar)` is UNSOUND — Stainless finds a
-    * concrete `Addition overflow` counter-example that flips the result negative. Widening the line
-    * term to `Long` makes overflow impossible for any 32-bit position (the maximum, ~2^31·10^4, is
-    * far inside `Long`). See [[StainlessContracts.rangeSpan]].
-    *
-    * Stainless contract: well-formed non-negative range, with a multi-line column delta no more
-    * negative than -10000 (columns never shrink by more than a line's worth), ⟹ result ≥ 0. The
-    * overflow VCs are `valid`; the nonlinear multiplication VC is `unknown` (timeout) under the
-    * bundled `smt-z3`, `valid` under native Z3 — see [[StainlessContracts.rangeSpan]].
+    * position, so the key MUST stay non-negative. Thin `s.Range` adapter over the formally-verified
+    * [[PureKernels.rangeSpan]], which proves the non-negativity invariant and computes in `Long` to
+    * make the overflow that an `Int` form suffers impossible for any 32-bit position.
     */
-  @pure
   def rangeSpan(r: s.Range): Long =
-    require(
-      r.startLine >= 0 && r.endLine >= r.startLine &&
-        r.startCharacter >= 0 && r.endCharacter >= 0 &&
-        (if r.endLine == r.startLine then r.endCharacter >= r.startCharacter
-         else r.endCharacter - r.startCharacter >= -10000)
-    )
-    ((r.endLine.toLong - r.startLine) * 10000L + (r.endCharacter.toLong - r.startCharacter))
-      .ensuring(res => res >= 0L)
+    PureKernels.rangeSpan(r.startLine, r.endLine, r.startCharacter, r.endCharacter)
 
   /** A symbol's type as text: a method's return, a value's type, else the symbol's own name. */
   def typeString(symbol: String): String =
