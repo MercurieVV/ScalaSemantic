@@ -64,6 +64,9 @@ Your context is the costliest in the system. Protect it.
 - Feed worker agents minimum: issue#, task URL, dependency context URLs.
 - Don't re-read issues you just dispatched; trust worker agents to fetch context.
 - Build task tree once at start; reuse until all done or halted.
+- Child agents must keep stdout quiet. They should print only errors, prompts/questions that need
+  attention, final summaries, PR/result URLs, and other explicitly important status. Routine command
+  chatter, progress narration, full diffs, and bulk logs belong in files or should be omitted.
 
 ## State
 
@@ -212,6 +215,12 @@ Your job:
    h. If task has children, move to first unblocked child
    i. If no children, backtrack to sibling or parent's next unblocked sibling
 4. On error: post error comment, update status to "halted", STOP (do not process siblings/children)
+
+Output discipline:
+- Keep stdout quiet. Print only errors, prompts/questions that need attention, final summaries,
+  PR/result URLs, and other explicitly important status.
+- Do not stream routine command chatter, progress narration, full diffs, issue bodies, or bulk logs
+  unless they are needed to diagnose a failure.
 
 Subtree depth-first order:
 <traversal list, e.g.
