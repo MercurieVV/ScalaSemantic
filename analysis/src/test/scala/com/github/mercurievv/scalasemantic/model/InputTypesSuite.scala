@@ -179,3 +179,25 @@ class InputTypesSuite extends munit.ScalaCheckSuite:
           out.endsWith("/") && PackageSymbol.from(out).toOption.map(_.value).contains(out)
         case None => false
     }
+
+  property("NonNegativeInt.from accepts exactly n >= 0"):
+    forAll(Gen.choose(Int.MinValue, Int.MaxValue)) { n =>
+      NonNegativeInt.from(n, "x").isRight == (n >= 0)
+    }
+
+  property("PositiveInt.from accepts exactly n > 0"):
+    forAll(Gen.choose(Int.MinValue, Int.MaxValue)) { n =>
+      PositiveInt.from(n, "x").isRight == (n > 0)
+    }
+
+  property("SourceRange.from is Right iff end is strictly after start (with valid coords)"):
+    forAll(coord, coord, coord, coord) { (sl, sc, el, ec) =>
+      val result = SourceRange.from(sl, sc, el, ec)
+      val strictlyAfter = el > sl || (el == sl && ec > sc)
+      result.isRight == strictlyAfter
+    }
+
+  property("SourcePosition.from is Right iff both line and character are >= 0"):
+    forAll(Gen.choose(-5, 5), Gen.choose(-5, 5)) { (l, c) =>
+      SourcePosition.from(l, c).isRight == (l >= 0 && c >= 0)
+    }
