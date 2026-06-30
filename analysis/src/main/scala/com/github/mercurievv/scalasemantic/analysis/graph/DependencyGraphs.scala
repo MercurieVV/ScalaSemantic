@@ -100,11 +100,11 @@ final class DependencyGraphs(index: SemanticIndex):
     */
   private def implicitGraph: Graph =
     val edges = for
-      si    <- index.symbols.values.toList
+      si <- index.symbols.values.toList
       if isImplicit(si)
-      owner  = if nodes.contains(si.symbol) then si.symbol else index.owner(si.symbol)
+      owner = if nodes.contains(si.symbol) then si.symbol else index.owner(si.symbol)
       if nodes.contains(owner)
-      t     <- implicitDependencyTypes(si)
+      t <- implicitDependencyTypes(si)
       if t != owner && nodes.contains(t)
     yield owner -> t
     edges.groupMap(_._1)(_._2).view.mapValues(_.toSet).toMap
@@ -132,10 +132,12 @@ final class DependencyGraphs(index: SemanticIndex):
     }
 
   private def declarationSymbols(symbol: String): List[String] =
-    index.info(symbol).flatMap(_.signature match
-      case c: s.ClassSignature => Some(scopeInfos(c.declarations).map(_.symbol).toList)
-      case _                   => None
-    ).getOrElse(Nil)
+    index
+      .info(symbol)
+      .flatMap(_.signature match
+        case c: s.ClassSignature => Some(scopeInfos(c.declarations).map(_.symbol).toList)
+        case _                   => None)
+      .getOrElse(Nil)
 
   /** All in-project type symbols referenced by a member's signature (return/value type, parameter
     * types) — including type arguments (`List[Foo]` references both `List` and `Foo`).
