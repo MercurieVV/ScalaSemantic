@@ -111,7 +111,7 @@ lazy val commonSettings = Seq(
 )
 
 lazy val munit = "org.scalameta" %% "munit" % "1.2.4" % Test
-lazy val munitScalacheck = "org.scalameta" %% "munit-scalacheck" % "1.2.0" % Test
+lazy val munitScalacheck = "org.scalameta" %% "munit-scalacheck" % "1.3.0" % Test
 lazy val upickle = "com.lihaoyi" %% "upickle" % "4.4.3"
 lazy val refined = "eu.timepit" %% "refined" % "0.11.3"
 
@@ -461,7 +461,7 @@ lazy val sbtPlugin = (project in file("sbt-plugin"))
     Compile / unmanagedSources += (ThisBuild / baseDirectory).value / "project" / "ScalaSemanticConfigMerger.scala",
     // Hard-code both axes so sbt 2.0.1's SbtPlugin rewrite of scalaVersion (to 2.13.x) does not
     // pollute the cross-build matrix and produce an unresolvable scripted-sbt_2.13:2.0.x request.
-    crossScalaVersions := Seq("2.12.21", "3.8.4"),
+    crossScalaVersions := Seq("2.13.18", "3.8.4"),
     pluginCrossBuild / sbtVersion := {
       scalaBinaryVersion.value match {
         case "2.12" | "2.13" => "1.11.6"
