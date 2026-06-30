@@ -107,7 +107,7 @@ rtk git add -A
 rtk git commit --quiet -m "$message" 2>/dev/null || true  # nothing-to-commit is fine
 rtk git push --quiet -u "$remote" "$branch"
 
-existing_pr_url="$(rtk gh pr view "$branch" --json url --jq '.url' 2>/dev/null || true)"
+existing_pr_url="$(rtk gh pr list --head "$branch" --json url --jq '.[0].url' 2>/dev/null || true)"
 if [[ -n "$existing_pr_url" ]]; then
   echo "$existing_pr_url"
 else
@@ -118,7 +118,8 @@ else
   rtk gh "${pr_args[@]}" | grep -E '^https://' || true  # only PR URL
 fi
 
-pr_ref="$(rtk gh pr view "$branch" --json number --jq '.number' 2>/dev/null || echo "$branch")"
+pr_ref="$(rtk gh pr list --head "$branch" --json number --jq '.[0].number' 2>/dev/null || true)"
+[[ -n "$pr_ref" ]] || pr_ref="$branch"
 if [[ "$draft" == "true" ]]; then
   rtk gh pr ready "$pr_ref" >/dev/null
 fi
