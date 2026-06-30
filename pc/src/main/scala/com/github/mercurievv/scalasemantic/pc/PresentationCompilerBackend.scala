@@ -29,7 +29,7 @@ final class PresentationCompilerBackend(
     workspace: Option[Path] = None,
     options: List[String] = Nil,
     buildTargetId: String = "scala-semantic-pc"
-):
+) extends AutoCloseable:
 
   private val pc: PresentationCompiler =
     ScalaPresentationCompiler(folderPath = workspace)
