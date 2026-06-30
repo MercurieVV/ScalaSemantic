@@ -1,0 +1,53 @@
+[mcp_servers.scala-semantic]
+command = "/path/to/scalasemantic-mcp.sh"
+args = ["/path/to/repo", "/path/to/scala-semantic-classpath.txt", "--log", "--log-output"]
+startup_timeout_sec = 60
+tool_timeout_sec = 60
+
+[mcp_servers.scala-semantic.tools.document_outline]
+approval_mode = "auto"
+
+[mcp_servers.scala-semantic.tools.annotated_source]
+approval_mode = "auto"
+
+[mcp_servers.scala-semantic.tools.find_symbol]
+approval_mode = "auto"
+
+[mcp_servers.scala-semantic.tools.find_usages]
+approval_mode = "auto"
+
+[mcp_servers.scala-semantic.tools.class_hierarchy]
+approval_mode = "auto"
+
+[mcp_servers.scala-semantic.tools.members]
+approval_mode = "auto"
+
+[mcp_servers.scala-semantic.tools.method_signature]
+approval_mode = "auto"
+
+[mcp_servers.scala-semantic.tools.call_path]
+approval_mode = "auto"
+
+[mcp_servers.scala-semantic.tools.resolve_implicits]
+approval_mode = "auto"
+
+[mcp_servers.scala-semantic.tools.trace_implicit_chain]
+approval_mode = "auto"
+
+[mcp_servers.scala-semantic.tools.type_at_position]
+approval_mode = "auto"
+
+[mcp_servers.scala-semantic.tools.find_overloads]
+approval_mode = "auto"
+
+[mcp_servers.scala-semantic.tools.structure]
+approval_mode = "auto"
+
+[mcp_servers.scala-semantic.tools.rename_plan]
+approval_mode = "auto"
+
+[mcp_servers.scala-semantic.tools.move_plan]
+approval_mode = "auto"
+
+[mcp_servers.scala-semantic.tools.extract_method_plan]
+approval_mode = "auto"

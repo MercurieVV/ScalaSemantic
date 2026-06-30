@@ -12,7 +12,7 @@ set -euo pipefail
 
 branch="${1:?branch required}"
 repo_root="$(git rev-parse --show-toplevel)"
-wt="${repo_root}/worktrees/${branch}"
+wt="${repo_root}/.worktrees/${branch}"
 
 cd "$repo_root"
 rtk scripts/check-push-workflow.sh --branch "$branch"

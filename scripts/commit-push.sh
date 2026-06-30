@@ -37,10 +37,4 @@ if rtk git diff --cached --quiet; then
 fi
 
 rtk git commit -m "$message" >/dev/null
-rtk git push -u "$remote" "$branch"
-
-# Show what the PR now contains (best-effort; quiet if no PR yet).
-if pr_files="$(rtk gh pr view "$branch" --json files --jq '.files[].path' 2>/dev/null)"; then
-  echo "PR files:"
-  echo "$pr_files"
-fi
+rtk git push --quiet -u "$remote" "$branch"

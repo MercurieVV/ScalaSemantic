@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "scala-semantic": {
+      "command": "/path/to/scalasemantic-mcp.sh",
+      "args": ["/path/to/repo", "/path/to/scala-semantic-classpath.txt", "--log", "--log-output"]
+    }
+  }
+}

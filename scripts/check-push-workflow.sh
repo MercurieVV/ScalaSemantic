@@ -49,13 +49,9 @@ fi
 status="$(gh run view "$run_id" --repo "$repo" --json status --jq '.status')"
 if [[ "$status" == "completed" ]]; then
   conclusion="$(gh run view "$run_id" --repo "$repo" --json conclusion --jq '.conclusion')"
-  echo "Run $run_id already completed: $conclusion"
-  [[ "$conclusion" == "success" ]] || exit 1
+  [[ "$conclusion" == "success" ]] || { echo "CI failed: $conclusion (run $run_id)" >&2; exit 1; }
 else
-  echo "Watching run $run_id of '$workflow_name' on '$branch_name'..."
-  gh run watch "$run_id" --repo "$repo" --exit-status
+  tmp="$(mktemp)"
+  gh run watch "$run_id" --repo "$repo" --exit-status >"$tmp" 2>&1 || { cat "$tmp" >&2; rm -f "$tmp"; exit 1; }
+  rm -f "$tmp"
 fi
-
-last_version="$(curl --silent --show-error --fail --location "$MAVEN_METADATA_URL" 2>/dev/null \
-  | tr -d '\n' | sed -n 's:.*<release>\([^<]*\)</release>.*:\1:p' || true)"
-[[ -n "$last_version" ]] && echo "Last published version: $last_version"

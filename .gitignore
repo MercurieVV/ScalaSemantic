@@ -57,7 +57,7 @@ build/
 /.codex/config.toml
 
 # Local agent/worktree metadata.
-/.agents/
+/.agents/mcp_config.json
 /.claude/worktrees/
 /.cline/
 /.continue/config.yaml
