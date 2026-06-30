@@ -159,7 +159,7 @@ The auto-generated table below is kept in sync with
 [`docs/research/token-metrics.json`](token-metrics.json) by the test suite (see
 [How to reproduce](#how-to-reproduce)). Do not edit it by hand.
 
-<!-- BEGIN AUTO-GENERATED: see docs/research/token-metrics.md -->
+<!-- BEGIN AUTO-GENERATED -->
 
 | Query | MCP tool | Tool tokens | Baseline tokens | Delta | Savings |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -201,7 +201,7 @@ sbt "mcp/testOnly com.github.mercurievv.scalasemantic.mcp.TokenMetricsSuite"
 ### Regenerate artifacts
 
 Set `UPDATE_TOKEN_METRICS=1` to overwrite both
-`docs/research/token-metrics.json` and `docs/research/token-metrics.md` in place:
+`docs/research/token-metrics.json` and `docs/research/token-metrics-methodology.md` in place:
 
 ```bash
 UPDATE_TOKEN_METRICS=1 sbt "mcp/testOnly com.github.mercurievv.scalasemantic.mcp.TokenMetricsSuite"

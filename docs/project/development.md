@@ -46,10 +46,13 @@ sbt docs/run                                 # mdoc renders docs → website/doc
 cd website && npm install && npm run build   # Docusaurus static site (Node 18+)
 ```
 
-## sbt 2.0 gotchas
+## Build & test gotchas
 
-- `Test / test` is cached `testQuick` — `prePush` uses `testOnly *` to force the full suite.
-- Tasks returning a `File` need `Def.uncached`; classpaths are virtual-file refs resolved via `fileConverter`.
-- SemanticDB bindings live in `org.scalameta:semanticdb-shared` (a 2.13 artifact), consumed via `CrossVersion.for3Use2_13` — not in `scalameta`.
+- **sbt 2.0.0 API**: `test` is now `InputKey` → use `(Test / test).toTask("")`; tasks returning a `File` (like classpaths resolved via `fileConverter`) need `Def.uncached`.
+- **Meta-build conflict**: sbt 2.0 meta-build is Scala 3; plugins drag `_2.13` scala-collection-compat → `ConflictWarning.disable` in `project/plugins.sbt`.
+- **SemanticDB bindings**: `scala.meta.internal.semanticdb.*` is in `semanticdb-shared` (not in `scalameta`). Both consumed via `CrossVersion.for3Use2_13`.
+- **sbt 2.0 test caching**: `Test / test` is cached `testQuick` — `prePush` uses `(Test / testOnly).toTask(" *")` to force the full suite.
+- **Wartremover**: pinned to 3.6.0 — 3.5.6 had no artifact for Scala 3.8.4.
 
-More decisions and history: [Plan & tracker](../research/plan.md) | [Design decisions](design.md).
+More decisions and history: [Design decisions](design.md).
+

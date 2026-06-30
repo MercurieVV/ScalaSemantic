@@ -24,7 +24,7 @@ class TokenMetricsSuite extends munit.FunSuite:
   private val fixtureUri =
     "analysis/src/test/scala/com/github/mercurievv/scalasemantic/fixtures/Sample.scala"
   private val jsonPath = root.resolve("docs/research/token-metrics.json").nn
-  private val markdownPath = root.resolve("docs/research/token-metrics.md").nn
+  private val markdownPath = root.resolve("docs/research/token-metrics-methodology.md").nn
 
   private def req(method: String, params: ujson.Value): ujson.Value =
     ujson.Obj("jsonrpc" -> "2.0", "id" -> 1, "method" -> method, "params" -> params)
@@ -179,44 +179,53 @@ class TokenMetricsSuite extends munit.FunSuite:
       )
       .render(indent = 2) + "\n"
 
-  private def markdown(metrics: List[QueryMetric]): String =
+  private val beginMarker = "<!-- BEGIN AUTO-GENERATED -->"
+  private val endMarker = "<!-- END AUTO-GENERATED -->"
+
+  private def getTableBetweenMarkers(content: String): String =
+    val beginIdx = content.indexOf(beginMarker)
+    val endIdx = content.indexOf(endMarker)
+    if beginIdx == -1 || endIdx == -1 || endIdx <= beginIdx then
+      fail("Could not find auto-generated markers in token-metrics-methodology.md")
+    content.substring(beginIdx + beginMarker.length, endIdx).trim
+
+  private def replaceTableBetweenMarkers(content: String, newTable: String): String =
+    val beginIdx = content.indexOf(beginMarker)
+    val endIdx = content.indexOf(endMarker)
+    if beginIdx == -1 || endIdx == -1 || endIdx <= beginIdx then
+      fail("Could not find auto-generated markers in token-metrics-methodology.md")
+    val prefix = content.substring(0, beginIdx + beginMarker.length)
+    val suffix = content.substring(endIdx)
+    s"$prefix\n\n$newTable\n\n$suffix"
+
+  private def markdownTable(metrics: List[QueryMetric]): String =
     val (tool, baseline, delta, savings) = summary(metrics)
     val rows = metrics.map { m =>
       s"| `${m.id}` | `${m.tool}` | ${m.toolTokens} | ${m.baselineTokens} | ${m.tokenDelta} | ${m.savingsPercent}% |"
     }
     List(
-      "# Token Metrics",
-      "",
-      "Approximate token cost uses `ceil(character_count / 4)` for both paths. The ScalaSemantic " +
-        "path is the exact JSON text returned by the MCP tool renderer. The baseline path is " +
-        "deterministic raw source or grep-style context from checked-in fixture sources that an " +
-        "agent would otherwise need to inspect.",
-      "",
       "| Query | MCP tool | Tool tokens | Baseline tokens | Delta | Savings |",
       "| --- | --- | ---: | ---: | ---: | ---: |",
       rows.mkString("\n"),
-      s"| **Overall** |  | **$tool** | **$baseline** | **$delta** | **$savings%** |",
-      "",
-      "Regenerate with:",
-      "",
-      "```bash",
-      "UPDATE_TOKEN_METRICS=1 sbt \"mcp/testOnly com.github.mercurievv.scalasemantic.mcp.TokenMetricsSuite\"",
-      "```",
-      ""
+      s"| **Overall (${metrics.size} queries)** | | **$tool** | **$baseline** | **$delta** | **$savings%** |"
     ).mkString("\n")
 
   test("token metrics artifacts match regenerated MCP-vs-baseline comparison") {
     val generatedJson = json(queries)
-    val generatedMarkdown = markdown(queries)
+    val generatedTable = markdownTable(queries)
 
     if sys.env.get("UPDATE_TOKEN_METRICS").contains("1") then
       Files.writeString(jsonPath, generatedJson)
-      Files.writeString(markdownPath, generatedMarkdown)
+      val existingMarkdown = Files.readString(markdownPath).nn
+      val updatedMarkdown = replaceTableBetweenMarkers(existingMarkdown, generatedTable)
+      Files.writeString(markdownPath, updatedMarkdown)
     else
       assertEquals(Files.readString(jsonPath).nn, generatedJson, "token metrics JSON is stale")
+      val existingMarkdown = Files.readString(markdownPath).nn
+      val existingTable = getTableBetweenMarkers(existingMarkdown)
       assertEquals(
-        Files.readString(markdownPath).nn,
-        generatedMarkdown,
-        "token metrics markdown is stale"
+        existingTable,
+        generatedTable.trim,
+        "token metrics markdown table is stale"
       )
   }
