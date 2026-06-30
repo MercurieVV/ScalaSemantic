@@ -72,7 +72,7 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
     semanticdbEnabled := true,
     mcpServerName := "scala-semantic",
     mcpClient := "claude",
-    mcpInstall := writeLauncher(installDir, streams.value.log),
+    mcpInstall := writeLauncher(installDir),
     mcpClasspathFile := {
       // The PC backend needs the target project's COMPILE classpath (deps + its own output) to
       // resolve everything a buffer references. sbt 2.0 classpaths are virtual-file refs, so resolve
@@ -83,7 +83,6 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
         .map(af => ClasspathCompat.toAbsolutePath(af.data, converter))
       val out = classpathFile(mcpServerName.value)
       IO.write(out, cp.mkString("\n"))
-      streams.value.log.info(s"MCP classpath written (${cp.size} entries): $out")
       out
     },
     // Default to invoking the launcher this plugin writes. Resolved against the same STABLE path
@@ -100,15 +99,10 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
       // ~88 MB jar downloads. The launcher's `--prefetch` fetches + caches, then exits without
       // serving. Best-effort — config printing must still work offline.
       try {
-        log.info("Prefetching the MCP server (one-time download; may take a moment)...")
-        val rc = Process(launcherCommand(launcher) :+ "--prefetch").!
-        if (rc != 0)
-          log.warn(s"MCP server prefetch returned $rc; it will download on first connect instead.")
+        val _ = Process(launcherCommand(launcher) :+ "--prefetch").!
       } catch {
-        case scala.util.control.NonFatal(e) =>
-          log.warn(
-            s"MCP server prefetch skipped (${e.getMessage}); it will download on first connect."
-          )
+        case scala.util.control.NonFatal(_) =>
+          // Silently continue if prefetch fails; the server will download on first connect
       }
       // Reference the classpath file by PATH only — do NOT depend on `mcpClasspathFile`, which
       // evaluates `Compile / fullClasspath` and so forces a full compile. Printing a config entry
@@ -116,12 +110,10 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
       // classpath file as index-only; run `sbt mcpClasspathFile` once (needs a clean compile) to
       // enable the live presentation-compiler backend.
       val cpFile = classpathFile(mcpServerName.value)
-      // Enable the server's file log in the generated config: `--log` (startup + per-tool-call) and
-      // `--log-output` (also each response sent to the model). Flags are position-independent; drop
-      // them from the printed `.mcp.json` if you prefer the silent default.
+      // Logging is silent by default. To enable it, add `--log` and/or `--log-output` to args
+      // in the generated config, or set SCALASEMANTIC_LOG=1 and/or SCALASEMANTIC_LOG_OUTPUT=1.
       val argv =
-        resolvedCommand(mcpServerCommand.value, baseDirectory.value, cpFile) ++
-          Seq("--log", "--log-output")
+        resolvedCommand(mcpServerCommand.value, baseDirectory.value, cpFile)
       val serverName = mcpServerName.value
       val clientVal = args.headOption.getOrElse(mcpClient.value)
       val clients = if (clientVal.trim.toLowerCase == "all") {
@@ -144,23 +136,11 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
         // IO.write creates parent dirs. Merge inserts/replaces only this server's entry, leaving any
         // other servers and unrelated settings in the file untouched.
         IO.write(outFile, merged)
-        val verb = if (existing.isEmpty) "Wrote" else "Merged into"
-        log.info(s"$verb MCP config for server '$serverName': $outFile")
         ScalaSemanticConfigMerger.writeRulesAndSteer(client, baseDirectory.value, log)
       }
-      if (!cpFile.exists)
-        log.info(
-          "Server will run index-only. Run `sbt mcpClasspathFile` once (requires a successful " +
-            "compile) to enable the live presentation-compiler backend."
-        )
-      // The server answers from SemanticDB, which is compiler output. If the project has never been
-      // compiled, the index is empty and every query returns nothing — warn instead of letting that
-      // look like a broken server. Cheap filesystem check only; does not trigger a compile.
-      if (!hasSemanticdb(baseDirectory.value))
-        log.warn(
-          "No SemanticDB found under target/ — the server will start with an empty index and every " +
-            "query will return nothing. Run `sbt compile` once first so it has symbols to answer from."
-        )
+      // cpFile check - no logging needed; server handles missing classpath file gracefully
+      // The server answers from SemanticDB, which is compiler output. Cheap filesystem check only;
+      // does not trigger a compile. If needed, users can check SemanticDB status manually.
     },
     mcpRun := {
       val _ = mcpInstall.value
@@ -176,25 +156,6 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
     */
   private def classpathFile(serverName: String): File =
     installDir / s"$serverName-classpath.txt"
-
-  /** True if any `*.semanticdb` file exists under `<baseDir>/target` — i.e. the project has been
-    * compiled at least once with SemanticDB on, so the server has something to index. Pure
-    * filesystem walk, bounded to `target/`; never triggers a compile. Best-effort: any error or a
-    * missing `target/` reads as "none".
-    */
-  private def hasSemanticdb(baseDir: File): Boolean = {
-    val target = baseDir / "target"
-    if (!target.isDirectory) false
-    else
-      try {
-        def withPathStream(stream: java.util.stream.Stream[java.nio.file.Path]): Boolean =
-          try
-            stream.anyMatch(p => p.getFileName.toString.endsWith(".semanticdb"))
-          finally stream.close()
-
-        withPathStream(java.nio.file.Files.walk(target.toPath))
-      } catch { case _: Throwable => false }
-  }
 
   /** OS-specific launcher file name (the resource bundled in the plugin jar). */
   private def launcherName: String =
@@ -222,7 +183,7 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
     else Seq(script.getAbsolutePath)
 
   /** Copy the bundled launcher resource into `<target>/` and mark it executable. */
-  private def writeLauncher(targetDir: File, log: Logger): File = {
+  private def writeLauncher(targetDir: File): File = {
     val name = launcherName
     val out = targetDir / name
     val res = s"scalasemantic/$name"
@@ -232,7 +193,6 @@ object ScalaSemanticMcpPlugin extends AutoPlugin {
       IO.write(out, in.readAllBytes())
     finally in.close()
     val _ = out.setExecutable(true)
-    log.info(s"MCP launcher written: $out")
     out
   }
 
