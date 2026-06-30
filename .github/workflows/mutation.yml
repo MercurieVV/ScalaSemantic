@@ -53,20 +53,56 @@ jobs:
       - name: Compile (generates SemanticDB used by tests)
         run: sbt compile
 
+      # Run stryker4s.  stryker4s.conf sets `thresholds.break = 60`, so this step exits non-zero
+      # when the mutation score drops below 60%.  We capture the exit code here (continue-on-error)
+      # so that subsequent steps can still collect and commit the JSON report for post-mortem
+      # inspection before we re-raise the failure.
+      #
+      # Note on target/ vs worktree:
+      #   CI always starts from a clean checkout with an empty target/, so running stryker directly
+      #   in the checkout is safe — there is no "stale build state" to corrupt.  The worktree mode
+      #   in scripts/run-stryker.sh is a LOCAL-development convenience: it isolates stryker's
+      #   compile+test churn from your current build cache so `sbt test` in the main tree keeps
+      #   working while a long mutation run proceeds in parallel in .worktrees/stryker4s-<name>.
       - name: Run stryker4s on analysis module
+        id: stryker
+        continue-on-error: true
         run: sbt "analysis/stryker"
         env:
           STRYKER: 'true'
 
-      - name: Collect report
+      - name: Collect and evaluate report
+        # Run even when stryker fails (break threshold) so the report is always committed.
+        if: always()
         run: |
           mkdir -p reports/mutation
-          cp analysis/target/stryker4s-report/report.json reports/mutation/report.json
+          report="$(find analysis/target/stryker4s-report -name report.json -print0 2>/dev/null \
+            | xargs -0 ls -t 2>/dev/null | head -1 || true)"
+          if [[ -z "$report" || ! -f "$report" ]]; then
+            echo "error: no report.json found under analysis/target/stryker4s-report/" >&2
+            exit 1
+          fi
+          cp "$report" reports/mutation/report.json
+          # Print score and per-mutator breakdown; also alerts on surviving behaviour-critical
+          # mutators (ConditionalExpression, EqualityOperator, LogicalOperator).
+          scripts/mutation-summary.sh reports/mutation/report.json || true
 
       - name: Commit mutation report
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add reports/mutation/report.json
           git diff --staged --quiet || git commit -m "chore: update mutation report [skip ci]"
           git push
+
+      # Re-raise the stryker failure AFTER the report has been committed so reviewers can inspect
+      # the score even for a failing run.  The break threshold (60 %) is configured in
+      # stryker4s.conf and is the single source of truth for the gate.
+      - name: Enforce mutation score gate
+        if: steps.stryker.outcome == 'failure'
+        run: |
+          echo "stryker4s exited non-zero — mutation score is below the break threshold (60 %)" \
+               "or stryker encountered an error.  Check the report at reports/mutation/report.json" \
+               "and the step log above for details." >&2
+          exit 1
