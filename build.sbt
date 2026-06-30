@@ -110,7 +110,7 @@ lazy val commonSettings = Seq(
   }
 )
 
-lazy val munit = "org.scalameta" %% "munit" % "1.2.4" % Test
+lazy val munit = "org.scalameta" %% "munit" % "1.3.3" % Test
 lazy val munitScalacheck = "org.scalameta" %% "munit-scalacheck" % "1.3.0" % Test
 lazy val upickle = "com.lihaoyi" %% "upickle" % "4.4.3"
 lazy val refined = "eu.timepit" %% "refined" % "0.11.3"
