@@ -142,6 +142,8 @@ Steps:
 Output discipline:
 - Keep stdout quiet. Print only errors, prompts/questions that need attention, final summaries,
   PR/result URLs, and other explicitly important status.
+- Treat stdout as a parent-agent control channel: anything printed there should be something the
+  parent/conductor may need to react to.
 - Do not stream routine command chatter, progress narration, full diffs, issue bodies, or bulk logs
   unless they are needed to diagnose a failure.
 
