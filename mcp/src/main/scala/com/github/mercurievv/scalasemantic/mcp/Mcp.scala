@@ -225,28 +225,43 @@ object Mcp:
     val rootPath = Paths.get(root).toAbsolutePath.nn
     // Only open a log sink when logging is requested, so the default run writes nothing.
     val log: String => Unit = if logging.active then fileLogger(rootPath) else (_ => ())
-    val backend = resolveClasspath(classpath).map { cp =>
-      log(s"PC backend enabled (${cp.size} classpath entries)")
-      new PresentationCompilerBackend(cp, workspace = Some(rootPath))
+    // Acquire the (optional) PC backend through the #140 bracket helper so the compiler instance
+    // is always shut down when the server exits — normally, on EOF, or on an unhandled exception —
+    // without a hand-rolled try/finally here.
+    resolveClasspath(classpath) match
+      case Some(cp) =>
+        log(s"PC backend enabled (${cp.size} classpath entries)")
+        PresentationCompilerBackend.use(cp, workspace = Some(rootPath)) { backend =>
+          runLoop(root, rootPath, Some(backend), log, logging)
+        }
+      case None =>
+        runLoop(root, rootPath, None, log, logging)
+
+  /** The read/eval/write loop, parameterized over the (already-acquired, optional) PC backend.
+    * Split out of [[serve]] so the backend's acquire/release stays bracketed by
+    * [[PresentationCompilerBackend.use]] in the caller rather than manually closed here.
+    */
+  private def runLoop(
+      root: String,
+      rootPath: Path,
+      backend: Option[PresentationCompilerBackend],
+      log: String => Unit,
+      logging: LogConfig
+  ): Unit =
+    val tools = McpTools.all(Analyzer(SemanticIndex.fromProject(root), backend), rootPath)
+    log(
+      s"serving from '$root' with ${tools.size} tools" +
+        (if backend.isEmpty then " (index-only; pass a classpath to enable live buffers)" else "")
+    )
+    val reader = java.io.BufferedReader(java.io.InputStreamReader(System.in, "UTF-8"))
+    val out = java.io.PrintStream(System.out, true, "UTF-8")
+    val lines = Iterator.continually(Option(reader.readLine())).takeWhile(_.isDefined).flatten
+    // logToolCall logs inputs (when `enabled`); the tap below logs outputs (when `logOutputs`).
+    val onCall = if logging.enabled then logToolCall(log) else (_: String, _: ujson.Value) => ()
+    process(lines, tools, onCall).foreach { line =>
+      if logging.logOutputs then log(s"out $line")
+      out.println(line)
     }
-    // Bracket: guarantee the PC compiler instance is shut down when the server exits (normally,
-    // on EOF, or on an unhandled exception). Without this the compiler threads leaked on exit.
-    try
-      val tools = McpTools.all(Analyzer(SemanticIndex.fromProject(root), backend), rootPath)
-      log(
-        s"serving from '$root' with ${tools.size} tools" +
-          (if backend.isEmpty then " (index-only; pass a classpath to enable live buffers)" else "")
-      )
-      val reader = java.io.BufferedReader(java.io.InputStreamReader(System.in, "UTF-8"))
-      val out = java.io.PrintStream(System.out, true, "UTF-8")
-      val lines = Iterator.continually(Option(reader.readLine())).takeWhile(_.isDefined).flatten
-      // logToolCall logs inputs (when `enabled`); the tap below logs outputs (when `logOutputs`).
-      val onCall = if logging.enabled then logToolCall(log) else (_: String, _: ujson.Value) => ()
-      process(lines, tools, onCall).foreach { line =>
-        if logging.logOutputs then log(s"out $line")
-        out.println(line)
-      }
-    finally backend.foreach(_.close())
 
   /** Resolve the classpath spec (arg or `SCALASEMANTIC_CLASSPATH`) to a list of paths. A spec that
     * names an existing file is read as its contents (newline- or path-separator-delimited);

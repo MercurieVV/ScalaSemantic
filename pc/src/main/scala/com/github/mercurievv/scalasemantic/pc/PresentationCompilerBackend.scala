@@ -80,6 +80,29 @@ object PresentationCompilerBackend:
   ): PresentationCompilerBackend =
     new PresentationCompilerBackend(runtimeClasspath, workspace, options)
 
+  /** Acquire a backend for `classpath`, run `use` with it, and guarantee
+    * [[PresentationCompilerBackend.close]] runs exactly once on the way out — including when `use`
+    * throws. Thin wrapper over `scala.util.Using.resource`, the no-new-dependency answer to "manage
+    * this lifecycle as a resource": the manual construct/`close()` pairing this replaces leaked the
+    * compiler instance on any exception thrown between the two calls.
+    */
+  def use[A](
+      classpath: Seq[Path],
+      workspace: Option[Path] = None,
+      options: List[String] = Nil
+  )(use: PresentationCompilerBackend => A): A =
+    scala.util.Using.resource(new PresentationCompilerBackend(classpath, workspace, options))(use)
+
+  /** [[use]], sourcing the classpath from the running JVM (mirrors [[fromCurrentJvm]]). The
+    * preferred entry point for dogfooding/tests that only need the backend for the duration of one
+    * call.
+    */
+  def useCurrentJvm[A](
+      workspace: Option[Path] = None,
+      options: List[String] = Nil
+  )(use: PresentationCompilerBackend => A): A =
+    scala.util.Using.resource(fromCurrentJvm(workspace, options))(use)
+
   /** The running process's classpath, from two sources unioned because neither alone is reliable:
     *   - `java.class.path` — correct for a plain `java -cp …` launch (and `sbt run`/`runMain`).
     *   - the classloader chain's `URLClassLoader` URLs — needed under sbt's forked TEST runner,

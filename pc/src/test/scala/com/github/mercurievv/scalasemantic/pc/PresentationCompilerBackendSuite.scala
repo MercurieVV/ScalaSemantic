@@ -64,3 +64,47 @@ class PresentationCompilerBackendSuite extends munit.FunSuite:
     assert(merged.document("file:///mem/Other.scala").isDefined, "sibling document was dropped")
     assert(merged.document(uri.toString).exists(_.symbols.nonEmpty), "buffer doc not overlaid")
   }
+
+  // Acquire/release contract for PresentationCompilerBackend.use / useCurrentJvm (#140): the
+  // bracket must run close() exactly once on the way out, on both the success and the failure
+  // path. There is no observable "shutdown count" on the backend itself, so each test captures
+  // the backend used inside the bracket and confirms it is unusable afterwards — the PC throws
+  // once its compiler instance has been shut down — which is only possible if close() ran.
+
+  test("useCurrentJvm releases the backend after a successful body (close() ran)") {
+    val captured =
+      new java.util.concurrent.atomic.AtomicReference[Option[PresentationCompilerBackend]](None)
+    val result =
+      PresentationCompilerBackend.useCurrentJvm(workspace = Some(workspace)) { b =>
+        captured.set(Some(b))
+        b.semanticdb(uri, brokenSource)
+      }
+    assert(result.symbols.nonEmpty, "use body did not run to completion")
+
+    val releasedBackend = captured.get.getOrElse(fail("backend was not captured"))
+    intercept[Throwable](releasedBackend.semanticdb(uri, brokenSource))
+  }
+
+  test("use releases the backend even when the body throws (close() still ran)") {
+    val captured =
+      new java.util.concurrent.atomic.AtomicReference[Option[PresentationCompilerBackend]](None)
+    val thrown =
+      intercept[RuntimeException] {
+        PresentationCompilerBackend.use(Nil, workspace = Some(workspace)) { b =>
+          captured.set(Some(b))
+          sys.error("boom")
+        }
+      }
+    assertEquals(thrown.getMessage, "boom")
+
+    val releasedBackend = captured.get.getOrElse(fail("backend was not captured"))
+    intercept[Throwable](releasedBackend.semanticdb(uri, brokenSource))
+
+    // Proves the failure did not leave the JVM/compiler machinery in a broken state: a fresh
+    // acquire/use/release after the thrown failure still succeeds end to end.
+    val recovered =
+      PresentationCompilerBackend.useCurrentJvm(workspace = Some(workspace)) { b =>
+        b.semanticdb(uri, brokenSource)
+      }
+    assert(recovered.symbols.nonEmpty, "backend unusable after a prior bracket failure")
+  }
