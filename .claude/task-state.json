@@ -270,14 +270,14 @@
       "parent": 79,
       "children": [],
       "executor": "codex / o4-mini",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         157
       ],
       "blocked_by": [],
-      "result_comment_url": null,
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/158",
       "error": null,
-      "attempts": 0
+      "attempts": 1
     },
     "157": {
       "issue": 157,
@@ -693,14 +693,12 @@
       "parent": 108,
       "children": [],
       "executor": "codex / o3",
-      "status": "halted",
+      "status": "completed",
       "depends_on": [],
-      "blocked_by": [
-        108
-      ],
-      "result_comment_url": null,
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/129",
       "error": null,
-      "attempts": 0
+      "attempts": 1
     },
     "128": {
       "issue": 128,
@@ -789,14 +787,12 @@
       "parent": null,
       "children": [],
       "executor": "codex / o4-mini",
-      "status": "halted",
+      "status": "completed",
       "depends_on": [],
       "blocked_by": [],
-      "result_comment_url": null,
-      "error": "merge_conflict (tree2m): branch conflicts with master",
-      "attempts": 1,
-      "worktree": ".worktrees/remove-logging",
-      "last_stdout_line": "(running)"
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/105",
+      "error": null,
+      "attempts": 1
     },
     "80": {
       "issue": 80,
@@ -827,12 +823,12 @@
         158
       ],
       "executor": "agy / Gemini 3.1 Pro (High)",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [],
       "blocked_by": [],
-      "result_comment_url": null,
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/79",
       "error": null,
-      "attempts": 0
+      "attempts": 1
     },
     "73": {
       "issue": 73,
