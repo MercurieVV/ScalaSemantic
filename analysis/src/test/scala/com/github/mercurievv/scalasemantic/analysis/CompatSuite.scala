@@ -128,48 +128,71 @@ class CompatSuite extends munit.FunSuite:
         val color = find("Color", isType)
         val h = az.classHierarchy(tpe(color)).getOrElse(fail(s"[$version] Color has no hierarchy"))
         val subs = h.knownSubtypes.map(_.displayName)
-        assert(subs.contains("Red") && subs.contains("Green") && subs.contains("Blue"), s"subtypes=$subs")
+        assert(
+          subs.contains("Red") && subs.contains("Green") && subs.contains("Blue"),
+          s"subtypes=$subs"
+        )
       else
         val red = idx.symbols.keys.exists(_.endsWith("Color.Red."))
         val green = idx.symbols.keys.exists(_.endsWith("Color.Green."))
         val blue = idx.symbols.keys.exists(_.endsWith("Color.Blue."))
-        assert(red && green && blue, s"enum cases not found in: ${idx.symbols.keys.filter(_.contains("Color")).toList}")
+        assert(
+          red && green && blue,
+          s"enum cases not found in: ${idx.symbols.keys
+              .filter(_.contains("Color"))
+              .toList}"
+        )
 
     test(s"[$version] opaque/value class type is defined"):
       val log = find("Logarithm", isType)
       val members = az.members(tpe(log))
       if version == "scala-2.13" then
         val m = members.getOrElse(fail(s"[$version] Logarithm has no members"))
-        assert(m.declared.exists(_.displayName == "value"), s"declared=${m.declared.map(_.displayName)}")
-      else
-        assert(log.nonEmpty)
+        assert(
+          m.declared.exists(_.displayName == "value"),
+          s"declared=${m.declared.map(_.displayName)}"
+        )
+      else assert(log.nonEmpty)
 
     if version == "scala-3" then
       test(s"[$version] parameterized trait Friendly has parameter/member greeting"):
         val friendly = find("Friendly", isType)
         val mf = az.members(tpe(friendly)).getOrElse(fail(s"[$version] Friendly has no members"))
-        assert(mf.declared.exists(_.displayName == "greeting"), s"declared=${mf.declared.map(_.displayName)}")
+        assert(
+          mf.declared.exists(_.displayName == "greeting"),
+          s"declared=${mf.declared.map(_.displayName)}"
+        )
 
     if version == "scala-2.13" then
       test(s"[$version] implicit class RichString exists"):
         val richString = find("RichString", isType)
-        val mf = az.members(tpe(richString)).getOrElse(fail(s"[$version] RichString has no members"))
-        assert(mf.declared.exists(_.displayName == "shout"), s"declared=${mf.declared.map(_.displayName)}")
+        val mf =
+          az.members(tpe(richString)).getOrElse(fail(s"[$version] RichString has no members"))
+        assert(
+          mf.declared.exists(_.displayName == "shout"),
+          s"declared=${mf.declared.map(_.displayName)}"
+        )
 
       test(s"[$version] package object compat exists"):
         val packageObjectMethod = find("packageObjectMethod", isMethod)
-        val sig = az.methodSignature(meth(packageObjectMethod)).getOrElse(fail(s"[$version] packageObjectMethod has no signature"))
+        val sig = az
+          .methodSignature(meth(packageObjectMethod))
+          .getOrElse(fail(s"[$version] packageObjectMethod has no signature"))
         assertEquals(sig.returnType, "String")
 
       test(s"[$version] procedure syntax method run has Unit return type"):
         val run = find("run", isMethod)
-        val sig = az.methodSignature(meth(run)).getOrElse(fail(s"[$version] run has no signature"))
+        val sig = az
+          .methodSignature(meth(run))
+          .getOrElse(fail(s"[$version] run has no signature"))
         assertEquals(sig.returnType, "Unit")
 
     test(s"[$version] polymorphic call path: entry1 reaches callVirtual and VirtualBase.name"):
       val entry1 = find("entry1", isMethod)
       val callVirtual = find("callVirtual", isMethod)
-      val name = idx.symbols.keys.find(_.contains("VirtualBase#name")).getOrElse(fail(s"[$version] no VirtualBase#name"))
+      val name = idx.symbols.keys
+        .find(_.contains("VirtualBase#name"))
+        .getOrElse(fail(s"[$version] no VirtualBase#name"))
       val p1 = az.callPath(meth(entry1), meth(callVirtual))
       assert(p1.path.nonEmpty, "expected entry1 -> callVirtual to be reachable")
       val p2 = az.callPath(meth(callVirtual), meth(name))
@@ -180,7 +203,10 @@ class CompatSuite extends munit.FunSuite:
       if version == "scala-2.13" then
         val shout = find("shout", isMethod)
         val p = az.callPath(meth(triggerShout), meth(shout))
-        assert(p.path.nonEmpty, "expected triggerShout -> RichString.shout to be reachable")
+        assert(
+          p.path.nonEmpty,
+          "expected triggerShout -> RichString.shout to be reachable"
+        )
       else
         val shout2 = find("shout2", isMethod)
         val p = az.callPath(meth(triggerShout), meth(shout2))
