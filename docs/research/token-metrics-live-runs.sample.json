@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "kind": "sample",
+    "description": "Synthetic fixture data for validating the live token metrics aggregation harness. Do not treat these numbers as research results.",
+    "targetProject": "ScalaSemanticMCP",
+    "targetCommit": "sample",
+    "scalaSemanticCommit": "sample",
+    "repetitionsRequired": 3
+  },
+  "measurements": [
+    {
+      "id": "find-usages-animal",
+      "query": "Find all definitions and references of the Animal trait.",
+      "tool": "find_usages",
+      "baseline": "Text grep for Animal across fixture source trees.",
+      "engine": "codex",
+      "model": "sample-model",
+      "runs": [
+        { "arm": "with-mcp", "run": 1, "inputTokens": 1120, "outputTokens": 210, "cacheTokens": 0 },
+        { "arm": "with-mcp", "run": 2, "inputTokens": 1180, "outputTokens": 200, "cacheTokens": 0 },
+        { "arm": "with-mcp", "run": 3, "inputTokens": 1100, "outputTokens": 230, "cacheTokens": 0 },
+        { "arm": "without-mcp", "run": 1, "inputTokens": 4920, "outputTokens": 340, "cacheTokens": 0 },
+        { "arm": "without-mcp", "run": 2, "inputTokens": 5100, "outputTokens": 360, "cacheTokens": 0 },
+        { "arm": "without-mcp", "run": 3, "inputTokens": 4860, "outputTokens": 330, "cacheTokens": 0 }
+      ]
+    },
+    {
+      "id": "trace-implicit-show",
+      "query": "Trace givens that produce Show and their dependencies.",
+      "tool": "trace_implicit_chain",
+      "baseline": "Read the fixture source and follow given definitions manually.",
+      "engine": "codex",
+      "model": "sample-model",
+      "runs": [
+        { "arm": "with-mcp", "run": 1, "inputTokens": 980, "outputTokens": 180, "cacheTokens": 0 },
+        { "arm": "with-mcp", "run": 2, "inputTokens": 1010, "outputTokens": 175, "cacheTokens": 0 },
+        { "arm": "with-mcp", "run": 3, "inputTokens": 995, "outputTokens": 190, "cacheTokens": 0 },
+        { "arm": "without-mcp", "run": 1, "inputTokens": 3420, "outputTokens": 280, "cacheTokens": 0 },
+        { "arm": "without-mcp", "run": 2, "inputTokens": 3550, "outputTokens": 300, "cacheTokens": 0 },
+        { "arm": "without-mcp", "run": 3, "inputTokens": 3490, "outputTokens": 290, "cacheTokens": 0 }
+      ]
+    }
+  ]
+}
