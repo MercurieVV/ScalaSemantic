@@ -633,16 +633,14 @@
       "parent": 112,
       "children": [],
       "executor": "codex / o3",
-      "status": "halted",
+      "status": "completed",
       "depends_on": [
         130
       ],
-      "blocked_by": [
-        112
-      ],
-      "result_comment_url": null,
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/133",
       "error": null,
-      "attempts": 0
+      "attempts": 1
     },
     "132": {
       "issue": 132,
@@ -680,16 +678,14 @@
       "parent": 112,
       "children": [],
       "executor": "codex / o3",
-      "status": "halted",
+      "status": "completed",
       "depends_on": [
         128
       ],
-      "blocked_by": [
-        112
-      ],
-      "result_comment_url": null,
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/130",
       "error": null,
-      "attempts": 0
+      "attempts": 1
     },
     "129": {
       "issue": 129,
@@ -730,14 +726,12 @@
         133
       ],
       "executor": "agy / Gemini 3.1 Pro (High)",
-      "status": "halted",
+      "status": "completed",
       "depends_on": [],
       "blocked_by": [],
-      "result_comment_url": null,
-      "error": "setup_error: symlink path wrong (.worktrees vs worktrees)",
-      "attempts": 1,
-      "worktree": ".worktrees/stryker4s-alerts",
-      "last_stdout_line": "(running)"
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/112",
+      "error": null,
+      "attempts": 1
     },
     "111": {
       "issue": 111,
