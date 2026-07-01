@@ -1008,33 +1008,53 @@ object McpTools:
   private def argBool(a: ujson.Value, k: String, d: Boolean): Boolean =
     a.obj.get(k).map(_.bool).getOrElse(d)
 
+  private def validatedArg[A](result: Either[String, A]): A =
+    result.fold(error, identity)
+
+  private def argRefinedString[A](a: ujson.Value, k: String)(from: String => Either[String, A]): A =
+    validatedArg(from(argStr(a, k)))
+
+  private def argRefinedString[A](
+      a: ujson.Value,
+      k: String,
+      default: String
+  )(from: String => Either[String, A]): A =
+    val raw = argStr(a, k)
+    validatedArg(from(if raw.isEmpty then default else raw))
+
+  private def argRefinedInt[A](
+      a: ujson.Value,
+      k: String,
+      default: Int
+  )(from: (Int, String) => Either[String, A]): A =
+    validatedArg(from(argInt(a, k, default), k))
+
   private def argSymbol(a: ujson.Value, k: String): SemanticDbSymbol =
-    SemanticDbSymbol.from(argStr(a, k)).fold(error, identity)
+    argRefinedString(a, k)(SemanticDbSymbol.from)
 
   private def argMethodSymbol(a: ujson.Value, k: String): MethodSymbol =
-    MethodSymbol.from(argStr(a, k)).fold(error, identity)
+    argRefinedString(a, k)(MethodSymbol.from)
 
   private def argTypeSymbol(a: ujson.Value, k: String): TypeSymbol =
-    TypeSymbol.from(argStr(a, k)).fold(error, identity)
+    argRefinedString(a, k)(TypeSymbol.from)
 
   private def argPackageSymbol(a: ujson.Value, k: String): PackageSymbol =
-    PackageSymbol.from(argStr(a, k)).fold(error, identity)
+    argRefinedString(a, k)(PackageSymbol.from)
 
   private def argUri(a: ujson.Value, k: String): DocumentUri =
-    DocumentUri.from(argStr(a, k)).fold(error, identity)
+    argRefinedString(a, k)(DocumentUri.from)
 
   private def argIdentifier(a: ujson.Value, k: String): ScalaIdentifier =
-    ScalaIdentifier.from(argStr(a, k)).fold(error, identity)
+    argRefinedString(a, k)(ScalaIdentifier.from)
 
   private def argIdentifier(a: ujson.Value, k: String, default: String): ScalaIdentifier =
-    val raw = argStr(a, k)
-    ScalaIdentifier.from(if raw.isEmpty then default else raw).fold(error, identity)
+    argRefinedString(a, k, default)(ScalaIdentifier.from)
 
   private def argNonNegativeInt(a: ujson.Value, k: String, default: Int): NonNegativeInt =
-    NonNegativeInt.from(argInt(a, k, default), k).fold(error, identity)
+    argRefinedInt(a, k, default)(NonNegativeInt.from)
 
   private def argPositiveInt(a: ujson.Value, k: String, default: Int): PositiveInt =
-    PositiveInt.from(argInt(a, k, default), k).fold(error, identity)
+    argRefinedInt(a, k, default)(PositiveInt.from)
 
   private def argPosition(a: ujson.Value, lineKey: String, characterKey: String): SourcePosition =
     SourcePosition
@@ -1052,10 +1072,10 @@ object McpTools:
       .fold(error, identity)
 
   private def argDimension(a: ujson.Value, k: String): StructureDimension =
-    StructureDimension.from(argStr(a, k)).fold(error, identity)
+    argRefinedString(a, k)(StructureDimension.from)
 
   private def argSort(a: ujson.Value, k: String): StructureSort =
-    StructureSort.from(argStr(a, k)).fold(error, identity)
+    argRefinedString(a, k)(StructureSort.from)
 
   private def argFormat(a: ujson.Value, k: String): SourceFormat =
     SourceFormat.from(argStr(a, k))

@@ -272,25 +272,26 @@ object Mcp:
       .orElse(Option(System.getenv("SCALASEMANTIC_CLASSPATH")))
       .map(_.trim)
       .filter(_.nonEmpty)
-      .map { spec =>
-        // A spec with no path separator that names nothing on disk is a classpath FILE that hasn't
-        // been written yet (e.g. `mcpClientConfig` printed the path before `mcpClasspathFile` ran).
-        // Treat it as "no classpath" → index-only, rather than a bogus single-entry classpath.
-        val asFile = Paths.get(spec)
-        val missingFileRef =
-          !spec.contains(java.io.File.pathSeparator) && !Files.exists(asFile)
-        if missingFileRef then Vector.empty
-        else
-          val raw = if Files.isRegularFile(asFile) then Files.readString(asFile) else spec
-          raw
-            .split("[\n" + java.io.File.pathSeparator + "]")
-            .iterator
-            .map(_.trim)
-            .filter(_.nonEmpty)
-            .map(Paths.get(_))
-            .toVector
-      }
+      .map(resolveClasspathSpec)
       .filter(_.nonEmpty)
+
+  private def resolveClasspathSpec(spec: String): Seq[Path] =
+    // A spec with no path separator that names nothing on disk is a classpath FILE that hasn't
+    // been written yet (e.g. `mcpClientConfig` printed the path before `mcpClasspathFile` ran).
+    // Treat it as "no classpath" -> index-only, rather than a bogus single-entry classpath.
+    val asFile = Paths.get(spec)
+    val missingFileRef =
+      !spec.contains(java.io.File.pathSeparator) && !Files.exists(asFile)
+    if missingFileRef then Vector.empty
+    else
+      val raw = if Files.isRegularFile(asFile) then Files.readString(asFile) else spec
+      raw
+        .split("[\n" + java.io.File.pathSeparator + "]")
+        .iterator
+        .map(_.trim)
+        .filter(_.nonEmpty)
+        .map(Paths.get(_))
+        .toVector
 
   // --- JSON-RPC envelope helpers --------------------------------------------
 
