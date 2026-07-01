@@ -41,17 +41,17 @@ jobs:
           cache: sbt
       - uses: sbt/setup-sbt@v1
       - name: Check formatting
-        run: sbt scalafmtCheckAll
+        run: sbt --batch scalafmtCheckAll
       - name: Regenerate cross-version compat golden SemanticDB
         # Recompiles compat-fixtures under every Scala in `compatScalaVersions` so CompatSuite runs
         # against THIS runner's freshly emitted *.semanticdb. (We don't byte-compare against the
         # committed golden: SemanticDB output isn't guaranteed identical across environments/compiler
         # patches. The committed copies exist for local `sbt test` without a cross-compile.)
-        run: sbt compatGoldenAll
+        run: sbt --batch compatGoldenAll
       - name: Compile sbt plugin for sbt 1 and sbt 2
-        run: sbt +sbtPlugin/compile
+        run: sbt --batch +sbtPlugin/compile
       - name: Test
-        run: sbt test
+        run: sbt --batch test
 
   verify:
     name: Stainless verification
@@ -75,7 +75,7 @@ jobs:
         # sbt task shells out to scripts/stainless-verify.sh; fails iff a VC is INVALID (the
         # nonlinear rangeSpan VC that the bundled solver can only mark `unknown` is tolerated).
         # Generous per-VC timeout here (prePush uses a tighter default for speed).
-        run: sbt stainlessVerify
+        run: sbt --batch stainlessVerify
         env:
           STAINLESS_TIMEOUT: '30'
 
@@ -107,7 +107,7 @@ jobs:
       - name: Generate release notes page from tags
         run: scripts/gen-release-notes.sh # writes docs/RELEASE_NOTES.md (gitignored, build-time only)
       - name: Render docs with mdoc
-        run: sbt docs/run # writes executed Markdown into website/docs
+        run: sbt --batch docs/run # writes executed Markdown into website/docs
       - name: Build Docusaurus site
         working-directory: website
         run: |
@@ -162,7 +162,7 @@ jobs:
       # ci-release still needs PGP_SECRET/PGP_PASSPHRASE in ITS env or it logs
       # "No access to secret variables, doing nothing" and skips publishing.
       - name: Publish (sign + upload via ci-release)
-        run: sbt ci-release
+        run: sbt --batch ci-release
         env:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
@@ -190,7 +190,7 @@ jobs:
           cache: sbt
       - uses: sbt/setup-sbt@v1
       - name: Build fat jar
-        run: sbt "mcp/assembly"
+        run: sbt --batch "mcp/assembly"
       - name: Collect asset
         run: |
           jar=$(find . -name scalasemantic-mcp.jar | head -1)
@@ -209,4 +209,3 @@ jobs:
         with:
           files: release-assets/scalasemantic-mcp.jar
           body_path: release-notes.md
-

@@ -23,7 +23,14 @@ libraryDependencies += "com.guardsquare" % "proguard-base" % "7.9.1"
 // enable it only when actually mutation-testing:
 //   sbt -Dstryker=true "analysis/stryker"      (config in stryker4s.conf)
 if (sys.props.get("stryker").contains("true") || sys.env.contains("STRYKER"))
-  Seq(addSbtPlugin("io.stryker-mutator" % "sbt-stryker4s" % "0.0.0+1-2c0f5bd7-SNAPSHOT"))
+  Seq(
+    addSbtPlugin(
+      "io.stryker-mutator" % "sbt-stryker4s" % sys.props
+        .get("stryker4s.version")
+        .orElse(sys.env.get("STRYKER4S_PLUGIN_VERSION"))
+        .getOrElse("0.21.0+33-2c0f5bd7-SNAPSHOT")
+    )
+  )
 else Seq.empty[Setting[?]]
 
 // SLF4J NOP binding to silence the StaticLoggerBinder warning during sbt initialization.
@@ -40,5 +47,4 @@ libraryDependencies += "org.slf4j" % "slf4j-nop" % "1.7.36"
 // re-enable with:
 //   addSbtPlugin("ch.epfl.lara" % "sbt-stainless" % "<version>")
 // and set `stainlessEnabled := true` in the analysis module's settings.
-
 
