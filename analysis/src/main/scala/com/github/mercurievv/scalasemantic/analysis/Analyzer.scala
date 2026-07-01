@@ -250,15 +250,16 @@ final class Analyzer(
     // One import edit per referencing file, decided by that file's own package.
     val imports = references
       .map(_.uri)
-      .distinct
-      .filterNot(defUri.contains) // the definition's file moves with it
-      .flatMap { uri =>
-        val pkg = h.documentPackage(uri)
-        if pkg.contains(toOwner) then None // already in the destination package
-        else if pkg.contains(fromOwner) then Some(MoveImport(uri, "", toFqn))
-        else Some(MoveImport(uri, fromFqn, toFqn))
-      }
-    MovePlan(
+        .distinct
+        .filterNot(defUri.contains) // the definition's file moves with it
+        .flatMap { uri =>
+          val pkg = h.documentPackage(uri)
+          pkg match
+            case p if p.contains(toOwner)   => None // already in the destination package
+            case p if p.contains(fromOwner) => Some(MoveImport(uri, "", toFqn))
+            case _                          => Some(MoveImport(uri, fromFqn, toFqn))
+        }
+      MovePlan(
       sym,
       name,
       h.kindName(sym),
