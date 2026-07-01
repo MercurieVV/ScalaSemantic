@@ -300,14 +300,14 @@
       "parent": 80,
       "children": [],
       "executor": "claude / sonnet",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         154
       ],
       "blocked_by": [],
-      "result_comment_url": null,
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/156#issuecomment-4852915954",
       "error": null,
-      "attempts": 0
+      "attempts": 1
     },
     "155": {
       "issue": 155,
@@ -330,12 +330,12 @@
       "parent": 80,
       "children": [],
       "executor": "agy / Gemini 3.1 Pro (High)",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         153
       ],
       "blocked_by": [],
-      "result_comment_url": null,
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/154#issuecomment-4848689772",
       "error": null,
       "attempts": 0
     },
@@ -618,16 +618,14 @@
       "parent": 108,
       "children": [],
       "executor": "claude / sonnet",
-      "status": "halted",
+      "status": "completed",
       "depends_on": [
         131
       ],
-      "blocked_by": [
-        108
-      ],
-      "result_comment_url": null,
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/134#issuecomment-4852945597",
       "error": null,
-      "attempts": 0
+      "attempts": 1
     },
     "133": {
       "issue": 133,
@@ -652,14 +650,12 @@
       "parent": 112,
       "children": [],
       "executor": "agy / Gemini 3.1 Pro (High)",
-      "status": "halted",
+      "status": "completed",
       "depends_on": [
         128
       ],
-      "blocked_by": [
-        112
-      ],
-      "result_comment_url": null,
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/132#issuecomment-4848781334",
       "error": null,
       "attempts": 0
     },
@@ -669,14 +665,12 @@
       "parent": 108,
       "children": [],
       "executor": "agy / Gemini 3.1 Pro (High)",
-      "status": "halted",
+      "status": "completed",
       "depends_on": [
         129
       ],
-      "blocked_by": [
-        108
-      ],
-      "result_comment_url": null,
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/131#issuecomment-4848748139",
       "error": null,
       "attempts": 0
     },
@@ -718,12 +712,10 @@
       "parent": 112,
       "children": [],
       "executor": "agy / Gemini 3.1 Pro (High)",
-      "status": "halted",
+      "status": "completed",
       "depends_on": [],
-      "blocked_by": [
-        112
-      ],
-      "result_comment_url": null,
+      "blocked_by": [],
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/128#issuecomment-4848715620",
       "error": null,
       "attempts": 0
     },
@@ -770,14 +762,12 @@
         134
       ],
       "executor": "codex / o3",
-      "status": "halted",
+      "status": "completed",
       "depends_on": [],
       "blocked_by": [],
-      "result_comment_url": null,
-      "error": "merge_conflict (tree2m): branch conflicts with master",
-      "attempts": 1,
-      "worktree": ".worktrees/sbt-to-mill",
-      "last_stdout_line": "(running)"
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/108#issuecomment-4852943817",
+      "error": null,
+      "attempts": 1
     },
     "106": {
       "issue": 106,
