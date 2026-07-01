@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-# Copy the Stryker4s JSON report to a committed, stable path and print alert categories.
+# Copy the Stryker4s JSON report to a stable path and print alert categories.
 #
 # Stryker emits the machine-readable report (mutation-testing-elements schema) at
-#   analysis/target/stryker4s-report/<timestamp>/report.json   (the `json` reporter)
-# which lives under the gitignored target/ dir. Copy it verbatim to the repo root so the
-# stryker4s json output is committed and tracked:
-#   mutation-report.json
+#   <module>/target/stryker4s-report/<timestamp>/report.json   (the `json` reporter)
+# which lives under the gitignored target/ dir. Copy it verbatim to MUTATION_REPORT_DEST, or to the
+# historical repo-root mutation-report.json when that variable is unset.
 # Usage:
 #   scripts/mutation-summary.sh [path/to/report.json]
-# With no arg, the newest report under analysis/target/stryker4s-report is used.
+# With no arg, the newest report under any module's target/stryker4s-report is used.
 #
 # Alerts are intentionally stricter than Stryker's built-in threshold reporting:
 #   - mutation score below MUTATION_SCORE_ALERT_THRESHOLD, or report thresholds.high when unset
@@ -29,23 +28,29 @@ cd "$repo_root"
 
 alert_mutators="${MUTATION_ALERT_MUTATORS:-ConditionalExpression,EqualityOperator,LogicalOperator}"
 
+module_label="${MUTATION_MODULE:-mutation}"
 report="${1:-}"
 if [[ -z "$report" ]]; then
-  report="$(find analysis/target/stryker4s-report -name report.json -print0 2>/dev/null \
+  report="$(find . -path '*/target/stryker4s-report/*/report.json' -print0 2>/dev/null \
     | xargs -0 ls -t 2>/dev/null | head -1 || true)"
 fi
 if [[ -z "$report" || ! -f "$report" ]]; then
-  echo "error: no report.json found (looked under analysis/target/stryker4s-report/*/)" >&2
-  echo "       run 'sbt -Dstryker=true \"analysis/stryker\"' first, or pass the report path explicitly." >&2
+  echo "error: no report.json found (looked under */target/stryker4s-report/*/)" >&2
+  echo "       run 'sbt -Dstryker=true \"<module>/stryker\"' first, or pass the report path explicitly." >&2
   exit 1
 fi
 
 report_abs="$(cd "$(dirname "$report")" && pwd)/$(basename "$report")"
-dest_abs="$repo_root/mutation-report.json"
-if [[ "$report_abs" != "$dest_abs" ]]; then
-  cp "$report" mutation-report.json
+dest="${MUTATION_REPORT_DEST:-mutation-report.json}"
+dest_dir="$(dirname "$dest")"
+if [[ "$dest_dir" != "." ]]; then
+  mkdir -p "$dest_dir"
 fi
-echo "wrote mutation-report.json from $report"
+dest_abs="$(cd "$dest_dir" && pwd)/$(basename "$dest")"
+if [[ "$report_abs" != "$dest_abs" ]]; then
+  cp "$report" "$dest"
+fi
+echo "wrote $dest from $report"
 
 score_line="$(jq -r '
   [.files[]?.mutants[]?] as $mutants
@@ -53,15 +58,15 @@ score_line="$(jq -r '
   | ($mutants | map(select(.status == "Killed" or .status == "Timeout" or .status == "Survived" or .status == "NoCoverage")) | length) as $scored
   | (if $scored == 0 then 100 else ((10000 * $detected / $scored) | round / 100) end) as $score
   | [$score, $detected, $scored] | @tsv
-' mutation-report.json)"
+' "$dest")"
 IFS=$'\t' read -r mutation_score detected_count scored_count <<<"$score_line"
 
 score_threshold="${MUTATION_SCORE_ALERT_THRESHOLD:-}"
 if [[ -z "$score_threshold" ]]; then
-  score_threshold="$(jq -r '.thresholds.high // .thresholds.low // 80' mutation-report.json)"
+  score_threshold="$(jq -r '.thresholds.high // .thresholds.low // 80' "$dest")"
 fi
 
-echo "mutation score: ${mutation_score}% (${detected_count}/${scored_count} detected, alert threshold ${score_threshold}%)"
+echo "${module_label} mutation score: ${mutation_score}% (${detected_count}/${scored_count} detected, alert threshold ${score_threshold}%)"
 
 status_counts="$(jq -r '
   [.files[]?.mutants[]?]
@@ -70,7 +75,7 @@ status_counts="$(jq -r '
   | sort_by(.status)
   | .[]
   | "  \(.status): \(.count)"
-' mutation-report.json)"
+' "$dest")"
 if [[ -n "$status_counts" ]]; then
   echo "mutants by status:"
   echo "$status_counts"
@@ -83,7 +88,7 @@ survivor_counts="$(jq -r '
   | sort_by(-.count, .mutator)
   | .[]
   | "  \(.mutator): \(.count)"
-' mutation-report.json)"
+' "$dest")"
 if [[ -n "$survivor_counts" ]]; then
   echo "surviving mutants by type:"
   echo "$survivor_counts"
@@ -96,7 +101,7 @@ error_counts="$(jq -r '
   | sort_by(.status)
   | .[]
   | "  \(.status): \(.count)"
-' mutation-report.json)"
+' "$dest")"
 if [[ -n "$error_counts" ]]; then
   echo "error mutants:"
   echo "$error_counts"
@@ -122,11 +127,11 @@ surviving_alerts="$(jq -r --arg mutators "$alert_mutators" '
   | sort_by(.mutator)
   | .[]
   | "  \(.mutator): \(.count) (\(.examples))"
-' mutation-report.json)"
+' "$dest")"
 
 alert=0
 if [[ "$score_alert" == "1" ]]; then
-  echo "alert: mutation score ${mutation_score}% is below ${score_threshold}%" >&2
+  echo "alert: ${module_label} mutation score ${mutation_score}% is below ${score_threshold}%" >&2
   alert=1
 fi
 if [[ -n "$surviving_alerts" ]]; then

@@ -61,6 +61,23 @@ We recommend rolling out mutation testing in phases:
 2. **Phase 2: `core` module** ([core](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/core/)): Roll out once `analysis` is stable. Since `core` handles static SemanticDB parsing and has stable structure, its threshold can be set higher (e.g. `85%`).
 3. **Phase 3: `mcp` module** ([mcp](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/mcp/)): The stdio JSON-RPC loop contains infinite loops and blocking network channels that are difficult to mutate without triggering infinite loops or timeouts. We recommend excluding the stdio channel from mutations.
 
+### Implementation note from #133
+
+The initial CI rollout implements Phase 1 as the automatic path: nightly runs, label-gated PR runs,
+and analysis-source PR changes run the `analysis` module. The shared runner also accepts
+`--module core`, `--module mcp`, and `--module all`, and the workflow_dispatch input can request
+those modules manually. They remain manual/experimental until their Stryker-specific blockers are
+resolved:
+
+- The automatic `analysis` run currently excludes `DuplicationAnalyzer.scala` because the pinned
+  Stryker4s snapshot exits non-zero when a generated `java.nio.file.Files.exists` mutant compiles to
+  an invalid `Files.forall` call. The rest of `analysis/src/main/scala` remains in the Phase 1 run.
+- `core/stryker` currently fails its initial test run after Stryker removes compile-error mutants
+  around `java.nio.file.Files.exists` mutations.
+- `mcp/stryker` needs a larger heap and still has high runtime/heap pressure while pretty-printing
+  800+ mutants. The runner sets `SBT_OPTS=-Xmx4G` by default for mutation runs, but this module
+  should not be a required PR gate until a stable baseline is recorded.
+
 ---
 
 ## 5. Configuration Sketch

@@ -1,27 +1,40 @@
 name: Mutation Testing
 
 on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      modules:
+        description: 'Space-separated modules to mutate: analysis, core, mcp, or all'
+        required: false
+        default: 'analysis'
   pull_request:
-    branches: ['**']
-    paths:
-      - 'analysis/**'
-    paths-ignore:
-      - 'reports/mutation/**'
+    types: [opened, synchronize, reopened, labeled]
 
 permissions:
-  contents: write
+  contents: read
+  pull-requests: write
+  issues: write
 
 env:
   STRYKER4S_COMMIT: '2c0f5bd7'
+  STRYKER4S_PLUGIN_VERSION: '0.21.0+33-2c0f5bd7-SNAPSHOT'
+  STRYKER: '1'
+  MUTATION_HIGH_THRESHOLD: '80'
+  MUTATION_LOW_THRESHOLD: '60'
+  # Initial rollout grace period from docs/research/stryker4s-alert-strategy.md:
+  # Stryker exits non-zero for tooling errors, but not for advisory score drops yet.
+  MUTATION_BREAK_THRESHOLD: '0'
+  MUTATION_ALERTS_FAIL: '0'
 
 jobs:
   stryker:
-    name: Stryker4s (analysis)
+    name: Stryker4s
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
           fetch-depth: 0
 
       - uses: actions/setup-java@v4
@@ -32,77 +45,115 @@ jobs:
 
       - uses: sbt/setup-sbt@v1
 
-      # sbt-stryker4s 0.21.0 has an ABI incompatibility with sbt 2.0.0 final; we use a snapshot
-      # built from master at commit 2c0f5bd7. Cache the published local ivy artifacts; on miss,
-      # clone and publishLocal. See project/plugins.sbt for context.
+      - name: Decide mutation scope
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_MODULES: ${{ github.event.inputs.modules }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          LABEL_RUN: ${{ contains(github.event.pull_request.labels.*.name, 'ci:run-mutation') }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          modules=""
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            modules="${DISPATCH_MODULES:-analysis}"
+            [[ "$modules" == "all" ]] && modules="core analysis mcp"
+          elif [[ "$EVENT_NAME" == "schedule" || "$LABEL_RUN" == "true" ]]; then
+            modules="analysis"
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+            files="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')"
+            if grep -qE '^(stryker4s\.conf|scripts/(run-stryker|mutation-summary)\.sh|\.github/workflows/mutation\.yml)$' <<<"$files"; then
+              modules="analysis"
+            else
+              grep -q '^analysis/src/main/scala/' <<<"$files" && modules="$modules analysis"
+            fi
+          fi
+
+          modules="$(xargs <<<"$modules")"
+          echo "modules=$modules" >> "$GITHUB_OUTPUT"
+          if [[ -z "$modules" ]]; then
+            echo "No mutation-relevant module changes detected; skipping heavy Stryker4s run."
+          else
+            echo "Mutation modules: $modules"
+          fi
+
+      # sbt-stryker4s 0.21.0 has an ABI incompatibility with sbt 2.0.0 final; use the pinned
+      # snapshot built from master at commit 2c0f5bd7. See project/plugins.sbt for context.
       - name: Restore stryker4s local ivy cache
+        if: steps.scope.outputs.modules != ''
         id: stryker-cache
         uses: actions/cache@v4
         with:
           path: ~/.ivy2/local/io.stryker-mutator
           key: stryker4s-${{ env.STRYKER4S_COMMIT }}
 
-      - name: Build and publishLocal stryker4s (cache miss only)
-        if: steps.stryker-cache.outputs.cache-hit != 'true'
+      - name: Build and publishLocal stryker4s
+        if: steps.scope.outputs.modules != '' && steps.stryker-cache.outputs.cache-hit != 'true'
         run: |
           git clone https://github.com/stryker-mutator/stryker4s.git /tmp/stryker4s
           cd /tmp/stryker4s
-          git checkout ${{ env.STRYKER4S_COMMIT }}
+          git checkout "$STRYKER4S_COMMIT"
           sbt sbtPlugin3/publishLocal
 
-      - name: Compile (generates SemanticDB used by tests)
-        run: sbt compile
+      - name: Compile clean sources
+        if: steps.scope.outputs.modules != ''
+        run: sbt --batch compile
 
-      # Run stryker4s.  stryker4s.conf sets `thresholds.break = 60`, so this step exits non-zero
-      # when the mutation score drops below 60%.  We capture the exit code here (continue-on-error)
-      # so that subsequent steps can still collect and commit the JSON report for post-mortem
-      # inspection before we re-raise the failure.
-      #
-      # Note on target/ vs worktree:
-      #   CI always starts from a clean checkout with an empty target/, so running stryker directly
-      #   in the checkout is safe — there is no "stale build state" to corrupt.  The worktree mode
-      #   in scripts/run-stryker.sh is a LOCAL-development convenience: it isolates stryker's
-      #   compile+test churn from your current build cache so `sbt test` in the main tree keeps
-      #   working while a long mutation run proceeds in parallel in .worktrees/stryker4s-<name>.
-      - name: Run stryker4s on analysis module
-        id: stryker
-        continue-on-error: true
-        run: sbt "analysis/stryker"
+      - name: Run Stryker4s modules
+        if: steps.scope.outputs.modules != ''
         env:
-          STRYKER: 'true'
-
-      - name: Collect and evaluate report
-        # Run even when stryker fails (break threshold) so the report is always committed.
-        if: always()
+          MODULES: ${{ steps.scope.outputs.modules }}
         run: |
+          set -euo pipefail
           mkdir -p reports/mutation
-          report="$(find analysis/target/stryker4s-report -name report.json -print0 2>/dev/null \
-            | xargs -0 ls -t 2>/dev/null | head -1 || true)"
-          if [[ -z "$report" || ! -f "$report" ]]; then
-            echo "error: no report.json found under analysis/target/stryker4s-report/" >&2
-            exit 1
-          fi
-          cp "$report" reports/mutation/report.json
-          # Print score and per-mutator breakdown; also alerts on surviving behaviour-critical
-          # mutators (ConditionalExpression, EqualityOperator, LogicalOperator).
-          scripts/mutation-summary.sh reports/mutation/report.json || true
+          for module in $MODULES; do
+            mkdir -p "reports/mutation/$module"
+            MUTATION_MODULE="$module" \
+            MUTATION_REPORT_DEST="reports/mutation/$module/report.json" \
+              scripts/run-stryker.sh --local --module "$module" 2>&1 \
+              | tee "reports/mutation/$module/summary.txt"
+          done
 
-      - name: Commit mutation report
-        if: always()
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add reports/mutation/report.json
-          git diff --staged --quiet || git commit -m "chore: update mutation report [skip ci]"
-          git push
+      - name: Verify clean dogfood tests after mutation
+        if: steps.scope.outputs.modules != ''
+        run: sbt --batch test
 
-      # Re-raise the stryker failure AFTER the report has been committed so reviewers can inspect
-      # the score even for a failing run.  The break threshold (60 %) is configured in
-      # stryker4s.conf and is the single source of truth for the gate.
-      - name: Enforce mutation score gate
-        if: steps.stryker.outcome == 'failure'
+      - name: Build mutation PR comment
+        if: steps.scope.outputs.modules != '' && github.event_name == 'pull_request'
         run: |
-          echo "stryker4s exited non-zero — mutation score is below the break threshold (60 %)" \
-               "or stryker encountered an error.  Check the report at reports/mutation/report.json" \
-               "and the step log above for details." >&2
-          exit 1
+          set -euo pipefail
+          {
+            echo "### Stryker4s mutation summary"
+            echo
+            echo "Modules: ${{ steps.scope.outputs.modules }}"
+            echo
+            for summary in reports/mutation/*/summary.txt; do
+              module="$(basename "$(dirname "$summary")")"
+              echo "#### $module"
+              echo '```text'
+              grep -E 'mutation score:|mutants by status:|  (Killed|Survived|NoCoverage|Timeout|CompileError|Ignored):|surviving mutants by type:|  [A-Za-z]+:|alert:' "$summary" || true
+              echo '```'
+              echo
+            done
+            echo "HTML and JSON reports are attached to the workflow run as the stryker4s-report artifact."
+          } > reports/mutation/comment.md
+
+      - name: Upload mutation reports
+        if: steps.scope.outputs.modules != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: stryker4s-report
+          path: |
+            reports/mutation/**
+            */target/stryker4s-report/**
+          if-no-files-found: error
+
+      - name: Comment mutation summary on PR
+        if: steps.scope.outputs.modules != '' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: gh pr comment "$PR_NUMBER" --body-file reports/mutation/comment.md
