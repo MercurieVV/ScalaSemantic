@@ -373,12 +373,12 @@
       "parent": 80,
       "children": [],
       "executor": "agy / Gemini 3.1 Pro (High)",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [],
       "blocked_by": [],
-      "result_comment_url": null,
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/151",
       "error": null,
-      "attempts": 0
+      "attempts": 1
     },
     "150": {
       "issue": 150,
@@ -815,12 +815,12 @@
         156
       ],
       "executor": "agy / Gemini 3.1 Pro (High)",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [],
       "blocked_by": [],
-      "result_comment_url": null,
+      "result_comment_url": "https://github.com/MercurieVV/ScalaSemantic/issues/80",
       "error": null,
-      "attempts": 0
+      "attempts": 1
     },
     "79": {
       "issue": 79,
