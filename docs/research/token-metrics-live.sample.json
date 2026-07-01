@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "measurement": "end-to-end-agent-context",
+  "source": {
+    "kind": "sample",
+    "description": "Synthetic fixture data for validating the live token metrics aggregation harness. Do not treat these numbers as research results.",
+    "targetProject": "ScalaSemanticMCP",
+    "targetCommit": "sample",
+    "scalaSemanticCommit": "sample",
+    "repetitionsRequired": 3
+  },
+  "summary": {
+    "measurementCount": 2,
+    "taskCount": 2,
+    "engineCount": 1,
+    "toolMeanTokens": 2523.4,
+    "baselineMeanTokens": 9080,
+    "tokenDelta": 6556.6,
+    "savingsPercent": 72.2
+  },
+  "measurements": [
+    {
+      "id": "find-usages-animal",
+      "query": "Find all definitions and references of the Animal trait.",
+      "tool": "find_usages",
+      "baseline": "Text grep for Animal across fixture source trees.",
+      "engine": "codex",
+      "model": "sample-model",
+      "withMcp": {
+        "runs": [
+          {
+            "run": 1,
+            "inputTokens": 1120,
+            "outputTokens": 210,
+            "cacheTokens": 0,
+            "totalTokens": 1330
+          },
+          {
+            "run": 2,
+            "inputTokens": 1180,
+            "outputTokens": 200,
+            "cacheTokens": 0,
+            "totalTokens": 1380
+          },
+          {
+            "run": 3,
+            "inputTokens": 1100,
+            "outputTokens": 230,
+            "cacheTokens": 0,
+            "totalTokens": 1330
+          }
+        ],
+        "meanTokens": 1346.7,
+        "medianTokens": 1330,
+        "variance": 555.6,
+        "meanInputTokens": 1133.3,
+        "meanOutputTokens": 213.3,
+        "meanCacheTokens": 0
+      },
+      "withoutMcp": {
+        "runs": [
+          {
+            "run": 1,
+            "inputTokens": 4920,
+            "outputTokens": 340,
+            "cacheTokens": 0,
+            "totalTokens": 5260
+          },
+          {
+            "run": 2,
+            "inputTokens": 5100,
+            "outputTokens": 360,
+            "cacheTokens": 0,
+            "totalTokens": 5460
+          },
+          {
+            "run": 3,
+            "inputTokens": 4860,
+            "outputTokens": 330,
+            "cacheTokens": 0,
+            "totalTokens": 5190
+          }
+        ],
+        "meanTokens": 5303.3,
+        "medianTokens": 5260,
+        "variance": 13088.9,
+        "meanInputTokens": 4960,
+        "meanOutputTokens": 343.3,
+        "meanCacheTokens": 0
+      },
+      "tokenDelta": 3956.6,
+      "savingsPercent": 74.6
+    },
+    {
+      "id": "trace-implicit-show",
+      "query": "Trace givens that produce Show and their dependencies.",
+      "tool": "trace_implicit_chain",
+      "baseline": "Read the fixture source and follow given definitions manually.",
+      "engine": "codex",
+      "model": "sample-model",
+      "withMcp": {
+        "runs": [
+          {
+            "run": 1,
+            "inputTokens": 980,
+            "outputTokens": 180,
+            "cacheTokens": 0,
+            "totalTokens": 1160
+          },
+          {
+            "run": 2,
+            "inputTokens": 1010,
+            "outputTokens": 175,
+            "cacheTokens": 0,
+            "totalTokens": 1185
+          },
+          {
+            "run": 3,
+            "inputTokens": 995,
+            "outputTokens": 190,
+            "cacheTokens": 0,
+            "totalTokens": 1185
+          }
+        ],
+        "meanTokens": 1176.7,
+        "medianTokens": 1185,
+        "variance": 138.9,
+        "meanInputTokens": 995,
+        "meanOutputTokens": 181.7,
+        "meanCacheTokens": 0
+      },
+      "withoutMcp": {
+        "runs": [
+          {
+            "run": 1,
+            "inputTokens": 3420,
+            "outputTokens": 280,
+            "cacheTokens": 0,
+            "totalTokens": 3700
+          },
+          {
+            "run": 2,
+            "inputTokens": 3550,
+            "outputTokens": 300,
+            "cacheTokens": 0,
+            "totalTokens": 3850
+          },
+          {
+            "run": 3,
+            "inputTokens": 3490,
+            "outputTokens": 290,
+            "cacheTokens": 0,
+            "totalTokens": 3780
+          }
+        ],
+        "meanTokens": 3776.7,
+        "medianTokens": 3780,
+        "variance": 3755.6,
+        "meanInputTokens": 3486.7,
+        "meanOutputTokens": 290,
+        "meanCacheTokens": 0
+      },
+      "tokenDelta": 2600,
+      "savingsPercent": 68.8
+    }
+  ]
+}

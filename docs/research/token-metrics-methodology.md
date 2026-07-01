@@ -267,9 +267,23 @@ With an overall savings rate of **90.4%** across 5 queries:
 This part defines how the **live run** subtask(s) should measure real agent
 token consumption. It specifies the counting approach, baseline definition,
 comparison strategy, per-engine capture method, target-project selection
-rules, and rerun protocol. **No harness is implemented yet** — that is
-delegated to a later subtask ("Run measurements"), which must consume the
-definitions below without re-deriving them.
+rules, and rerun protocol.
+
+The aggregation harness is now implemented:
+
+- raw run input format:
+  [`docs/research/token-metrics-live-runs.sample.json`](token-metrics-live-runs.sample.json)
+- sample aggregate output:
+  [`docs/research/token-metrics-live.sample.json`](token-metrics-live.sample.json)
+- verification / regeneration suite:
+  [`mcp/src/test/scala/com/github/mercurievv/scalasemantic/mcp/TokenLiveMetricsSuite.scala`](../../mcp/src/test/scala/com/github/mercurievv/scalasemantic/mcp/TokenLiveMetricsSuite.scala)
+- driver script:
+  [`scripts/token-live-metrics.sh`](../../scripts/token-live-metrics.sh)
+
+The sample files use synthetic fixture numbers only; they validate the harness
+shape and must not be interpreted as research results. The later live-run
+subtask should copy the raw input shape, fill it with real engine usage records,
+and generate a real sibling aggregate file with the same script.
 
 ### Token-counting approach
 
@@ -437,6 +451,36 @@ To keep the live run reproducible across time and across whoever executes it:
    target engine ships a major version bump, since either can shift the
    comparison; routine ScalaSemantic patch releases that don't change tool
    output shape do not require a live rerun.
+
+### Live harness usage
+
+The driver regenerates an aggregate JSON file from raw per-run usage records:
+
+```bash
+scripts/token-live-metrics.sh <raw-runs-json> <aggregate-output-json>
+```
+
+With no arguments it regenerates the checked-in synthetic sample:
+
+```bash
+scripts/token-live-metrics.sh
+```
+
+Verification mode runs the Scala suite directly and compares the aggregate
+output to the raw input:
+
+```bash
+sbt "mcp/testOnly com.github.mercurievv.scalasemantic.mcp.TokenLiveMetricsSuite"
+```
+
+The live-run subtask should use a real raw input path and a real aggregate path,
+for example:
+
+```bash
+scripts/token-live-metrics.sh \
+  docs/research/token-metrics-live-runs.json \
+  docs/research/token-metrics-live.json
+```
 
 ### Limitations (Part 2, anticipated)
 
