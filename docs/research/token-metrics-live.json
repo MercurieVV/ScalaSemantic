@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "measurement": "end-to-end-agent-context",
+  "source": {
+    "kind": "live-runs",
+    "description": "Live token measurements on ScalaSemantic comparing WITH-vs-WITHOUT MCP tools.",
+    "targetProject": "ScalaSemanticMCP",
+    "targetRepository": "https://github.com/MercurieVV/ScalaSemantic.git",
+    "targetCommit": "99b17c3981a1fb50ed20587ab92afcfd7fc2d66a",
+    "scalaSemanticCommit": "99b17c3981a1fb50ed20587ab92afcfd7fc2d66a",
+    "repetitionsRequired": 3
+  },
+  "summary": {
+    "measurementCount": 1,
+    "taskCount": 1,
+    "engineCount": 1,
+    "toolMeanTokens": 150239.3,
+    "baselineMeanTokens": 156580.3,
+    "tokenDelta": 6341,
+    "savingsPercent": 4
+  },
+  "measurements": [
+    {
+      "id": "find-usages-animal",
+      "query": "Find all definitions and references of the Animal trait.",
+      "tool": "find_usages",
+      "baseline": "Text grep for Animal across fixture source trees.",
+      "engine": "codex",
+      "model": "o3",
+      "withMcp": {
+        "runs": [
+          {
+            "run": 1,
+            "inputTokens": 114621,
+            "outputTokens": 1083,
+            "cacheTokens": 84608,
+            "totalTokens": 115704
+          },
+          {
+            "run": 2,
+            "inputTokens": 201603,
+            "outputTokens": 2251,
+            "cacheTokens": 147584,
+            "totalTokens": 203854
+          },
+          {
+            "run": 3,
+            "inputTokens": 129656,
+            "outputTokens": 1504,
+            "cacheTokens": 100352,
+            "totalTokens": 131160
+          }
+        ],
+        "meanTokens": 150239.3,
+        "medianTokens": 131160,
+        "variance": 1.4770808969E9,
+        "meanInputTokens": 148626.7,
+        "meanOutputTokens": 1612.7,
+        "meanCacheTokens": 110848
+      },
+      "withoutMcp": {
+        "runs": [
+          {
+            "run": 1,
+            "inputTokens": 179500,
+            "outputTokens": 2641,
+            "cacheTokens": 135424,
+            "totalTokens": 182141
+          },
+          {
+            "run": 2,
+            "inputTokens": 125781,
+            "outputTokens": 2093,
+            "cacheTokens": 97920,
+            "totalTokens": 127874
+          },
+          {
+            "run": 3,
+            "inputTokens": 157257,
+            "outputTokens": 2469,
+            "cacheTokens": 128384,
+            "totalTokens": 159726
+          }
+        ],
+        "meanTokens": 156580.3,
+        "medianTokens": 159726,
+        "variance": 4.957654909E8,
+        "meanInputTokens": 154179.3,
+        "meanOutputTokens": 2401,
+        "meanCacheTokens": 120576
+      },
+      "tokenDelta": 6341,
+      "savingsPercent": 4
+    }
+  ]
+}
