@@ -10,11 +10,11 @@ import scala.meta.internal.semanticdb as s
 /** Property-based complement to [[DuplicationAnalyzerSuite]] for the `minSize` size guard.
   *
   * [[DuplicationAnalyzerSuite]] pins the "inclusive floor" behaviour at two hand-picked points (an
-  * absurdly high floor admits nothing; a floor equal to the block's own node count still admits it).
-  * This suite generalises that to the full boundary contract: `minSize` only *filters* the fixed set
-  * of duplicate blocks the fixture contains, so `analyze(minSize).groups.nonEmpty` holds exactly
-  * when `minSize` is at most the largest duplicated block's node count. Raising the floor can only
-  * remove blocks (never add larger ones), so the largest block size is a stable threshold.
+  * absurdly high floor admits nothing; a floor equal to the block's own node count still admits
+  * it). This suite generalises that to the full boundary contract: `minSize` only *filters* the
+  * fixed set of duplicate blocks the fixture contains, so `analyze(minSize).groups.nonEmpty` holds
+  * exactly when `minSize` is at most the largest duplicated block's node count. Raising the floor
+  * can only remove blocks (never add larger ones), so the largest block size is a stable threshold.
   */
 class DuplicationAnalyzerPropertySuite extends munit.ScalaCheckSuite:
 
@@ -43,5 +43,8 @@ class DuplicationAnalyzerPropertySuite extends munit.ScalaCheckSuite:
 
   property("analyze(minSize).groups.nonEmpty holds iff minSize <= the largest duplicated block"):
     forAll(Gen.chooseNum(1, maxBlockSize * 2)) { m =>
-      DuplicationAnalyzer.analyze(dupIndex, root, minSize = m).groups.nonEmpty == (m <= maxBlockSize)
+      DuplicationAnalyzer
+        .analyze(dupIndex, root, minSize = m)
+        .groups
+        .nonEmpty == (m <= maxBlockSize)
     }

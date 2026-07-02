@@ -188,8 +188,8 @@ class AnalyzerHelpersPropertySuite extends munit.ScalaCheckSuite:
   // letting a class `c$i` extend classes `c$j` with `j > i`, so parent edges always point to a
   // strictly higher index and no cycle can form.
 
-  /** A class hierarchy over `c0 .. c{n-1}`: the built index plus the root symbol and the raw
-    * parent map used to compute the expected transitive-ancestor set independently.
+  /** A class hierarchy over `c0 .. c{n-1}`: the built index plus the root symbol and the raw parent
+    * map used to compute the expected transitive-ancestor set independently.
     */
   private val genClassDag: Gen[(SemanticIndex, String, Map[String, Set[String]])] =
     def sym(i: Int): String = s"d/c$i#"
@@ -218,8 +218,8 @@ class AnalyzerHelpersPropertySuite extends munit.ScalaCheckSuite:
       val index = new SemanticIndex(Vector(s.TextDocument(uri = "d.scala", symbols = symbols)))
       (index, sym(0), parentMap)
 
-  /** The transitive parents of `root` in `parents` (root excluded), computed by a plain reachability
-    * walk that is independent of the linearize implementation under test.
+  /** The transitive parents of `root` in `parents` (root excluded), computed by a plain
+    * reachability walk that is independent of the linearize implementation under test.
     */
   private def transitiveAncestors(root: String, parents: Map[String, Set[String]]): Set[String] =
     @annotation.tailrec
