@@ -177,3 +177,68 @@ class AnalyzerHelpersPropertySuite extends munit.ScalaCheckSuite:
           matcher(haystack) == haystack.contains(lit)
         else true
     }
+
+  // ---------------------------------------------------------------------------
+  // linearize (transitive parents over an arbitrary class DAG)
+  // ---------------------------------------------------------------------------
+  //
+  // Generalises the fixed diamond in AnalyzerHelpersSuite ("linearize de-duplicates a diamond"):
+  // over any acyclic class hierarchy, linearize must (a) return each ancestor exactly once, and
+  // (b) return exactly the transitive parent set of the root. Acyclicity is guaranteed by only
+  // letting a class `c$i` extend classes `c$j` with `j > i`, so parent edges always point to a
+  // strictly higher index and no cycle can form.
+
+  /** A class hierarchy over `c0 .. c{n-1}`: the built index plus the root symbol and the raw
+    * parent map used to compute the expected transitive-ancestor set independently.
+    */
+  private val genClassDag: Gen[(SemanticIndex, String, Map[String, Set[String]])] =
+    def sym(i: Int): String = s"d/c$i#"
+    for
+      n <- Gen.chooseNum(1, 8)
+      parentLists <- Gen.sequence[List[List[Int]], List[Int]](
+        (0 until n).toList.map { i =>
+          Gen.someOf((i + 1) until n).map(_.toList)
+        }
+      )
+    yield
+      val parentMap = (0 until n).map(i => sym(i) -> parentLists(i).map(sym).toSet).toMap
+      val symbols = (0 until n).toVector.map { i =>
+        s.SymbolInformation(
+          symbol = sym(i),
+          kind = s.SymbolInformation.Kind.CLASS,
+          displayName = s"c$i",
+          signature = s.ClassSignature(
+            None,
+            parentLists(i).map(p => s.TypeRef(s.Type.Empty, sym(p), Nil)),
+            s.Type.Empty,
+            None
+          )
+        )
+      }
+      val index = new SemanticIndex(Vector(s.TextDocument(uri = "d.scala", symbols = symbols)))
+      (index, sym(0), parentMap)
+
+  /** The transitive parents of `root` in `parents` (root excluded), computed by a plain reachability
+    * walk that is independent of the linearize implementation under test.
+    */
+  private def transitiveAncestors(root: String, parents: Map[String, Set[String]]): Set[String] =
+    @annotation.tailrec
+    def loop(frontier: List[String], seen: Set[String]): Set[String] =
+      frontier match
+        case Nil          => seen
+        case head :: tail =>
+          val next = parents.getOrElse(head, Set.empty).filterNot(seen.contains)
+          loop(next.toList ::: tail, seen ++ next)
+    loop(List(root), Set.empty)
+
+  property("linearize returns each ancestor exactly once (no duplicates) over any class DAG"):
+    forAll(genClassDag) { (index, root, _) =>
+      val lin = AnalyzerHelpers(index).linearize(root)
+      lin.distinct == lin
+    }
+
+  property("linearize yields exactly the transitive parent set of the root"):
+    forAll(genClassDag) { (index, root, parents) =>
+      val lin = AnalyzerHelpers(index).linearize(root)
+      lin.toSet == transitiveAncestors(root, parents)
+    }
