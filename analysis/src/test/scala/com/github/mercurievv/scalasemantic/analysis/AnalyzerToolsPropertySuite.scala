@@ -4,6 +4,7 @@ import com.github.mercurievv.scalasemantic.model.InputTypes.PositiveInt
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
+
 import scala.meta.internal.semanticdb as s
 
 class AnalyzerToolsPropertySuite extends munit.ScalaCheckSuite:
@@ -20,7 +21,9 @@ class AnalyzerToolsPropertySuite extends munit.ScalaCheckSuite:
 
   private val genAlphaStr: Gen[String] = Gen.nonEmptyListOf(Gen.alphaChar).map(_.mkString)
 
-  property("findSymbol ranks matches by exact > prefix > substring, then by length, then by symbol"):
+  property(
+    "findSymbol ranks matches by exact > prefix > substring, then by length, then by symbol"
+  ):
     forAll(genAlphaStr.suchThat(_.length >= 3)) { query =>
       val q = query.toLowerCase
       val genExact = Gen.oneOf(query, query.toLowerCase, query.toUpperCase)
@@ -50,7 +53,10 @@ class AnalyzerToolsPropertySuite extends munit.ScalaCheckSuite:
         val results = az.findSymbol(query, limit = limit)
 
         results.foreach { ref =>
-          assert(ref.displayName.toLowerCase.contains(q), s"Returned non-matching symbol: ${ref.displayName}")
+          assert(
+            ref.displayName.toLowerCase.contains(q),
+            s"Returned non-matching symbol: ${ref.displayName}"
+          )
         }
 
         val ranks = results.map { ref =>
@@ -59,6 +65,10 @@ class AnalyzerToolsPropertySuite extends munit.ScalaCheckSuite:
           (r, ref.displayName.length, ref.symbol)
         }
         val sortedRanks = ranks.sorted
-        assertEquals(ranks, sortedRanks, s"Results not ranked correctly for query '$query'. Got: $ranks")
+        assertEquals(
+          ranks,
+          sortedRanks,
+          s"Results not ranked correctly for query '$query'. Got: $ranks"
+        )
       }
     }

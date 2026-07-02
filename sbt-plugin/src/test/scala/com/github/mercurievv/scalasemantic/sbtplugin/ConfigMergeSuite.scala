@@ -295,9 +295,12 @@ class ConfigMergeSuite extends munit.ScalaCheckSuite {
   private val genJsonConfig: Gen[String] = for {
     pairs <- Gen.listOf(genUnrelatedJsonPair)
     includeMcpServers <- Gen.oneOf(true, false)
-    mcpServersBlock <- if (includeMcpServers) genJsonMcpServers.map(s => s""""mcpServers": $s""") else Gen.const("")
+    mcpServersBlock <-
+      if (includeMcpServers) genJsonMcpServers.map(s => s""""mcpServers": $s""") else Gen.const("")
   } yield {
-    val allPairs = pairs.map { case (k, v) => s"$k: $v" } ++ (if (mcpServersBlock.nonEmpty) Seq(mcpServersBlock) else Seq.empty)
+    val allPairs = pairs.map { case (k, v) =>
+      s"$k: $v"
+    } ++ (if (mcpServersBlock.nonEmpty) Seq(mcpServersBlock) else Seq.empty)
     s"""{\n  ${scala.util.Random.shuffle(allPairs).mkString(",\n  ")}\n}"""
   }
 
