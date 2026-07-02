@@ -93,8 +93,10 @@ object SemanticIndex:
   def fromRoots(roots: Seq[Path]): SemanticIndex =
     val files = roots.filter(Files.exists(_)).flatMap(findSemanticdb)
     val docs = files.flatMap { f =>
-      val bytes = Files.readAllBytes(f)
-      s.TextDocuments.parseFrom(bytes).documents
+      try
+        val bytes = Files.readAllBytes(f)
+        s.TextDocuments.parseFrom(bytes).documents
+      catch case _: IOException => Nil
     }.toVector
     new SemanticIndex(docs)
 
