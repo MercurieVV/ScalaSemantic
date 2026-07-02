@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "kind": "live-runs",
+    "description": "Live token measurements on ScalaSemantic comparing WITH-vs-WITHOUT MCP tools.",
+    "targetProject": "ScalaSemanticMCP",
+    "targetRepository": "https://github.com/MercurieVV/ScalaSemantic.git",
+    "targetCommit": "99b17c3981a1fb50ed20587ab92afcfd7fc2d66a",
+    "scalaSemanticCommit": "99b17c3981a1fb50ed20587ab92afcfd7fc2d66a",
+    "repetitionsRequired": 3
+  },
+  "measurements": [
+    {
+      "id": "find-usages-animal",
+      "query": "Find all definitions and references of the Animal trait.",
+      "tool": "find_usages",
+      "baseline": "Text grep for Animal across fixture source trees.",
+      "engine": "codex",
+      "model": "o3",
+      "runs": [
+        {
+          "arm": "with-mcp",
+          "run": 1,
+          "inputTokens": 114621,
+          "outputTokens": 1083,
+          "cacheTokens": 84608
+        },
+        {
+          "arm": "with-mcp",
+          "run": 2,
+          "inputTokens": 201603,
+          "outputTokens": 2251,
+          "cacheTokens": 147584
+        },
+        {
+          "arm": "with-mcp",
+          "run": 3,
+          "inputTokens": 129656,
+          "outputTokens": 1504,
+          "cacheTokens": 100352
+        },
+        {
+          "arm": "without-mcp",
+          "run": 1,
+          "inputTokens": 179500,
+          "outputTokens": 2641,
+          "cacheTokens": 135424
+        },
+        {
+          "arm": "without-mcp",
+          "run": 2,
+          "inputTokens": 125781,
+          "outputTokens": 2093,
+          "cacheTokens": 97920
+        },
+        {
+          "arm": "without-mcp",
+          "run": 3,
+          "inputTokens": 157257,
+          "outputTokens": 2469,
+          "cacheTokens": 128384
+        }
+      ]
+    }
+  ]
+}
