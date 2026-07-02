@@ -9,7 +9,7 @@ import ScalaSemanticConfigMerger.mergeYaml
   * third-party MCP server, replacing our own entry, preserving unrelated content, and — crucially —
   * idempotency (re-running the merge on its own output must be a fixpoint).
   */
-class ConfigMergeSuite extends munit.FunSuite {
+class ConfigMergeSuite extends munit.ScalaCheckSuite {
 
   private val name = "scala-semantic"
   private val argv =
@@ -260,6 +260,127 @@ class ConfigMergeSuite extends munit.FunSuite {
       assert(!updatedAgentsContent.contains("SCALA_CODE_RULES.md"))
     } finally {
       sbt.IO.delete(tempDir)
+    }
+  }
+
+  import org.scalacheck.Gen
+  import org.scalacheck.Prop.forAll
+
+  private val genAlphaStr: Gen[String] = Gen.nonEmptyListOf(Gen.alphaChar).map(_.mkString)
+
+  private val genJsonPrimitive: Gen[String] = Gen.oneOf(
+    Gen.chooseNum(1, 100).map(_.toString),
+    Gen.oneOf("true", "false"),
+    genAlphaStr.map(s => s""""$s"""")
+  )
+
+  private val genUnrelatedJsonPair: Gen[(String, String)] = for {
+    key <- genAlphaStr.suchThat(_ != "mcpServers")
+    value <- genJsonPrimitive
+  } yield (s""""$key"""", value)
+
+  private val genServerEntry: Gen[String] = for {
+    command <- genAlphaStr
+    args <- Gen.listOf(genAlphaStr)
+    argsStr = args.map(a => s""""$a"""").mkString("[", ", ", "]")
+  } yield s"""{\n      "command": "${command}",\n      "args": $argsStr\n    }"""
+
+  private val genJsonMcpServers: Gen[String] = for {
+    servers <- Gen.listOf(for {
+      name <- genAlphaStr
+      entry <- genServerEntry
+    } yield s""""$name": $entry""")
+  } yield s"""{\n    ${servers.mkString(",\n    ")}\n  }"""
+
+  private val genJsonConfig: Gen[String] = for {
+    pairs <- Gen.listOf(genUnrelatedJsonPair)
+    includeMcpServers <- Gen.oneOf(true, false)
+    mcpServersBlock <-
+      if (includeMcpServers) genJsonMcpServers.map(s => s""""mcpServers": $s""") else Gen.const("")
+  } yield {
+    val allPairs = pairs.map { case (k, v) =>
+      s"$k: $v"
+    } ++ (if (mcpServersBlock.nonEmpty) Seq(mcpServersBlock) else Seq.empty)
+    s"""{\n  ${scala.util.Random.shuffle(allPairs).mkString(",\n  ")}\n}"""
+  }
+
+  private val genExtraFields: Gen[Seq[(String, String)]] = Gen.listOf(for {
+    key <- genAlphaStr
+    value <- genJsonPrimitive
+  } yield (key, value))
+
+  private val genTomlPair: Gen[String] = for {
+    key <- genAlphaStr
+    value <- genJsonPrimitive
+  } yield s"$key = $value"
+
+  private val genTomlTable: Gen[String] = for {
+    tableName <- genAlphaStr.suchThat(name => name != "mcp_servers" && name != "mcp-servers")
+    pairs <- Gen.listOf(genTomlPair)
+  } yield s"[$tableName]\n${pairs.mkString("\n")}"
+
+  private val genTomlMcpServers: Gen[String] = for {
+    servers <- Gen.listOf(for {
+      serverName <- genAlphaStr
+      command <- genAlphaStr
+      args <- Gen.listOf(genAlphaStr)
+      argsStr = args.map(a => s""""$a"""").mkString("[", ", ", "]")
+    } yield s"""[mcp_servers.$serverName]\ncommand = "$command"\nargs = $argsStr""")
+  } yield servers.mkString("\n\n")
+
+  private val genTomlConfig: Gen[String] = for {
+    tables <- Gen.listOf(genTomlTable)
+    includeMcp <- Gen.oneOf(true, false)
+    mcpBlock <- if (includeMcp) genTomlMcpServers else Gen.const("")
+  } yield {
+    val allBlocks = tables ++ (if (mcpBlock.nonEmpty) Seq(mcpBlock) else Seq.empty)
+    scala.util.Random.shuffle(allBlocks).mkString("\n\n")
+  }
+
+  private val genYamlPair: Gen[String] = for {
+    key <- genAlphaStr.suchThat(_ != "mcpServers")
+    value <- genJsonPrimitive
+  } yield s"$key: $value"
+
+  private val genYamlMcpServerItem: Gen[String] = for {
+    name <- genAlphaStr
+    command <- genAlphaStr
+    args <- Gen.listOf(genAlphaStr)
+    argsLines = args.map(a => s"""      - "$a"""").mkString("\n")
+    argsStr = if (args.isEmpty) "" else s"\n    args:\n$argsLines"
+  } yield s"""  - name: "$name"\n    command: "$command"$argsStr"""
+
+  private val genYamlMcpServers: Gen[String] = for {
+    items <- Gen.listOf(genYamlMcpServerItem)
+  } yield if (items.isEmpty) "" else s"mcpServers:\n${items.mkString("\n")}"
+
+  private val genYamlConfig: Gen[String] = for {
+    pairs <- Gen.listOf(genYamlPair)
+    includeMcp <- Gen.oneOf(true, false)
+    mcpBlock <- if (includeMcp) genYamlMcpServers else Gen.const("")
+  } yield {
+    val allParts = pairs ++ (if (mcpBlock.nonEmpty) Seq(mcpBlock) else Seq.empty)
+    scala.util.Random.shuffle(allParts).mkString("\n")
+  }
+
+  property("json merge: idempotent over generated config documents and extra fields") {
+    forAll(genJsonConfig, genExtraFields) { (existingJson, extraFields) =>
+      assertIdempotent("json/pb", e => mergeJson(e, name, argv, extraFields), Some(existingJson))
+      true
+    }
+  }
+
+  property("toml merge: idempotent over generated config documents") {
+    forAll(genTomlConfig) { existingToml =>
+      assertIdempotent("toml/pb", e => mergeToml(e, name, argv), Some(existingToml))
+      true
+    }
+  }
+
+  property("yaml merge: idempotent over generated config documents") {
+    forAll(genYamlConfig) { existingYaml =>
+      assertIdempotent("yaml/pb", e => mergeYaml(e, name, argv), Some(existingYaml))
+      true
     }
   }
 }
