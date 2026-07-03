@@ -29,8 +29,8 @@
 #               --log writes a startup line + one line per tool call; --log-output additionally
 #               logs each JSON-RPC response sent to the LLM. (Env equivalents: SCALASEMANTIC_LOG,
 #               SCALASEMANTIC_LOG_OUTPUT; log file path via SCALASEMANTIC_LOG_FILE.)
-# Requires: java on PATH (and optionally coursier) for `serve`. `setup`'s config merge additionally
-# needs python3 on PATH (present by default on macOS and most Linux distros).
+# Requires: java on PATH (and optionally coursier) for `serve`, and standard POSIX tools (awk, sed,
+# grep) for `setup`'s config merge — no python3, no jq, no extra interpreter to install.
 #
 # Pin a version instead of "latest" by exporting SCALASEMANTIC_VERSION=v0.1.4 (pinned launches skip
 # the background updater — you get exactly that version).
@@ -175,14 +175,30 @@ target_for() {
   case "$1" in
     codex|openai|openai-codex) echo ".codex/config.toml toml" ;;
     claude|claude-code|anthropic) echo ".mcp.json json" ;;
-    gemini|google|google-gemini|gemini-cli) echo ".gemini/settings.json json {\"timeout\":60000}" ;;
+    gemini|google|google-gemini|gemini-cli) echo ".gemini/settings.json json" ;;
     antigravity|antigravity-cli|agy) echo ".agents/mcp_config.json json" ;;
-    cline) echo ".cline/mcp.json json {\"disabled\":false,\"autoApprove\":[]}" ;;
-    roo|roo-code) echo ".roo/mcp.json json {\"disabled\":false,\"alwaysAllow\":[],\"timeout\":60}" ;;
+    cline) echo ".cline/mcp.json json" ;;
+    roo|roo-code) echo ".roo/mcp.json json" ;;
     continue|continue-dev) echo ".continue/config.yaml yaml" ;;
     generic|generic-json|json|oss|open-source|free) echo ".mcp.json json" ;;
     *) echo "" ;;
   esac
+}
+
+# Extra JSON object fields some clients want on their server entry, rendered as raw ", key: value"
+# fragments appended right before the entry's closing brace (empty string = no extras).
+extra_json_fields() {
+  case "$1" in
+    gemini|google|google-gemini|gemini-cli) printf ',\n      "timeout": 60000' ;;
+    cline) printf ',\n      "disabled": false,\n      "autoApprove": []' ;;
+    roo|roo-code) printf ',\n      "disabled": false,\n      "alwaysAllow": [],\n      "timeout": 60' ;;
+    *) printf '' ;;
+  esac
+}
+
+# Escapes backslash + double-quote so a raw string can be embedded in a JSON/TOML string literal.
+json_escape() {
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
 }
 
 ensure_semanticdb_config() {
@@ -258,24 +274,61 @@ EOF
 }
 
 write_client_configs() {
-  local _project _client _command _cpfile _merge _clients c _t _relpath _fmt _extra _argv
+  local _project _client _command _cpfile _clients c _t _relpath _fmt _cmd_esc _proj_esc _cp_esc
+  local _entry _header _fresh _item _itemline _freshfull _out _tmp
   _project="$1"; _client="$2"; _command="$3"; _cpfile="$4"
-  if ! command -v python3 >/dev/null 2>&1; then
-    echo "scalasemantic-mcp: python3 not found on PATH — skipping MCP client config merge." >&2
-    echo "scalasemantic-mcp: add this server manually, pointing args at: $_command serve $_project $_cpfile" >&2
-    return 0
-  fi
-  _merge="$SELF_DIR/lib/mcp-config-merge.py"
   if [ "$_client" = "all" ]; then _clients="$ALL_CLIENTS"; else _clients="$_client"; fi
+  _cmd_esc=$(json_escape "$_command")
+  _proj_esc=$(json_escape "$_project")
+  _cp_esc=$(json_escape "$_cpfile")
   for c in $_clients; do
     _t=$(target_for "$c")
     [ -n "$_t" ] || { echo "scalasemantic-mcp: unsupported client '$c'" >&2; continue; }
     _relpath=$(echo "$_t" | cut -d' ' -f1)
     _fmt=$(echo "$_t" | cut -d' ' -f2)
-    _extra=$(echo "$_t" | cut -d' ' -f3-)
-    if [ -z "$_extra" ] || [ "$_extra" = "$_fmt" ]; then _extra="{}"; fi
-    _argv=$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$_command" serve "$_project" "$_cpfile")
-    python3 "$_merge" "$_fmt" "$_project/$_relpath" "scala-semantic" "$_argv" "$_extra"
+    _out="$_project/$_relpath"
+    mkdir -p "$(dirname "$_out")"
+    [ -f "$_out" ] || : > "$_out"
+    _tmp=$(mktemp)
+    case "$_fmt" in
+      json)
+        _entry="{
+      \"command\": \"$_cmd_esc\",
+      \"args\": [\"serve\", \"$_proj_esc\", \"$_cp_esc\"]$(extra_json_fields "$c")
+    }"
+        MCPM_SERVER="scala-semantic" MCPM_ENTRY="$_entry" \
+          awk -f "$SELF_DIR/lib/json-merge.awk" "$_out" > "$_tmp"
+        ;;
+      toml)
+        _header="[mcp_servers.scala-semantic]"
+        _fresh="[mcp_servers.scala-semantic]
+command = \"$_cmd_esc\"
+args = [\"serve\", \"$_proj_esc\", \"$_cp_esc\"]
+startup_timeout_sec = 60
+tool_timeout_sec = 60"
+        MCPM_HEADER="$_header" MCPM_FRESH="$_fresh" \
+          awk -f "$SELF_DIR/lib/toml-merge.awk" "$_out" > "$_tmp"
+        ;;
+      yaml)
+        _itemline="- name: \"scala-semantic\""
+        _item="  - name: \"scala-semantic\"
+    command: \"$_cmd_esc\"
+    args:
+      - \"serve\"
+      - \"$_proj_esc\"
+      - \"$_cp_esc\"
+    connectionTimeout: 60000"
+        _freshfull="name: ScalaSemantic MCP
+version: 1.0.0
+schema: v1
+mcpServers:
+$_item"
+        MCPM_ITEM_NAME_LINE="$_itemline" MCPM_ITEM="$_item" MCPM_FRESH_FULL="$_freshfull" \
+          awk -f "$SELF_DIR/lib/yaml-merge.awk" "$_out" > "$_tmp"
+        ;;
+    esac
+    mv -f "$_tmp" "$_out"
+    echo "scalasemantic-mcp: wrote $_out" >&2
   done
 }
 

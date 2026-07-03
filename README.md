@@ -29,13 +29,11 @@ once and run `setup`. It idempotently enables SemanticDB, writes the agent steer
 merges an MCP server entry into every client config it finds — re-running is always safe:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.sh -o scalasemantic-mcp.sh && chmod +x scalasemantic-mcp.sh
-./scalasemantic-mcp.sh setup
+curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.sh -o scalasemantic-mcp.sh && chmod +x scalasemantic-mcp.sh && ./scalasemantic-mcp.sh setup
 ```
 
 ```powershell
-iwr https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.ps1 -OutFile scalasemantic-mcp.ps1
-.\scalasemantic-mcp.ps1 setup
+iwr https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.ps1 -OutFile scalasemantic-mcp.ps1; .\scalasemantic-mcp.ps1 setup
 ```
 
 If you already have Scala CLI installed, the equivalent `setup` is also available as a script:
