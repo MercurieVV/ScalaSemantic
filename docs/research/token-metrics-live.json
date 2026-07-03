@@ -11,15 +11,87 @@
     "repetitionsRequired": 3
   },
   "summary": {
-    "measurementCount": 1,
+    "measurementCount": 2,
     "taskCount": 1,
-    "engineCount": 1,
-    "toolMeanTokens": 150239.3,
-    "baselineMeanTokens": 156580.3,
-    "tokenDelta": 6341,
-    "savingsPercent": 4
+    "engineCount": 2,
+    "toolMeanTokens": 304324.3,
+    "baselineMeanTokens": 422913,
+    "tokenDelta": 118588.7,
+    "savingsPercent": 28
   },
   "measurements": [
+    {
+      "id": "find-usages-animal",
+      "query": "Find all definitions and references of the Animal trait.",
+      "tool": "find_usages",
+      "baseline": "Text grep for Animal across fixture source trees.",
+      "engine": "claude-cli",
+      "model": "claude-sonnet-5",
+      "withMcp": {
+        "runs": [
+          {
+            "run": 1,
+            "inputTokens": 177329,
+            "outputTokens": 729,
+            "cacheTokens": 140374,
+            "totalTokens": 178058
+          },
+          {
+            "run": 2,
+            "inputTokens": 141374,
+            "outputTokens": 887,
+            "cacheTokens": 119938,
+            "totalTokens": 142261
+          },
+          {
+            "run": 3,
+            "inputTokens": 141473,
+            "outputTokens": 463,
+            "cacheTokens": 121642,
+            "totalTokens": 141936
+          }
+        ],
+        "meanTokens": 154085,
+        "medianTokens": 142261,
+        "variance": 2.873699687E8,
+        "meanInputTokens": 153392,
+        "meanOutputTokens": 693,
+        "meanCacheTokens": 127318
+      },
+      "withoutMcp": {
+        "runs": [
+          {
+            "run": 1,
+            "inputTokens": 239103,
+            "outputTokens": 1474,
+            "cacheTokens": 225652,
+            "totalTokens": 240577
+          },
+          {
+            "run": 2,
+            "inputTokens": 213650,
+            "outputTokens": 1437,
+            "cacheTokens": 187263,
+            "totalTokens": 215087
+          },
+          {
+            "run": 3,
+            "inputTokens": 338814,
+            "outputTokens": 4520,
+            "cacheTokens": 281814,
+            "totalTokens": 343334
+          }
+        ],
+        "meanTokens": 266332.7,
+        "medianTokens": 240577,
+        "variance": 3.0728926842E9,
+        "meanInputTokens": 263855.7,
+        "meanOutputTokens": 2477,
+        "meanCacheTokens": 231576.3
+      },
+      "tokenDelta": 112247.7,
+      "savingsPercent": 42.1
+    },
     {
       "id": "find-usages-animal",
       "query": "Find all definitions and references of the Animal trait.",

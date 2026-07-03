@@ -61,6 +61,62 @@
           "cacheTokens": 128384
         }
       ]
+    },
+    {
+      "id": "find-usages-animal",
+      "query": "Find all definitions and references of the Animal trait.",
+      "tool": "find_usages",
+      "baseline": "Text grep for Animal across fixture source trees.",
+      "engine": "claude-cli",
+      "model": "claude-sonnet-5",
+      "engineVersion": "2.1.199 (Claude Code)",
+      "targetCommit": "cf9d6bbd8e310f2794460fa784188072095072a7",
+      "scalaSemanticVersion": "0.3.10",
+      "note": "Rerun 2026-07-03 after fixing the claude-cli login failure from the first live run. inputTokens = input + cacheCreation + cacheRead summed over modelUsage (includes subagent model calls); cacheTokens = cacheRead subset, matching codex semantics where inputTokens includes cached tokens. with-mcp arm verified via session transcripts: 6-8 mcp__scala-semantic__* calls per run, zero Grep/Read; without-mcp arm used Grep/Bash/Explore-agent only, zero ScalaSemantic MCP calls.",
+      "runs": [
+        {
+          "arm": "with-mcp",
+          "run": 1,
+          "inputTokens": 177329,
+          "outputTokens": 729,
+          "cacheTokens": 140374
+        },
+        {
+          "arm": "with-mcp",
+          "run": 2,
+          "inputTokens": 141374,
+          "outputTokens": 887,
+          "cacheTokens": 119938
+        },
+        {
+          "arm": "with-mcp",
+          "run": 3,
+          "inputTokens": 141473,
+          "outputTokens": 463,
+          "cacheTokens": 121642
+        },
+        {
+          "arm": "without-mcp",
+          "run": 1,
+          "inputTokens": 239103,
+          "outputTokens": 1474,
+          "cacheTokens": 225652
+        },
+        {
+          "arm": "without-mcp",
+          "run": 2,
+          "inputTokens": 213650,
+          "outputTokens": 1437,
+          "cacheTokens": 187263
+        },
+        {
+          "arm": "without-mcp",
+          "run": 3,
+          "inputTokens": 338814,
+          "outputTokens": 4520,
+          "cacheTokens": 281814
+        }
+      ]
     }
   ]
 }
