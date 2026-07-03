@@ -24,7 +24,21 @@ sbt mcpClientConfig compile
 
 For other build tools, manual setups, or advanced options, see the [Integration guide](docs/getting-started/integration.md).
 
-If you already have Scala CLI installed and want a build-tool-neutral setup:
+For a build-tool-neutral setup that needs only `java` (no sbt, no Scala CLI), download the launcher
+once and run `setup`. It idempotently enables SemanticDB, writes the agent steering files, and
+merges an MCP server entry into every client config it finds — re-running is always safe:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.sh -o scalasemantic-mcp.sh && chmod +x scalasemantic-mcp.sh
+./scalasemantic-mcp.sh setup
+```
+
+```powershell
+iwr https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.ps1 -OutFile scalasemantic-mcp.ps1
+.\scalasemantic-mcp.ps1 setup
+```
+
+If you already have Scala CLI installed, the equivalent `setup` is also available as a script:
 
 ```sh
 scala-cli https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.scala setup
