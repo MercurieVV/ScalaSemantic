@@ -30,6 +30,7 @@ It reads compiler-emitted **SemanticDB**, so answers reflect what the compiler r
 
 - [Claude interaction study](research/claude-interaction-study.md) — measured tool usage, tool recommendations
 - [Token metrics methodology](research/token-metrics-methodology.md) — measurement definitions and generated results
+- [Token metrics findings (live run)](research/token-metrics-findings.md) — end-to-end agent token usage, coverage, and limitations
 - [Compat fixture sources](research/compat-fixtures-sources.md) — reusable Scala/SemanticDB fixture corpora
 - [sbt build inventory](research/sbt-build-inventory.md) — baseline for sbt-to-Mill comparison
 - [Docs audit](audit-results.md) — pre-shrink catalog and duplication map

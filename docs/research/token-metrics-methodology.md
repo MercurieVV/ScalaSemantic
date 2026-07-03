@@ -269,6 +269,10 @@ token consumption. It specifies the counting approach, baseline definition,
 comparison strategy, per-engine capture method, target-project selection
 rules, and rerun protocol.
 
+For what the live run actually produced (as opposed to what it targets), see
+[Token metrics findings](token-metrics-findings.md) — coverage achieved so
+far is one task on one engine; most of the plan below remains open.
+
 The aggregation harness is now implemented:
 
 - raw run input format:
