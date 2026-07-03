@@ -1,3 +1,4 @@
+/target/vendor-corpus/
 target/
 # Local MCP client registration (machine-specific abs paths). Commit .mcp.json.example instead.
 .mcp.json

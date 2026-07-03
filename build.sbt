@@ -123,6 +123,8 @@ lazy val mcpClientConfig =
   inputKey[Unit](
     "Install the launcher + write client config pointing at it (jar auto-updates in bg)"
   )
+lazy val corpusFetch =
+  taskKey[Seq[File]]("Fetch checksum-verified upstream SemanticDB compatibility corpora")
 lazy val proguard = taskKey[File]("Run ProGuard to shrink the assembly JAR")
 lazy val testShrunk = taskKey[Unit]("Run tests using the shrunk ProGuard JAR")
 
@@ -581,6 +583,12 @@ lazy val root = (project in file("."))
     name := "ScalaSemantic",
     publish / skip := true,
     libraryDependencies += slf4jNop,
+    corpusFetch := Def.uncached {
+      _root_.com.github.mercurievv.scalasemantic.sbtplugin.CorpusFetch.fetch(
+        (ThisBuild / baseDirectory).value / "target" / "vendor-corpus",
+        streams.value.log
+      )
+    },
     initialize := {
       val _ = initialize.value
       try {
