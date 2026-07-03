@@ -15,7 +15,7 @@ semanticdbEnabled := true
 
 For Mill/Gradle/scalac, enable the SemanticDB compiler plugin equivalently and compile. The only machine requirement is a **JVM** (`java` on PATH).
 
-Each release ships a self-contained fat jar attached to the [GitHub Release](https://github.com/MercurieVV/ScalaSemantic/releases). That jar is what all launch options run.
+Each release publishes both a self-contained fat jar attached to the [GitHub Release](https://github.com/MercurieVV/ScalaSemantic/releases) and the same server as regular Maven Central artifacts (`io.github.mercurievv::scalasemantic-mcp` and friends). Options A, C, and D run the fat jar; option B resolves the Maven Central artifact directly via scala-cli/coursier.
 
 ## Four ways to launch
 
