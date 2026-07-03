@@ -17,15 +17,15 @@ For Mill/Gradle/scalac, enable the SemanticDB compiler plugin equivalently and c
 
 Each release ships a self-contained fat jar attached to the [GitHub Release](https://github.com/MercurieVV/ScalaSemantic/releases). That jar is what all launch options run.
 
-## Three ways to launch
+## Four ways to launch
 
-| | A — sbt plugin | B — auto-download script | C — plain `java -jar` |
-|---|---|---|---|
-| Get the jar | launcher downloads + caches | script downloads + caches | you download once |
-| Write client config | `sbt mcpClientConfig` | by hand | by hand |
-| Enable SemanticDB | plugin does it | you add one line | you add one line |
-| Stays up to date | yes | yes | manual |
-| Works with | sbt 1 and 2 | any build tool | any build tool |
+| | A — sbt plugin | B — Scala CLI remote script | C — auto-download script | D — plain `java -jar` |
+|---|---|---|---|---|
+| Get the jar | launcher downloads + caches | scala-cli/coursier resolve + cache the published artifact | script downloads + caches | you download once |
+| Write client config | `sbt mcpClientConfig` | `scala-cli ... setup` | by hand | by hand |
+| Enable SemanticDB | plugin does it | script creates sbt config if missing | you add one line | you add one line |
+| Stays up to date | yes | yes (`latest.release`) | yes | manual |
+| Works with | sbt 1 and 2 | any build tool with Scala CLI installed | any build tool | any build tool |
 
 ### Option A — sbt plugin (recommended)
 
@@ -80,7 +80,33 @@ All clients use the same server command; the file format differs. Example for `c
 
 `codex` uses TOML with `startup_timeout_sec`/`tool_timeout_sec` fields. `gemini` uses JSON with a `"timeout"` field. Others follow similar client-specific shapes. See [ScalaSemanticMcpPlugin.scala](https://github.com/MercurieVV/ScalaSemantic/blob/master/sbt-plugin/src/main/scala/com/github/mercurievv/scalasemantic/sbtplugin/ScalaSemanticMcpPlugin.scala) for all formats.
 
-### Option B — auto-download launcher
+### Option B — Scala CLI remote script
+
+If `scala-cli` is already installed, one command can configure a project without installing a
+separate launcher:
+
+```sh
+scala-cli https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.scala -- setup --client claude
+```
+
+Use `--client codex`, `gemini`, `cline`, `roo`, `continue`, `antigravity`, `generic-json`, or
+`all`. The script writes/merges the MCP client config, creates `SCALA_SEMANTIC_RULES.md`, creates a
+small `scala-semantic.sbt` file with `semanticdbEnabled := true` when it finds an sbt project that
+does not already configure SemanticDB, and registers this command:
+
+```sh
+scala-cli https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.scala -- serve /abs/path/to/project ~/.local/bin/scala-semantic-classpath.txt
+```
+
+The MCP client runs that command over stdio. The server dependency (`io.github.mercurievv::scalasemantic-mcp`)
+is declared in the script itself via `//> using dep`, at the `latest.release` coursier version — no manual
+jar download/cache logic, scala-cli/coursier resolve and cache it like any other dependency. The script
+calls the server's entrypoint directly in-process (no subprocess, no `java -jar`).
+
+To pin a specific version instead of `latest.release`, edit the `//> using dep` line in a local copy of
+the script (env-var pinning doesn't work here since `using` directives are static).
+
+### Option C — auto-download launcher
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/install.sh | sh
@@ -101,7 +127,7 @@ Then register manually in your client config:
 }
 ```
 
-### Option C — plain `java -jar`
+### Option D — plain `java -jar`
 
 Download `scalasemantic-mcp.jar` from the [latest release](https://github.com/MercurieVV/ScalaSemantic/releases/latest):
 
