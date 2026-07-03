@@ -202,8 +202,7 @@ object ScalaSemanticMcpScript:
 
   private def writeClientConfigs(project: Path, opts: SetupOptions): Unit =
     val cpFile = classpathFile()
-//    val argv = Seq(opts.command, opts.script, "--", "serve", project.toString, cpFile.toString)
-    val argv = Seq(opts.script, "--", "serve", project.toString, cpFile.toString)
+    val argv = Seq(opts.command, opts.script, "--", "serve", project.toString, cpFile.toString)
     val clients =
       if opts.client.trim.toLowerCase == "all" then
         Seq("claude", "codex", "gemini", "cline", "roo", "continue", "antigravity")
