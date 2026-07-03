@@ -42,7 +42,6 @@ ARTIFACT="scalasemantic-mcp_3"
 MAIN="com.github.mercurievv.scalasemantic.mcpServer"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/scalasemantic-mcp"
 SELF=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/$(basename -- "$0")
-SELF_DIR=$(dirname -- "$SELF")
 
 mkdir -p "$CACHE"
 
@@ -273,11 +272,240 @@ EOF
   fi
 }
 
+# Writes the three merge awk programs (embedded below, not read from a sibling file — this script
+# is distributed and run standalone via `curl -o scalasemantic-mcp.sh`, with no lib/ next to it) out
+# to the cache dir so `awk -f` has a real file to load. Cheap; rewritten on every setup run so an
+# updated script always uses its own matching copy, never a stale one from a previous version.
+write_awk_libs() {
+  mkdir -p "$CACHE/lib"
+
+  cat > "$CACHE/lib/json-merge.awk" <<'AWK_EOF'
+BEGIN {
+  server = ENVIRON["MCPM_SERVER"]
+  entry = ENVIRON["MCPM_ENTRY"]
+}
+
+function indexOfCharFrom(s, from, ch,    i, n) {
+  n = length(s)
+  for (i = from; i <= n; i++) if (substr(s, i, 1) == ch) return i
+  return -1
+}
+
+function skipWs(s, i, limit,    c) {
+  while (i <= limit) {
+    c = substr(s, i, 1)
+    if (c == " " || c == "\n" || c == "\t" || c == "\r") i++
+    else break
+  }
+  return i
+}
+
+function trimStr(s,   t) {
+  t = s
+  gsub(/^[ \t\r\n]+/, "", t)
+  gsub(/[ \t\r\n]+$/, "", t)
+  return t
+}
+
+function matchBracket(s, openIdx,    i, n, depth, inStr, esc, c) {
+  n = length(s)
+  depth = 0; inStr = 0; esc = 0
+  for (i = openIdx; i <= n; i++) {
+    c = substr(s, i, 1)
+    if (inStr) {
+      if (esc) { esc = 0 }
+      else if (c == "\\") { esc = 1 }
+      else if (c == "\"") { inStr = 0 }
+    } else {
+      if (c == "\"") inStr = 1
+      else if (c == "{" || c == "[") depth++
+      else if (c == "}" || c == "]") { depth--; if (depth == 0) return i }
+    }
+  }
+  return -1
+}
+
+function findKey(s, start, end, key,    target, tlen, i, depth, inStr, esc, c, j) {
+  target = "\"" key "\""
+  tlen = length(target)
+  depth = 0; inStr = 0; esc = 0
+  for (i = start; i <= end; i++) {
+    c = substr(s, i, 1)
+    if (inStr) {
+      if (esc) { esc = 0 }
+      else if (c == "\\") { esc = 1 }
+      else if (c == "\"") { inStr = 0 }
+    } else {
+      if (c == "\"") {
+        if (depth == 0 && substr(s, i, tlen) == target) {
+          j = skipWs(s, i + tlen, end)
+          if (substr(s, j, 1) == ":") return i
+        }
+        inStr = 1
+      } else if (c == "{" || c == "[") depth++
+      else if (c == "}" || c == "]") depth--
+    }
+  }
+  return -1
+}
+
+{ content = content $0 "\n" }
+
+END {
+  if (trimStr(content) == "") {
+    printf "{\n  \"mcpServers\": {\n    \"%s\": %s\n  }\n}\n", server, entry
+    exit
+  }
+
+  rootOpen = index(content, "{")
+  if (rootOpen == 0) { printf "%s", content; exit }
+  rootClose = matchBracket(content, rootOpen)
+  if (rootClose < 0) { printf "%s", content; exit }
+
+  msKey = findKey(content, rootOpen + 1, rootClose - 1, "mcpServers")
+  if (msKey < 0) {
+    hadEntries = (trimStr(substr(content, rootOpen + 1, rootClose - rootOpen - 1)) != "")
+    block = "\n  \"mcpServers\": {\n    \"" server "\": " entry "\n  }"
+    comma = hadEntries ? "," : ""
+    printf "%s%s%s%s", substr(content, 1, rootOpen), block, comma, substr(content, rootOpen + 1)
+    exit
+  }
+
+  colonPos = indexOfCharFrom(content, msKey, ":")
+  objOpen = indexOfCharFrom(content, colonPos, "{")
+  objClose = matchBracket(content, objOpen)
+
+  # The existing value is always a rendered server-entry object `{ ... }` (never a bare string or
+  # array), so its end is simply the matching close brace — no generic JSON-value-end scan needed.
+  snKey = findKey(content, objOpen + 1, objClose - 1, server)
+  if (snKey >= 0) {
+    colon2 = indexOfCharFrom(content, snKey, ":")
+    vs = indexOfCharFrom(content, colon2, "{")
+    ve = matchBracket(content, vs) + 1
+    printf "%s%s%s", substr(content, 1, vs - 1), entry, substr(content, ve)
+  } else {
+    hadEntries = (trimStr(substr(content, objOpen + 1, objClose - objOpen - 1)) != "")
+    ins = "\n    \"" server "\": " entry (hadEntries ? "," : "")
+    printf "%s%s%s", substr(content, 1, objOpen), ins, substr(content, objOpen + 1)
+  }
+}
+AWK_EOF
+
+  cat > "$CACHE/lib/toml-merge.awk" <<'AWK_EOF'
+BEGIN {
+  header = ENVIRON["MCPM_HEADER"]
+  fresh = ENVIRON["MCPM_FRESH"]
+}
+
+{ lines[++n] = $0 }
+
+END {
+  if (n == 0) { printf "%s\n", fresh; exit }
+
+  idx = 0
+  for (i = 1; i <= n; i++) {
+    t = lines[i]
+    gsub(/^[ \t]+/, "", t); gsub(/[ \t]+$/, "", t)
+    if (t == header) { idx = i; break }
+  }
+
+  if (idx == 0) {
+    for (i = 1; i <= n; i++) print lines[i]
+    print ""
+    printf "%s\n", fresh
+    exit
+  }
+
+  endi = n + 1
+  for (i = idx + 1; i <= n; i++) {
+    t = lines[i]
+    gsub(/^[ \t]+/, "", t)
+    if (substr(t, 1, 1) == "[") { endi = i; break }
+  }
+
+  for (i = 1; i < idx; i++) print lines[i]
+  printf "%s\n", fresh
+  for (i = endi; i <= n; i++) print lines[i]
+}
+AWK_EOF
+
+  cat > "$CACHE/lib/yaml-merge.awk" <<'AWK_EOF'
+BEGIN {
+  itemNameLine = ENVIRON["MCPM_ITEM_NAME_LINE"]
+  item = ENVIRON["MCPM_ITEM"]
+  freshFull = ENVIRON["MCPM_FRESH_FULL"]
+}
+
+{ lines[++n] = $0 }
+
+END {
+  if (n == 0) { printf "%s\n", freshFull; exit }
+
+  msIdx = 0
+  for (i = 1; i <= n; i++) {
+    t = lines[i]
+    gsub(/^[ \t]+/, "", t); gsub(/[ \t]+$/, "", t)
+    if (t == "mcpServers:") { msIdx = i; break }
+  }
+
+  if (msIdx == 0) {
+    for (i = 1; i <= n; i++) print lines[i]
+    print "mcpServers:"
+    printf "%s\n", item
+    exit
+  }
+
+  blockEnd = n + 1
+  for (i = msIdx + 1; i <= n; i++) {
+    t = lines[i]
+    if (length(t) == 0) continue
+    first = substr(t, 1, 1)
+    tt = t
+    gsub(/^[ \t]+/, "", tt); gsub(/[ \t]+$/, "", tt)
+    if (tt != "" && first != " ") { blockEnd = i; break }
+  }
+
+  itemIdx = 0
+  for (i = msIdx + 1; i < blockEnd; i++) {
+    t = lines[i]
+    gsub(/^[ \t]+/, "", t); gsub(/[ \t]+$/, "", t)
+    if (t == itemNameLine) { itemIdx = i; break }
+  }
+
+  if (itemIdx == 0) {
+    for (i = 1; i <= msIdx; i++) print lines[i]
+    printf "%s\n", item
+    for (i = msIdx + 1; i <= n; i++) print lines[i]
+    exit
+  }
+
+  indentLine = lines[itemIdx]
+  indent = 0
+  while (substr(indentLine, indent + 1, 1) == " ") indent++
+
+  e = blockEnd
+  for (i = itemIdx + 1; i < blockEnd; i++) {
+    li = lines[i]
+    liIndent = 0
+    while (substr(li, liIndent + 1, 1) == " ") liIndent++
+    trimmed = li
+    gsub(/^[ \t]+/, "", trimmed)
+    if (liIndent == indent && substr(trimmed, 1, 2) == "- ") { e = i; break }
+  }
+
+  for (i = 1; i < itemIdx; i++) print lines[i]
+  printf "%s\n", item
+  for (i = e; i <= n; i++) print lines[i]
+}
+AWK_EOF
+}
+
 write_client_configs() {
   local _project _client _command _cpfile _clients c _t _relpath _fmt _cmd_esc _proj_esc _cp_esc
   local _entry _header _fresh _item _itemline _freshfull _out _tmp
   _project="$1"; _client="$2"; _command="$3"; _cpfile="$4"
   if [ "$_client" = "all" ]; then _clients="$ALL_CLIENTS"; else _clients="$_client"; fi
+  write_awk_libs
   _cmd_esc=$(json_escape "$_command")
   _proj_esc=$(json_escape "$_project")
   _cp_esc=$(json_escape "$_cpfile")
@@ -297,7 +525,7 @@ write_client_configs() {
       \"args\": [\"serve\", \"$_proj_esc\", \"$_cp_esc\"]$(extra_json_fields "$c")
     }"
         MCPM_SERVER="scala-semantic" MCPM_ENTRY="$_entry" \
-          awk -f "$SELF_DIR/lib/json-merge.awk" "$_out" > "$_tmp"
+          awk -f "$CACHE/lib/json-merge.awk" "$_out" > "$_tmp"
         ;;
       toml)
         _header="[mcp_servers.scala-semantic]"
@@ -307,7 +535,7 @@ args = [\"serve\", \"$_proj_esc\", \"$_cp_esc\"]
 startup_timeout_sec = 60
 tool_timeout_sec = 60"
         MCPM_HEADER="$_header" MCPM_FRESH="$_fresh" \
-          awk -f "$SELF_DIR/lib/toml-merge.awk" "$_out" > "$_tmp"
+          awk -f "$CACHE/lib/toml-merge.awk" "$_out" > "$_tmp"
         ;;
       yaml)
         _itemline="- name: \"scala-semantic\""
@@ -324,7 +552,7 @@ schema: v1
 mcpServers:
 $_item"
         MCPM_ITEM_NAME_LINE="$_itemline" MCPM_ITEM="$_item" MCPM_FRESH_FULL="$_freshfull" \
-          awk -f "$SELF_DIR/lib/yaml-merge.awk" "$_out" > "$_tmp"
+          awk -f "$CACHE/lib/yaml-merge.awk" "$_out" > "$_tmp"
         ;;
     esac
     mv -f "$_tmp" "$_out"
