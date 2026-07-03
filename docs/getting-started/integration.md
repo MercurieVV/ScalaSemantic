@@ -95,16 +95,19 @@ small `scala-semantic.sbt` file with `semanticdbEnabled := true` when it finds a
 does not already configure SemanticDB, and registers this command:
 
 ```sh
-scala-cli https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.scala -- serve /abs/path/to/project ~/.local/bin/scala-semantic-classpath.txt
+scala-cli run --dependency "io.github.mercurievv::scalasemantic-mcp:latest.release" \
+  --main-class com.github.mercurievv.scalasemantic.mcpServer \
+  -- /abs/path/to/project ~/.local/bin/scala-semantic-classpath.txt
 ```
 
-The MCP client runs that command over stdio. The server dependency (`io.github.mercurievv::scalasemantic-mcp`)
-is declared in the script itself via `//> using dep`, at the `latest.release` coursier version — no manual
-jar download/cache logic, scala-cli/coursier resolve and cache it like any other dependency. The script
-calls the server's entrypoint directly in-process (no subprocess, no `java -jar`).
+The MCP client runs that command over stdio. Note this does **not** invoke the setup script itself —
+the generated config skips it entirely so that every server launch (which happens far more often than
+`setup`, e.g. on every editor restart) is just a coursier-cached jar load: no network fetch, no
+recompile. The dependency version is `latest.release`, a coursier magic version that always
+re-resolves to the newest published release.
 
-To pin a specific version instead of `latest.release`, edit the `//> using dep` line in a local copy of
-the script (env-var pinning doesn't work here since `using` directives are static).
+To pin a specific version instead of `latest.release`, edit `ServerDependency` in a local copy of the
+script and re-run `setup`.
 
 ### Option C — auto-download launcher
 

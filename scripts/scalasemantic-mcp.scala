@@ -21,6 +21,12 @@ object ScalaSemanticMcpScript:
   private val ServerName = "scala-semantic"
   private val RemoteScript =
     "https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.scala"
+  // What generated client configs launch daily: a bare `scala-cli run --dependency ... --main-class
+  // ...` invocation with no script file involved at all, so every server spawn is just a
+  // coursier-cached jar load — no network fetch of this script and no recompile on each launch
+  // (unlike pointing configs back at RemoteScript, which re-downloads + recompiles every time).
+  private val ServerDependency = "io.github.mercurievv::scalasemantic-mcp:latest.release"
+  private val ServerMainClass = "com.github.mercurievv.scalasemantic.mcpServer"
 
   @main def main(rawArgs: String*): Unit =
     // `scala-cli <script> -- serve foo` strips the "--" separator itself; `./script.scala -- serve
@@ -43,7 +49,6 @@ object ScalaSemanticMcpScript:
   private final case class SetupOptions(
       project: Path = Path.of(".").toAbsolutePath.normalize(),
       client: String = "all",
-      script: String = RemoteScript,
       command: String = "scala-cli",
       skipSemanticdbConfig: Boolean = false
   )
@@ -68,8 +73,6 @@ object ScalaSemanticMcpScript:
           loop(tail, opts.copy(project = Path.of(value).toAbsolutePath.normalize()))
         case ("--client" | "-c") :: value :: tail =>
           loop(tail, opts.copy(client = value))
-        case "--script" :: value :: tail =>
-          loop(tail, opts.copy(script = value))
         case "--command" :: value :: tail =>
           loop(tail, opts.copy(command = value))
         case "--skip-semanticdb-config" :: tail =>
@@ -202,7 +205,17 @@ object ScalaSemanticMcpScript:
 
   private def writeClientConfigs(project: Path, opts: SetupOptions): Unit =
     val cpFile = classpathFile()
-    val argv = Seq(opts.command, opts.script, "--", "serve", project.toString, cpFile.toString)
+    val argv = Seq(
+      opts.command,
+      "run",
+      "--dependency",
+      ServerDependency,
+      "--main-class",
+      ServerMainClass,
+      "--",
+      project.toString,
+      cpFile.toString
+    )
     val clients =
       if opts.client.trim.toLowerCase == "all" then
         Seq("claude", "codex", "gemini", "cline", "roo", "continue", "antigravity")
@@ -488,13 +501,14 @@ object ScalaSemanticMcpScript:
           |  scala-cli $RemoteScript -- setup [--client claude|codex|gemini|cline|roo|continue|antigravity|all] [--project DIR]
           |  scala-cli $RemoteScript -- serve <semanticdb-root> [classpath-file] [--log] [--log-output]
           |
-          |Setup writes MCP client config pointing back at this script:
+          |Setup writes MCP client config that launches the server directly (no script involved, so
+          |every launch is just a coursier-cached jar load, not a re-download + recompile of this
+          |script):
           |  command = scala-cli
-          |  args    = [$RemoteScript, --, serve, <project>, <classpath-file>]
+          |  args    = [run, --dependency, $ServerDependency, --main-class, $ServerMainClass, --, <project>, <classpath-file>]
           |
-          |The server dependency is declared in-script via `//> using dep`, resolved and cached by
-          |scala-cli/coursier on first run. To pin a version instead of latest.release, edit that
-          |line (or vendor a pinned copy of this script).
+          |To pin a version instead of latest.release, re-run setup after editing ServerDependency in
+          |a local copy of this script.
           |""".stripMargin
     )
     sys.exit(exit)
