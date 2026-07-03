@@ -24,6 +24,12 @@ sbt mcpClientConfig compile
 
 For other build tools, manual setups, or advanced options, see the [Integration guide](docs/getting-started/integration.md).
 
+If you already have Scala CLI installed and want a build-tool-neutral setup:
+
+```sh
+scala-cli https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.scala setup
+```
+
 ## Tools
 
 | Tool | Purpose |
