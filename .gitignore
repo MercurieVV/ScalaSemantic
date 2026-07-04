@@ -1,5 +1,8 @@
 /target/vendor-corpus/
 target/
+# os-lib transiently drops this while setting up a filesystem watch; auto-deleted once the watch
+# is live, but can survive if the watching process is killed mid-setup.
+.os-lib-watch-sentinel-*
 # Local MCP client registration (machine-specific abs paths). Commit .mcp.json.example instead.
 .mcp.json
 # Generated from git tags by scripts/gen-release-notes.sh (CI regenerates before the site build).

@@ -1,6 +1,0 @@
-This file was created because Scala `os-lib` library is trying to set up a watch for this
-directory. It is automatically deleted when the watch is set up.
-
-If you are seeing this file, it means that the watch is not being set up correctly.
-
-Raise an issue at https://github.com/lihaoyi/os-lib/issues
