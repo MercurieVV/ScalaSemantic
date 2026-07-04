@@ -15,7 +15,7 @@ SONATYPE_USERNAME=... SONATYPE_PASSWORD=... \
 # 1Password variant:
 scripts/setup-gh-repo.sh --op-item op://Vault/ScalaSemantic-release
 
-# Optional: install pre-push hook to run sbt prePush locally:
+# Optional: install pre-push hook to run ./mill prePush locally:
 scripts/install-git-hooks.sh
 ```
 

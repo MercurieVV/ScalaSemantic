@@ -33,23 +33,54 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # full history so sbt-dynver derives the version from tags
+          fetch-depth: 0 # full history so `publishVersion`/`latestReleaseVersion` derive from tags
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-          cache: sbt
-      - uses: sbt/setup-sbt@v1
+          # setup-java's built-in `cache:` only knows maven/gradle/sbt, not Mill — cache coursier +
+          # Mill's own out/ dep-resolution artifacts explicitly instead.
+      - name: Cache coursier + Mill
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/coursier
+            ~/.cache/mill/download
+          key: mill-${{ runner.os }}-${{ hashFiles('build.mill', '.mill-version') }}
+          restore-keys: |
+            mill-${{ runner.os }}-
       - name: Check formatting
-        run: sbt --batch scalafmtCheckAll
+        run: ./mill mill.scalalib.scalafmt/checkFormatAll __.sources
+      - name: Check build.mill formatting
+        # Standalone script, NOT a Mill task: build.mill lives in its own evaluator context
+        # (meta-level 1), and a Mill Task.Command that shells out to `./mill --meta-level N ...`
+        # deadlocks against its own daemon (Mill serializes all commands through one daemon per
+        # project) — confirmed by a 15+ minute hang. Must run as a plain shell step like this one.
+        run: scripts/check-build-mill-fmt.sh
+      - name: Check scalafix
+        # Uses scalafix-interfaces (a stable, Maven-Central-published embedding API) directly from
+        # build.mill, not the mill-scalafix plugin — that plugin has no Mill 1.x build.
+        # IMPORTANT: use the `__.scalafixCheck` wildcard selector, NOT a space-separated list of
+        # explicit targets (`core.scalafixCheck pc.scalafixCheck ...`) — confirmed that Mill 1.1.7
+        # silently executes only the FIRST explicitly-named target in a multi-target invocation and
+        # still reports overall SUCCESS for the rest (verified locally: compile/test/scalafixCheck
+        # all reproduce this with explicit multi-target lists; `__`-selector forms do not).
+        run: ./mill __.scalafixCheck
       - name: Regenerate cross-version compat golden SemanticDB
         # Recompiles compat-fixtures under every Scala in `compatScalaVersions` so CompatSuite runs
         # against THIS runner's freshly emitted *.semanticdb. (We don't byte-compare against the
         # committed golden: SemanticDB output isn't guaranteed identical across environments/compiler
-        # patches. The committed copies exist for local `sbt test` without a cross-compile.)
-        run: sbt --batch compatGoldenAll
+        # patches. The committed copies exist for local `./mill test` without a cross-compile.)
+        run: ./mill compatGoldenAll
+      - name: Compile all test sources
+        # Runs separately, BEFORE the Test step, so every module's *.semanticdb is on disk before any
+        # dogfood suite (e.g. AnalyzerStructureSuite) calls SemanticIndex.fromProject(".") to walk the
+        # whole out/ tree. (An initial hypothesis blamed a compile/test-execution race for CI-only
+        # flakiness here; that was wrong — the real cause was a filesystem-order bug in
+        # SemanticIndex.findSemanticdb, fixed by sorting the file walk. See that file's comment.)
+        run: ./mill __.test.compile
       - name: Test
-        run: sbt --batch test
+        run: ./mill __.test.testForked
 
   verify:
     name: Stainless verification
@@ -60,8 +91,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-          cache: sbt
-      - uses: sbt/setup-sbt@v1
       # Cache the standalone Stainless distribution (bundled z3/cvc5) so we don't re-download the
       # ~80MB asset every run. Keyed on the version the script defaults to.
       - name: Cache Stainless tool
@@ -70,10 +99,10 @@ jobs:
           path: ~/.cache/scalasemantic/stainless
           key: stainless-0.9.9.3
       - name: Verify contracts
-        # sbt task shells out to scripts/stainless-verify.sh; fails iff a VC is INVALID (the
+        # shells out to scripts/stainless-verify.sh; fails iff a VC is INVALID (the
         # nonlinear rangeSpan VC that the bundled solver can only mark `unknown` is tolerated).
         # Generous per-VC timeout here (prePush uses a tighter default for speed).
-        run: sbt --batch stainlessVerify
+        run: ./mill analysis.stainlessVerify
         env:
           STAINLESS_TIMEOUT: '30'
 
@@ -97,15 +126,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-          cache: sbt
-      - uses: sbt/setup-sbt@v1
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
       - name: Generate release notes page from tags
         run: scripts/gen-release-notes.sh # writes docs/RELEASE_NOTES.md (gitignored, build-time only)
       - name: Render docs with mdoc
-        run: sbt --batch docs/run # writes executed Markdown into website/docs
+        run: ./mill docs.run # writes executed Markdown into website/docs
       - name: Build Docusaurus site
         working-directory: website
         run: |
@@ -121,11 +148,13 @@ jobs:
   publish:
     name: Publish to Sonatype Central
     needs: [build, verify]
-    # On a vX.Y.Z tag push (release), or a manual run (workflow_dispatch) which publishes a
-    # -SNAPSHOT to dry-run credentials + signing without cutting a release.
-    if: >-
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
-      github.event_name == 'workflow_dispatch'
+    # DISABLED — build.sbt/project/ removed in the Mill cutover, so `sbt --batch ci-release` no
+    # longer has a build to run. No working Mill 1.x publish path exists yet: io.chris-kipp::
+    # mill-ci-release's newest published build targets mill0.12 (see docs/MILL_MIGRATION.md §2) —
+    # same TASTy-vintage problem confirmed for mill-scalafix against Mill 1.1.7 (unpickling failure
+    # loading the module trait). Deferred intentionally (user accepted this gap); revisit once a
+    # mill1.x-tagged mill-ci-release release exists and wire CiReleaseModule + VcsVersion here.
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -180,21 +209,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # full history so sbt-dynver stamps the jar with the tag version
+          fetch-depth: 0 # full history so `publishVersion` stamps the jar with the tag version
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-          cache: sbt
-      - uses: sbt/setup-sbt@v1
       - name: Build fat jar
-        run: sbt --batch "mcp/assembly"
+        run: ./mill mcp.assembly
       - name: Collect asset
+        # Mill's assembly output is always named out.jar (no sbt-assembly-style assemblyJarName
+        # setting) — rename on copy so the release asset keeps its stable download filename.
         run: |
-          jar=$(find . -name scalasemantic-mcp.jar | head -1)
-          echo "Found: $jar"
           mkdir -p release-assets
-          cp "$jar" release-assets/scalasemantic-mcp.jar
+          cp out/mcp/assembly.dest/out.jar release-assets/scalasemantic-mcp.jar
       - name: Generate release notes (user-facing changes only)
         run: |
           # Body = filtered Conventional-Commit changelog for the range previous-tag..this-tag.

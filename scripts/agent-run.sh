@@ -128,14 +128,14 @@ ${task}
 
 Steps:
 1. cd into ${wt} first. Verify with pwd.
-2. Run 'sbt --error compile' from inside ${wt} to generate fresh SemanticDB. This initializes
+2. Run './mill __.compile' from inside ${wt} to generate fresh SemanticDB. This initializes
    scala-semantic analysis tools for the worktree's code. Do this before any code analysis.
 3. Implement the task. Touch only files required by the task.
-4. No scratch files, build artifacts (target/, .bsp/, *.class), notes, or unrelated edits.
+4. No scratch files, build artifacts (target/, out/, .bsp/, *.class), notes, or unrelated edits.
 5. Review your own changes with 'git diff' and 'git status --porcelain' before finishing.
    Remove any junk or out-of-scope files.
-6. Build and test: run 'sbt --error test' from inside ${wt}. For a full quality check run
-   'sbt --error prePush' (clean + fmt + fix + test). Fix any errors before proceeding.
+6. Build and test: run './mill __.test' from inside ${wt}. For a full quality check run
+   './mill prePush' (clean + fmt check + test). Fix any errors before proceeding.
 7. Run './tree2m --auto ${branch} <Conventional-Commit message>' from inside ${wt} to commit, push, and merge.
 8. Print the PR URL on the last line of your output.
 

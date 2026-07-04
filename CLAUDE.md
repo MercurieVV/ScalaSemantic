@@ -3,20 +3,22 @@
 MCP server doing deep semantic analysis on Scala projects via SemanticDB — capabilities beyond standard LSP/Metals.
 
 ## Stack
-- Scala 3.8.4, sbt 2.0.0
+- Scala 3.8.4, Mill 1.1.7 (build tool; `build.sbt`/`project/` deleted — Sonatype publish and
+  stryker4s mutation testing are deferred, disabled in CI (`if: false`) until each has a working
+  Mill path, see `docs/MILL_MIGRATION.md`)
 - `org.scalameta:scalameta:4.13.9` — SemanticDB protobuf API (`scala.meta.internal.semanticdb`)
 - `com.lihaoyi:upickle:4.2.1` — JSON for MCP wire protocol
 - `org.scalameta:munit:1.2.3` — tests
 - `semanticdbEnabled := true` — project emits its own SemanticDB; analyzer dogfoods on this repo.
 
 ## Layout
-Three sbt modules (layer per module), package base `com.github.mercurievv.scalasemantic`:
+Three Mill modules (layer per module), package base `com.github.mercurievv.scalasemantic`:
 ```
 core/      …​.semanticdb   SemanticIndex — loads/indexes *.semanticdb (no JSON, no MCP)
 analysis/  …​.analysis, …​.model   Analyzer + upickle result models; dependsOn core
 mcp/       …​.mcp, Main    stdio JSON-RPC server + entrypoint; dependsOn analysis (test->test too)
 ```
-SemanticDB is emitted per module under `<module>/target/out/.../meta/META-INF/semanticdb/**`.
+SemanticDB is emitted per module under `out/<module>/compile.dest/classes/META-INF/semanticdb/**`.
 Dogfood tests load `SemanticIndex.fromProject(".")` (repo root) so they see every module's output;
 unforked tests run with cwd = repo root. `mcp` test-depends on `analysis` so fixtures compile first.
 
@@ -54,11 +56,15 @@ When using Claude/agentic workflows to organize project tasks:
 
 ## Build / test
 ```
-sbt compile      # regenerates SemanticDB for all modules
-sbt test
-sbt prePush      # command alias: clean; scalafmtAll; scalafixAll; Test/testOnly * (aggregates all modules)
-sbt "mcp/runMain com.github.mercurievv.scalasemantic.mcpServer <root>"  # start the server
+./mill __.compile   # regenerates SemanticDB for all modules
+./mill __.test
+./mill prePush      # clean; checkFormatAll; compatGoldenAll; test all 4 modules; stainlessVerify
+./mill mcp.runMain com.github.mercurievv.scalasemantic.mcpServer <root>  # start the server
 ```
+`scalafixAll` is NOT in `prePush` right now — no Mill 1.x build of `mill-scalafix` exists yet
+(see `docs/MILL_MIGRATION.md` §2). `build.sbt`/`project/` are gone; do not use `sbt` at all —
+the CI `publish` job (`sbt-ci-release`) and `mutation.yml` (stryker4s) are both gated `if: false`
+pending a Mill 1.x path for each.
 
 Agent worktrees live at `./.worktrees/<branch>`. See `scripts/worktree-new.sh`.
 
@@ -68,8 +74,8 @@ overrides the PR title, `--body` overrides the PR body, `--base` selects the tar
 `--draft` opens a draft PR. The script creates the branch, stages all files, commits, pushes, waits
 for the push-triggered CI workflow to pass, and merges the PR with squash merge using a strict
 fail-fast chain. If the branch or PR already exists, `tree2m` reuses it: it adds another commit to
-the existing branch, pushes, and reuses the existing PR instead of creating a duplicate. Do not pre-run sbt checks
-(`compile`, `test`, `scalafmt`, `scalafix`) before `tree2m`; the repository pre-push hook already
+the existing branch, pushes, and reuses the existing PR instead of creating a duplicate. Do not pre-run
+Mill checks (`compile`, `test`, `scalafmt`) before `tree2m`; the repository pre-push hook already
 runs them. When an LLM/agent is asked to run `tree2m`, it should generate an appropriate branch
 name, commit message, PR title, and PR body from the current change instead of asking the user for
 those parameters.

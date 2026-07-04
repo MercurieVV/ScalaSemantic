@@ -248,13 +248,18 @@ ensure_semanticdb_mill() {
   _project="$1"
   for f in "$_project/build.mill" "$_project/build.sc"; do
     [ -f "$f" ] || continue
-    if grep -q semanticDbEnabled "$f" 2>/dev/null; then return 0; fi
+    if grep -q 'Xsemanticdb' "$f" 2>/dev/null; then return 0; fi
   done
   cat >&2 <<'EOF'
-scalasemantic-mcp: Mill project detected, SemanticDB not enabled. Not auto-editing build.mill/
-build.sc (risk of corrupting hand-written module code) — add this to each ScalaModule:
+scalasemantic-mcp: Mill project detected, SemanticDB not enabled. NOTE Mill's `semanticDbEnabled`
+only feeds the on-demand `semanticDbData` target — a plain `mill __.compile` emits NO *.semanticdb,
+so that flag alone leaves ScalaSemantic with an empty index. Instead make the normal compile emit it
+via the compiler flag. Not auto-editing build.mill/build.sc (risk of corrupting hand-written module
+code) — add this to each ScalaModule (`-sourceroot` must be the BUILD ROOT, not the module dir, so
+multi-module source paths stay unique):
 
-    def semanticDbEnabled = true
+    def scalacOptions = super.scalacOptions() ++
+      Seq("-Xsemanticdb", "-sourceroot", build.moduleDir.toString) // build.sc: build.millSourcePath
 
 then re-run `mill __.compile`.
 EOF

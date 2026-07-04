@@ -15,12 +15,19 @@ The server reads SemanticDB; it does not generate it. The project must be compil
 semanticdbEnabled := true
 ```
 
-**Mill** — add to the module's `ScalaModule`:
+**Mill** — Mill's `def semanticDbEnabled = true` only feeds the on-demand `semanticDbData` target;
+a plain `mill __.compile` emits **no** `*.semanticdb`, so that flag alone leaves ScalaSemantic with an
+empty index. Instead make the normal compile emit it via the compiler flag, in each `ScalaModule`
+(`-sourceroot` must be the **build root**, not the module dir, so multi-module source paths stay unique):
 
 ```scala
 // build.mill / build.sc
-def semanticDbEnabled = true
+def scalacOptions = super.scalacOptions() ++
+  Seq("-Xsemanticdb", "-sourceroot", build.moduleDir.toString) // build.sc: build.millSourcePath
 ```
+
+(Alternatively, keep `def semanticDbEnabled = true` and run `mill __.semanticDbData` instead of
+`mill __.compile` — the Mill-native target that materializes the files under `out/`.)
 
 **Gradle** — no native flag; pass the compiler option directly via the Scala plugin's compile task. Scala 3:
 
@@ -130,7 +137,7 @@ Download `scalasemantic-mcp.jar` from the [latest release](https://github.com/Me
 }
 ```
 
-> Do not use `sbt runMain` — sbt writes build logs to stdout and corrupts the JSON-RPC stream. To build the jar locally: `sbt "mcp/assembly"`.
+> Do not use `runMain` (sbt or Mill) — it writes build logs to stdout and corrupts the JSON-RPC stream. To build the jar locally: `./mill mcp.assembly`.
 
 ## Logging
 

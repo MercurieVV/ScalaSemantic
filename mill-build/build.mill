@@ -1,0 +1,25 @@
+package build
+import mill.*
+import mill.scalalib.DepSyntax
+import mill.meta.MillBuildRootModule
+
+object `package` extends MillBuildRootModule {
+  // Matches build.mill's own Common trait: SemanticDB for dogfooding, strict unused-warnings, and
+  // wartremover as a compiler plugin (Mill has no native wartremover integration).
+  def scalacOptions = super.scalacOptions() ++ Seq("-Xsemanticdb", "-Wunused:all") ++
+    warnWarts.map(n => s"-P:wartremover:only-warn-traverser:org.wartremover.warts.$n")
+
+  def warnWarts = Seq(
+    "Var",
+    "MutableDataStructures",
+    "NonUnitStatements",
+    "Throw",
+    "Return",
+    "AsInstanceOf",
+    "IsInstanceOf",
+    "Null"
+  )
+
+  def scalacPluginMvnDeps =
+    super.scalacPluginMvnDeps() ++ Seq(mvn"org.wartremover:::wartremover:3.6.0")
+}
