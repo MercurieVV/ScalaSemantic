@@ -17,9 +17,12 @@ Current: **sbt 2.0.1**, Scala **3.8.4**, 5 modules + root aggregate. Sources: `b
 - [ ] **scalafix (`prePush` / CI lint step)** — `mill-scalafix`'s only published build targets Mill
       0.13 and fails TASTy unpickling under Mill 1.1.7 (confirmed, not guessed — see §2). No
       `scalafixAll --check` equivalent runs anywhere right now. Revisit when a mill1.x build ships.
-- [ ] **stryker4s mutation (`mutation.yml`)** — no Mill plugin exists at all (worse than the above
-      two, which at least have a wrong-major artifact). Either keep sbt permanently for this one
-      workflow, or drop mutation testing — needs a product decision, not just a build-tool fix.
+- [ ] **stryker4s mutation (`mutation.yml`)** — **close, not yet released**: `feat(mill): add Mill
+      plugin` (stryker-mutator/stryker4s#2042) merged to `master` 2026-06-17 and is queued in the
+      still-open release-please PR for **v0.22.0** (stryker-mutator/stryker4s#2041). Nothing
+      published to Maven Central yet — latest release is still v0.21.0 (2026-06-05), no
+      `stryker4s-mill*` artifact exists. Revisit once v0.22.0 tags/publishes; then wire the Mill
+      plugin into `build.mill` and drop `run-stryker.sh`'s sbt path.
 
 **Doable, just not done yet:**
 - [x] **CI cache** — added an explicit `actions/cache@v4` step in the `build` job over
