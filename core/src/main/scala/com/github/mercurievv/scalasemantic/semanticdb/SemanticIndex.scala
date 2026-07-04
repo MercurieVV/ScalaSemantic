@@ -126,4 +126,10 @@ object SemanticIndex:
           override def visitFileFailed(file: Path, exc: IOException): FileVisitResult =
             FileVisitResult.CONTINUE
       )
-      result.asScala.toSeq
+      // Files.walkFileTree's visit order mirrors raw OS directory-entry order (unsorted) and
+      // differs between filesystems (e.g. ext4 on Linux CI vs APFS on macOS). Duplicate symbol IDs
+      // do occur in this index (synthetic `local<N>` compiler counters are reused per-file, not
+      // globally unique) and downstream logic tie-breaks on `documents` order ("last definition
+      // wins" in `symbols`, first-found in `occurrences`/`moduleOf`), so an unsorted walk makes the
+      // whole index's answers filesystem-dependent. Sorting here pins one deterministic order.
+      result.asScala.toSeq.sortBy(_.toString)

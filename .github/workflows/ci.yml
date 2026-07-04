@@ -67,14 +67,11 @@ jobs:
         # patches. The committed copies exist for local `./mill test` without a cross-compile.)
         run: ./mill compatGoldenAll
       - name: Compile all test sources
-        # Runs separately, BEFORE the Test step: dogfood suites (e.g. AnalyzerStructureSuite) call
-        # SemanticIndex.fromProject(".") and walk the ENTIRE out/ tree for *.semanticdb from every
-        # module, main AND test sources. Mill runs independent modules' compile/test-compile/test
-        # tasks concurrently, so without this separate step a module's test can start scanning that
-        # tree while ANOTHER module's test-compile is still concurrently writing its own *.semanticdb
-        # files, seeing a transiently incomplete/partial graph (reproduced on CI: AnalyzerStructureSuite
-        # saw `core layer=1` instead of `0` — a real flake from partial state, not a code bug).
-        # Splitting compile from test removes the write/read race; only test EXECUTION stays parallel.
+        # Runs separately, BEFORE the Test step, so every module's *.semanticdb is on disk before any
+        # dogfood suite (e.g. AnalyzerStructureSuite) calls SemanticIndex.fromProject(".") to walk the
+        # whole out/ tree. (An initial hypothesis blamed a compile/test-execution race for CI-only
+        # flakiness here; that was wrong — the real cause was a filesystem-order bug in
+        # SemanticIndex.findSemanticdb, fixed by sorting the file walk. See that file's comment.)
         run: ./mill __.test.compile
       - name: Test
         run: ./mill __.test.testForked
