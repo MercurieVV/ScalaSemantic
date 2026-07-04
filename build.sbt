@@ -593,5 +593,5 @@ lazy val root = (project in file("."))
 // `testOnly *` forces the full suite (sbt 2.0 `test` is cached testQuick — see docs/project/development.md).
 addCommandAlias(
   "prePush",
-  "clean; scalafmtCheckAll; scalafixAll --check; Test/testOnly *; stainlessVerify"
+  "clean; scalafmtCheckAll; scalafixAll --check; Test/testOnly *; compatGoldenAll; stainlessVerify"
 )
