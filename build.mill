@@ -183,11 +183,14 @@ object mcp extends Common with PublishModule {
   }
 
   // assembly / fat jar (sbt-assembly). Port of the merge strategy.
+  // sbt discarded module-info.class + jar signatures and used MergeStrategy.first for the
+  // scala/tools/asm ↔ scala-asm collision (scala3-pc drags the 2.13 compiler) and duplicate
+  // .properties. Mill's assembly ALREADY keeps the first entry for any duplicate path, so those two
+  // are the default — do NOT add Append rules (Append concatenates .class bytecode, corrupting it).
+  // Only the discards need explicit rules.
   def assemblyRules = super.assemblyRules ++ Seq(
     Assembly.Rule.ExcludePattern(".*module-info\\.class"),
-    // scala3-pc drags the 2.13 compiler; scala/tools/asm collides with scala-asm — keep first.
-    Assembly.Rule.Append("scala/tools/asm/.*"), // RISK: verify equivalence to MergeStrategy.first
-    Assembly.Rule.AppendPattern(".*\\.properties")
+    Assembly.Rule.ExcludePattern("META-INF/.*\\.(SF|DSA|RSA)")
   )
 
   // build.sbt `mcpLauncher` — dev launch script off this build's classpath.
