@@ -145,6 +145,40 @@ trait Common extends SbtModule {
       sys.error(s"scalafix check failed in ${moduleDir}: ${errors.toSeq.mkString(", ")}")
   }
 
+  // One-off rewrite to native Scala 3 style (no `then`/`do`, brace->indentation). NOT wired into
+  // scalacOptions: -rewrite mutates source files in place, so it must be run manually, its diff
+  // reviewed, and committed — never on every normal compile/CI run.
+  def rewriteToScala3Style() = Task.Command {
+    // dotc rejects "-new-syntax -indent" combined in one -rewrite pass ("illegal combination of
+    // -rewrite targets") — run them as two sequential passes, each rewriting files in place.
+    Task.log.info(s"Rewriting ${moduleDir} sources to Scala 3 style (-new-syntax, then -indent)...")
+    val compilerCp = scalaCompilerClasspath().map(_.path.toString).mkString(java.io.File.pathSeparator)
+    val cp = compileClasspath().map(_.path.toString).mkString(java.io.File.pathSeparator)
+    val srcs = allSourceFiles().map(_.path.toString)
+    def runPass(target: String, dest: os.Path): Int = {
+      os.makeDir.all(dest)
+      os.proc(
+          "java",
+          "-cp",
+          compilerCp,
+          "dotty.tools.dotc.Main",
+          "-rewrite",
+          target,
+          "-classpath",
+          cp,
+          "-d",
+          dest.toString,
+          srcs
+        )
+        .call(cwd = moduleDir, stdout = os.Inherit, stderr = os.Inherit, check = false)
+        .exitCode
+    }
+    val rc1 = runPass("-new-syntax", Task.dest / "pass1")
+    if (rc1 != 0) sys.error(s"rewriteToScala3Style (-new-syntax) failed in ${moduleDir} (exit $rc1)")
+    val rc2 = runPass("-indent", Task.dest / "pass2")
+    if (rc2 != 0) sys.error(s"rewriteToScala3Style (-indent) failed in ${moduleDir} (exit $rc2)")
+  }
+
   trait CommonTests extends SbtTests with TestModule.Munit {
     def mvnDeps = munitDeps
     // Dogfood suites call SemanticIndex.fromProject(".") and scan for *.semanticdb from cwd. Mill
@@ -470,6 +504,12 @@ def commonPom(name: String) = PomSettings(
   versionControl = VersionControl.github("mercurievv", "ScalaSemantic"),
   developers = Seq(Developer("mercurievv", "Viktors Kalinins", "https://github.com/mercurievv"))
 )
+
+// Rewrite every first-party module's sources to native Scala 3 style in one shot. Run manually,
+// review the diff, commit — never wired into prePush/CI (see `Common.rewriteToScala3Style`).
+def rewriteToScala3StyleAll() = Task.Command {
+  Task.traverse(Seq(core, pc, analysis, mcp))(_.rewriteToScala3Style())()
+}
 
 // build.sbt `compatGoldenAll` alias — regenerate golden for every compat Scala version.
 def compatGoldenAll() = Task.Command {

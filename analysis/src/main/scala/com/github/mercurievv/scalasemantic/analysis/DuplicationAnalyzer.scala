@@ -18,11 +18,10 @@ object DuplicationAnalyzer:
     * visible and lets callers supply a narrower or wider predicate via the `nodeFilter` parameter
     * of `analyze`.
     */
-  val defaultCandidateNodeFilter: Tree => Boolean = {
+  val defaultCandidateNodeFilter: Tree => Boolean =
     case _: Term.Block | _: Defn.Def | _: Term.Match | _: Term.For | _: Term.If | _: Term.Try =>
       true
     case _ => false
-  }
 
   /** The default strategy for identifying the "enclosing declaration" of a sub-tree.
     *
@@ -30,10 +29,9 @@ object DuplicationAnalyzer:
     * matcher — for example to also include `Defn.Object`, `Defn.Class`, or `Defn.Trait` — via the
     * `enclosingDeclMatcher` parameter of `analyze`, without touching the core traversal logic.
     */
-  val defaultEnclosingDeclMatcher: Tree => Option[Defn] = {
+  val defaultEnclosingDeclMatcher: Tree => Option[Defn] =
     case d: Defn.Def => Some(d)
     case _           => None
-  }
 
   def analyze(
       index: SemanticIndex,
@@ -51,7 +49,7 @@ object DuplicationAnalyzer:
       .filter(doc => keepUri(doc.uri))
       .flatMap { doc =>
         val text = readSourceText(doc.text, doc.uri, root)
-        if (text.isEmpty) Iterator.empty
+        if text.isEmpty then Iterator.empty
         else
           Try(dialects.Scala3(text).parse[Source].get).toOption match
             case Some(sourceTree) =>
@@ -145,7 +143,7 @@ object DuplicationAnalyzer:
       val nextEnclosing = enclosingDeclMatcher(t) orElse currentEnclosing
 
       val current =
-        if (nodeCount(t) >= minSize && nodeFilter(t)) List((t, currentEnclosing))
+        if nodeCount(t) >= minSize && nodeFilter(t) then List((t, currentEnclosing))
         else Nil
 
       current ++ t.children.flatMap(c => traverse(c, nextEnclosing))
@@ -165,7 +163,7 @@ object DuplicationAnalyzer:
 
   @pure
   private def isDescendant(child: Tree, parent: Tree): Boolean =
-    if (child eq parent) false
+    if child eq parent then false
     else parent.children.exists(c => (c eq child) || isDescendant(child, c))
 
   private def collectLocalNames(tree: Tree): List[String] =

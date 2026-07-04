@@ -202,9 +202,10 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
 
   /** The document uri of a symbol's definition occurrence, if the index has one. */
   def definitionUri(symbol: String): Option[String] =
-    index.occurrencesOf(symbol).collectFirst {
-      case (uri, occ) if occ.role == s.SymbolOccurrence.Role.DEFINITION => uri
-    }
+    index
+      .occurrencesOf(symbol)
+      .collectFirst:
+        case (uri, occ) if occ.role == s.SymbolOccurrence.Role.DEFINITION => uri
 
   // --- class hierarchy ------------------------------------------------------
 
@@ -229,9 +230,8 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
   /** All indexed classes/traits that declare `symbol` among their direct parents. */
   def knownSubtypes(symbol: String): List[String] =
     index.symbols.values
-      .collect {
+      .collect:
         case si if directParents(si).contains(symbol) => si.symbol
-      }
       .toList
       .sorted
 
@@ -243,10 +243,9 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
     */
   def implicitsProducing(typeSymbol: String): List[s.SymbolInformation] =
     index.symbols.values
-      .collect {
+      .collect:
         case si if isGivenDefinition(si) && parentSymbol(producedType(si)).contains(typeSymbol) =>
           si
-      }
       .toList
       .sortBy(_.symbol)
 

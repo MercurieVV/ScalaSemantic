@@ -135,11 +135,10 @@ final class Analyzer(
   def outline(uri: DocumentUri): Option[List[OutlineEntry]] =
     index.document(uri.value).map { doc =>
       val defs = doc.occurrences.toList
-        .collect {
+        .collect:
           case occ
               if occ.role == s.SymbolOccurrence.Role.DEFINITION && h.includeInOutline(occ.symbol) =>
             occ.symbol -> occ.range.map(_.startLine).getOrElse(0)
-        }
         .distinctBy(_._1)
       val definedSet = defs.map(_._1).toSet
       def parentOf(sym: String): Option[String] =
@@ -240,16 +239,14 @@ final class Analyzer(
     val fromFqn = h.joinFqn(h.packageDotted(fromOwner), name)
     val toFqn = h.joinFqn(h.packageDotted(toOwner), name)
     val occs = index.occurrencesOf(sym)
-    val defLoc = occs.collectFirst {
+    val defLoc = occs.collectFirst:
       case (uri, occ) if occ.role == s.SymbolOccurrence.Role.DEFINITION =>
         h.location(uri, occ.range)
-    }
     val defUri = defLoc.map(_.uri)
     val references = occs
-      .collect {
+      .collect:
         case (uri, occ) if occ.role == s.SymbolOccurrence.Role.REFERENCE =>
           h.location(uri, occ.range)
-      }
       .distinct
       .toList
     // One import edit per referencing file, decided by that file's own package.
@@ -423,10 +420,11 @@ final class Analyzer(
   def findUsages(symbol: SemanticDbSymbol, pathFilter: Option[String] = None): UsagesResult =
     val sym = symbol.value
     val keep = h.globMatcher(pathFilter)
-    val located = index.occurrencesOf(sym).collect {
-      case (uri, occ) if keep(uri) =>
-        occ.role -> h.location(uri, occ.range)
-    }
+    val located = index
+      .occurrencesOf(sym)
+      .collect:
+        case (uri, occ) if keep(uri) =>
+          occ.role -> h.location(uri, occ.range)
     val defs =
       located.collect { case (s.SymbolOccurrence.Role.DEFINITION, loc) => loc }.distinct.toList
     val refs =
@@ -499,12 +497,11 @@ final class Analyzer(
     val name = index.displayName(sym)
     val own = index.owner(sym)
     val overloads = index.symbols.values
-      .collect {
+      .collect:
         case si
             if index
               .isMethod(si.symbol) && index.owner(si.symbol) == own && si.displayName == name =>
           si.symbol
-      }
       .toList
       .sorted
       .flatMap(methodSignatureOf)
@@ -718,9 +715,10 @@ final class Analyzer(
         case _                  => false
 
     def definitionLocation(sym: String): Option[Location] =
-      index.occurrencesOf(sym).collectFirst {
-        case (uri, occ) if occ.role == DEFINITION => h.location(uri, occ.range)
-      }
+      index
+        .occurrencesOf(sym)
+        .collectFirst:
+          case (uri, occ) if occ.role == DEFINITION => h.location(uri, occ.range)
 
     def node(sym: String, depth: Int): ValueFlowNode =
       val encMethodSym = index.ownerChain(sym).find(index.isMethod)
@@ -820,12 +818,11 @@ final class Analyzer(
         .toList
 
     def terminalClass(flows: List[Flow]): String =
-      val cs = flows.map {
+      val cs = flows.map:
         case Flow("returned_from", _, _, _, _)    => "function_result"
         case Flow("method_receiver", _, _, _, _)  => "method_receiver"
         case Flow("passed_as_arg", None, _, _, _) => "external_boundary"
         case _                                    => "discarded"
-      }
       List("function_result", "method_receiver", "external_boundary", "discarded")
         .find(cs.contains)
         .getOrElse("discarded")
@@ -910,7 +907,7 @@ final class Analyzer(
         (o.range.map(_.startLine).getOrElse(0), o.range.map(_.startCharacter).getOrElse(0))
       )
       ordered
-        .foldLeft((Option.empty[String], List.empty[(String, String, Location)])) {
+        .foldLeft((Option.empty[String], List.empty[(String, String, Location)])):
           case ((_, acc), occ)
               if occ.role == s.SymbolOccurrence.Role.DEFINITION && index.isMethod(occ.symbol) =>
             (Some(occ.symbol), acc)
@@ -918,7 +915,6 @@ final class Analyzer(
             (Some(current), (current, occ.symbol, h.location(doc.uri, occ.range)) :: acc)
           case (state, _) =>
             state
-        }
         ._2
         .reverse
     }

@@ -114,8 +114,8 @@ object InputTypes:
       (lineValue < other.lineValue ||
         (lineValue == other.lineValue && characterValue < other.characterValue))
         .ensuring(res =>
-          (if (this == other) !res else true) &&
-            (if (res) !other.before(this) else true)
+          (if this == other then !res else true) &&
+            (if res then !other.before(this) else true)
         )
 
     @pure

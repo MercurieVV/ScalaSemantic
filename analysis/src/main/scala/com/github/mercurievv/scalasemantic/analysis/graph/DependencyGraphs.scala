@@ -73,7 +73,7 @@ final class DependencyGraphs(index: SemanticIndex):
         (o.range.map(_.startLine).getOrElse(0), o.range.map(_.startCharacter).getOrElse(0))
       )
       ordered
-        .foldLeft((Option.empty[String], List.empty[(String, String)])) {
+        .foldLeft((Option.empty[String], List.empty[(String, String)])):
           case ((_, acc), occ)
               if occ.role == s.SymbolOccurrence.Role.DEFINITION && index.isMethod(occ.symbol) =>
             (Some(occ.symbol), acc)
@@ -81,7 +81,6 @@ final class DependencyGraphs(index: SemanticIndex):
             (Some(current), (current, occ.symbol) :: acc)
           case (state, _) =>
             state
-        }
         ._2
     }
     typeEdges.toList
@@ -199,7 +198,6 @@ final class DependencyGraphs(index: SemanticIndex):
     (info.properties & s.SymbolInformation.Property.IMPLICIT.value) != 0
 
   private def definitionUri(symbol: String): Option[String] =
-    index.occurrences.collectFirst {
+    index.occurrences.collectFirst:
       case (uri, occ) if occ.symbol == symbol && occ.role == s.SymbolOccurrence.Role.DEFINITION =>
         uri
-    }
