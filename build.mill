@@ -1,48 +1,38 @@
-// DRAFT Mill build — mirrors the sbt build catalogued in docs/MILL_MIGRATION.md.
-// Not yet validated end-to-end. Search "TODO"/"RISK" for the parts that still need proving out.
+// DRAFT Mill build (Mill 1.1.7) — mirrors the sbt build catalogued in docs/MILL_MIGRATION.md.
 // Uses SbtModule so the existing sbt dir layout (src/main/scala, src/test/scala) works unchanged.
+// Search "TODO"/"RISK" for parts still needing external plugins or verification.
 package build
 
-import mill._
-import mill.scalalib._
-import mill.scalalib.publish._
-import mill.contrib.buildinfo.BuildInfo
-
-// mill-ci-release brings VcsVersion (git-derived version, replaces sbt-dynver) and CiReleaseModule
-// (replaces sbt-ci-release). RISK: confirm Sonatype Central Portal host support.
-import de.tobiasroeser.mill.vcs.version.VcsVersion
-import io.kipp.mill.ci.release.CiReleaseModule
-// $ivy imports for the plugins above (Mill resolves these from the header comments below):
-// import $ivy.`com.lihaoyi::mill-contrib-buildinfo:` (bundled with Mill dist)
-// import $ivy.`de.tobiasroeser::mill-vcs-version::0.4.1`
-// import $ivy.`io.kipp::mill-ci-release::0.1.11`
+import mill.*
+import mill.scalalib.*
+import mill.scalalib.publish.*
 
 // ---------------------------------------------------------------------------------------------
 // Shared versions (were `lazy val`s in build.sbt)
 // ---------------------------------------------------------------------------------------------
 object V {
-  val scala3          = "3.8.4"
-  val scalameta       = "4.17.0"
-  val upickle         = "4.4.3"
-  val refined         = "0.11.3"
-  val munit           = "1.3.3"
-  val munitScalacheck = "1.3.0"
-  val slf4jNop        = "1.7.36"
+  val scala3               = "3.8.4"
+  val scalameta            = "4.17.0"
+  val upickle              = "4.4.3"
+  val refined              = "0.11.3"
+  val munit                = "1.3.3"
+  val munitScalacheck      = "1.3.0"
+  val slf4jNop             = "1.7.36"
   val presentationCompiler = "3.8.4"
-  val wartremover     = "3.6.0" // must match the compiler-plugin artifact
-  val compatScala     = Seq("2.13.16", "3.3.4")
+  val wartremover          = "3.6.0" // must match the compiler-plugin artifact
+  val compatScala          = Seq("2.13.16", "3.3.4")
 }
 
-def munitDeps = Agg(
-  ivy"org.scalameta::munit:${V.munit}",
-  ivy"org.scalameta::munit-scalacheck:${V.munitScalacheck}"
+def munitDeps = Seq(
+  mvn"org.scalameta::munit:${V.munit}",
+  mvn"org.scalameta::munit-scalacheck:${V.munitScalacheck}"
 )
 
 // ---------------------------------------------------------------------------------------------
 // commonSettings — SemanticDB + wart rules + strict warnings (build.sbt `commonSettings`).
-// RISK(wartremover): Mill has NO wartremover plugin. We wire the wartremover *compiler plugin*
-// by hand and pass its traverser flags as scalacOptions. The main/test split (strict warts as
-// ERRORS in Compile, removed in Test) is done by overriding scalacOptions in `object test`.
+// RISK(wartremover): Mill has NO wartremover plugin. We add the wartremover *compiler plugin* via
+// scalacPluginMvnDeps and pass its traverser flags as scalacOptions. The main/test split (strict
+// warts as ERRORS in Compile, dropped in Test) is done by overriding scalacOptions in `object test`.
 // ---------------------------------------------------------------------------------------------
 trait Common extends SbtModule {
   def scalaVersion = V.scala3
@@ -50,117 +40,128 @@ trait Common extends SbtModule {
   // SemanticDB emission for dogfooding + scalafix. Mill built-in.
   def semanticDbEnabled = true
 
-  // wartremover as a compiler plugin (replaces sbt-wartremover plugin wiring).
-  def scalacPluginIvyDeps = super.scalacPluginIvyDeps() ++ Agg(
-    ivy"org.wartremover:::wartremover:${V.wartremover}"
-  )
+  // Modules doing Java interop (pc) turn warts OFF — build.sbt `.disablePlugins(WartRemover)`.
+  def useWartremover = true
+
+  // wartremover as a compiler plugin (replaces the sbt-wartremover plugin). `:::` = full Scala
+  // version cross, required for compiler plugins.
+  def scalacPluginMvnDeps =
+    super.scalacPluginMvnDeps() ++
+      (if (useWartremover) Seq(mvn"org.wartremover:::wartremover:${V.wartremover}") else Nil)
 
   // Always-on wart WARNINGS (build.sbt `wartremoverWarnings ++=`).
-  val warnWarts = Seq(
+  def warnWarts = Seq(
     "Var", "MutableDataStructures", "NonUnitStatements", "Throw", "Return",
     "AsInstanceOf", "IsInstanceOf", "Null"
   )
   // Compile-only wart ERRORS (build.sbt `strictCompileWarts`).
-  val strictWarts = Seq(
+  def strictWarts = Seq(
     "ArrayEquals", "ArrayToString", "EitherProjectionPartial", "Enumeration", "IterableOps",
     "JavaNetURLConstructors", "LeakingSealed", "ListAppend", "MapUnit", "ObjectThrowable",
     "OptionPartial", "PartialFunctionApply", "SeqApply", "StringPlusAny", "TripleQuestionMark",
     "TryPartial", "While"
   )
-  private def wartFlags(names: Seq[String], level: String) =
+  def wartFlags(names: Seq[String], level: String): Seq[String] =
     names.map(n => s"-P:wartremover:$level:org.wartremover.warts.$n")
 
   def scalacOptions = super.scalacOptions() ++ Seq(
     "-Werror", "-Wunused:all", "-Wconf:msg=.*unused.*:e"
-  ) ++ wartFlags(warnWarts, "only-warn-traverser") ++
-       wartFlags(strictWarts, "traverser") // ERROR in Compile
+  ) ++ (if (useWartremover) wartFlags(warnWarts, "only-warn-traverser") ++ wartFlags(strictWarts, "traverser")
+        else Nil)
 
   trait CommonTests extends SbtTests with TestModule.Munit {
-    def ivyDeps = munitDeps
+    def mvnDeps = munitDeps
     // Test drops the strict wart errors (build.sbt `Test/wartremoverErrors --= strictCompileWarts`).
-    def scalacOptions = outer.scalacOptions().filterNot { o =>
-      strictWarts.exists(w => o.endsWith(s".$w") && o.contains(":traverser:"))
-    }
+    def strictTraversers = Common.this.strictWarts.map(w =>
+      s"-P:wartremover:traverser:org.wartremover.warts.$w"
+    ).toSet
+    def scalacOptions = Common.this.scalacOptions().filterNot(strictTraversers.contains)
   }
-  private def outer = this
 }
 
 // ---------------------------------------------------------------------------------------------
 // core — load + index SemanticDB. No deps.
 // ---------------------------------------------------------------------------------------------
-object core extends Common with CiReleaseModule {
-  def artifactName = "scalasemantic-core"
-  def ivyDeps = Agg(
-    ivy"org.scalameta::scalameta:${V.scalameta}",
-    ivy"org.scalameta::semanticdb-shared:${V.scalameta}"
-  )
-  def pomSettings = commonPom("scalasemantic-core")
+object core extends Common with PublishModule {
+  def artifactName   = "scalasemantic-core"
   def publishVersion = build.publishVersion()
+  def pomSettings    = commonPom("scalasemantic-core")
+  def mvnDeps = Seq(
+    mvn"org.scalameta::scalameta:${V.scalameta}",
+    mvn"org.scalameta::semanticdb-shared:${V.scalameta}"
+  )
   object test extends CommonTests
 }
 
 // ---------------------------------------------------------------------------------------------
-// pc — presentation-compiler backend. dependsOn core. Tests FORKED (real classpath). Warts OFF.
+// pc — presentation-compiler backend. dependsOn core. Tests FORKED (Mill forks by default).
+// Warts OFF (Java interop) — build.sbt `.disablePlugins(WartRemover)`.
 // ---------------------------------------------------------------------------------------------
-object pc extends Common with CiReleaseModule {
-  def artifactName = "scalasemantic-pc"
-  def moduleDeps = Seq(core)
-  // Java interop module — disable warts (build.sbt `.disablePlugins(WartRemover)`).
-  override def scalacPluginIvyDeps = super[Common].scalacPluginIvyDeps().filterNot(_.dep.module.name.value == "wartremover")
-  override def scalacOptions = Seq("-Werror", "-Wunused:all", "-Wconf:msg=.*unused.*:e")
-  def ivyDeps = Agg(
-    ivy"org.scala-lang::scala3-presentation-compiler:${V.presentationCompiler}",
-    ivy"org.slf4j:slf4j-nop:${V.slf4jNop}"
-  )
-  def pomSettings = commonPom("scalasemantic-pc")
+object pc extends Common with PublishModule {
+  def artifactName   = "scalasemantic-pc"
   def publishVersion = build.publishVersion()
-  // build.sbt `Test/fork := true` so java.class.path IS the module's real test classpath.
-  object test extends CommonTests { override def forkArgs = Seq.empty /* forked by default in Mill */ }
+  def pomSettings    = commonPom("scalasemantic-pc")
+  def moduleDeps        = Seq(core)
+  override def useWartremover = false // Java interop — build.sbt `.disablePlugins(WartRemover)`
+  def mvnDeps = Seq(
+    mvn"org.scala-lang::scala3-presentation-compiler:${V.presentationCompiler}",
+    mvn"org.slf4j:slf4j-nop:${V.slf4jNop}"
+  )
+  object test extends CommonTests
 }
 
 // ---------------------------------------------------------------------------------------------
 // analysis — query engine + models. dependsOn core, pc. Unmanaged stainless jar from lib/.
 // ---------------------------------------------------------------------------------------------
-object analysis extends Common with CiReleaseModule {
-  def artifactName = "scalasemantic-analysis"
-  def moduleDeps = Seq(core, pc)
-  def ivyDeps = Agg(
-    ivy"com.lihaoyi::upickle:${V.upickle}",
-    ivy"eu.timepit::refined:${V.refined}"
+object analysis extends Common with PublishModule {
+  def artifactName   = "scalasemantic-analysis"
+  def publishVersion = build.publishVersion()
+  def pomSettings    = commonPom("scalasemantic-analysis")
+  def moduleDeps     = Seq(core, pc)
+  def mvnDeps = Seq(
+    mvn"com.lihaoyi::upickle:${V.upickle}",
+    mvn"eu.timepit::refined:${V.refined}"
   )
   // build.sbt: stainless-library.jar is an UNMANAGED dep auto-picked from analysis/lib/.
-  def unmanagedClasspath = Agg(PathRef(millSourcePath / "lib" / "stainless-library.jar"))
-  def pomSettings = commonPom("scalasemantic-analysis")
-  def publishVersion = build.publishVersion()
+  // Mill 1.x: a build-tracked file read in a task must be declared via Task.Source.
+  def stainlessJar = Task.Source(moduleDir / "lib" / "stainless-library.jar")
+  def unmanagedClasspath = Task { Seq(stainlessJar()) }
   object test extends CommonTests {
-    override def unmanagedClasspath = Agg(PathRef(millSourcePath / os.up / "lib" / "stainless-library.jar"))
+    def unmanagedClasspath = Task { Seq(stainlessJar()) }
   }
 
   // build.sbt `stainlessVerify` task — shells scripts/stainless-verify.sh.
   def stainlessVerify() = Task.Command {
-    val script = build.millSourcePath / "scripts" / "stainless-verify.sh"
-    val rc = os.proc("bash", script.toString).call(cwd = build.millSourcePath, check = false)
+    val script = build.moduleDir / "scripts" / "stainless-verify.sh"
+    val rc = os.proc("bash", script.toString).call(cwd = build.moduleDir, check = false)
     if (rc.exitCode != 0) sys.error(s"stainlessVerify failed (exit ${rc.exitCode})")
   }
 }
 
 // ---------------------------------------------------------------------------------------------
-// mcp — stdio JSON-RPC server + entrypoint. test->test dep on analysis. BuildInfo + assembly.
+// mcp — stdio JSON-RPC server + entrypoint. test->test dep on analysis. Version source + assembly.
 // ---------------------------------------------------------------------------------------------
-object mcp extends Common with BuildInfo with CiReleaseModule {
-  def artifactName = "scalasemantic-mcp"
-  def moduleDeps = Seq(analysis)
-  def ivyDeps = Agg(ivy"com.lihaoyi::upickle:${V.upickle}")
+object mcp extends Common with PublishModule {
+  def artifactName   = "scalasemantic-mcp"
+  def publishVersion = build.publishVersion()
+  def pomSettings    = commonPom("scalasemantic-mcp")
+  def moduleDeps     = Seq(analysis)
+  def mvnDeps = Seq(mvn"com.lihaoyi::upickle:${V.upickle}")
 
-  // build.sbt: two @main — pin the entrypoint.
+  // build.sbt: two @main — pin the entrypoint for run + assembly manifest.
   def mainClass = Some("com.github.mercurievv.scalasemantic.mcpServer")
 
-  // sbt-buildinfo → mill-contrib BuildInfo (dynver version surfaced at runtime).
-  def buildInfoPackageName = "com.github.mercurievv.scalasemantic.buildinfo"
-  def buildInfoMembers = Seq(BuildInfo.Value("version", build.publishVersion()))
-
-  def pomSettings = commonPom("scalasemantic-mcp")
-  def publishVersion = build.publishVersion()
+  // Replaces sbt-buildinfo: generate a BuildInfo source with the git-derived version.
+  // TODO: swap for mill-contrib BuildInfo once the plugin dep is wired in the build header.
+  def generatedSources = Task {
+    val ver = build.publishVersion()
+    val dir = Task.dest
+    os.write(dir / "BuildInfo.scala",
+      s"""package com.github.mercurievv.scalasemantic.buildinfo
+         |object BuildInfo { val version: String = "$ver" }
+         |""".stripMargin)
+    super.generatedSources() ++ Seq(PathRef(dir))
+  }
 
   // build.sbt `mcp % "compile->compile;test->test"` — mcp tests depend on analysis tests.
   object test extends CommonTests {
@@ -169,18 +170,15 @@ object mcp extends Common with BuildInfo with CiReleaseModule {
 
   // assembly / fat jar (sbt-assembly). Port of the merge strategy.
   def assemblyRules = super.assemblyRules ++ Seq(
-    mill.scalalib.Assembly.Rule.ExcludePattern(".*module-info\\.class"),
+    Assembly.Rule.ExcludePattern(".*module-info\\.class"),
     // scala3-pc drags the 2.13 compiler; scala/tools/asm collides with scala-asm — keep first.
-    mill.scalalib.Assembly.Rule.Append("scala/tools/asm/.*", separator = ""), // RISK: verify equivalence to MergeStrategy.first
-    mill.scalalib.Assembly.Rule.AppendPattern(".*\\.properties")
+    Assembly.Rule.Append("scala/tools/asm/.*"), // RISK: verify equivalence to MergeStrategy.first
+    Assembly.Rule.AppendPattern(".*\\.properties")
   )
-  def finalMainClassOpt = Right("com.github.mercurievv.scalasemantic.mcpServer")
-
-  // --- Custom tasks ported from build.sbt (mcp scope) ---
 
   // build.sbt `mcpLauncher` — dev launch script off this build's classpath.
   def mcpLauncher = Task {
-    val cp = runClasspath().map(_.path).mkString(java.io.File.pathSeparator)
+    val cp     = runClasspath().map(_.path).mkString(java.io.File.pathSeparator)
     val script = Task.dest / "scalasemantic-mcp"
     os.write(script,
       s"""|#!/usr/bin/env sh
@@ -190,45 +188,31 @@ object mcp extends Common with BuildInfo with CiReleaseModule {
     PathRef(script)
   }
 
-  // build.sbt `proguard` — shrink the assembly jar. RISK: port the full -keep arg array from
-  // build.sbt verbatim; only the input/output wiring changes.
-  def proguard = Task {
-    val inputJar = assembly().path
-    val outputJar = Task.dest / "scalasemantic-mcp-shrunk.jar"
-    val args = Array(
-      "-injars", inputJar.toString,
-      "-outjars", outputJar.toString,
-      "-libraryjars", s"${System.getProperty("java.home")}/jmods/java.base.jmod(!**.jar;!module-info.class)",
-      "-dontobfuscate", "-dontoptimize", "-ignorewarnings", "-dontnote", "-dontwarn",
-      "-keepattributes", "Exceptions,InnerClasses,Signature,Deprecated,SourceFile,LineNumberTable,*Annotation*,EnclosingMethod"
-      // TODO: paste the remaining -keep / -keepclassmembers entries from build.sbt here.
-    )
-    val cfg = new _root_.proguard.Configuration()
-    new _root_.proguard.ConfigurationParser(args, java.lang.System.getProperties).parse(cfg)
-    new _root_.proguard.ProGuard(cfg).execute()
-    PathRef(outputJar)
-  }
+  // build.sbt `proguard` — shrink the assembly jar.
+  // TODO: add `com.guardsquare:proguard-base:7.9.1` to the build header and port the full -keep
+  // arg array from build.sbt. Stubbed to the un-shrunk assembly so the build compiles.
+  def proguard = Task { assembly() }
 
-  // build.sbt `testShrunk` — run named suites forked against the shrunk jar.
-  // TODO: port (filter compile-cp out of test-cp, add shrunk jar, fork JUnit on the 3 suites).
+  // build.sbt `testShrunk` — run named suites forked against the shrunk jar. TODO: port.
 }
 
 // ---------------------------------------------------------------------------------------------
-// compat-fixtures — cross-compiled 2.13.16 + 3.3.4, emits golden SemanticDB. Warts OFF, not published.
+// compat-fixtures — cross-compiled 2.13.16 + 3.3.4, emits golden SemanticDB. Warts OFF, unpublished.
 // ---------------------------------------------------------------------------------------------
 object compatFixtures extends Cross[CompatModule](V.compatScala)
 trait CompatModule extends SbtModule with Cross.Module[String] {
-  def scalaVersion = crossValue
-  def millSourcePath = build.millSourcePath / "compat-fixtures"
+  def scalaVersion  = crossValue
+  def moduleDir     = build.moduleDir / "compat-fixtures"
   def semanticDbEnabled = true
 
   // build.sbt `compatGolden` — compile then copy emitted *.semanticdb into versioned golden resources.
   def compatGolden() = Task.Command {
-    compile() // ensure fresh SemanticDB
-    val binVer = if (crossValue.startsWith("2.")) crossValue.split('.').take(2).mkString(".") else "3"
+    compile()
+    val binVer =
+      if (crossValue.startsWith("2.")) crossValue.split('.').take(2).mkString(".") else "3"
     // RISK: locate the emitted semanticdb dir under Mill's out/ (differs from sbt semanticdbTargetRoot).
     val src = semanticDbData().path / "META-INF" / "semanticdb"
-    val dst = build.millSourcePath / "analysis" / "src" / "test" / "resources" / "compat" / s"scala-$binVer"
+    val dst = build.moduleDir / "analysis" / "src" / "test" / "resources" / "compat" / s"scala-$binVer"
     os.remove.all(dst)
     if (os.exists(src)) os.copy(src, dst, createFolders = true)
     Task.log.info(s"compat golden: $src -> $dst")
@@ -239,20 +223,22 @@ trait CompatModule extends SbtModule with Cross.Module[String] {
 // docs — mdoc *library* (no sbt-mdoc for sbt 2.0). Standalone, Scala 3.3.4, forked run.
 // ---------------------------------------------------------------------------------------------
 object docs extends SbtModule {
-  def scalaVersion = "3.3.4"
-  def millSourcePath = build.millSourcePath / "mdoc-docs"
-  def ivyDeps = Agg(ivy"org.scalameta::mdoc:2.9.0")
+  def scalaVersion  = "3.3.4"
+  def moduleDir     = build.moduleDir / "mdoc-docs"
+  def mvnDeps       = Seq(mvn"org.scalameta::mdoc:2.9.0")
   // build.sbt passes -Dscalasemantic.docs.version=<latestReleaseVersion> and forks from repo root.
-  def forkArgs = Seq(s"-Dscalasemantic.docs.version=${latestReleaseVersion()}")
-  def forkWorkingDir = build.millSourcePath
+  def forkArgs       = Seq(s"-Dscalasemantic.docs.version=${latestReleaseVersion()}")
+  def forkWorkingDir = build.moduleDir
 }
 
 // ---------------------------------------------------------------------------------------------
 // Root-level tasks / helpers
 // ---------------------------------------------------------------------------------------------
 
-// build.sbt: version derived from git tags (sbt-dynver) → VcsVersion.
-def publishVersion: T[String] = Task { VcsVersion.vcsState().format() }
+// build.sbt: version derived from git tags (sbt-dynver).
+// TODO(RISK): replace with de.tobiasroeser::mill-vcs-version VcsVersion for full dynver parity
+// (dirty/commit-distance suffixes). This plain fallback only reads the highest tag.
+def publishVersion: T[String] = Task { latestReleaseVersion() }
 
 // build.sbt `latestReleaseVersion` — highest `v*` git tag, stripped, else "x.y.z".
 def latestReleaseVersion: T[String] = Task {
@@ -274,23 +260,23 @@ def commonPom(name: String) = PomSettings(
 )
 
 // build.sbt `compatGoldenAll` alias — regenerate golden for every compat Scala version.
-// Run: ./mill compatGoldenAll
 def compatGoldenAll() = Task.Command {
-  V.compatScala.foreach(v => compatFixtures(v).compatGolden()())
+  Task.traverse(V.compatScala.map(v => compatFixtures(v).compatGolden()))(identity)()
 }
 
-// build.sbt `prePush` command alias. No Mill alias mechanism — expose as a command that chains
-// the same steps. Formatting is APPLIED by the pre-commit hook; here we only VERIFY.
-// Run: ./mill prePush
+// build.sbt `prePush` command alias. No Mill alias mechanism — expose as a command that VERIFIES
+// (formatting is APPLIED by the pre-commit hook). TODO: chain scalafix --check + stainlessVerify.
 def prePush() = Task.Command {
-  mill.scalalib.scalafmt.ScalafmtModule.checkFormatAll(Tasks(Seq(core.sources, pc.sources, analysis.sources, mcp.sources)))()
-  // TODO: scalafix --check (mill-scalafix), then: core.test, pc.test, analysis.test, mcp.test,
-  //       compatGoldenAll(), analysis.stainlessVerify().
+  core.test.testForked()()
+  pc.test.testForked()()
+  analysis.test.testForked()()
+  mcp.test.testForked()()
 }
 
-// TODO(relocate): move project/ScalaSemanticConfigMerger.scala and project/CorpusFetch.scala into
-//   mill-build/src/ (Mill's build-classpath module) so `mcpClientConfig` and `corpusFetch` can use
-//   them. `corpusFetch` and `mcpClientConfig` (input arg = client name) still need porting.
+// TODO(relocate): move project/ScalaSemanticConfigMerger.scala + project/CorpusFetch.scala into a
+//   mill-build/ module so `mcpClientConfig` and `corpusFetch` can call them. Both still need porting.
 
 // DROPPED (sbt-only, per docs/MILL_MIGRATION.md §6): root/initialize slf4j-nop boot-copy,
 //   project/*.sbt slf4j-nop, useReadableConsoleGit, excludeLintKeys, conflictWarning.
+// TODO(publish): swap PublishModule → io.kipp::mill-ci-release CiReleaseModule for signed
+//   Central Portal publishing (RISK: confirm Central host support).
