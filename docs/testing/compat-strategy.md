@@ -68,10 +68,44 @@ Path: `compat-fixtures/src/main/scala-3/com/github/mercurievv/scalasemantic/comp
 
 This checklist provides a sequenced plan for the next subtask executor:
 
-1. [ ] **Licensing**: Create headers inside the new `VendoredFixtures.scala` files for Scala 2.13 and Scala 3, preserving the BSD 3-Clause (for Scalameta code) and Apache 2.0 (for Scala 3 compiler code) licenses.
-2. [ ] **Vendor Scala 2.13 Fixtures**: Extract and paste target blocks from Scalameta's expect tests into `compat-fixtures/.../scala-2.13/VendoredFixtures.scala`.
-3. [ ] **Vendor Scala 3 Fixtures**: Extract and paste target blocks from Scala 3's compiler expect tests into `compat-fixtures/.../scala-3/VendoredFixtures.scala`.
-4. [ ] **Custom Call Graphs**: Author custom polymorphic and implicit call path structures in `compat-fixtures/.../CallGraph.scala` (both 2.13 and 3).
-5. [ ] **Regenerate Goldens**: Run `sbt compatGoldenAll` to build the fixtures and copy SemanticDB output.
-6. [ ] **Expand CompatSuite**: Update `CompatSuite.scala` with assertions for the new features (enums, opaque types/value classes, polymorphic call paths).
-7. [ ] **Validate**: Run `sbt test` to ensure both compiler versions pass the suite successfully.
+1. [x] **Licensing**: Create headers inside the new `VendoredFixtures.scala` files for Scala 2.13 and Scala 3, preserving the BSD 3-Clause (for Scalameta code) and Apache 2.0 (for Scala 3 compiler code) licenses.
+2. [x] **Vendor Scala 2.13 Fixtures**: Extract and paste target blocks from Scalameta's expect tests into `compat-fixtures/.../scala-2.13/VendoredFixtures.scala`.
+3. [x] **Vendor Scala 3 Fixtures**: Extract and paste target blocks from Scala 3's compiler expect tests into `compat-fixtures/.../scala-3/VendoredFixtures.scala`.
+4. [x] **Custom Call Graphs**: Author custom polymorphic and implicit call path structures in `compat-fixtures/.../CallGraph.scala` (both 2.13 and 3).
+5. [x] **Regenerate Goldens**: Run `sbt compatGoldenAll` to build the fixtures and copy SemanticDB output.
+6. [x] **Expand CompatSuite**: Update `CompatSuite.scala` with assertions for the new features (enums, opaque types/value classes, polymorphic call paths).
+7. [x] **Validate**: Run `sbt test` to ensure both compiler versions pass the suite successfully.
+
+---
+
+## 5. Revised Conclusion (supersedes checklist scope above)
+
+`#156` executed the snippet-vendoring plan above (copy hand-picked blocks from Scalameta/Scala-3
+expect tests into `VendoredFixtures.scala`). That undersells the actual goal.
+
+**Original framing (wrong altitude)**: compare our hand-written bundles against external test
+suites, copy in the missing snippet, keep our examples otherwise as-is.
+
+**Corrected framing**: the point of reuse is coverage confidence at the corpus level, not snippet
+parity. Concretely:
+
+- Run the analyzer/CompatSuite against the **whole external corpus** (e.g. the full Scalameta
+  `semanticdb-integration` source tree for 2.13, the full Scala 3 compiler
+  `tests/semanticdb/expect/**` tree for 3.x) as a compile+analyze target, not a source to
+  cherry-pick lines from. The goal: prove every construct in that corpus is supported by the tool,
+  not that one representative snippet per feature area exists.
+- Once corpus-level coverage is running, **this project's own hand-written example fixtures
+  (`BasicClasses`, `Inheritance`, `Generics`, `Overloads`, `Implicits`, `CallGraph` baseline cases)
+  become redundant wherever the corpus already exercises the same construct** — delete them.
+- What's left in `compat-fixtures` after that pruning should be **only the cases the corpora don't
+  cover**: this tool's own edge cases (polymorphic/implicit call-path depth, cross-file resolution,
+  anything specific to the MCP tool surface rather than to general Scala semantics). Those stay
+  custom-authored because no external corpus targets them.
+- `VendoredFixtures.scala`'s snippet-copy approach can be dropped in favor of pointing the golden-file
+  pipeline at the vendored corpus directories directly (git submodule / fetched source under a
+  clearly licensed vendor path), so future upstream additions flow through without manual re-copying.
+
+This conclusion is **not yet applied** — `#156`'s snippet-based implementation stands as merged and
+green. A followup task should: (1) vendor the full corpora rather than excerpts, (2) run
+CompatSuite/golden generation over them, (3) prune this repo's redundant hand-written fixtures down
+to gap-only cases, (4) keep license/attribution handling for the now-larger vendored trees.

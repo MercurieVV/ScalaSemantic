@@ -11,22 +11,9 @@ Works with Scala 2.13.* and 3.*.*, any sbt/Mill/Gradle project, and any MCP-comp
 
 ## Quick setup
 
-Add the plugin to your sbt project and generate rules:
-
-```scala
-// project/plugins.sbt
-addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "@VERSION@")
-```
-
-```sh
-sbt mcpClientConfig compile
-```
-
-For other build tools, manual setups, or advanced options, see the [Integration guide](docs/getting-started/integration.md).
-
-For a build-tool-neutral setup that needs only `java` (no sbt, no Scala CLI), download the launcher
-once and run `setup`. It idempotently enables SemanticDB, writes the agent steering files, and
-merges an MCP server entry into every client config it finds — re-running is always safe:
+Needs only `java` (no sbt, no Scala CLI). Download the launcher once and run `setup`. It
+idempotently enables SemanticDB, writes the agent steering files, and merges an MCP server entry
+into every client config it finds — re-running is always safe:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.sh -o scalasemantic-mcp.sh && chmod +x scalasemantic-mcp.sh && ./scalasemantic-mcp.sh setup
@@ -75,8 +62,8 @@ Details: [SemanticDB vs grep](docs/explanation/scala-semantic-vs-grep.md).
 
 ## Documentation
 
-- [**Quickstart**](docs/getting-started/quickstart.md) — sbt path, 5 minutes
-- [**Integration**](docs/getting-started/integration.md) — sbt plugin, launcher, plain jar, logging
+- [**Quickstart**](docs/getting-started/quickstart.md) — auto-download script, 5 minutes
+- [**Integration**](docs/getting-started/integration.md) — Scala CLI script, launcher, plain jar, logging
 - [**Tool reference**](docs/reference/tools.md) — all MCP tools and SemanticDB symbol grammar
 - [**Examples**](docs/usage/examples.md) — sample MCP calls and responses
 - [**SemanticDB vs grep**](docs/explanation/scala-semantic-vs-grep.md) — trade-offs and token savings

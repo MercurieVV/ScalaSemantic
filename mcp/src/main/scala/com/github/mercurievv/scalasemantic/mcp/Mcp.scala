@@ -79,6 +79,8 @@ object Mcp:
       |Recovery: if a tool returns `found:false`, `count:0`, or empty lists, the symbol string is
       |almost certainly wrong — do NOT retry it verbatim and do NOT fall back to grep. Re-resolve the
       |name with find_symbol (narrow with `exact`, `kind`, or `pathFilter`) and use the corrected symbol.
+      |If EVERY tool comes back empty even after re-resolving, the project may not have SemanticDB
+      |enabled or compiled yet — see the Integration doc's "Prerequisite" section for your build tool.
       |
       |Output is lean by default (locations as `uri:line:col`, signatures one line); pass
       |`"detailed": true` to expand, and page find_usages via `limit`/`offset`.""".stripMargin

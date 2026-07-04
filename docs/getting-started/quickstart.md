@@ -1,21 +1,14 @@
 # Quickstart
 
-Shortest path for an sbt project.
+Shortest path for any project.
 
-1. **Add the sbt plugin**:
-   ```scala
-   // project/plugins.sbt
-   addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "@VERSION@")
-   // build.sbt
-   enablePlugins(ScalaSemanticMcpPlugin)
-   ```
-2. **Generate rules and configs**:
+1. **Download and run the auto-download script** (needs only `java`):
    ```sh
-   sbt mcpClientConfig
+   curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.sh -o scalasemantic-mcp.sh && chmod +x scalasemantic-mcp.sh && ./scalasemantic-mcp.sh setup
    ```
-3. **Compile the project**:
+2. **Compile the project**:
    ```sh
    sbt compile
    ```
 
-For manual configurations, non-sbt builds, or other integration options, see [Integration](integration.md).
+For manual configurations or other integration options (Scala CLI remote script, plain `java -jar`), see [Integration](integration.md).

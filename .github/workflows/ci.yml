@@ -48,8 +48,6 @@ jobs:
         # committed golden: SemanticDB output isn't guaranteed identical across environments/compiler
         # patches. The committed copies exist for local `sbt test` without a cross-compile.)
         run: sbt --batch compatGoldenAll
-      - name: Compile sbt plugin for sbt 1 and sbt 2
-        run: sbt --batch +sbtPlugin/compile
       - name: Test
         run: sbt --batch test
 

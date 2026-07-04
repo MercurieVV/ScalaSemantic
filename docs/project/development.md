@@ -10,7 +10,7 @@ mcp        stdio JSON-RPC server + entrypoint   (…​.mcp)               → d
     core       load + index SemanticDB           (…​.semanticdb)
 ```
 
-`core` has no JSON or MCP dependencies; `analysis` adds upickle result models; `mcp` is the only module that speaks the protocol. Two additional un-aggregated modules: `sbt-plugin` (the optional sbt plugin) and `compat-fixtures` (cross-compiled fixture sources for the cross-version test).
+`core` has no JSON or MCP dependencies; `analysis` adds upickle result models; `mcp` is the only module that speaks the protocol. One additional un-aggregated module: `compat-fixtures` (cross-compiled fixture sources for the cross-version test).
 
 Each module emits its own SemanticDB (`semanticdbEnabled := true`), so tests dogfood on this codebase: they load `SemanticIndex.fromProject(".")` and query the whole index.
 

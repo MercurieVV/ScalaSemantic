@@ -29,6 +29,11 @@ final class Analyzer(
 
   private val h = AnalyzerHelpers(index)
 
+  /** True when no `*.semanticdb` file was found/loaded at all — SemanticDB likely isn't enabled or
+    * the project hasn't been compiled yet, as opposed to a query simply matching nothing.
+    */
+  def isIndexEmpty: Boolean = index.documents.isEmpty
+
   /** An analyzer whose index has `code` (the live contents of the file at `fileUri`) overlaid via
     * the presentation compiler, the overlaid document keyed by `docUri` so it replaces the matching
     * disk document. `fileUri` must point at a real on-disk path (the PC reads `code`, but needs a

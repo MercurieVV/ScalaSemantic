@@ -78,3 +78,4 @@ build/
 /scalasemantic-mcp.sh
 # scala-cli build cache from running the launcher at repo root.
 /.scala-build/
+.aider*

@@ -448,42 +448,6 @@ lazy val mcp = (project in file("mcp"))
     }
   )
 
-// sbt plugin that host projects add to enable SemanticDB + emit their MCP launch config. It shells
-// out to the server process, so it never links against the Scala 3.8.4 server. Cross-build it as a
-// real sbt plugin: Scala 2.12 for sbt 1.x, Scala 3 for sbt 2.x. Not aggregated into `root` (it
-// builds against the sbt plugin Scala/version, separate from the modules above); build it with
-// `+sbtPlugin/compile` or `+sbtPlugin/publishLocal`.
-lazy val sbtPlugin = (project in file("sbt-plugin"))
-  .enablePlugins(SbtPlugin)
-  .settings(commonSettings)
-  .settings(
-    name := "sbt-scalasemantic-mcp",
-    Compile / unmanagedSources += (ThisBuild / baseDirectory).value / "project" / "ScalaSemanticConfigMerger.scala",
-    // Hard-code both axes so sbt 2.0.1's SbtPlugin rewrite of scalaVersion (to 2.13.x) does not
-    // pollute the cross-build matrix and produce an unresolvable scripted-sbt_2.13:2.0.x request.
-    crossScalaVersions := Seq("2.12.21", "3.8.4"),
-    pluginCrossBuild / sbtVersion := {
-      scalaBinaryVersion.value match {
-        case "2.12" | "2.13" => "1.11.6"
-        case _               => "2.0.1"
-      }
-    },
-    // munit unit-tests the pure config-merge helpers (no sbt/scripted machinery needed). munit 1.2.3
-    // is published for both the 2.12 and 3 plugin axes, so `%%` resolves on each cross-build.
-    libraryDependencies ++= Seq(munit, munitScalacheck),
-    // Bundle the auto-download launcher scripts into the plugin jar so `mcpInstall` can write them
-    // into a host project's target dir. Single source of truth = top-level scripts/.
-    Compile / resourceGenerators += Def.task {
-      val root = (ThisBuild / baseDirectory).value
-      val outDir = (Compile / resourceManaged).value / "scalasemantic"
-      Seq("scalasemantic-mcp.sh", "scalasemantic-mcp.ps1").map { n =>
-        val out = outDir / n
-        IO.copyFile(root / "scripts" / n, out)
-        out
-      }
-    }.taskValue
-  )
-
 // compat-fixtures: tiny source set cross-compiled across Scala versions to emit real SemanticDB for
 // the analyzer's cross-version test (CompatSuite). Not part of the published product, not aggregated
 // into root. `compatGolden` copies the emitted *.semanticdb into versioned golden resources under
@@ -576,7 +540,7 @@ lazy val docs = (project in file("mdoc-docs"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(core, pc, analysis, mcp, sbtPlugin)
+  .aggregate(core, pc, analysis, mcp)
   .settings(
     name := "ScalaSemantic",
     publish / skip := true,

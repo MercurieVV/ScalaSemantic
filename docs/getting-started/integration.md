@@ -8,79 +8,64 @@ The server speaks newline-delimited JSON-RPC 2.0 on **stdout**. Diagnostic loggi
 
 The server reads SemanticDB; it does not generate it. The project must be compiled with SemanticDB enabled:
 
+**sbt** (also done automatically by the auto-download script's `setup`):
+
 ```scala
-// build.sbt (sbt — also done automatically by the sbt plugin)
+// build.sbt
 semanticdbEnabled := true
 ```
 
-For Mill/Gradle/scalac, enable the SemanticDB compiler plugin equivalently and compile. The only machine requirement is a **JVM** (`java` on PATH).
-
-Each release publishes both a self-contained fat jar attached to the [GitHub Release](https://github.com/MercurieVV/ScalaSemantic/releases) and the same server as regular Maven Central artifacts (`io.github.mercurievv::scalasemantic-mcp` and friends). Options A, C, and D run the fat jar; option B resolves the Maven Central artifact directly via scala-cli/coursier.
-
-## Four ways to launch
-
-| | A — sbt plugin | B — Scala CLI remote script | C — auto-download script | D — plain `java -jar` |
-|---|---|---|---|---|
-| Get the jar | launcher downloads + caches | scala-cli/coursier resolve + cache the published artifact | script downloads + caches | you download once |
-| Write client config | `sbt mcpClientConfig` | `scala-cli ... setup` | by hand | by hand |
-| Enable SemanticDB | plugin does it | script creates sbt config if missing | you add one line | you add one line |
-| Stays up to date | yes | yes (`latest.release`) | yes | manual |
-| Works with | sbt 1 and 2 | any build tool with Scala CLI installed | any build tool | any build tool |
-
-### Option A — sbt plugin (recommended)
+**Mill** — add to the module's `ScalaModule`:
 
 ```scala
-// project/plugins.sbt
-addSbtPlugin("io.github.mercurievv" % "sbt-scalasemantic-mcp" % "@VERSION@")
-// build.sbt
-enablePlugins(ScalaSemanticMcpPlugin)
+// build.mill / build.sc
+def semanticDbEnabled = true
 ```
 
-(`@VERSION@` is filled at doc-site build time. For the raw source, check [Maven Central](https://central.sonatype.com/artifact/io.github.mercurievv/sbt-scalasemantic-mcp_2.12_1.0) or [latest release](https://github.com/MercurieVV/ScalaSemantic/releases/latest).)
+**Gradle** — no native flag; pass the compiler option directly via the Scala plugin's compile task. Scala 3:
 
-The plugin adds two tasks:
-
-- `sbt mcpClientConfig [client]` — generates and merges MCP config into the project-local client config file, plus `SCALA_SEMANTIC_RULES.md`.
-- `sbt mcpRun` — runs the server locally for testing.
-
-The launcher downloads and caches the server jar on first spawn. To pin a specific jar, override `mcpServerCommand` in `build.sbt`.
-
-Logging is silent by default. If you need diagnostics, edit the `args` in the generated config file to add `--log` and/or `--log-output` flags. See [Logging](#logging) for details.
-
-#### Supported clients
-
-```scala
-mcpClient := "claude"       // default → .mcp.json
-mcpClient := "codex"        // → .codex/config.toml
-mcpClient := "gemini"       // → .gemini/settings.json
-mcpClient := "antigravity"  // → .agents/mcp_config.json
-mcpClient := "cline"        // → .cline/mcp.json
-mcpClient := "roo"          // → .roo/mcp.json
-mcpClient := "continue"     // → .continue/config.yaml
-mcpClient := "generic-json" // → .mcp.json (generic mcpServers shape)
-mcpClient := "all"          // writes all of the above
-```
-
-Or pass the client as a task argument: `sbt "mcpClientConfig gemini"`.
-
-#### Generated config shape
-
-All clients use the same server command; the file format differs. Example for `claude` (`.mcp.json`):
-
-```json
-{
-  "mcpServers": {
-    "scala-semantic": {
-      "command": "~/.local/bin/scalasemantic-mcp",
-      "args": ["/abs/path/to/project", "~/.local/bin/scala-semantic-classpath.txt"]
-    }
-  }
+```groovy
+tasks.withType(ScalaCompile) {
+  scalaCompileOptions.additionalParameters = ["-Ysemanticdb", "-sourceroot", projectDir.toString()]
 }
 ```
 
-`codex` uses TOML with `startup_timeout_sec`/`tool_timeout_sec` fields. `gemini` uses JSON with a `"timeout"` field. Others follow similar client-specific shapes. See [ScalaSemanticMcpPlugin.scala](https://github.com/MercurieVV/ScalaSemantic/blob/master/sbt-plugin/src/main/scala/com/github/mercurievv/scalasemantic/sbtplugin/ScalaSemanticMcpPlugin.scala) for all formats.
+Scala 2.13 needs the `semanticdb-scalac` compiler plugin jar instead of a native flag:
 
-### Option B — Scala CLI remote script
+```groovy
+scalaCompilerPlugins "org.scalameta:semanticdb-scalac_2.13.16:4.13.9"
+tasks.withType(ScalaCompile) {
+  scalaCompileOptions.additionalParameters = ["-Yrangepos", "-P:semanticdb:sourceroot:${projectDir}"]
+}
+```
+
+**Plain `scalac`** — Scala 3:
+
+```sh
+scalac -Ysemanticdb -sourceroot . <sources...>
+```
+
+Scala 2.13 (resolve the plugin jar with coursier first):
+
+```sh
+scalac -Xplugin:/path/to/semanticdb-scalac_2.13.16-4.13.9.jar -Yrangepos -P:semanticdb:sourceroot:. <sources...>
+```
+
+Whatever the build tool, the only machine requirement to *run* the server is a **JVM** (`java` on PATH).
+
+Each release publishes both a self-contained fat jar attached to the [GitHub Release](https://github.com/MercurieVV/ScalaSemantic/releases) and the same server as regular Maven Central artifacts (`io.github.mercurievv::scalasemantic-mcp` and friends). Options A and C run the fat jar; option B resolves the Maven Central artifact directly via scala-cli/coursier.
+
+## Three ways to launch
+
+| | A — Scala CLI remote script | B — auto-download script | C — plain `java -jar` |
+|---|---|---|---|
+| Get the jar | scala-cli/coursier resolve + cache the published artifact | script downloads + caches | you download once |
+| Write client config | `scala-cli ... setup` | by hand | by hand |
+| Enable SemanticDB | script creates sbt config if missing | you add one line | you add one line |
+| Stays up to date | yes (`latest.release`) | yes | manual |
+| Works with | any build tool with Scala CLI installed | any build tool | any build tool |
+
+### Option A — Scala CLI remote script
 
 If `scala-cli` is already installed, one command can configure a project without installing a
 separate launcher:
@@ -109,7 +94,7 @@ re-resolves to the newest published release.
 To pin a specific version instead of `latest.release`, edit `ServerDependency` in a local copy of the
 script and re-run `setup`.
 
-### Option C — auto-download launcher
+### Option B — auto-download launcher
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/install.sh | sh
@@ -130,7 +115,7 @@ Then register manually in your client config:
 }
 ```
 
-### Option D — plain `java -jar`
+### Option C — plain `java -jar`
 
 Download `scalasemantic-mcp.jar` from the [latest release](https://github.com/MercurieVV/ScalaSemantic/releases/latest):
 
