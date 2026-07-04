@@ -199,18 +199,43 @@ contract), not Mill's `out/`. `project/*.scala` left in place until `project/` i
 | job | step | now runs |
 |---|---|---|
 | build | Check formatting | `./mill mill.scalalib.scalafmt/checkFormatAll __.sources` |
+| build | Check scalafix | `./mill __.scalafixCheck` |
 | build | Regenerate golden | `./mill compatGoldenAll` |
-| build | Test | `./mill core.test.testForked pc.test.testForked analysis.test.testForked mcp.test.testForked` |
+| build | Test | `./mill __.test.testForked` |
 | verify | Verify contracts | `./mill analysis.stainlessVerify` (env `STAINLESS_TIMEOUT=30`) |
 | docs-site | Render docs | `./mill docs.run` |
 | publish | Publish | **still `sbt --batch ci-release`** — no working Mill 1.x publish path (§2) |
 | release | Build fat jar | `./mill mcp.assembly`; asset renamed from Mill's fixed `out.jar` to `scalasemantic-mcp.jar` on copy |
 
-Every job dropped `sbt/setup-sbt@v1` + `cache: sbt` (except `publish`, which kept both). No
-replacement cache step was added yet — `setup-java`'s `cache:` input only knows maven/gradle/sbt,
-not Mill; a real fix would be an explicit `actions/cache@v4` over `~/.cache/coursier` + `~/.mill`.
+Every job dropped `sbt/setup-sbt@v1` + `cache: sbt` (except `publish`, which kept both).
+`actions/cache@v4` over `~/.cache/coursier` + `~/.cache/mill/download` added (see TODO list above).
 Jobs build off the `./mill` bootstrap script committed at repo root (self-downloads the pinned
 Mill 1.1.7 native binary — no separate install action needed).
+
+**CRITICAL, confirmed-reproduced Mill 1.1.7 CLI bug — multi-target invocations silently no-op
+everything after the first target, but still report overall SUCCESS.** `./mill core.compile
+pc.compile` only compiles `core` (verified: `out/pc/` never gets created) yet exits 0 reporting
+`SUCCESS`. Same for `./mill core.test.testForked pc.test.testForked analysis.test.testForked
+mcp.test.testForked` (the CI Test step as originally written) and
+`./mill core.scalafixCheck pc.scalafixCheck analysis.scalafixCheck mcp.scalafixCheck` (the CI
+scalafix step as originally written): only the first-listed module's target actually ran; the
+other 3 modules were silently skipped, with the step still reported green on GitHub Actions. This
+was caught by manually inspecting the actual CI log output (not just the checkmark) after the first
+real push of this branch, and reproduced/confirmed locally by checking `out/<module>/` actually
+gets created (or doesn't) and by injecting a deliberately failing test/scalafix violation and
+observing it get silently swallowed only in the multi-target form.
+
+**The fix: use a single wildcard selector (`__.scalafixCheck`, `__.test.testForked`), never a
+space-separated list of explicit per-module target names on the CLI.** Verified `./mill resolve
+__.test.testForked` / `__.scalafixCheck` expand to exactly the 4 intended modules (no docs/
+compat-fixtures leakage), and that the wildcard form correctly runs every module AND correctly
+fails (non-zero exit) on an injected test/scalafix violation, in both single- and multi-selector-
+combined invocations. `build.mill`'s `prePush` command is NOT affected — it calls each module's
+target sequentially from Scala code (`core.test.testForked()`, `pc.test.testForked()`, …) inside
+one `Task.Command`, which is a completely different code path from the CLI's multi-target parsing,
+and was independently verified to correctly propagate a deliberate test failure (`659/663, 1
+FAILED`, exit 1). **Anyone adding a new multi-module CI step in the future: use a `__`-prefixed
+wildcard selector, not an explicit space-separated target list.**
 
 ### mutation.yml — INTENTIONALLY LEFT ON SBT
 Whole stryker4s toolchain (`sbtPlugin3/publishLocal`, the `stryker` sbt task,
