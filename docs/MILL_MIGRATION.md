@@ -27,8 +27,16 @@ Current: **sbt 2.0.1**, Scala **3.8.4**, 5 modules + root aggregate. Sources: `b
       script's own binary cache — confirmed the real path by reading the `mill` launcher script,
       not `~/.mill`), keyed on `build.mill` + `.mill-version` content hash with an OS-scoped restore
       fallback.
-- [ ] **scala-steward.yml** — untouched; not validated that it correctly reads deps out of
-      `build.mill` now that `build.sbt` and `build.mill` coexist.
+- [x] **scala-steward.yml** — researched, no config change needed: `scala-steward-action@v2`
+      doesn't parse `build.mill` itself — it delegates extraction to a companion
+      `scala-steward-org/mill-plugin` loaded *into* the target repo's own Mill build, so it's
+      agnostic to the `build.sc`→`build.mill` rename and to `ivy"…"` vs `mvn"…"` syntax; only the
+      mill-plugin/Mill version matters, and Mill 1.x support landed in mill-plugin 0.19.0 (Oct
+      2024). The action's `mill-version` input (default `1.0.6`) only bootstraps a global `mill`
+      binary — its docs state it "will still respect the version specified in your repository"
+      (our `.mill-version`, 1.1.7) when actually extracting/updating deps. Left the workflow
+      untouched since no explicit config is needed; only real residual risk is untested until the
+      scheduled run actually executes (can't run a GitHub-hosted action locally).
 - [x] **`scripts/*` still reference sbt** (§10) — switched the ones that should move:
       `token-live-metrics.sh` now runs `./mill mcp.test.testOnly …` (verified working), `agent-run.sh`
       worker instructions now say `./mill __.compile` / `./mill __.test` / `./mill prePush` (the
