@@ -1,3 +1,5 @@
+//| mvnDeps:
+//| - com.guardsquare:proguard-base:7.9.1
 // DRAFT Mill build (Mill 1.1.7) — mirrors the sbt build catalogued in docs/MILL_MIGRATION.md.
 // Uses SbtModule so the existing sbt dir layout (src/main/scala, src/test/scala) works unchanged.
 // Search "TODO"/"RISK" for parts still needing external plugins or verification.
@@ -205,12 +207,76 @@ object mcp extends Common with PublishModule {
     PathRef(script)
   }
 
-  // build.sbt `proguard` — shrink the assembly jar.
-  // TODO: add `com.guardsquare:proguard-base:7.9.1` to the build header and port the full -keep
-  // arg array from build.sbt. Stubbed to the un-shrunk assembly so the build compiles.
-  def proguard = Task { assembly() }
+  // build.sbt `proguard` — shrink the assembly fat jar in place. proguard-base is on the meta-build
+  // classpath via the `//| mvnDeps` header, so `_root_.proguard.*` is referenced directly (the
+  // `_root_` prefix disambiguates the library package from this task named `proguard`).
+  // -keep set ported verbatim from build.sbt: keep the entrypoint + all first-party classes, all
+  // Scala module singletons (MODULE$), the upickle reader/writer subclasses, and the reflection-
+  // reached namespaces (scala/dotty/scalameta/pc/upickle/protobuf/…) so nothing is stripped that
+  // the presentation compiler or upickle derivation looks up by name at runtime.
+  def proguard: T[PathRef] = Task {
+    val inputJar  = assembly().path
+    val outputJar = Task.dest / "scalasemantic-mcp-shrunk.jar"
+    val args = Array(
+      "-injars", inputJar.toString,
+      "-outjars", outputJar.toString,
+      "-libraryjars",
+      s"${System.getProperty("java.home")}/jmods/java.base.jmod(!**.jar;!module-info.class)",
+      "-dontobfuscate", "-dontoptimize", "-ignorewarnings", "-dontnote", "-dontwarn",
+      "-keepattributes",
+      "Exceptions,InnerClasses,Signature,Deprecated,SourceFile,LineNumberTable,*Annotation*,EnclosingMethod",
+      "-keep", "public class com.github.mercurievv.scalasemantic.mcpServer { public static void main(java.lang.String[]); }",
+      "-keep", "class com.github.mercurievv.scalasemantic.mcpServer$ { *; }",
+      "-keep", "class com.github.mercurievv.scalasemantic.** { *; }",
+      "-keepclassmembers", "class * { public static ** MODULE$; }",
+      "-keep", "class scala.Dynamic { *; }",
+      "-keep", "class * extends upickle.core.Reader { *; }",
+      "-keep", "class * extends upickle.core.Writer { *; }",
+      "-keepclassmembers", "class scala.** { *; }",
+      "-keepclassmembers", "class dotty.tools.** { *; }",
+      "-keepclassmembers", "class org.scalameta.** { *; }",
+      "-keep", "class scala.meta.internal.metals.** { *; }",
+      "-keep", "class dotty.tools.pc.** { *; }",
+      "-keepclassmembers", "class upickle.** { *; }",
+      "-keepclassmembers", "class ujson.** { *; }",
+      "-keepclassmembers", "class upack.** { *; }",
+      "-keepclassmembers", "class com.google.protobuf.** { *; }",
+      "-keepclassmembers", "class fastparse.** { *; }",
+      "-keepclassmembers", "class geny.** { *; }",
+      "-keepclassmembers", "class sourcecode.** { *; }",
+      "-keep", "class xsbti.** { *; }",
+      "-keep", "class org.eclipse.lsp4j.** { *; }"
+    )
+    val configuration = new _root_.proguard.Configuration()
+    val parser        = new _root_.proguard.ConfigurationParser(args, System.getProperties)
+    parser.parse(configuration)
+    new _root_.proguard.ProGuard(configuration).execute()
+    Task.log.info(s"ProGuard shrunk jar: $outputJar")
+    PathRef(outputJar)
+  }
 
-  // build.sbt `testShrunk` — run named suites forked against the shrunk jar. TODO: port.
+  // build.sbt `testShrunk` — run the three PC/analysis/mcp suites forked against the SHRUNK jar to
+  // prove ProGuard kept everything the runtime reflectively reaches. Mirrors the sbt classpath
+  // surgery: strip mcp's whole runtime classpath (everything already inside the fat jar) from the
+  // test classpath, then add the shrunk jar — so first-party + bundled classes resolve only from the
+  // shrunk artifact, while test-only deps (munit/junit) and the test classes survive. Forked from the
+  // repo root because AnalyzerPcSuite/McpSuite dogfood `SemanticIndex.fromProject(".")`.
+  def testShrunk() = Task.Command {
+    val bundled  = runClasspath().map(_.path.toString).toSet
+    val testCp   = (pc.test.runClasspath() ++ test.runClasspath()).map(_.path.toString).distinct
+    val shrunk   = proguard().path.toString
+    val filtered = testCp.filterNot(bundled.contains) :+ shrunk
+    val suites = Seq(
+      "com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackendSuite",
+      "com.github.mercurievv.scalasemantic.analysis.AnalyzerPcSuite",
+      "com.github.mercurievv.scalasemantic.mcp.McpSuite"
+    )
+    val cp = filtered.mkString(java.io.File.pathSeparator)
+    Task.log.info(s"Running suites against shrunk jar $shrunk ...")
+    val res = os.proc("java", "-cp", cp, "org.junit.runner.JUnitCore", suites)
+      .call(cwd = build.moduleDir, stdout = os.Inherit, stderr = os.Inherit, check = false)
+    if (res.exitCode != 0) sys.error(s"testShrunk failed (exit ${res.exitCode})")
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
