@@ -47,3 +47,18 @@ class SemanticIndexSuite extends munit.FunSuite:
     assert(idx.isGlobal(Cls), "class symbol is global")
     assert(!idx.isLocal(Cls), "class symbol is not local")
   }
+
+  // `mill-build/build.mill` overrides Mill's implicit meta-build (MillBuildRootModule) to add
+  // `-Xsemanticdb`, so the meta-build's own compile emits SemanticDB for a `.mill` file too.
+  // This proves the analyzer machinery works on Mill build code itself, not just app sources.
+  // NB: unlike ordinary module sources, the meta-build compile has no matching `-sourceroot`, so
+  // the emitted `uri` is an absolute path rather than repo-relative — `idx.document("mill-build/
+  // build.mill")` does NOT resolve today. Tracked as a known limitation, not asserted here.
+  test("dogfoods on the Mill meta-build's own compiled build.mill") {
+    val millBuildDoc = idx.documents.find(_.uri.endsWith("build.mill"))
+    assert(
+      millBuildDoc.isDefined,
+      "expected a semanticdb document for the mill-build meta-build's build.mill"
+    )
+    assert(millBuildDoc.get.symbols.nonEmpty, "build.mill's document should carry symbol info")
+  }
