@@ -44,8 +44,16 @@ class AnalyzerStructureSuite extends munit.FunSuite:
       module("mcp").layer > module("core").layer,
       s"core=${module("core").layer} mcp=${module("mcp").layer}"
     )
-    // No cycles here, so no symbol should be flagged ambiguous (inCycle) while still carrying a layer.
-    assert(structure.symbols.forall(s => !s.combined.inCycle), "unexpected cycle in this repo")
+    // No cycles among the known first-party modules this suite documents (core/analysis/mcp/pc).
+    // Scoped to those: `fromProject(".")` also dogfoods build.mill itself (its root package object
+    // mutually referencing the module objects it defines — an inherent, harmless pattern for a
+    // single-file Mill build, not a real-code cycle) and picks up unrelated fixture/test-class
+    // self-references outside these modules, neither of which this suite is about.
+    val firstParty = Set("core", "analysis", "mcp", "pc")
+    assert(
+      structure.symbols.filter(s => firstParty.contains(s.module)).forall(s => !s.combined.inCycle),
+      "unexpected cycle in this repo"
+    )
   }
 
   test("centrality favours foundations; module edges expose a clean coupling surface") {

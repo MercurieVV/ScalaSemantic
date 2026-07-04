@@ -50,7 +50,10 @@ jobs:
           restore-keys: |
             mill-${{ runner.os }}-
       - name: Check formatting
-        run: ./mill mill.scalalib.scalafmt/checkFormatAll __.sources
+        # `checkFormatFirstParty` (build.mill) — scoped to the modules we own, NOT `__.sources`:
+        # `compat-fixtures` and `corpus` intentionally hold vendored/cross-version fixture sources
+        # that aren't ours to reformat and aren't valid under the repo-wide `scala3` dialect anyway.
+        run: ./mill checkFormatFirstParty
       - name: Check build.mill formatting
         # Standalone script, NOT a Mill task: build.mill lives in its own evaluator context
         # (meta-level 1), and a Mill Task.Command that shells out to `./mill --meta-level N ...`
