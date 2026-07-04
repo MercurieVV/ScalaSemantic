@@ -66,9 +66,17 @@ jobs:
         # committed golden: SemanticDB output isn't guaranteed identical across environments/compiler
         # patches. The committed copies exist for local `./mill test` without a cross-compile.)
         run: ./mill compatGoldenAll
+      - name: Compile all test sources
+        # Runs separately, BEFORE the Test step: dogfood suites (e.g. AnalyzerStructureSuite) call
+        # SemanticIndex.fromProject(".") and walk the ENTIRE out/ tree for *.semanticdb from every
+        # module, main AND test sources. Mill runs independent modules' compile/test-compile/test
+        # tasks concurrently, so without this separate step a module's test can start scanning that
+        # tree while ANOTHER module's test-compile is still concurrently writing its own *.semanticdb
+        # files, seeing a transiently incomplete/partial graph (reproduced on CI: AnalyzerStructureSuite
+        # saw `core layer=1` instead of `0` — a real flake from partial state, not a code bug).
+        # Splitting compile from test removes the write/read race; only test EXECUTION stays parallel.
+        run: ./mill __.test.compile
       - name: Test
-        # See the scalafix step above: `__.test.testForked` (one wildcard selector), NOT explicit
-        # space-separated per-module targets — the latter silently skips every module but the first.
         run: ./mill __.test.testForked
 
   verify:
