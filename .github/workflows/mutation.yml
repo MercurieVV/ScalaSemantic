@@ -1,8 +1,10 @@
-# STILL ON SBT — intentionally, not an oversight. stryker4s has no Mill plugin at all (unlike
-# scalafix/ci-release, which at least publish a stale mill0.x build); the whole mutation toolchain
-# (sbtPlugin3/publishLocal, the stryker sbt command, scripts/run-stryker.sh) is sbt-plugin-bound.
-# See docs/MILL_MIGRATION.md §2/§10 "Hardest" item 3: keep sbt for mutation, or drop mutation
-# testing, until stryker4s ships Mill support. build.sbt/project/ stay in the repo for this reason.
+# DISABLED — build.sbt/project/ removed in the Mill cutover, and this whole workflow is sbt-bound
+# (sbtPlugin3/publishLocal, the sbt `stryker` task, `sbt --batch compile/test`, scripts/run-stryker.sh).
+# A Mill build of stryker4s exists upstream (stryker-mutator/stryker4s#2042) but ships unreleased
+# (queued for v0.22.0); a local snapshot was proven to compile/mutate/run in isolation but hit a
+# reproducible `InitialTestRunFailedException` inside the plugin's own Mill test-runner glue — not
+# fixable from this repo. See docs/MILL_MIGRATION.md §2/§10 "Hardest" item 3. Revisit once v0.22.0
+# ships a working release.
 name: Mutation Testing
 
 on:
@@ -37,6 +39,8 @@ jobs:
   stryker:
     name: Stryker4s
     runs-on: ubuntu-latest
+    # Disabled: sbt build removed, no working Mill port yet. See header comment.
+    if: false
     steps:
       - uses: actions/checkout@v4
         with:

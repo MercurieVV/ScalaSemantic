@@ -51,7 +51,7 @@ cd website && npm install && npm run build   # Docusaurus static site (Node 18+)
 
 ## Build & test gotchas
 
-- **Build tool**: Mill 1.1.7 (`build.mill`, self-downloading `./mill` script committed at repo root). `build.sbt`/`project/` still exist only to back the CI `publish` job (`sbt-ci-release` has no Mill 1.x port) — don't use `sbt` for local compile/test/dev. See `docs/MILL_MIGRATION.md` for full migration status.
+- **Build tool**: Mill 1.1.7 (`build.mill`, self-downloading `./mill` script committed at repo root). `build.sbt`/`project/` are deleted; the CI `publish` job (`sbt-ci-release`) and `mutation.yml` (stryker4s) are both gated `if: false` pending a Mill 1.x port for each — don't use `sbt` at all. See `docs/MILL_MIGRATION.md` for full migration status.
 - **SemanticDB bindings**: `scala.meta.internal.semanticdb.*` is in `semanticdb-shared` (not in `scalameta`).
 - **Wartremover**: pinned to 3.6.0 — 3.5.6 had no artifact for Scala 3.8.4; no Mill plugin exists, so it's wired by hand as a compiler-plugin dep + `-P:wartremover:…` scalacOptions per module.
 

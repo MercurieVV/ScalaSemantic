@@ -142,17 +142,13 @@ jobs:
   publish:
     name: Publish to Sonatype Central
     needs: [build, verify]
-    # On a vX.Y.Z tag push (release), or a manual run (workflow_dispatch) which publishes a
-    # -SNAPSHOT to dry-run credentials + signing without cutting a release.
-    #
-    # STILL ON SBT: no working Mill 1.x publish path exists yet. io.chris-kipp::mill-ci-release's
-    # newest published build targets mill0.12 (see docs/MILL_MIGRATION.md §2) — same TASTy-vintage
-    # problem confirmed for mill-scalafix against Mill 1.1.7 (unpickling failure loading the module
-    # trait). Revisit once a mill1.x-tagged release exists; until then this job (and build.sbt/
-    # project/) stay in place purely to keep publishing working.
-    if: >-
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
-      github.event_name == 'workflow_dispatch'
+    # DISABLED — build.sbt/project/ removed in the Mill cutover, so `sbt --batch ci-release` no
+    # longer has a build to run. No working Mill 1.x publish path exists yet: io.chris-kipp::
+    # mill-ci-release's newest published build targets mill0.12 (see docs/MILL_MIGRATION.md §2) —
+    # same TASTy-vintage problem confirmed for mill-scalafix against Mill 1.1.7 (unpickling failure
+    # loading the module trait). Deferred intentionally (user accepted this gap); revisit once a
+    # mill1.x-tagged mill-ci-release release exists and wire CiReleaseModule + VcsVersion here.
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

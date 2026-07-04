@@ -3,8 +3,9 @@
 MCP server doing deep semantic analysis on Scala projects via SemanticDB — capabilities beyond standard LSP/Metals.
 
 ## Stack
-- Scala 3.8.4, Mill 1.1.7 (build tool; `build.sbt`/`project/` still present but unused for local dev —
-  kept only until `publish`/scalafix/mutation port off sbt, see `docs/MILL_MIGRATION.md`)
+- Scala 3.8.4, Mill 1.1.7 (build tool; `build.sbt`/`project/` deleted — Sonatype publish and
+  stryker4s mutation testing are deferred, disabled in CI (`if: false`) until each has a working
+  Mill path, see `docs/MILL_MIGRATION.md`)
 - `org.scalameta:scalameta:4.13.9` — SemanticDB protobuf API (`scala.meta.internal.semanticdb`)
 - `com.lihaoyi:upickle:4.2.1` — JSON for MCP wire protocol
 - `org.scalameta:munit:1.2.3` — tests
@@ -61,8 +62,9 @@ When using Claude/agentic workflows to organize project tasks:
 ./mill mcp.runMain com.github.mercurievv.scalasemantic.mcpServer <root>  # start the server
 ```
 `scalafixAll` is NOT in `prePush` right now — no Mill 1.x build of `mill-scalafix` exists yet
-(see `docs/MILL_MIGRATION.md` §2). `build.sbt`/`project/` still exist and back the CI `publish` job
-only (`sbt-ci-release` has no Mill 1.x port either); don't use `sbt` for local compile/test/dev.
+(see `docs/MILL_MIGRATION.md` §2). `build.sbt`/`project/` are gone; do not use `sbt` at all —
+the CI `publish` job (`sbt-ci-release`) and `mutation.yml` (stryker4s) are both gated `if: false`
+pending a Mill 1.x path for each.
 
 Agent worktrees live at `./.worktrees/<branch>`. See `scripts/worktree-new.sh`.
 

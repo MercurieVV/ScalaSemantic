@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Run stryker4s mutation testing.
 #
+# INACTIVE since the Mill cutover: this script shells out to `sbt`, and build.sbt/project/ were
+# deleted (see docs/MILL_MIGRATION.md §2/§10 "Hardest" item 3 — no released Mill build of stryker4s
+# exists yet, and a local snapshot hit a reproducible InitialTestRunFailedException in its Mill
+# test-runner glue). .github/workflows/mutation.yml is disabled (`if: false`) for the same reason.
+# Kept as reference for when stryker4s ships a working Mill port.
+#
 # Default mode runs in an isolated, reusable git worktree so the current checkout's target/
 # directories stay untouched. Use --local to run in this checkout and keep all Stryker churn under
 # the normal local ./target directories.
