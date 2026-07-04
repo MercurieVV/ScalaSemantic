@@ -51,6 +51,12 @@ jobs:
             mill-${{ runner.os }}-
       - name: Check formatting
         run: ./mill mill.scalalib.scalafmt/checkFormatAll __.sources
+      - name: Check build.mill formatting
+        # Standalone script, NOT a Mill task: build.mill lives in its own evaluator context
+        # (meta-level 1), and a Mill Task.Command that shells out to `./mill --meta-level N ...`
+        # deadlocks against its own daemon (Mill serializes all commands through one daemon per
+        # project) — confirmed by a 15+ minute hang. Must run as a plain shell step like this one.
+        run: scripts/check-build-mill-fmt.sh
       - name: Check scalafix
         # Uses scalafix-interfaces (a stable, Maven-Central-published embedding API) directly from
         # build.mill, not the mill-scalafix plugin — that plugin has no Mill 1.x build.

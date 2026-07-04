@@ -404,7 +404,8 @@ trait CompatModule extends SbtModule with Cross.Module[String] {
       (if (crossValue.startsWith("2.")) Seq(mvn"org.scalameta:::semanticdb-scalac:${V.scalameta}")
        else Nil)
   def scalacOptions = super.scalacOptions() ++
-    (if (crossValue.startsWith("2.")) Seq("-Yrangepos", s"-P:semanticdb:sourceroot:${build.moduleDir}")
+    (if (crossValue.startsWith("2."))
+       Seq("-Yrangepos", s"-P:semanticdb:sourceroot:${build.moduleDir}")
      else Seq("-Xsemanticdb", "-sourceroot", build.moduleDir.toString))
 
   // build.sbt `compatGolden` — compile then copy emitted *.semanticdb into versioned golden resources.
@@ -467,7 +468,7 @@ def commonPom(name: String) = PomSettings(
   url = "https://github.com/mercurievv/ScalaSemantic",
   licenses = Seq(License.MIT),
   versionControl = VersionControl.github("mercurievv", "ScalaSemantic"),
-  developers = Seq(Developer("mercurievv", "Viktor Skalinins", "https://github.com/mercurievv"))
+  developers = Seq(Developer("mercurievv", "Viktors Kalinins", "https://github.com/mercurievv"))
 )
 
 // build.sbt `compatGoldenAll` alias — regenerate golden for every compat Scala version.
@@ -482,7 +483,9 @@ def compatGoldenAll() = Task.Command {
 // imported (see docs/MILL_MIGRATION.md §2).
 def prePush() = Task.Command {
   mill.scalalib.scalafmt.ScalafmtModule.checkFormatAll(
-    mill.util.Tasks(Seq(core, core.test, pc, pc.test, analysis, analysis.test, mcp, mcp.test).map(m => m.sources))
+    mill.util.Tasks(
+      Seq(core, core.test, pc, pc.test, analysis, analysis.test, mcp, mcp.test).map(m => m.sources)
+    )
   )()
   core.scalafixCheck()
   pc.scalafixCheck()
@@ -495,6 +498,14 @@ def prePush() = Task.Command {
   mcp.test.testForked()()
   analysis.stainlessVerify()()
 }
+
+// build.mill itself lives in its own evaluator context (meta-level 1), unreachable from a level-0
+// Task.Command. DO NOT shell out to `./mill --meta-level 1 ...` from inside a Task.Command to
+// check it: Mill serializes every command through one daemon per project, so a Task.Command
+// blocked on that nested invocation's exit, while the invocation itself waits for the very daemon
+// that's blocked on it, deadlocks — confirmed in practice (hung 15+ minutes, killed manually).
+// To scalafmt-check build.mill, run scripts/check-build-mill-fmt.sh from a shell (locally, or as
+// its own CI step) — never wrap it in a Mill task.
 
 // ---------------------------------------------------------------------------------------------
 // Relocated from project/CorpusFetch.scala (sbt meta-build class) — no sbt-specific API used
