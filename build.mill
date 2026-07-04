@@ -529,12 +529,20 @@ def compatGoldenAll() = Task.Command {
 // VERIFIES it. scalafix runs via scalafix-interfaces (see `Common.scalafixCheck`), NOT the
 // mill-scalafix plugin — that plugin has no Mill-1.x build and breaks build.mill entirely if
 // imported (see docs/MILL_MIGRATION.md §2).
-def prePush() = Task.Command {
+// Scoped to the first-party modules, NOT `__.sources` — `compat-fixtures` and `corpus` intentionally
+// hold vendored/cross-version fixture sources (e.g. Scala-2-only procedure syntax, corpus files with
+// embedded annotation comments) that aren't ours to reformat and aren't valid under the repo-wide
+// `scala3` dialect anyway. Also invoked directly from the CI `Check formatting` step.
+def checkFormatFirstParty() = Task.Command {
   mill.scalalib.scalafmt.ScalafmtModule.checkFormatAll(
     mill.util.Tasks(
       Seq(core, core.test, pc, pc.test, analysis, analysis.test, mcp, mcp.test).map(m => m.sources)
     )
   )()
+}
+
+def prePush() = Task.Command {
+  checkFormatFirstParty()()
   core.scalafixCheck()
   pc.scalafixCheck()
   analysis.scalafixCheck()
