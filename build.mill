@@ -37,7 +37,11 @@ def munitDeps = Seq(
 trait Common extends SbtModule {
   def scalaVersion = V.scala3
 
-  // SemanticDB emission for dogfooding + scalafix. Mill built-in.
+  // SemanticDB emission for dogfooding + scalafix. Mill's `semanticDbEnabled` only feeds the IDE
+  // `semanticDbData`/BSP target — the normal `compile` does NOT write *.semanticdb. sbt's
+  // `semanticdbEnabled` instead adds `-Xsemanticdb` to the compile so the files land in the class
+  // output; the dogfood tests scan for exactly those. So drive it via the compiler flag directly:
+  // Scala 3 writes them under <classes>/META-INF/semanticdb (out/<mod>/compile.dest/classes/...).
   def semanticDbEnabled = true
 
   // Modules doing Java interop (pc) turn warts OFF — build.sbt `.disablePlugins(WartRemover)`.
@@ -65,12 +69,22 @@ trait Common extends SbtModule {
     names.map(n => s"-P:wartremover:$level:org.wartremover.warts.$n")
 
   def scalacOptions = super.scalacOptions() ++ Seq(
+    // Emit *.semanticdb during compile (the dogfood source), matching sbt's semanticdbEnabled.
+    // `-sourceroot` is REQUIRED: without it Scala 3 writes each file next to its source (polluting
+    // src/); with it they land under <classes>/META-INF/semanticdb/<relpath> inside out/.
+    "-Xsemanticdb", "-sourceroot", build.moduleDir.toString,
     "-Werror", "-Wunused:all", "-Wconf:msg=.*unused.*:e"
   ) ++ (if (useWartremover) wartFlags(warnWarts, "only-warn-traverser") ++ wartFlags(strictWarts, "traverser")
         else Nil)
 
   trait CommonTests extends SbtTests with TestModule.Munit {
     def mvnDeps = munitDeps
+    // Dogfood suites call SemanticIndex.fromProject(".") and scan for *.semanticdb from cwd. Mill
+    // forks tests in the module dir by default, but the emitted SemanticDB (and every module's) lives
+    // under the repo-root `out/`. Run from repo root so "." sees all of it (sbt ran unforked from root).
+    // Mill sandboxes each test run in a temp cwd, which would override forkWorkingDir — turn it off.
+    def testSandboxWorkingDir = false
+    def forkWorkingDir = build.moduleDir
     // Test drops the strict wart errors (build.sbt `Test/wartremoverErrors --= strictCompileWarts`).
     def strictTraversers = Common.this.strictWarts.map(w =>
       s"-P:wartremover:traverser:org.wartremover.warts.$w"
