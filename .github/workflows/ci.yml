@@ -51,6 +51,10 @@ jobs:
             mill-${{ runner.os }}-
       - name: Check formatting
         run: ./mill mill.scalalib.scalafmt/checkFormatAll __.sources
+      - name: Check scalafix
+        # Uses scalafix-interfaces (a stable, Maven-Central-published embedding API) directly from
+        # build.mill, not the mill-scalafix plugin — that plugin has no Mill 1.x build.
+        run: ./mill core.scalafixCheck pc.scalafixCheck analysis.scalafixCheck mcp.scalafixCheck
       - name: Regenerate cross-version compat golden SemanticDB
         # Recompiles compat-fixtures under every Scala in `compatScalaVersions` so CompatSuite runs
         # against THIS runner's freshly emitted *.semanticdb. (We don't byte-compare against the

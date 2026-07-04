@@ -1,6 +1,7 @@
 //| mvnDeps:
 //| - com.guardsquare:proguard-base:7.9.1
 //| - com.lihaoyi::mill-contrib-buildinfo:$MILL_VERSION
+//| - ch.epfl.scala:scalafix-interfaces:0.14.3
 // DRAFT Mill build (Mill 1.1.7) — mirrors the sbt build catalogued in docs/MILL_MIGRATION.md.
 // Uses SbtModule so the existing sbt dir layout (src/main/scala, src/test/scala) works unchanged.
 // Search "TODO"/"RISK" for parts still needing external plugins or verification.
@@ -10,6 +11,8 @@ import mill.*
 import mill.scalalib.*
 import mill.scalalib.publish.*
 import mill.contrib.buildinfo.BuildInfo
+import scalafix.interfaces.{Scalafix, ScalafixMainMode}
+import scala.jdk.CollectionConverters.*
 
 // ---------------------------------------------------------------------------------------------
 // Shared versions (were `lazy val`s in build.sbt)
@@ -104,6 +107,43 @@ trait Common extends SbtModule {
   ) ++ (if (useWartremover)
           wartFlags(warnWarts, "only-warn-traverser") ++ wartFlags(strictWarts, "traverser")
         else Nil)
+
+  // scalafix via scalafix-interfaces (a stable, Maven-Central-published embedding API), NOT the
+  // mill-scalafix plugin — that plugin has no mill1.x build and breaks build.mill entirely if
+  // imported (see docs/MILL_MIGRATION.md §2). scalafix-interfaces fetches its own scalafix-core
+  // via coursier at task-run time (network required on first run, then cached).
+  def scalafixCheck: T[Unit] = Task {
+    compile()
+    val cp = runClasspath().map(_.path.toNIO).asJava
+    val sources = allSourceFiles().map(_.path.toNIO).asJava
+    val scalafix = Scalafix.fetchAndClassloadInstance(V.scala3)
+    val args = scalafix
+      .newArguments()
+      .withRules(
+        Seq(
+          "OrganizeImports",
+          "DisableSyntax",
+          "LeakingImplicitClassVal",
+          "NoValInForComprehension",
+          "RemoveUnused",
+          "RedundantSyntax"
+        ).asJava
+      )
+      .withToolClasspath(
+        java.util.List.of[java.net.URL](),
+        Seq("org.typelevel::typelevel-scalafix:0.5.0").asJava
+      )
+      .withClasspath(cp)
+      .withSourceroot(build.moduleDir.toNIO)
+      .withConfig(java.util.Optional.of((build.moduleDir / ".scalafix.conf").toNIO))
+      .withPaths(sources)
+      .withScalaVersion(V.scala3)
+      .withScalacOptions(scalacOptions().asJava)
+      .withMode(ScalafixMainMode.CHECK)
+    val errors = args.run()
+    if (errors.nonEmpty)
+      sys.error(s"scalafix check failed in ${moduleDir}: ${errors.toSeq.mkString(", ")}")
+  }
 
   trait CommonTests extends SbtTests with TestModule.Munit {
     def mvnDeps = munitDeps
@@ -437,13 +477,17 @@ def compatGoldenAll() = Task.Command {
 
 // build.sbt `prePush` alias = `clean; scalafmtCheckAll; scalafixAll --check; Test/testOnly *;
 // compatGoldenAll; stainlessVerify`. Formatting is APPLIED by the pre-commit hook, so this only
-// VERIFIES it. scalafix --check is DROPPED: no Mill-1.x build of mill-scalafix exists yet (the
-// only published artifact, `mill-scalafix_mill0.13_3`, fails to load under Mill 1.1.7 — TASTy
-// unpickling error reading `ScalafixModule`) — see docs/MILL_MIGRATION.md §2.
+// VERIFIES it. scalafix runs via scalafix-interfaces (see `Common.scalafixCheck`), NOT the
+// mill-scalafix plugin — that plugin has no Mill-1.x build and breaks build.mill entirely if
+// imported (see docs/MILL_MIGRATION.md §2).
 def prePush() = Task.Command {
   mill.scalalib.scalafmt.ScalafmtModule.checkFormatAll(
     mill.util.Tasks(Seq(core, core.test, pc, pc.test, analysis, analysis.test, mcp, mcp.test).map(m => m.sources))
   )()
+  core.scalafixCheck()
+  pc.scalafixCheck()
+  analysis.scalafixCheck()
+  mcp.scalafixCheck()
   compatGoldenAll()()
   core.test.testForked()()
   pc.test.testForked()()

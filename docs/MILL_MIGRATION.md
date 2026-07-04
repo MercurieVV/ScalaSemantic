@@ -14,15 +14,35 @@ Current: **sbt 2.0.1**, Scala **3.8.4**, 5 modules + root aggregate. Sources: `b
       `io.chris-kipp::mill-ci-release` exists (newest published is `mill0.12`). Revisit when a
       mill1.x-tagged release ships; then wire `CiReleaseModule` + `VcsVersion`, confirm Central
       Portal host support, and drop this job's sbt setup.
-- [ ] **scalafix (`prePush` / CI lint step)** — `mill-scalafix`'s only published build targets Mill
-      0.13 and fails TASTy unpickling under Mill 1.1.7 (confirmed, not guessed — see §2). No
-      `scalafixAll --check` equivalent runs anywhere right now. Revisit when a mill1.x build ships.
-- [ ] **stryker4s mutation (`mutation.yml`)** — **close, not yet released**: `feat(mill): add Mill
-      plugin` (stryker-mutator/stryker4s#2042) merged to `master` 2026-06-17 and is queued in the
-      still-open release-please PR for **v0.22.0** (stryker-mutator/stryker4s#2041). Nothing
-      published to Maven Central yet — latest release is still v0.21.0 (2026-06-05), no
-      `stryker4s-mill*` artifact exists. Revisit once v0.22.0 tags/publishes; then wire the Mill
-      plugin into `build.mill` and drop `run-stryker.sh`'s sbt path.
+- [x] **scalafix (`prePush` / CI lint step)** — **UNBLOCKED, no plugin needed.** `mill-scalafix`
+      itself is still dead (no mill1.x build, see §2), but `scalafixCheck` in `Common` (build.mill)
+      calls `ch.epfl.scala:scalafix-interfaces` directly — a stable, Java-facing, Maven-Central-
+      published embedding API that Scalafix ships *for exactly this* (IDEs/build tools without a
+      native plugin; same mechanism `gradle-scalafix` and Metals use). It fetches scalafix-core
+      itself via coursier at task-run time (network on first run, cached after), builds
+      `ScalafixArguments` with our `.scalafix.conf` rules (`OrganizeImports` pulled from
+      `org.typelevel::typelevel-scalafix:0.5.0` as tool-classpath, the rest built in), and runs in
+      `ScalafixMainMode.CHECK`. Verified end-to-end: passes clean on all 4 modules, and a smoke-test
+      file with a real import-order violation produced the expected fix diff and failed the task.
+      Wired into `prePush` and a new CI "Check scalafix" step. Unlike stryker4s below,
+      scalafix-interfaces is a normal versioned release — no locally-published snapshot, no CI risk.
+- [ ] **stryker4s mutation (`mutation.yml`)** — **proven feasible via a local snapshot, not wired
+      in**: `feat(mill): add Mill plugin` (stryker-mutator/stryker4s#2042) merged to `master`
+      2026-06-17, queued for the still-unreleased **v0.22.0** (stryker-mutator/stryker4s#2041;
+      nothing on Maven Central yet, latest release stays v0.21.0). Cloned stryker4s at the same
+      commit (`2c0f5bd7`) the existing sbt snapshot already uses, ran the repo's own
+      `publishMillLocal` alias, and verified `stryker4s.mill.Stryker4sModule` end-to-end in a throwaway
+      Mill project (`foo.stryker` compiled, mutated, ran tests, wrote an HTML report) using
+      `io.stryker-mutator::mill-stryker4s::0.0.0-TEST-SNAPSHOT` resolved straight out of
+      `~/.ivy2/local` — no explicit repository config needed. **Deliberately not wired into the main
+      `build.mill`**: Mill's plugin-header `mvnDeps` (unlike sbt's `if (flag) addSbtPlugin(...) else
+      Seq.empty`) resolves statically at bootstrap on *every* invocation, so adding it unconditionally
+      would break CI and every other dev's plain `./mill compile` the moment the local-only snapshot
+      jar is missing — the same failure mode already documented for mill-scalafix. Confirmed with the
+      user: correct next step is to mirror the sbt isolation (`scripts/run-stryker.sh`'s throwaway
+      `.worktrees/stryker4s-<name>` clone) with a small standalone Mill build inside that clone,
+      swapping sbt for Mill only in that isolated context — not yet implemented, revisit once v0.22.0
+      ships (making this whole workaround moot) or if mutation testing becomes a priority sooner.
 
 **Doable, just not done yet:**
 - [x] **CI cache** — added an explicit `actions/cache@v4` step in the `build` job over
@@ -65,8 +85,9 @@ Current: **sbt 2.0.1**, Scala **3.8.4**, 5 modules + root aggregate. Sources: `b
       sbt-only), delete `build.sbt`, `project/*.sbt`, `project/*.scala` (already ported into
       `build.mill`, see §7), `project/build.properties`; keep `.mill-version`.
 
-**Done:** modules/deps (§1), wartremover/assembly/BuildInfo/ProGuard/testShrunk/compat-cross-golden
-(§2–4), meta-build helper relocation (§7), git hooks (§9), `ci.yml` build/verify/docs-site/release
+**Done:** modules/deps (§1), wartremover/assembly/BuildInfo/ProGuard/testShrunk/compat-cross-golden/
+scalafix-via-scalafix-interfaces (§2–4), meta-build helper relocation (§7), git hooks (§9),
+`ci.yml` build/verify/docs-site/release
 jobs (§8). See inline "DONE" / "NOT ported" markers throughout for exact status per item.
 
 ---
@@ -96,7 +117,9 @@ Mill mapping:
 | sbt plugin (version) | purpose | Mill replacement | risk |
 |---|---|---|---|
 | sbt-scalafmt 2.6.1 | format | built-in `ScalafmtModule` — wired, `./mill mill.scalalib.scalafmt/checkFormatAll\|reformatAll __.sources` | low — DONE |
-| sbt-scalafix 0.14.7 | lint/rewrite | third-party `com.goyeau::mill-scalafix` | **CONFIRMED BROKEN on Mill 1.1.7**: the only published artifact is `mill-scalafix_mill0.13_3:0.5.1` (no mill1.x build exists on Maven Central); loading it throws `scala.MatchError: val <none>` unpickling `ScalafixModule`'s TASTy, and once that trait fails to load ALL of `build.mill` fails to compile (a scalac plugin classpath resolution failure, not a targeted one). Left OUT of `build.mill`; `prePush`/CI skip the scalafix --check step entirely until a mill1.x build ships. |
+| sbt-scalafix 0.14.7 | lint/rewrite | **NOT** `com.goyeau::mill-scalafix` (confirmed broken — see below) — instead `ch.epfl.scala:scalafix-interfaces` called directly from a `Common.scalafixCheck` task | low — DONE, unblocked without the native plugin |
+
+`mill-scalafix`: **CONFIRMED BROKEN on Mill 1.1.7** — the only published artifact is `mill-scalafix_mill0.13_3:0.5.1` (no mill1.x build exists on Maven Central); loading it throws `scala.MatchError: val <none>` unpickling `ScalafixModule`'s TASTy, and once that trait fails to load ALL of `build.mill` fails to compile (a scalac plugin classpath resolution failure, not a targeted one). Left OUT of `build.mill` entirely — but scalafix itself is NOT skipped: `scalafix-interfaces` (Scalafix's own stable embedding API, published normally on Maven Central, same mechanism `gradle-scalafix`/Metals use) is called directly instead. See the TODO entry above for the full verification story.
 | sbt-wartremover 3.6.0 | wart rules | **NO Mill plugin** — add wartremover as compiler plugin dep + `-P:wartremover:…` scalacOptions by hand | **HIGH** — DONE |
 | sbt-ci-release 1.11.2 | dynver + pgp + Sonatype Central | `io.chris-kipp::mill-ci-release` (`CiReleaseModule` + `VcsVersion`) | **HIGH — NOT ported**: newest published artifact is `mill-ci-release_mill0.12_2.13:0.3.0`, same no-mill1.x-build problem as scalafix (untried, but same root cause expected). `ci.yml`'s `publish` job stays on sbt/`ci-release` for now — this is why `build.sbt`/`project/` are still in the repo. |
 | sbt-assembly 2.3.1 | fat jar | built-in `assembly` + `assemblyRules` | med (port merge strategy) |
@@ -249,9 +272,9 @@ Verified end-to-end locally: `./mill prePush` — 643/643 SUCCESS.
 **Hardest (do first, may block):**
 1. ~~**wartremover**~~ — done: compiler plugin + scalacOptions wired manually, per-module, main-vs-test split.
 2. **ci-release → Central Portal** publishing + PGP signing — **NOT ported**, confirmed no mill1.x `mill-ci-release` build exists yet; `publish` job stays on sbt.
-3. **stryker4s mutation** — no Mill plugin at all; `mutation.yml` stays on sbt intentionally (see §8).
+3. **stryker4s mutation** — no *released* Mill plugin (support merged upstream, unreleased — see §2/TODO); proven working via a local snapshot but deliberately not wired into the main build (would break CI/other devs). `mutation.yml` stays on sbt for now (see §8).
 4. ~~Relocate meta-build helpers (`ScalaSemanticConfigMerger`, `CorpusFetch`) into `build.mill`~~ — done.
-5. **scalafix** — **confirmed broken**, not just risky: `mill-scalafix`'s only published build targets Mill 0.13 and fails TASTy unpickling under Mill 1.1.7. Dropped from `prePush`/CI until a mill1.x build ships.
+5. ~~**scalafix**~~ — done: `mill-scalafix` itself stays confirmed-broken (only published build targets Mill 0.13, fails TASTy unpickling under Mill 1.1.7), but scalafix runs anyway via `ch.epfl.scala:scalafix-interfaces` called directly from `build.mill` — wired into `prePush` and CI.
 
 **Medium:** ~~assembly merge strategy, ProGuard task, testShrunk, BuildInfo, compat cross-golden~~ — done.
 mdoc-library docs task — wired (`./mill docs.run`), not fully exercised (mdoc render not run end-to-end
