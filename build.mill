@@ -2,6 +2,13 @@
 //| - com.guardsquare:proguard-base:7.9.1
 //| - com.lihaoyi::mill-contrib-buildinfo:$MILL_VERSION
 //| - ch.epfl.scala:scalafix-interfaces:0.14.3
+//| bspScriptIgnore: [scripts/**, .scala-build/**]
+// scripts/scalasemantic-mcp.scala is a scala-cli script (own `//> using dep`, own .bsp/scala-cli.json
+// connection) — NOT a Mill module. Without bspScriptIgnore above, Mill's BSP support walks the
+// workspace for loose .java/.scala/.kt files and wraps it in a synthetic single-file module using
+// Mill's OWN build classpath, ignoring the script's using-directives entirely and breaking IDE
+// compilation of it. .scala-build/** is scala-cli's own generated wrapper-source cache for that
+// same script — Mill's scanner picks that up too if not excluded.
 // DRAFT Mill build (Mill 1.1.7) — mirrors the sbt build catalogued in docs/MILL_MIGRATION.md.
 // Uses SbtModule so the existing sbt dir layout (src/main/scala, src/test/scala) works unchanged.
 // Search "TODO"/"RISK" for parts still needing external plugins or verification.
@@ -152,29 +159,30 @@ trait Common extends SbtModule {
     // dotc rejects "-new-syntax -indent" combined in one -rewrite pass ("illegal combination of
     // -rewrite targets") — run them as two sequential passes, each rewriting files in place.
     Task.log.info(s"Rewriting ${moduleDir} sources to Scala 3 style (-new-syntax, then -indent)...")
-    val compilerCp = scalaCompilerClasspath().map(_.path.toString).mkString(java.io.File.pathSeparator)
+    val compilerCp =
+      scalaCompilerClasspath().map(_.path.toString).mkString(java.io.File.pathSeparator)
     val cp = compileClasspath().map(_.path.toString).mkString(java.io.File.pathSeparator)
     val srcs = allSourceFiles().map(_.path.toString)
     def runPass(target: String, dest: os.Path): Int = {
       os.makeDir.all(dest)
       os.proc(
-          "java",
-          "-cp",
-          compilerCp,
-          "dotty.tools.dotc.Main",
-          "-rewrite",
-          target,
-          "-classpath",
-          cp,
-          "-d",
-          dest.toString,
-          srcs
-        )
-        .call(cwd = moduleDir, stdout = os.Inherit, stderr = os.Inherit, check = false)
+        "java",
+        "-cp",
+        compilerCp,
+        "dotty.tools.dotc.Main",
+        "-rewrite",
+        target,
+        "-classpath",
+        cp,
+        "-d",
+        dest.toString,
+        srcs
+      ).call(cwd = moduleDir, stdout = os.Inherit, stderr = os.Inherit, check = false)
         .exitCode
     }
     val rc1 = runPass("-new-syntax", Task.dest / "pass1")
-    if (rc1 != 0) sys.error(s"rewriteToScala3Style (-new-syntax) failed in ${moduleDir} (exit $rc1)")
+    if (rc1 != 0)
+      sys.error(s"rewriteToScala3Style (-new-syntax) failed in ${moduleDir} (exit $rc1)")
     val rc2 = runPass("-indent", Task.dest / "pass2")
     if (rc2 != 0) sys.error(s"rewriteToScala3Style (-indent) failed in ${moduleDir} (exit $rc2)")
   }
@@ -673,10 +681,113 @@ object CorpusFetch {
 }
 
 // build.sbt `corpusFetch` (root taskKey) — fetch checksum-verified upstream SemanticDB compat
-// corpora. Path kept at repo-root `target/vendor-corpus` (not Mill's `out/`) — THIRD_PARTY.md
-// documents that path as the public contract for where the corpora land.
+// corpora into the repo-root `target/vendor-corpus` path THIRD_PARTY.md documents as the public
+// contract for where the corpora land. Kept as a Command (writes outside Task.dest, which plain
+// Tasks may not do) purely for that public/manual-inspection path; `corpus.*` below does its own
+// independent fetch (see comment on `CorpusModule.sources`) so `corpus.*.compile` doesn't require
+// this Command to have been run first.
 def corpusFetch() = Task.Command {
   CorpusFetch.fetch(build.moduleDir / "target" / "vendor-corpus", msg => Task.log.info(msg))
+}
+
+// ---------------------------------------------------------------------------------------------
+// corpus — SemanticDB-emitting compile targets over the vendored compat corpora (whole-corpus,
+// distinct from the small hand-authored `compatFixtures` above). #200.
+// ---------------------------------------------------------------------------------------------
+object CorpusExcludes {
+  // Systematic, not-meant-for-this-target-version patterns (checked by filename suffix):
+  //  - scala-3 corpus: `*.expect.scala` are semanticdb-annotated *golden output* snippets (e.g.
+  //    `object X/*<-objects::X.*/`) — not valid Scala syntax, never sources.
+  //  - scala-2.13 corpus: `*_2.12.scala` are the scalameta corpus's Scala-2.12-only sibling
+  //    fixtures of the `*_2.13.scala` files we target; same package + type names, so compiling
+  //    both together clashes. Keep only the `_2.13` variant.
+  def suffixExcluded(binVer: String, fileName: String): Boolean =
+    if (binVer.startsWith("2.")) fileName.endsWith("_2.12.scala")
+    else fileName.endsWith(".expect.scala")
+
+  // Per-file exclude-list for individual hostile inputs found by trial compile (macro-annotation
+  // fixtures needing compiler plugins we don't wire, intentionally non-compiling test inputs,
+  // etc). One line per file, filename only — the single place to edit when a corpus refresh
+  // introduces a new hostile input.
+  val fileExcludes: Set[String] = Set(
+    "MacroAnnotations.scala", // needs macro-paradise-style annotation macro plugin, not wired here
+    "InfoMacro.scala", // whitebox macro impl module, not meant to compile standalone
+    "InfoMacroTest.scala", // depends on InfoMacro.scala's macro being compiled+loaded first
+    // Java-interop test inputs referencing a `com.javacp.*` Java source tree the corpus subtree
+    // doesn't include (only the `.scala` half of these paired java/scala compiler tests was
+    // fetched) — `javacp` is unresolvable without vendoring the companion .java sources too.
+    "Annotations.scala",
+    "JavaStaticVar.scala",
+    "MetacJava.scala",
+    // Scala-2-macro-signature test input (`def m[TT]: Int = macro ???`) — Scala 3 has no such
+    // legacy macro form and rejects it outright, not something an exclude-list-adjacent flag fixes.
+    "semanticdb-Flags.scala",
+    // These corpus fixtures embed the expected-symbol annotation directly as a block comment
+    // between a string-interpolator prefix and its string literal (`s/*=>...*/"..."`), which
+    // breaks 2.13's lexer (interpolator id + string must be lexically adjacent) — an artifact of
+    // the annotation format, not a real Scala restriction the analyzer needs to handle.
+    "ImplicitConversion_2.13.scala",
+    "Issue2882.scala"
+  )
+
+  def isExcluded(binVer: String, fileName: String): Boolean =
+    suffixExcluded(binVer, fileName) || fileExcludes.contains(fileName)
+}
+
+object corpus extends Cross[CorpusModule](V.compatScala)
+trait CorpusModule extends SbtModule with Cross.Module[String] {
+  def scalaVersion = crossValue
+  // Scratch moduleDir — actual sources are fetched into this task's own dest, not a
+  // src/main/scala layout (see `sources` below).
+  def moduleDir = build.moduleDir / "target" / "corpus-module"
+
+  private def binVer =
+    if (crossValue.startsWith("2.")) crossValue.split('.').take(2).mkString(".") else "3"
+
+  // Mill sandboxes plain Tasks to only write within their own `Task.dest`, and PathRef of a
+  // directory outside a task's own dest/declared Task.Source trips the read-sandbox too — so
+  // this task fetches the corpora itself, into its own dest, making `corpus.*.compile` depend on
+  // (and transparently trigger) the fetch without needing `corpusFetch` run first. `CorpusFetch.
+  // fetch` is checksum-cache-idempotent, so this duplicates the download once per Mill `out/`
+  // cache, not per invocation.
+  def sources = Task {
+    CorpusFetch.fetch(Task.dest, msg => Task.log.info(msg))
+    Seq(PathRef(Task.dest / s"scala-$binVer"))
+  }
+
+  // Filters out systematic + per-file hostile inputs (see CorpusExcludes) so a handful of
+  // non-compiling/wrong-version files don't block emitting SemanticDB for the rest of the corpus.
+  override def allSourceFiles = Task {
+    super.allSourceFiles().filterNot(p => CorpusExcludes.isExcluded(binVer, p.path.last))
+  }
+
+  def scalacPluginMvnDeps =
+    super.scalacPluginMvnDeps() ++
+      (if (crossValue.startsWith("2.")) Seq(mvn"org.scalameta:::semanticdb-scalac:${V.scalameta}")
+       else Nil)
+  // sourceroot must be a directory that actually exists on disk (semanticdb-scalac calls
+  // `.toRealPath()` on it) — this module's own `moduleDir` (target/corpus-module) is a nonexistent
+  // placeholder (see comment above), so use the repo root instead, same as `compatFixtures`.
+  def scalacOptions = super.scalacOptions() ++
+    (if (crossValue.startsWith("2."))
+       Seq("-Yrangepos", s"-P:semanticdb:sourceroot:${build.moduleDir}")
+     else Seq("-Xsemanticdb", "-sourceroot", build.moduleDir.toString))
+
+  // Compile tolerates per-file failures where possible; a hostile input outside the exclude-lists
+  // still fails the whole compile (single Scala compiler invocation) — add it to `fileExcludes`.
+  def corpusGolden() = Task.Command {
+    val src = compile().classes.path / "META-INF" / "semanticdb"
+    val dst = build.moduleDir / "target" / "corpus" / s"scala-$binVer"
+    os.remove.all(dst)
+    if (os.exists(src)) os.copy(src, dst, createFolders = true)
+    Task.log.info(s"corpus golden: $src -> $dst")
+  }
+}
+
+// build.sbt `corpusGoldenAll` alias — regenerate whole-corpus SemanticDB for every compat Scala
+// version. Each `corpus.*.compile` triggers its own fetch transparently via `sources` above.
+def corpusGoldenAll() = Task.Command {
+  Task.traverse(V.compatScala.map(v => corpus(v).corpusGolden()))(identity)()
 }
 
 // ---------------------------------------------------------------------------------------------
