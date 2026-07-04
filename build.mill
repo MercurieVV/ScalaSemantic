@@ -1,5 +1,6 @@
 //| mvnDeps:
 //| - com.guardsquare:proguard-base:7.9.1
+//| - com.lihaoyi::mill-contrib-buildinfo:$MILL_VERSION
 // DRAFT Mill build (Mill 1.1.7) — mirrors the sbt build catalogued in docs/MILL_MIGRATION.md.
 // Uses SbtModule so the existing sbt dir layout (src/main/scala, src/test/scala) works unchanged.
 // Search "TODO"/"RISK" for parts still needing external plugins or verification.
@@ -8,6 +9,7 @@ package build
 import mill.*
 import mill.scalalib.*
 import mill.scalalib.publish.*
+import mill.contrib.buildinfo.BuildInfo
 
 // ---------------------------------------------------------------------------------------------
 // Shared versions (were `lazy val`s in build.sbt)
@@ -157,7 +159,7 @@ object analysis extends Common with PublishModule {
 // ---------------------------------------------------------------------------------------------
 // mcp — stdio JSON-RPC server + entrypoint. test->test dep on analysis. Version source + assembly.
 // ---------------------------------------------------------------------------------------------
-object mcp extends Common with PublishModule {
+object mcp extends Common with PublishModule with BuildInfo {
   def artifactName   = "scalasemantic-mcp"
   def publishVersion = build.publishVersion()
   def pomSettings    = commonPom("scalasemantic-mcp")
@@ -167,17 +169,20 @@ object mcp extends Common with PublishModule {
   // build.sbt: two @main — pin the entrypoint for run + assembly manifest.
   def mainClass = Some("com.github.mercurievv.scalasemantic.mcpServer")
 
-  // Replaces sbt-buildinfo: generate a BuildInfo source with the git-derived version.
-  // TODO: swap for mill-contrib BuildInfo once the plugin dep is wired in the build header.
-  def generatedSources = Task {
-    val ver = build.publishVersion()
-    val dir = Task.dest
-    os.write(dir / "BuildInfo.scala",
-      s"""package com.github.mercurievv.scalasemantic.buildinfo
-         |object BuildInfo { val version: String = "$ver" }
-         |""".stripMargin)
-    super.generatedSources() ++ Seq(PathRef(dir))
+  // Replaces sbt-buildinfo (build.sbt BuildInfoPlugin): mill-contrib BuildInfo generates
+  // `object BuildInfo { val version = "<ver>" }` in the package below so the server can surface the
+  // git-derived version in `serverInfo.version` at runtime instead of a hardcoded literal.
+  def buildInfoPackageName = "com.github.mercurievv.scalasemantic.buildinfo"
+  // Bake the members as compiled `val`s in the object (sbt-buildinfo parity) instead of the Mill
+  // default (values read from a generated resource file at runtime) — so `BuildInfo.version` resolves
+  // even from the ProGuard-shrunk fat jar, where the resource-loading path is fragile.
+  def buildInfoStaticCompiled = true
+  def buildInfoMembers = Task {
+    Seq(BuildInfo.Value("version", build.publishVersion()))
   }
+  // BuildInfo and MavenModule both define `resources`; pick BuildInfo's, which chains through the
+  // linearization back to MavenModule's (so the generated buildinfo resource is ADDED, not replaced).
+  override def resources = super[BuildInfo].resources
 
   // build.sbt `mcp % "compile->compile;test->test"` — mcp tests depend on analysis tests.
   object test extends CommonTests {
