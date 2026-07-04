@@ -1,3 +1,8 @@
+# STILL ON SBT — intentionally, not an oversight. stryker4s has no Mill plugin at all (unlike
+# scalafix/ci-release, which at least publish a stale mill0.x build); the whole mutation toolchain
+# (sbtPlugin3/publishLocal, the stryker sbt command, scripts/run-stryker.sh) is sbt-plugin-bound.
+# See docs/MILL_MIGRATION.md §2/§10 "Hardest" item 3: keep sbt for mutation, or drop mutation
+# testing, until stryker4s ships Mill support. build.sbt/project/ stay in the repo for this reason.
 name: Mutation Testing
 
 on:

@@ -5,7 +5,7 @@
 # Conventional-Commit changes only; docs/refactor/test/chore omitted).
 #
 # This file is GENERATED — do not hand-edit. The docs-site CI job runs it before building the site,
-# so a protected master needs no commit. Run it locally before `sbt docs/run` to preview.
+# so a protected master needs no commit. Run it locally before `./mill docs.run` to preview.
 #
 # Usage: scripts/gen-release-notes.sh [output-file]   (default docs/project/release-notes.md)
 

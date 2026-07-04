@@ -5,6 +5,6 @@
 # only VERIFIES (scalafmtCheckAll), catching anything that slipped past (e.g. a --no-verify commit).
 # Skip with: git commit --no-verify, or PRECOMMIT_SKIP=1 git commit.
 [ "${PRECOMMIT_SKIP:-0}" = "1" ] && exit 0
-exec sbt -batch -error scalafmtAll >/dev/null
+./mill mill.scalalib.scalafmt/reformatAll __.sources >/dev/null
 # Re-stage tracked files scalafmt may have rewritten so the formatting is part of this commit.
 git add -u

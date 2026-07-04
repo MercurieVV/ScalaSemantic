@@ -7,6 +7,59 @@ Current: **sbt 2.0.1**, Scala **3.8.4**, 5 modules + root aggregate. Sources: `b
 
 ---
 
+## Remaining work (TODO)
+
+**Blocked on upstream (not attemptable today, revisit periodically):**
+- [ ] **Publish (`ci.yml` `publish` job)** — still `sbt --batch ci-release`. No Mill 1.x build of
+      `io.chris-kipp::mill-ci-release` exists (newest published is `mill0.12`). Revisit when a
+      mill1.x-tagged release ships; then wire `CiReleaseModule` + `VcsVersion`, confirm Central
+      Portal host support, and drop this job's sbt setup.
+- [ ] **scalafix (`prePush` / CI lint step)** — `mill-scalafix`'s only published build targets Mill
+      0.13 and fails TASTy unpickling under Mill 1.1.7 (confirmed, not guessed — see §2). No
+      `scalafixAll --check` equivalent runs anywhere right now. Revisit when a mill1.x build ships.
+- [ ] **stryker4s mutation (`mutation.yml`)** — no Mill plugin exists at all (worse than the above
+      two, which at least have a wrong-major artifact). Either keep sbt permanently for this one
+      workflow, or drop mutation testing — needs a product decision, not just a build-tool fix.
+
+**Doable, just not done yet:**
+- [x] **CI cache** — added an explicit `actions/cache@v4` step in the `build` job over
+      `~/.cache/coursier` (library deps) + `~/.cache/mill/download` (the self-downloading `./mill`
+      script's own binary cache — confirmed the real path by reading the `mill` launcher script,
+      not `~/.mill`), keyed on `build.mill` + `.mill-version` content hash with an OS-scoped restore
+      fallback.
+- [ ] **scala-steward.yml** — untouched; not validated that it correctly reads deps out of
+      `build.mill` now that `build.sbt` and `build.mill` coexist.
+- [x] **`scripts/*` still reference sbt** (§10) — switched the ones that should move:
+      `token-live-metrics.sh` now runs `./mill mcp.test.testOnly …` (verified working), `agent-run.sh`
+      worker instructions now say `./mill __.compile` / `./mill __.test` / `./mill prePush` (the
+      git hooks already run Mill — the old sbt wording was stale), `gen-release-notes.sh` comment
+      now says `./mill docs.run`. Left on sbt intentionally: `run-stryker.sh` and
+      `mutation-summary.sh` (mutation.yml stays sbt-only per §8/§2), `install.sh`/`bump-version.sh`/
+      `config.sh` (describe the still-sbt `publish` job / sbt-ci-release semantics — accurate until
+      that job ports). `scripts/scalasemantic-mcp.sh`'s build-tool detector already special-cases
+      Mill for *end users* — separate scope from these repo-internal scripts.
+- [x] **docs.run / mdoc** — verified end-to-end: `./mill docs.run` compiles + renders all snippets
+      (0 errors, only pre-existing broken-link warnings unrelated to Mill), writes into
+      `website/docs`, and output matches the committed tree exactly (`git diff --stat website/docs`
+      empty).
+- [x] **Docs updated for local Mill dev** (§12) — done ahead of full cutover since the git hooks
+      already run Mill: `CLAUDE.md` (Stack/Layout/Build-test sections now say Mill, note
+      `build.sbt`/`project/` are publish-only leftovers), `docs/project/releasing.md` (pre-push hook
+      line), `docs/project/development.md` (rewritten Build & test / gotchas sections),
+      `docs/getting-started/integration.md` (assembly command). `README.md` needed no change (already
+      build-tool-generic). `.claude/skills/prepush-setup/` doesn't exist in this repo — it's a global
+      user command (`~/.claude/commands/prepush-setup.md`) reused across sbt projects generally, out
+      of scope here.
+- [ ] **Final cutover** — once publish/scalafix/mutation are resolved (or accepted as permanently
+      sbt-only), delete `build.sbt`, `project/*.sbt`, `project/*.scala` (already ported into
+      `build.mill`, see §7), `project/build.properties`; keep `.mill-version`.
+
+**Done:** modules/deps (§1), wartremover/assembly/BuildInfo/ProGuard/testShrunk/compat-cross-golden
+(§2–4), meta-build helper relocation (§7), git hooks (§9), `ci.yml` build/verify/docs-site/release
+jobs (§8). See inline "DONE" / "NOT ported" markers throughout for exact status per item.
+
+---
+
 ## 1. Modules & dependency graph
 
 | Module | dir | dependsOn | crossScala | notable |
@@ -31,10 +84,10 @@ Mill mapping:
 
 | sbt plugin (version) | purpose | Mill replacement | risk |
 |---|---|---|---|
-| sbt-scalafmt 2.6.1 | format | built-in `ScalafmtModule` | low |
-| sbt-scalafix 0.14.7 | lint/rewrite | third-party `com.goyeau::mill-scalafix` | med (verify Scala 3 + rules) |
-| sbt-wartremover 3.6.0 | wart rules | **NO Mill plugin** — add wartremover as compiler plugin dep + `-P:wartremover:…` scalacOptions by hand | **HIGH** |
-| sbt-ci-release 1.11.2 | dynver + pgp + Sonatype Central | `de.tobiasroeser.mill-ci-release` (`CiReleaseModule` + `VcsVersion`) — confirm **Central Portal** host support | **HIGH** |
+| sbt-scalafmt 2.6.1 | format | built-in `ScalafmtModule` — wired, `./mill mill.scalalib.scalafmt/checkFormatAll\|reformatAll __.sources` | low — DONE |
+| sbt-scalafix 0.14.7 | lint/rewrite | third-party `com.goyeau::mill-scalafix` | **CONFIRMED BROKEN on Mill 1.1.7**: the only published artifact is `mill-scalafix_mill0.13_3:0.5.1` (no mill1.x build exists on Maven Central); loading it throws `scala.MatchError: val <none>` unpickling `ScalafixModule`'s TASTy, and once that trait fails to load ALL of `build.mill` fails to compile (a scalac plugin classpath resolution failure, not a targeted one). Left OUT of `build.mill`; `prePush`/CI skip the scalafix --check step entirely until a mill1.x build ships. |
+| sbt-wartremover 3.6.0 | wart rules | **NO Mill plugin** — add wartremover as compiler plugin dep + `-P:wartremover:…` scalacOptions by hand | **HIGH** — DONE |
+| sbt-ci-release 1.11.2 | dynver + pgp + Sonatype Central | `io.chris-kipp::mill-ci-release` (`CiReleaseModule` + `VcsVersion`) | **HIGH — NOT ported**: newest published artifact is `mill-ci-release_mill0.12_2.13:0.3.0`, same no-mill1.x-build problem as scalafix (untried, but same root cause expected). `ci.yml`'s `publish` job stays on sbt/`ci-release` for now — this is why `build.sbt`/`project/` are still in the repo. |
 | sbt-assembly 2.3.1 | fat jar | built-in `assembly` + `assemblyRules` | med (port merge strategy) |
 | sbt-buildinfo 0.13.1 | BuildInfo | `mill.contrib.buildinfo.BuildInfo` | low |
 | sbt-dynver (via ci-release) | git version | `VcsVersion.vcsState().format()` | low |
@@ -92,54 +145,61 @@ scmInfo, `versionScheme := "early-semver"`. Central host via env `SONATYPE_CREDE
 
 ---
 
-## 7. Meta-build Scala sources to RELOCATE
+## 7. Meta-build Scala sources to RELOCATE — DONE
 
 Package `com.github.mercurievv.scalasemantic.sbtplugin`, compiled as sbt meta-build, imported by `build.sbt`:
 - `project/ScalaSemanticConfigMerger.scala` (16.3K) — used by `mcpClientConfig` (JSON/TOML/YAML MCP config merge + rules/steer writing).
 - `project/CorpusFetch.scala` (4.1K) — used by `corpusFetch`.
 
-Mill: move into `build.mill` helper objects, or a `mill-build/src/…` build-classpath module. Must relocate — no `project/` in Mill.
+Ported into `build.mill` as `ConfigMerger` and `CorpusFetch` objects (neither used sbt-specific APIs
+beyond `File`/`IO`/`Logger`, swapped for `os.Path`/os-lib). `mcpClientConfig(client: String)` and
+`corpusFetch()` are now Mill root-level `Task.Command`s — `mill mcpClientConfig --client <name>`,
+`mill corpusFetch`. `corpusFetch` keeps the repo-root `target/vendor-corpus` path (THIRD_PARTY.md
+contract), not Mill's `out/`. `project/*.scala` left in place until `project/` is deleted at cutover.
 
 ---
 
-## 8. CI workflow sbt invocations (`.github/workflows/`)
+## 8. CI workflow sbt invocations (`.github/workflows/`) — MOSTLY DONE
 
 ### ci.yml
-| job | step | command |
+| job | step | now runs |
 |---|---|---|
-| build | Check formatting | `sbt --batch scalafmtCheckAll` |
-| build | Regenerate golden | `sbt --batch compatGoldenAll` |
-| build | Test | `sbt --batch test` |
-| verify | Verify contracts | `sbt --batch stainlessVerify` (env `STAINLESS_TIMEOUT=30`) |
-| docs-site | Render docs | `sbt --batch docs/run` |
-| publish | Publish | `sbt --batch ci-release` (env SONATYPE_*, PGP_*, SONATYPE_CREDENTIAL_HOST) |
-| release | Build fat jar | `sbt --batch "mcp/assembly"` |
+| build | Check formatting | `./mill mill.scalalib.scalafmt/checkFormatAll __.sources` |
+| build | Regenerate golden | `./mill compatGoldenAll` |
+| build | Test | `./mill core.test.testForked pc.test.testForked analysis.test.testForked mcp.test.testForked` |
+| verify | Verify contracts | `./mill analysis.stainlessVerify` (env `STAINLESS_TIMEOUT=30`) |
+| docs-site | Render docs | `./mill docs.run` |
+| publish | Publish | **still `sbt --batch ci-release`** — no working Mill 1.x publish path (§2) |
+| release | Build fat jar | `./mill mcp.assembly`; asset renamed from Mill's fixed `out.jar` to `scalasemantic-mcp.jar` on copy |
 
-Also uses `sbt/setup-sbt@v1` + `cache: sbt` in every job → replace with Mill setup (`./mill` bootstrap or `jodersky/setup-mill` style) and Mill cache dirs (`~/.mill`, `out/`).
+Every job dropped `sbt/setup-sbt@v1` + `cache: sbt` (except `publish`, which kept both). No
+replacement cache step was added yet — `setup-java`'s `cache:` input only knows maven/gradle/sbt,
+not Mill; a real fix would be an explicit `actions/cache@v4` over `~/.cache/coursier` + `~/.mill`.
+Jobs build off the `./mill` bootstrap script committed at repo root (self-downloads the pinned
+Mill 1.1.7 native binary — no separate install action needed).
 
-### mutation.yml
-| step | command |
-|---|---|
-| Build stryker4s | `sbt sbtPlugin3/publishLocal` (in cloned stryker4s repo) |
-| Compile clean | `sbt --batch compile` |
-| Run Stryker | `scripts/run-stryker.sh --local --module <m>` → internally `sbt --batch -Dstryker=true "<module>/stryker"` |
-| Verify tests | `sbt --batch test` |
-
-Env: `STRYKER=1`, `-Dstryker=true` gate, local ivy snapshot. **Whole mutation path is sbt-plugin-bound; no Mill equivalent — hardest to migrate, consider keeping sbt just for this or dropping.**
+### mutation.yml — INTENTIONALLY LEFT ON SBT
+Whole stryker4s toolchain (`sbtPlugin3/publishLocal`, the `stryker` sbt task,
+`scripts/run-stryker.sh`) is sbt-plugin-bound with no Mill plugin at all — worse than scalafix/
+ci-release, which at least publish a stale (wrong-Mill-major) artifact. Left unchanged; the file
+header now says so explicitly so this doesn't read as an oversight.
 
 ### scala-steward.yml
-- `scala-steward-action@v2` — **understands sbt & Mill both**; should keep working, but validate it reads Mill deps.
+- `scala-steward-action@v2` — **understands sbt & Mill both**; left untouched, not yet validated
+  that it reads Mill deps correctly now that both `build.sbt` and `build.mill` exist side by side.
 
 ---
 
-## 9. Git hooks (`.githooks/`, `core.hooksPath=.githooks`)
+## 9. Git hooks (`.githooks/`, `core.hooksPath=.githooks`) — DONE
 
-| hook | command |
+| hook | now runs |
 |---|---|
-| pre-commit | `sbt -batch -error scalafmtAll` then `git add -u` |
-| pre-push | `sbt -batch -error prePush` |
+| pre-commit | `./mill mill.scalalib.scalafmt/reformatAll __.sources` then `git add -u` — dropped the `exec` the sbt version used, since `exec` replaced the shell and made the `git add -u` re-stage step **dead code** (a pre-existing bug, now incidentally fixed) |
+| pre-push | `exec ./mill prePush` |
 
-→ Rewrite to `./mill mill.scalalib.scalafmt/reformatAll` (pre-commit) and a Mill prePush target/script (pre-push).
+`prePush` in `build.mill` now chains `checkFormatAll` → `compatGoldenAll` → all 4 modules' tests →
+`stainlessVerify`, matching the sbt alias minus the `scalafix --check` step (dropped per §2).
+Verified end-to-end locally: `./mill prePush` — 643/643 SUCCESS.
 
 ---
 
@@ -176,11 +236,28 @@ Env: `STRYKER=1`, `-Dstryker=true` gate, local ivy snapshot. **Whole mutation pa
 ## Priority / risk summary
 
 **Hardest (do first, may block):**
-1. **wartremover** — no Mill plugin; wire compiler plugin + scalacOptions manually, per-module, main-vs-test split.
-2. **ci-release → Central Portal** publishing + PGP signing (mill-ci-release Central support).
-3. **stryker4s mutation** — sbt-plugin-only via local snapshot; likely keep sbt-for-mutation or drop.
-4. Relocate meta-build helpers (`ScalaSemanticConfigMerger`, `CorpusFetch`) into `build.mill`.
+1. ~~**wartremover**~~ — done: compiler plugin + scalacOptions wired manually, per-module, main-vs-test split.
+2. **ci-release → Central Portal** publishing + PGP signing — **NOT ported**, confirmed no mill1.x `mill-ci-release` build exists yet; `publish` job stays on sbt.
+3. **stryker4s mutation** — no Mill plugin at all; `mutation.yml` stays on sbt intentionally (see §8).
+4. ~~Relocate meta-build helpers (`ScalaSemanticConfigMerger`, `CorpusFetch`) into `build.mill`~~ — done.
+5. **scalafix** — **confirmed broken**, not just risky: `mill-scalafix`'s only published build targets Mill 0.13 and fails TASTy unpickling under Mill 1.1.7. Dropped from `prePush`/CI until a mill1.x build ships.
 
-**Medium:** assembly merge strategy, ProGuard task, testShrunk, BuildInfo, compat cross-golden, mdoc-library docs task, all CI/hook/script rewrites.
+**Medium:** ~~assembly merge strategy, ProGuard task, testShrunk, BuildInfo, compat cross-golden~~ — done.
+mdoc-library docs task — wired (`./mill docs.run`), not fully exercised (mdoc render not run end-to-end
+in this session). CI/hook rewrites — done except `publish`/`mutation.yml` (see above).
+
+**Found and fixed along the way (draft `build.mill` bugs, not sbt-parity gaps):**
+- `CompatModule` (`compat-fixtures`) had no `sources` override, so Mill's default `SbtModule` source
+  set (`src/main/scala`) silently missed the cross-version fixtures under `src/main/scala-2.13` /
+  `src/main/scala-3` — `allSourceFiles` came back empty and **nothing compiled at all**. Fixed by
+  overriding `sources` per `crossValue`.
+- Even once sources were found, plain `compile()` didn't emit `*.semanticdb` for either cross
+  version: Scala 2.13 needs the `semanticdb-scalac` compiler plugin (Scala 3's native
+  `-Xsemanticdb` doesn't apply), which wasn't wired at all. Fixed by adding
+  `scalacPluginMvnDeps`/`scalacOptions` conditional on `crossValue`, and reading golden output from
+  `compile().classes.path` instead of the (empty) `semanticDbData()` target.
+- Together these meant `compatGoldenAll` had never actually produced a semanticdb file in this
+  draft — `CompatSuite` and 6 other tests that depend on the compat golden fixtures (`AnalyzerSuite`,
+  `McpSuite`) were silently failing. All pass now (`./mill prePush` — 643/643 SUCCESS).
 
 **Trivial / drop:** slf4j-nop hacks, `initialize` boot-copy, sbt-git cosmetics, `conflictWarning`.

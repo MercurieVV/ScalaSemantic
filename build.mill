@@ -15,16 +15,16 @@ import mill.contrib.buildinfo.BuildInfo
 // Shared versions (were `lazy val`s in build.sbt)
 // ---------------------------------------------------------------------------------------------
 object V {
-  val scala3               = "3.8.4"
-  val scalameta            = "4.17.0"
-  val upickle              = "4.4.3"
-  val refined              = "0.11.3"
-  val munit                = "1.3.3"
-  val munitScalacheck      = "1.3.0"
-  val slf4jNop             = "1.7.36"
+  val scala3 = "3.8.4"
+  val scalameta = "4.17.0"
+  val upickle = "4.4.3"
+  val refined = "0.11.3"
+  val munit = "1.3.3"
+  val munitScalacheck = "1.3.0"
+  val slf4jNop = "1.7.36"
   val presentationCompiler = "3.8.4"
-  val wartremover          = "3.6.0" // must match the compiler-plugin artifact
-  val compatScala          = Seq("2.13.16", "3.3.4")
+  val wartremover = "3.6.0" // must match the compiler-plugin artifact
+  val compatScala = Seq("2.13.16", "3.3.4")
 }
 
 def munitDeps = Seq(
@@ -59,15 +59,34 @@ trait Common extends SbtModule {
 
   // Always-on wart WARNINGS (build.sbt `wartremoverWarnings ++=`).
   def warnWarts = Seq(
-    "Var", "MutableDataStructures", "NonUnitStatements", "Throw", "Return",
-    "AsInstanceOf", "IsInstanceOf", "Null"
+    "Var",
+    "MutableDataStructures",
+    "NonUnitStatements",
+    "Throw",
+    "Return",
+    "AsInstanceOf",
+    "IsInstanceOf",
+    "Null"
   )
   // Compile-only wart ERRORS (build.sbt `strictCompileWarts`).
   def strictWarts = Seq(
-    "ArrayEquals", "ArrayToString", "EitherProjectionPartial", "Enumeration", "IterableOps",
-    "JavaNetURLConstructors", "LeakingSealed", "ListAppend", "MapUnit", "ObjectThrowable",
-    "OptionPartial", "PartialFunctionApply", "SeqApply", "StringPlusAny", "TripleQuestionMark",
-    "TryPartial", "While"
+    "ArrayEquals",
+    "ArrayToString",
+    "EitherProjectionPartial",
+    "Enumeration",
+    "IterableOps",
+    "JavaNetURLConstructors",
+    "LeakingSealed",
+    "ListAppend",
+    "MapUnit",
+    "ObjectThrowable",
+    "OptionPartial",
+    "PartialFunctionApply",
+    "SeqApply",
+    "StringPlusAny",
+    "TripleQuestionMark",
+    "TryPartial",
+    "While"
   )
   def wartFlags(names: Seq[String], level: String): Seq[String] =
     names.map(n => s"-P:wartremover:$level:org.wartremover.warts.$n")
@@ -76,9 +95,14 @@ trait Common extends SbtModule {
     // Emit *.semanticdb during compile (the dogfood source), matching sbt's semanticdbEnabled.
     // `-sourceroot` is REQUIRED: without it Scala 3 writes each file next to its source (polluting
     // src/); with it they land under <classes>/META-INF/semanticdb/<relpath> inside out/.
-    "-Xsemanticdb", "-sourceroot", build.moduleDir.toString,
-    "-Werror", "-Wunused:all", "-Wconf:msg=.*unused.*:e"
-  ) ++ (if (useWartremover) wartFlags(warnWarts, "only-warn-traverser") ++ wartFlags(strictWarts, "traverser")
+    "-Xsemanticdb",
+    "-sourceroot",
+    build.moduleDir.toString,
+    "-Werror",
+    "-Wunused:all",
+    "-Wconf:msg=.*unused.*:e"
+  ) ++ (if (useWartremover)
+          wartFlags(warnWarts, "only-warn-traverser") ++ wartFlags(strictWarts, "traverser")
         else Nil)
 
   trait CommonTests extends SbtTests with TestModule.Munit {
@@ -90,9 +114,8 @@ trait Common extends SbtModule {
     def testSandboxWorkingDir = false
     def forkWorkingDir = build.moduleDir
     // Test drops the strict wart errors (build.sbt `Test/wartremoverErrors --= strictCompileWarts`).
-    def strictTraversers = Common.this.strictWarts.map(w =>
-      s"-P:wartremover:traverser:org.wartremover.warts.$w"
-    ).toSet
+    def strictTraversers =
+      Common.this.strictWarts.map(w => s"-P:wartremover:traverser:org.wartremover.warts.$w").toSet
     def scalacOptions = Common.this.scalacOptions().filterNot(strictTraversers.contains)
   }
 }
@@ -101,9 +124,9 @@ trait Common extends SbtModule {
 // core — load + index SemanticDB. No deps.
 // ---------------------------------------------------------------------------------------------
 object core extends Common with PublishModule {
-  def artifactName   = "scalasemantic-core"
+  def artifactName = "scalasemantic-core"
   def publishVersion = build.publishVersion()
-  def pomSettings    = commonPom("scalasemantic-core")
+  def pomSettings = commonPom("scalasemantic-core")
   def mvnDeps = Seq(
     mvn"org.scalameta::scalameta:${V.scalameta}",
     mvn"org.scalameta::semanticdb-shared:${V.scalameta}"
@@ -116,10 +139,10 @@ object core extends Common with PublishModule {
 // Warts OFF (Java interop) — build.sbt `.disablePlugins(WartRemover)`.
 // ---------------------------------------------------------------------------------------------
 object pc extends Common with PublishModule {
-  def artifactName   = "scalasemantic-pc"
+  def artifactName = "scalasemantic-pc"
   def publishVersion = build.publishVersion()
-  def pomSettings    = commonPom("scalasemantic-pc")
-  def moduleDeps        = Seq(core)
+  def pomSettings = commonPom("scalasemantic-pc")
+  def moduleDeps = Seq(core)
   override def useWartremover = false // Java interop — build.sbt `.disablePlugins(WartRemover)`
   def mvnDeps = Seq(
     mvn"org.scala-lang::scala3-presentation-compiler:${V.presentationCompiler}",
@@ -132,10 +155,10 @@ object pc extends Common with PublishModule {
 // analysis — query engine + models. dependsOn core, pc. Unmanaged stainless jar from lib/.
 // ---------------------------------------------------------------------------------------------
 object analysis extends Common with PublishModule {
-  def artifactName   = "scalasemantic-analysis"
+  def artifactName = "scalasemantic-analysis"
   def publishVersion = build.publishVersion()
-  def pomSettings    = commonPom("scalasemantic-analysis")
-  def moduleDeps     = Seq(core, pc)
+  def pomSettings = commonPom("scalasemantic-analysis")
+  def moduleDeps = Seq(core, pc)
   def mvnDeps = Seq(
     mvn"com.lihaoyi::upickle:${V.upickle}",
     mvn"eu.timepit::refined:${V.refined}"
@@ -160,10 +183,10 @@ object analysis extends Common with PublishModule {
 // mcp — stdio JSON-RPC server + entrypoint. test->test dep on analysis. Version source + assembly.
 // ---------------------------------------------------------------------------------------------
 object mcp extends Common with PublishModule with BuildInfo {
-  def artifactName   = "scalasemantic-mcp"
+  def artifactName = "scalasemantic-mcp"
   def publishVersion = build.publishVersion()
-  def pomSettings    = commonPom("scalasemantic-mcp")
-  def moduleDeps     = Seq(analysis)
+  def pomSettings = commonPom("scalasemantic-mcp")
+  def moduleDeps = Seq(analysis)
   def mvnDeps = Seq(mvn"com.lihaoyi::upickle:${V.upickle}")
 
   // build.sbt: two @main — pin the entrypoint for run + assembly manifest.
@@ -202,12 +225,14 @@ object mcp extends Common with PublishModule with BuildInfo {
 
   // build.sbt `mcpLauncher` — dev launch script off this build's classpath.
   def mcpLauncher = Task {
-    val cp     = runClasspath().map(_.path).mkString(java.io.File.pathSeparator)
+    val cp = runClasspath().map(_.path).mkString(java.io.File.pathSeparator)
     val script = Task.dest / "scalasemantic-mcp"
-    os.write(script,
+    os.write(
+      script,
       s"""|#!/usr/bin/env sh
           |exec java -cp "$cp" ${mainClass().get} "$$@"
-          |""".stripMargin)
+          |""".stripMargin
+    )
     os.perms.set(script, "rwxr-xr-x")
     PathRef(script)
   }
@@ -220,40 +245,67 @@ object mcp extends Common with PublishModule with BuildInfo {
   // reached namespaces (scala/dotty/scalameta/pc/upickle/protobuf/…) so nothing is stripped that
   // the presentation compiler or upickle derivation looks up by name at runtime.
   def proguard: T[PathRef] = Task {
-    val inputJar  = assembly().path
+    val inputJar = assembly().path
     val outputJar = Task.dest / "scalasemantic-mcp-shrunk.jar"
     val args = Array(
-      "-injars", inputJar.toString,
-      "-outjars", outputJar.toString,
+      "-injars",
+      inputJar.toString,
+      "-outjars",
+      outputJar.toString,
       "-libraryjars",
       s"${System.getProperty("java.home")}/jmods/java.base.jmod(!**.jar;!module-info.class)",
-      "-dontobfuscate", "-dontoptimize", "-ignorewarnings", "-dontnote", "-dontwarn",
+      "-dontobfuscate",
+      "-dontoptimize",
+      "-ignorewarnings",
+      "-dontnote",
+      "-dontwarn",
       "-keepattributes",
       "Exceptions,InnerClasses,Signature,Deprecated,SourceFile,LineNumberTable,*Annotation*,EnclosingMethod",
-      "-keep", "public class com.github.mercurievv.scalasemantic.mcpServer { public static void main(java.lang.String[]); }",
-      "-keep", "class com.github.mercurievv.scalasemantic.mcpServer$ { *; }",
-      "-keep", "class com.github.mercurievv.scalasemantic.** { *; }",
-      "-keepclassmembers", "class * { public static ** MODULE$; }",
-      "-keep", "class scala.Dynamic { *; }",
-      "-keep", "class * extends upickle.core.Reader { *; }",
-      "-keep", "class * extends upickle.core.Writer { *; }",
-      "-keepclassmembers", "class scala.** { *; }",
-      "-keepclassmembers", "class dotty.tools.** { *; }",
-      "-keepclassmembers", "class org.scalameta.** { *; }",
-      "-keep", "class scala.meta.internal.metals.** { *; }",
-      "-keep", "class dotty.tools.pc.** { *; }",
-      "-keepclassmembers", "class upickle.** { *; }",
-      "-keepclassmembers", "class ujson.** { *; }",
-      "-keepclassmembers", "class upack.** { *; }",
-      "-keepclassmembers", "class com.google.protobuf.** { *; }",
-      "-keepclassmembers", "class fastparse.** { *; }",
-      "-keepclassmembers", "class geny.** { *; }",
-      "-keepclassmembers", "class sourcecode.** { *; }",
-      "-keep", "class xsbti.** { *; }",
-      "-keep", "class org.eclipse.lsp4j.** { *; }"
+      "-keep",
+      "public class com.github.mercurievv.scalasemantic.mcpServer { public static void main(java.lang.String[]); }",
+      "-keep",
+      "class com.github.mercurievv.scalasemantic.mcpServer$ { *; }",
+      "-keep",
+      "class com.github.mercurievv.scalasemantic.** { *; }",
+      "-keepclassmembers",
+      "class * { public static ** MODULE$; }",
+      "-keep",
+      "class scala.Dynamic { *; }",
+      "-keep",
+      "class * extends upickle.core.Reader { *; }",
+      "-keep",
+      "class * extends upickle.core.Writer { *; }",
+      "-keepclassmembers",
+      "class scala.** { *; }",
+      "-keepclassmembers",
+      "class dotty.tools.** { *; }",
+      "-keepclassmembers",
+      "class org.scalameta.** { *; }",
+      "-keep",
+      "class scala.meta.internal.metals.** { *; }",
+      "-keep",
+      "class dotty.tools.pc.** { *; }",
+      "-keepclassmembers",
+      "class upickle.** { *; }",
+      "-keepclassmembers",
+      "class ujson.** { *; }",
+      "-keepclassmembers",
+      "class upack.** { *; }",
+      "-keepclassmembers",
+      "class com.google.protobuf.** { *; }",
+      "-keepclassmembers",
+      "class fastparse.** { *; }",
+      "-keepclassmembers",
+      "class geny.** { *; }",
+      "-keepclassmembers",
+      "class sourcecode.** { *; }",
+      "-keep",
+      "class xsbti.** { *; }",
+      "-keep",
+      "class org.eclipse.lsp4j.** { *; }"
     )
     val configuration = new _root_.proguard.Configuration()
-    val parser        = new _root_.proguard.ConfigurationParser(args, System.getProperties)
+    val parser = new _root_.proguard.ConfigurationParser(args, System.getProperties)
     parser.parse(configuration)
     new _root_.proguard.ProGuard(configuration).execute()
     Task.log.info(s"ProGuard shrunk jar: $outputJar")
@@ -267,9 +319,9 @@ object mcp extends Common with PublishModule with BuildInfo {
   // shrunk artifact, while test-only deps (munit/junit) and the test classes survive. Forked from the
   // repo root because AnalyzerPcSuite/McpSuite dogfood `SemanticIndex.fromProject(".")`.
   def testShrunk() = Task.Command {
-    val bundled  = runClasspath().map(_.path.toString).toSet
-    val testCp   = (pc.test.runClasspath() ++ test.runClasspath()).map(_.path.toString).distinct
-    val shrunk   = proguard().path.toString
+    val bundled = runClasspath().map(_.path.toString).toSet
+    val testCp = (pc.test.runClasspath() ++ test.runClasspath()).map(_.path.toString).distinct
+    val shrunk = proguard().path.toString
     val filtered = testCp.filterNot(bundled.contains) :+ shrunk
     val suites = Seq(
       "com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackendSuite",
@@ -278,7 +330,8 @@ object mcp extends Common with PublishModule with BuildInfo {
     )
     val cp = filtered.mkString(java.io.File.pathSeparator)
     Task.log.info(s"Running suites against shrunk jar $shrunk ...")
-    val res = os.proc("java", "-cp", cp, "org.junit.runner.JUnitCore", suites)
+    val res = os
+      .proc("java", "-cp", cp, "org.junit.runner.JUnitCore", suites)
       .call(cwd = build.moduleDir, stdout = os.Inherit, stderr = os.Inherit, check = false)
     if (res.exitCode != 0) sys.error(s"testShrunk failed (exit ${res.exitCode})")
   }
@@ -289,18 +342,40 @@ object mcp extends Common with PublishModule with BuildInfo {
 // ---------------------------------------------------------------------------------------------
 object compatFixtures extends Cross[CompatModule](V.compatScala)
 trait CompatModule extends SbtModule with Cross.Module[String] {
-  def scalaVersion  = crossValue
-  def moduleDir     = build.moduleDir / "compat-fixtures"
-  def semanticDbEnabled = true
+  def scalaVersion = crossValue
+  def moduleDir = build.moduleDir / "compat-fixtures"
+
+  // sbt's crossScalaVersions convention auto-adds a `src/main/scala-<binVer>` sibling directory to
+  // the source set; Mill's SbtModule doesn't, so the version-specific fixtures (BasicClasses.scala
+  // etc. under scala-2.13/ or scala-3/) were being silently skipped — `allSourceFiles` came back
+  // empty and nothing got compiled at all.
+  def sources = Task.Sources(
+    moduleDir / "src" / "main" / "scala",
+    moduleDir / "src" / "main" / "java",
+    moduleDir / "src" / "main" / (if (crossValue.startsWith("2.")) "scala-2.13" else "scala-3")
+  )
+
+  // Mill's `semanticDbEnabled` only feeds the IDE/BSP `semanticDbData` target, NOT `compile` (same
+  // gap `Common` works around — see its comment above). compatGolden needs actual compiled
+  // *.semanticdb next to the classes, so drive emission by compiler flag/plugin per cross version:
+  // Scala 3 supports `-Xsemanticdb` natively; Scala 2.13 needs the semanticdb-scalac compiler plugin.
+  def scalacPluginMvnDeps =
+    super.scalacPluginMvnDeps() ++
+      (if (crossValue.startsWith("2.")) Seq(mvn"org.scalameta:::semanticdb-scalac:${V.scalameta}")
+       else Nil)
+  def scalacOptions = super.scalacOptions() ++
+    (if (crossValue.startsWith("2.")) Seq("-Yrangepos", s"-P:semanticdb:sourceroot:${build.moduleDir}")
+     else Seq("-Xsemanticdb", "-sourceroot", build.moduleDir.toString))
 
   // build.sbt `compatGolden` — compile then copy emitted *.semanticdb into versioned golden resources.
   def compatGolden() = Task.Command {
-    compile()
     val binVer =
       if (crossValue.startsWith("2.")) crossValue.split('.').take(2).mkString(".") else "3"
-    // RISK: locate the emitted semanticdb dir under Mill's out/ (differs from sbt semanticdbTargetRoot).
-    val src = semanticDbData().path / "META-INF" / "semanticdb"
-    val dst = build.moduleDir / "analysis" / "src" / "test" / "resources" / "compat" / s"scala-$binVer"
+    // Compiled classes dir carries META-INF/semanticdb alongside the .class files (same layout the
+    // dogfood tests scan for in core/pc/analysis/mcp — see `Common.scalacOptions` above).
+    val src = compile().classes.path / "META-INF" / "semanticdb"
+    val dst =
+      build.moduleDir / "analysis" / "src" / "test" / "resources" / "compat" / s"scala-$binVer"
     os.remove.all(dst)
     if (os.exists(src)) os.copy(src, dst, createFolders = true)
     Task.log.info(s"compat golden: $src -> $dst")
@@ -311,11 +386,11 @@ trait CompatModule extends SbtModule with Cross.Module[String] {
 // docs — mdoc *library* (no sbt-mdoc for sbt 2.0). Standalone, Scala 3.3.4, forked run.
 // ---------------------------------------------------------------------------------------------
 object docs extends SbtModule {
-  def scalaVersion  = "3.3.4"
-  def moduleDir     = build.moduleDir / "mdoc-docs"
-  def mvnDeps       = Seq(mvn"org.scalameta::mdoc:2.9.0")
+  def scalaVersion = "3.3.4"
+  def moduleDir = build.moduleDir / "mdoc-docs"
+  def mvnDeps = Seq(mvn"org.scalameta::mdoc:2.9.0")
   // build.sbt passes -Dscalasemantic.docs.version=<latestReleaseVersion> and forks from repo root.
-  def forkArgs       = Seq(s"-Dscalasemantic.docs.version=${latestReleaseVersion()}")
+  def forkArgs = Seq(s"-Dscalasemantic.docs.version=${latestReleaseVersion()}")
   def forkWorkingDir = build.moduleDir
 }
 
@@ -330,11 +405,19 @@ def publishVersion: T[String] = Task { latestReleaseVersion() }
 
 // build.sbt `latestReleaseVersion` — highest `v*` git tag, stripped, else "x.y.z".
 def latestReleaseVersion: T[String] = Task {
-  scala.util.Try {
-    os.proc("git", "tag", "--list", "v*").call().out.lines()
-      .map(_.trim.stripPrefix("v")).filter(_.matches("""\d+\.\d+\.\d+"""))
-      .maxBy { v => val p = v.split('.').map(_.toInt); (p(0), p(1), p(2)) }
-  }.getOrElse("x.y.z")
+  scala.util
+    .Try {
+      os.proc("git", "tag", "--list", "v*")
+        .call()
+        .out
+        .lines()
+        .map(_.trim.stripPrefix("v"))
+        .filter(_.matches("""\d+\.\d+\.\d+"""))
+        .maxBy { v =>
+          val p = v.split('.').map(_.toInt); (p(0), p(1), p(2))
+        }
+    }
+    .getOrElse("x.y.z")
 }
 
 // Shared POM metadata (build.sbt ThisBuild publish settings).
@@ -352,17 +435,644 @@ def compatGoldenAll() = Task.Command {
   Task.traverse(V.compatScala.map(v => compatFixtures(v).compatGolden()))(identity)()
 }
 
-// build.sbt `prePush` command alias. No Mill alias mechanism — expose as a command that VERIFIES
-// (formatting is APPLIED by the pre-commit hook). TODO: chain scalafix --check + stainlessVerify.
+// build.sbt `prePush` alias = `clean; scalafmtCheckAll; scalafixAll --check; Test/testOnly *;
+// compatGoldenAll; stainlessVerify`. Formatting is APPLIED by the pre-commit hook, so this only
+// VERIFIES it. scalafix --check is DROPPED: no Mill-1.x build of mill-scalafix exists yet (the
+// only published artifact, `mill-scalafix_mill0.13_3`, fails to load under Mill 1.1.7 — TASTy
+// unpickling error reading `ScalafixModule`) — see docs/MILL_MIGRATION.md §2.
 def prePush() = Task.Command {
+  mill.scalalib.scalafmt.ScalafmtModule.checkFormatAll(
+    mill.util.Tasks(Seq(core, core.test, pc, pc.test, analysis, analysis.test, mcp, mcp.test).map(m => m.sources))
+  )()
+  compatGoldenAll()()
   core.test.testForked()()
   pc.test.testForked()()
   analysis.test.testForked()()
   mcp.test.testForked()()
+  analysis.stainlessVerify()()
 }
 
-// TODO(relocate): move project/ScalaSemanticConfigMerger.scala + project/CorpusFetch.scala into a
-//   mill-build/ module so `mcpClientConfig` and `corpusFetch` can call them. Both still need porting.
+// ---------------------------------------------------------------------------------------------
+// Relocated from project/CorpusFetch.scala (sbt meta-build class) — no sbt-specific API used
+// there beyond File/IO/Logger, so ported onto os-lib (already on the Mill build classpath).
+// ---------------------------------------------------------------------------------------------
+object CorpusFetch {
+  final case class CorpusPin(ref: String, sha256: String)
+
+  final case class VendorCorpus(
+      id: String,
+      owner: String,
+      repo: String,
+      pin: CorpusPin,
+      subtree: String,
+      targetName: String
+  ) {
+    def archiveUrl: String = s"https://github.com/$owner/$repo/archive/${pin.ref}.tar.gz"
+    def archiveRoot: String = s"$repo-${pin.ref.stripPrefix("v")}"
+  }
+
+  val vendorCorpora: Seq[VendorCorpus] = Seq(
+    VendorCorpus(
+      id = "scalameta-semanticdb-integration",
+      owner = "scalameta",
+      repo = "scalameta",
+      pin =
+        CorpusPin("v4.13.9", "4617568610271364a83bba0c61e9ffc8fe77457966d1a95abd7ad7540b322146"),
+      subtree = "tests-semanticdb/src/test/resources/example",
+      targetName = "scala-2.13"
+    ),
+    VendorCorpus(
+      id = "scala3-semanticdb-expect",
+      owner = "scala",
+      repo = "scala3",
+      pin = CorpusPin("3.8.4", "c0b742a933f12c4fce53554bb067c2df176f7b22c3c16c7cd72b12d64cff4d03"),
+      subtree = "tests/semanticdb/expect",
+      targetName = "scala-3"
+    )
+  )
+
+  def fetch(vendorDir: os.Path, log: String => Unit): Seq[os.Path] = {
+    val archiveDir = vendorDir / "_archives"
+    os.makeDir.all(archiveDir)
+    vendorCorpora.map { corpus =>
+      val archive = archiveDir / s"${corpus.id}-${corpus.pin.ref}.tar.gz"
+      if (os.exists(archive)) {
+        verifySha256(archive, corpus.pin.sha256)
+        log(s"Using cached checksum-verified archive: $archive")
+      } else {
+        downloadArchive(corpus.archiveUrl, archive, log)
+        verifySha256(archive, corpus.pin.sha256)
+      }
+      extractCorpus(archive, corpus, vendorDir, log)
+    }
+  }
+
+  private def sha256Hex(file: os.Path): String = {
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+    digest.update(os.read.bytes(file))
+    digest.digest().map("%02x".format(_)).mkString
+  }
+
+  private def verifySha256(file: os.Path, expected: String): Unit = {
+    val actual = sha256Hex(file)
+    if (!actual.equalsIgnoreCase(expected))
+      sys.error(
+        s"Checksum mismatch for ${file.last}: expected $expected but found $actual. " +
+          "Delete the cached archive and retry only after confirming the pinned upstream ref."
+      )
+  }
+
+  private def downloadArchive(url: String, target: os.Path, log: String => Unit): Unit = {
+    val tmp = (target / os.up) / s".${target.last}.download"
+    os.remove(tmp, checkExists = false)
+    log(s"Downloading $url")
+    val connection = new java.net.URI(url).toURL.openConnection()
+    connection.setConnectTimeout(15000)
+    connection.setReadTimeout(120000)
+    val in = new java.io.BufferedInputStream(connection.getInputStream)
+    try {
+      val out = java.nio.file.Files.newOutputStream(tmp.toNIO)
+      try in.transferTo(out)
+      finally out.close()
+    } finally in.close()
+    os.move(tmp, target)
+  }
+
+  private def extractCorpus(
+      archive: os.Path,
+      corpus: VendorCorpus,
+      vendorDir: os.Path,
+      log: String => Unit
+  ): os.Path = {
+    val dest = vendorDir / corpus.targetName
+    val marker = dest / ".corpus-fetch.sha256"
+    if (os.exists(dest) && os.exists(marker) && os.read(marker).trim == corpus.pin.sha256) {
+      log(s"${corpus.targetName} corpus is up to date: $dest")
+      dest
+    } else {
+      val tmp = vendorDir / s".${corpus.targetName}.tmp"
+      os.remove.all(tmp)
+      os.makeDir.all(tmp)
+      val stripComponents = corpus.subtree.split('/').length + 1
+      val sourcePath = s"${corpus.archiveRoot}/${corpus.subtree}"
+      val rc = os
+        .proc(
+          "tar",
+          "-xzf",
+          archive.toString,
+          "-C",
+          tmp.toString,
+          s"--strip-components=$stripComponents",
+          sourcePath
+        )
+        .call(check = false)
+        .exitCode
+      if (rc != 0) sys.error(s"Failed to extract $sourcePath from ${archive.last} (exit $rc)")
+      os.remove.all(dest)
+      os.move(tmp, dest)
+      os.write.over(marker, corpus.pin.sha256 + "\n")
+      log(s"Extracted ${corpus.id} (${corpus.pin.ref}) to $dest")
+      dest
+    }
+  }
+}
+
+// build.sbt `corpusFetch` (root taskKey) — fetch checksum-verified upstream SemanticDB compat
+// corpora. Path kept at repo-root `target/vendor-corpus` (not Mill's `out/`) — THIRD_PARTY.md
+// documents that path as the public contract for where the corpora land.
+def corpusFetch() = Task.Command {
+  CorpusFetch.fetch(build.moduleDir / "target" / "vendor-corpus", msg => Task.log.info(msg))
+}
+
+// ---------------------------------------------------------------------------------------------
+// Relocated from project/ScalaSemanticConfigMerger.scala (sbt meta-build class) — pure-String
+// rendering/merging logic, unchanged; only the File/Logger plumbing is swapped for os-lib.
+// ---------------------------------------------------------------------------------------------
+object ConfigMerger {
+  sealed trait Fmt
+  case object JsonFmt extends Fmt
+  case object TomlFmt extends Fmt
+  case object YamlFmt extends Fmt
+
+  final case class Target(relPath: String, fmt: Fmt, extraJson: Seq[(String, String)])
+
+  def targetFor(client: String): Target = {
+    val normalized = client.trim.toLowerCase.replace('_', '-')
+    normalized match {
+      case "codex" | "openai" | "openai-codex" =>
+        Target(".codex/config.toml", TomlFmt, Nil)
+      case "claude" | "claude-code" | "anthropic" =>
+        Target(".mcp.json", JsonFmt, Nil)
+      case "gemini" | "google" | "google-gemini" | "gemini-cli" =>
+        Target(".gemini/settings.json", JsonFmt, Seq("timeout" -> "60000"))
+      case "antigravity" | "antigravity-cli" | "agy" =>
+        Target(".agents/mcp_config.json", JsonFmt, Nil)
+      case "cline" =>
+        Target(".cline/mcp.json", JsonFmt, Seq("disabled" -> "false", "autoApprove" -> "[]"))
+      case "roo" | "roo-code" =>
+        Target(
+          ".roo/mcp.json",
+          JsonFmt,
+          Seq("disabled" -> "false", "alwaysAllow" -> "[]", "timeout" -> "60")
+        )
+      case "continue" | "continue-dev" =>
+        Target(".continue/config.yaml", YamlFmt, Nil)
+      case "generic" | "generic-json" | "json" | "oss" | "open-source" | "free" =>
+        Target(".mcp.json", JsonFmt, Nil)
+      case other =>
+        sys.error(
+          s"Unsupported mcpClient '$other'. Use one of: " +
+            "claude, codex, gemini, cline, roo, continue, antigravity, generic-json."
+        )
+    }
+  }
+
+  // --- JSON -------------------------------------------------------------------------------------
+
+  private def jsonEntry(argv: Seq[String], extraFields: Seq[(String, String)]): String = {
+    val (command, args) = splitArgv(argv)
+    val argsJson = args.map(jsonString).mkString("[", ", ", "]")
+    val extra =
+      extraFields.map { case (name, value) => s",\n      ${jsonString(name)}: $value" }.mkString
+    s"""|{
+        |      "command": ${jsonString(command)},
+        |      "args": $argsJson$extra
+        |    }""".stripMargin
+  }
+
+  private def renderMcpJson(
+      serverName: String,
+      argv: Seq[String],
+      extraFields: Seq[(String, String)]
+  ): String =
+    s"""|{
+        |  "mcpServers": {
+        |    ${jsonString(serverName)}: ${jsonEntry(argv, extraFields)}
+        |  }
+        |}""".stripMargin
+
+  def mergeJson(
+      existing: Option[String],
+      serverName: String,
+      argv: Seq[String],
+      extraFields: Seq[(String, String)]
+  ): String = {
+    val fresh = renderMcpJson(serverName, argv, extraFields)
+    val src = existing.getOrElse("")
+    val rootOpen = if (src.trim.isEmpty) -1 else src.indexOf('{')
+    val rootClose = if (rootOpen < 0) -1 else matchBracket(src, rootOpen)
+    if (rootClose < 0) fresh
+    else {
+      val entry = jsonEntry(argv, extraFields)
+      val msKey = findJsonKey(src, rootOpen + 1, rootClose, "mcpServers")
+      if (msKey < 0) {
+        val hadEntries = src.substring(rootOpen + 1, rootClose).trim.nonEmpty
+        val block = s"""\n  "mcpServers": {\n    ${jsonString(serverName)}: $entry\n  }"""
+        val comma = if (hadEntries) "," else ""
+        src.substring(0, rootOpen + 1) + block + comma + src.substring(rootOpen + 1)
+      } else {
+        val objOpen = src.indexOf('{', src.indexOf(':', msKey))
+        val objClose = matchBracket(src, objOpen)
+        val snKey = findJsonKey(src, objOpen + 1, objClose, serverName)
+        if (snKey >= 0) {
+          val vs = skipWs(src, src.indexOf(':', snKey) + 1, objClose)
+          val ve = jsonValueEnd(src, vs, objClose)
+          src.substring(0, vs) + entry + src.substring(ve)
+        } else {
+          val hadEntries = src.substring(objOpen + 1, objClose).trim.nonEmpty
+          val ins = s"""\n    ${jsonString(serverName)}: $entry${if (hadEntries) "," else ""}"""
+          src.substring(0, objOpen + 1) + ins + src.substring(objOpen + 1)
+        }
+      }
+    }
+  }
+
+  @scala.annotation.tailrec
+  private def skipWs(s: String, i: Int, limit: Int): Int =
+    if (i < limit && s.charAt(i).isWhitespace) skipWs(s, i + 1, limit) else i
+
+  private def withTrailingNewline(s: String): String =
+    s.replaceAll("\\R+\\z", "") + "\n"
+
+  private def leadingSpaces(line: String): Int = line.takeWhile(_ == ' ').length
+
+  private def splitArgv(argv: Seq[String]): (String, Seq[String]) =
+    argv match {
+      case command +: args => command -> args
+      case _               => "" -> Seq.empty
+    }
+
+  private def jsonValueEnd(s: String, vs: Int, limit: Int): Int =
+    s.charAt(vs) match {
+      case '{' | '[' => matchBracket(s, vs) + 1
+      case '"'       =>
+        @scala.annotation.tailrec
+        def str(i: Int, esc: Boolean): Int =
+          if (i >= limit) limit
+          else {
+            val c = s.charAt(i)
+            if (esc) str(i + 1, esc = false)
+            else if (c == '\\') str(i + 1, esc = true)
+            else if (c == '"') i + 1
+            else str(i + 1, esc = false)
+          }
+        str(vs + 1, esc = false)
+      case _ =>
+        @scala.annotation.tailrec
+        def scan(i: Int): Int =
+          if (i < limit && s.charAt(i) != ',' && s.charAt(i) != '}') scan(i + 1) else i
+        @scala.annotation.tailrec
+        def back(i: Int): Int =
+          if (i > vs && s.charAt(i - 1).isWhitespace) back(i - 1) else i
+        back(scan(vs))
+    }
+
+  private def matchBracket(s: String, openIdx: Int): Int = {
+    @scala.annotation.tailrec
+    def loop(i: Int, depth: Int, inStr: Boolean, esc: Boolean): Int =
+      if (i >= s.length) -1
+      else {
+        val c = s.charAt(i)
+        if (inStr) {
+          if (esc) loop(i + 1, depth, inStr = true, esc = false)
+          else if (c == '\\') loop(i + 1, depth, inStr = true, esc = true)
+          else if (c == '"') loop(i + 1, depth, inStr = false, esc = false)
+          else loop(i + 1, depth, inStr = true, esc = false)
+        } else
+          c match {
+            case '"'       => loop(i + 1, depth, inStr = true, esc = false)
+            case '{' | '[' => loop(i + 1, depth + 1, inStr = false, esc = false)
+            case '}' | ']' =>
+              if (depth - 1 == 0) i else loop(i + 1, depth - 1, inStr = false, esc = false)
+            case _ => loop(i + 1, depth, inStr = false, esc = false)
+          }
+      }
+    loop(openIdx, 0, inStr = false, esc = false)
+  }
+
+  private def colonFollows(s: String, from: Int, end: Int): Boolean = {
+    val j = skipWs(s, from, end)
+    j < end && s.charAt(j) == ':'
+  }
+
+  private def findJsonKey(s: String, start: Int, end: Int, key: String): Int = {
+    val target = "\"" + key + "\""
+    @scala.annotation.tailrec
+    def loop(i: Int, depth: Int, inStr: Boolean, esc: Boolean): Int =
+      if (i >= end) -1
+      else {
+        val c = s.charAt(i)
+        if (inStr) {
+          if (esc) loop(i + 1, depth, inStr = true, esc = false)
+          else if (c == '\\') loop(i + 1, depth, inStr = true, esc = true)
+          else if (c == '"') loop(i + 1, depth, inStr = false, esc = false)
+          else loop(i + 1, depth, inStr = true, esc = false)
+        } else
+          c match {
+            case '"' =>
+              if (
+                depth == 0 && s.regionMatches(i, target, 0, target.length) &&
+                colonFollows(s, i + target.length, end)
+              ) i
+              else loop(i + 1, depth, inStr = true, esc = false)
+            case '{' | '[' => loop(i + 1, depth + 1, inStr = false, esc = false)
+            case '}' | ']' => loop(i + 1, depth - 1, inStr = false, esc = false)
+            case _         => loop(i + 1, depth, inStr = false, esc = false)
+          }
+      }
+    loop(start, 0, inStr = false, esc = false)
+  }
+
+  // --- TOML -------------------------------------------------------------------------------------
+
+  private def renderCodexToml(serverName: String, argv: Seq[String]): String = {
+    val (command, args) = splitArgv(argv)
+    val argsToml = args.map(tomlString).mkString("[", ", ", "]")
+    s"""|[mcp_servers.${tomlKey(serverName)}]
+        |command = ${tomlString(command)}
+        |args = $argsToml
+        |startup_timeout_sec = 60
+        |tool_timeout_sec = 60""".stripMargin
+  }
+
+  def mergeToml(
+      existing: Option[String],
+      serverName: String,
+      argv: Seq[String]
+  ): String = {
+    val fresh = renderCodexToml(serverName, argv)
+    val src = existing.getOrElse("")
+    val body =
+      if (src.trim.isEmpty) fresh
+      else {
+        val header = s"[mcp_servers.${tomlKey(serverName)}]"
+        val lines = src.split("\n", -1).toVector
+        val idx = lines.indexWhere(_.trim == header)
+        if (idx < 0) {
+          val sep = if (src.endsWith("\n")) "" else "\n"
+          src + sep + "\n" + fresh
+        } else {
+          val end = lines.indexWhere(_.trim.startsWith("["), idx + 1) match {
+            case -1 => lines.length
+            case e  => e
+          }
+          (lines.take(idx) ++ fresh.split("\n", -1) ++ lines.drop(end)).mkString("\n")
+        }
+      }
+    withTrailingNewline(body)
+  }
+
+  // --- YAML (Continue) --------------------------------------------------------------------------
+
+  private def continueItem(serverName: String, argv: Seq[String]): String = {
+    val (command, argvArgs) = splitArgv(argv)
+    val args =
+      if (argvArgs.isEmpty) ""
+      else argvArgs.map(a => s"\n      - ${yamlString(a)}").mkString("\n    args:", "", "")
+    s"""|  - name: ${yamlString(serverName)}
+        |    command: ${yamlString(command)}$args
+        |    connectionTimeout: 60000""".stripMargin
+  }
+
+  private def renderContinueYaml(serverName: String, argv: Seq[String]): String =
+    s"""|name: ScalaSemantic MCP
+        |version: 1.0.0
+        |schema: v1
+        |mcpServers:
+        |${continueItem(serverName, argv)}""".stripMargin
+
+  def mergeYaml(
+      existing: Option[String],
+      serverName: String,
+      argv: Seq[String]
+  ): String = {
+    val fresh = renderContinueYaml(serverName, argv)
+    val src = existing.getOrElse("")
+    val body =
+      if (src.trim.isEmpty) fresh
+      else {
+        val item = continueItem(serverName, argv)
+        val lines = src.split("\n", -1).toVector
+        val msIdx = lines.indexWhere(_.matches("""mcpServers:\s*"""))
+        if (msIdx < 0) {
+          val sep = if (src.endsWith("\n")) "" else "\n"
+          src + sep + "mcpServers:\n" + item
+        } else {
+          val blockEnd =
+            lines.indexWhere(l => !l.startsWith(" ") && l.trim.nonEmpty, msIdx + 1) match {
+              case -1 => lines.length
+              case e  => e
+            }
+          val nameLine = s"- name: ${yamlString(serverName)}"
+          val itemIdx =
+            (msIdx + 1).until(blockEnd).find(i => lines.lift(i).exists(_.trim == nameLine))
+          itemIdx match {
+            case Some(s0) =>
+              val indent = lines.lift(s0).fold(0)(leadingSpaces)
+              val e = (s0 + 1)
+                .until(blockEnd)
+                .find(i =>
+                  lines
+                    .lift(i)
+                    .exists(line => leadingSpaces(line) == indent && line.trim.startsWith("- "))
+                )
+                .getOrElse(blockEnd)
+              (lines.take(s0) ++ item.split("\n", -1) ++ lines.drop(e)).mkString("\n")
+            case None =>
+              (lines.take(msIdx + 1) ++ item.split("\n", -1) ++ lines.drop(msIdx + 1))
+                .mkString("\n")
+          }
+        }
+      }
+    withTrailingNewline(body)
+  }
+
+  private def tomlKey(value: String): String =
+    if (value.matches("[A-Za-z0-9_-]+")) value else tomlString(value)
+
+  private def jsonString(value: String): String =
+    "\"" + value.flatMap {
+      case '"'          => "\\\""
+      case '\\'         => "\\\\"
+      case '\b'         => "\\b"
+      case '\f'         => "\\f"
+      case '\n'         => "\\n"
+      case '\r'         => "\\r"
+      case '\t'         => "\\t"
+      case c if c < ' ' => "\\u%04x".format(c.toInt)
+      case c            => c.toString
+    } + "\""
+
+  private def tomlString(value: String): String =
+    "\"" + value.flatMap {
+      case '"'  => "\\\""
+      case '\\' => "\\\\"
+      case '\b' => "\\b"
+      case '\t' => "\\t"
+      case '\n' => "\\n"
+      case '\f' => "\\f"
+      case '\r' => "\\r"
+      case c    => c.toString
+    } + "\""
+
+  private def yamlString(value: String): String =
+    "\"" + value.flatMap {
+      case '"'  => "\\\""
+      case '\\' => "\\\\"
+      case '\b' => "\\b"
+      case '\t' => "\\t"
+      case '\n' => "\\n"
+      case '\f' => "\\f"
+      case '\r' => "\\r"
+      case c    => c.toString
+    } + "\""
+
+  def writeRulesAndSteer(client: String, baseDir: os.Path, log: String => Unit): Unit = {
+    val rulesFile = baseDir / "SCALA_SEMANTIC_RULES.md"
+    val defaultRulesContent =
+      """# Scala Semantic Rules
+        |
+        |For Scala source questions, use ScalaSemantic MCP tools before shell text tools. Preferably compile code before usage, then more ScalaSemantic functions can be used with better results.
+        |
+        |Do not use `cat`, `sed`, `rg`, or similar tools to inspect `.scala` files for symbol, type,
+        |signature, hierarchy, implicit, reference, or call-path questions when ScalaSemantic tools are
+        |available.
+        |
+        |Use shell for builds, tests, git, config, docs, scripts, and non-Scala text work.
+        |""".stripMargin
+
+    if (!os.exists(rulesFile)) {
+      os.write.over(rulesFile, defaultRulesContent, createFolders = true)
+      log(s"Created default rules file: $rulesFile")
+    }
+
+    val normalized = client.trim.toLowerCase.replace('_', '-')
+    val optLlmConfig = normalized match {
+      case "claude" | "claude-code" | "anthropic" =>
+        Some(
+          (baseDir / "CLAUDE.md", "CLAUDE.md", "[SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md)")
+        )
+      case "gemini" | "google" | "google-gemini" | "gemini-cli" | "antigravity" |
+          "antigravity-cli" | "agy" =>
+        Some((baseDir / "AGENTS.md", "AGENTS.md", "@SCALA_SEMANTIC_RULES.md"))
+      case "codex" | "openai" | "openai-codex" =>
+        Some(
+          (
+            baseDir / ".cursorrules",
+            ".cursorrules",
+            "[SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md)"
+          )
+        )
+      case "cline" | "roo" | "roo-code" =>
+        Some(
+          (
+            baseDir / ".clinerules",
+            ".clinerules",
+            "[SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md)"
+          )
+        )
+      case "continue" | "continue-dev" =>
+        Some(
+          (baseDir / ".continue" / "rules.txt", ".continue/rules.txt", "SCALA_SEMANTIC_RULES.md")
+        )
+      case _ =>
+        None
+    }
+
+    optLlmConfig.foreach { case (file, name, reference) =>
+      if (!os.exists(file)) {
+        val content = if (name == "AGENTS.md") {
+          s"""# AGENTS.md instructions
+             |
+             |<INSTRUCTIONS>
+             |$reference
+             |</INSTRUCTIONS>
+             |""".stripMargin
+        } else if (name.endsWith(".md") || name.endsWith("rules") || name.endsWith("rules.txt")) {
+          s"""# Project Rules
+             |
+             |Please follow the rules in $reference for working with Scala code.
+             |""".stripMargin
+        } else {
+          s"Please follow the rules in $reference for working with Scala code."
+        }
+        os.write.over(file, content, createFolders = true)
+        log(s"Created LLM-specific rules file: $file pointing to SCALA_SEMANTIC_RULES.md")
+      } else {
+        val existingContent = os.read(file)
+        if (
+          !existingContent
+            .contains("SCALA_SEMANTIC_RULES.md") && !existingContent.contains("SCALA_CODE_RULES.md")
+        ) {
+          val separator = if (existingContent.endsWith("\n")) "" else "\n"
+          val appendContent = if (name == "AGENTS.md") {
+            s"""$separator
+               |<INSTRUCTIONS>
+               |$reference
+               |</INSTRUCTIONS>
+               |""".stripMargin
+          } else {
+            s"""$separator
+               |## Scala Code Rules
+               |Please follow the rules in $reference.
+               |""".stripMargin
+          }
+          os.write.over(file, existingContent + appendContent)
+          log(s"Updated LLM-specific rules file: $file to point to SCALA_SEMANTIC_RULES.md")
+        } else if (existingContent.contains("SCALA_CODE_RULES.md")) {
+          val updated = existingContent
+            .replace("SCALA_CODE_RULES.md", "SCALA_SEMANTIC_RULES.md")
+            .replace("@SCALA_CODE_RULES.md", "@SCALA_SEMANTIC_RULES.md")
+          os.write.over(file, updated)
+          log(s"Migrated legacy SCALA_CODE_RULES.md reference in: $file to SCALA_SEMANTIC_RULES.md")
+        }
+      }
+    }
+  }
+}
+
+// build.sbt `mcpClientConfig` (root inputKey) — install the stable launcher + write/merge client
+// MCP config pointing at it. `client` = one client name, or "all" to write every known client.
+def mcpClientConfig(client: String = "claude") = Task.Command {
+  val home = os.Path(System.getProperty("user.home"))
+  val launcher = home / ".local" / "bin" / "scalasemantic-mcp.sh"
+  val root = build.moduleDir
+  os.copy.over(root / "scripts" / "scalasemantic-mcp.sh", launcher, createFolders = true)
+  os.perms.set(launcher, "rwxr-xr-x")
+  Task.log.info(s"MCP launcher installed: $launcher")
+  try {
+    val rc = os.proc(launcher.toString, "--prefetch", ".").call(check = false).exitCode
+    if (rc != 0)
+      Task.log.warn(s"jar prefetch returned $rc; it will download on first connect instead.")
+  } catch {
+    case scala.util.control.NonFatal(e) =>
+      Task.log.warn(s"jar prefetch skipped (${e.getMessage}); it will download on first connect.")
+  }
+
+  val cpFile = (launcher / os.up) / "scala-semantic-classpath.txt"
+  val argv = Seq(launcher.toString, root.toString, cpFile.toString)
+  val serverName = "scala-semantic"
+  val clients =
+    if (client.trim.toLowerCase == "all")
+      Seq("claude", "codex", "gemini", "cline", "roo", "continue", "antigravity")
+    else Seq(client)
+
+  for (c <- clients) {
+    val target = ConfigMerger.targetFor(c)
+    val outFile = target.relPath.split('/').foldLeft(root)(_ / _)
+    val existing = if (os.exists(outFile)) Some(os.read(outFile)) else None
+    val merged = target.fmt match {
+      case ConfigMerger.JsonFmt =>
+        ConfigMerger.mergeJson(existing, serverName, argv, target.extraJson)
+      case ConfigMerger.TomlFmt => ConfigMerger.mergeToml(existing, serverName, argv)
+      case ConfigMerger.YamlFmt => ConfigMerger.mergeYaml(existing, serverName, argv)
+    }
+    os.write.over(outFile, merged, createFolders = true)
+    val verb = if (existing.isEmpty) "Wrote" else "Merged into"
+    Task.log.info(s"$verb MCP config for server '$serverName': $outFile")
+    ConfigMerger.writeRulesAndSteer(c, root, msg => Task.log.info(msg))
+  }
+}
 
 // DROPPED (sbt-only, per docs/MILL_MIGRATION.md §6): root/initialize slf4j-nop boot-copy,
 //   project/*.sbt slf4j-nop, useReadableConsoleGit, excludeLintKeys, conflictWarning.

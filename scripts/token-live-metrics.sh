@@ -22,4 +22,4 @@ output_json="${2:-docs/research/token-metrics-live.sample.json}"
 UPDATE_TOKEN_LIVE_METRICS=1 \
 TOKEN_LIVE_RUNS="$raw_runs" \
 TOKEN_LIVE_OUTPUT="$output_json" \
-sbt --batch "mcp/testOnly com.github.mercurievv.scalasemantic.mcp.TokenLiveMetricsSuite"
+./mill mcp.test.testOnly com.github.mercurievv.scalasemantic.mcp.TokenLiveMetricsSuite

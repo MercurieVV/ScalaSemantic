@@ -137,7 +137,7 @@ Download `scalasemantic-mcp.jar` from the [latest release](https://github.com/Me
 }
 ```
 
-> Do not use `sbt runMain` — sbt writes build logs to stdout and corrupts the JSON-RPC stream. To build the jar locally: `sbt "mcp/assembly"`.
+> Do not use `runMain` (sbt or Mill) — it writes build logs to stdout and corrupts the JSON-RPC stream. To build the jar locally: `./mill mcp.assembly`.
 
 ## Logging
 
