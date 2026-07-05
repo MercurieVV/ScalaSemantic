@@ -1,12 +1,5 @@
 package com.github.mercurievv.scalasemantic.compat
 
-/** Flat call chain a -> b -> c for call-graph path-finding tests. */
-object Calls {
-  def a(): Int = b()
-  def b(): Int = c()
-  def c(): Int = 1
-}
-
 // Virtual/Polymorphic dispatch call graph
 trait VirtualBase {
   def name(): String
@@ -25,7 +18,15 @@ object PolymorphicCalls {
   def entry2(): String = callVirtual(new VirtualImpl2())
 }
 
-// Implicit call path (Scala 2 extension methods via implicit class)
+// Implicit call path (Scala 2 extension methods via implicit class). The implicit class lives
+// here (not a separate vendored file) since it exists solely to give this call-path fixture
+// something to dispatch through.
+object RichExtensions {
+  implicit class RichString(val s: String) extends AnyVal {
+    def shout: String = s.toUpperCase()
+  }
+}
+
 object ImplicitCalls {
   import RichExtensions._
 
