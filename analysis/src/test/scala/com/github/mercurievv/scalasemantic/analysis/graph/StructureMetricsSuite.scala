@@ -8,25 +8,17 @@ import scala.meta.internal.semanticdb as s
   * and a small in-memory project index (filter-safe, unlike AnalyzerStructureSuite which dogfoods
   * the live index). Covers the pure algorithms in [[GraphMetrics]] directly, then the
   * index-to-graph extraction in [[DependencyGraphs]] and the rollup in [[StructureMetrics]].
+  *
+  * `coupling`'s Ca/Ce formula, `instability`'s exact formula, and `pageRank`'s "more incoming edges
+  * -> higher rank" ordering are covered generatively in [[GraphMetricsPropertySuite]] over
+  * arbitrary graphs, so the fixed examples for those are not repeated here. The SCC-grouping and
+  * layer-depth examples below are kept: they check the actual grouping/depth *values* for a
+  * specific graph shape, which [[GraphMetricsPropertySuite]]'s partition/ordering invariants don't
+  * pin down on their own.
   */
 class StructureMetricsSuite extends munit.FunSuite:
 
   // ============================ GraphMetrics (pure) ============================
-
-  test("coupling counts in-project fan-in (Ca) and fan-out (Ce)"):
-    // a -> b, a -> c, b -> c, plus an edge to an out-of-set node. Ca counts only in-set fan-in;
-    // Ce is the raw out-degree (so the out-of-set 'ext' still counts toward a's efferent).
-    val g = Map("a" -> Set("b", "c", "ext"), "b" -> Set("c"))
-    val nodes = Set("a", "b", "c")
-    val cp = GraphMetrics.coupling(nodes, g)
-    assertEquals(cp("a"), (0, 3), "a: no in, three out (b, c, ext)")
-    assertEquals(cp("b"), (1, 1), "b: in from a, out to c")
-    assertEquals(cp("c"), (2, 0), "c: in from a and b, no out")
-
-  test("instability is Ce/(Ca+Ce), 0 for an isolated node"):
-    assertEquals(GraphMetrics.instability(0, 0), 0.0)
-    assertEquals(GraphMetrics.instability(3, 1), 0.25)
-    assertEquals(GraphMetrics.instability(0, 5), 1.0)
 
   test("stronglyConnectedComponents groups a cycle, isolates acyclic nodes"):
     val g = Map("a" -> Set("b"), "b" -> Set("a"), "c" -> Set("a"))
@@ -45,12 +37,9 @@ class StructureMetricsSuite extends munit.FunSuite:
     assertEquals(l("c"), 2)
     assertEquals(l("x"), l("y"), "cycle members share a level")
 
-  test("pageRank flows toward depended-on foundations"):
-    val g = Map("b" -> Set("a"), "c" -> Set("a"))
-    val pr = GraphMetrics.pageRank(Set("a", "b", "c"), g)
-    assert(pr("a") > pr("b"), s"a (depended on by b,c) outranks b: $pr")
-    assert(pr("a") > pr("c"), s"a outranks c: $pr")
-    assertEquals(GraphMetrics.pageRank(Set.empty, Map.empty), Map.empty)
+  // pageRank's "more incoming edges -> higher rank" ordering and the empty-graph case are covered
+  // generatively in GraphMetricsPropertySuite ("a node with no incoming edges has strictly lower
+  // rank..." / "empty graph returns empty map").
 
   // ====================== DependencyGraphs / StructureMetrics ==================
 

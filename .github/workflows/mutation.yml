@@ -1,10 +1,14 @@
-# DISABLED — build.sbt/project/ removed in the Mill cutover, and this whole workflow is sbt-bound
-# (sbtPlugin3/publishLocal, the sbt `stryker` task, `sbt --batch compile/test`, scripts/run-stryker.sh).
-# A Mill build of stryker4s exists upstream (stryker-mutator/stryker4s#2042) but ships unreleased
-# (queued for v0.22.0); a local snapshot was proven to compile/mutate/run in isolation but hit a
-# reproducible `InitialTestRunFailedException` inside the plugin's own Mill test-runner glue — not
-# fixable from this repo. See docs/MILL_MIGRATION.md §2/§10 "Hardest" item 3. Revisit once v0.22.0
-# ships a working release.
+# Runs stryker4s mutation testing via scripts/run-stryker.sh (Mill-side, see that script's header
+# and scripts/generate-stryker-overlay.py for how the unreleased Mill plugin snapshot is built and
+# patched into an isolated build.mill copy — never the committed one).
+#
+# `analysis` is the only module currently proven to run cleanly end-to-end (744 mutants, full
+# report, no InitialTestRunFailedException — that exception, which blocked every earlier attempt,
+# was fixed upstream by stryker-mutator/stryker4s#2068 "handle messages larger than socket buffer").
+# `core` and `mcp` are NOT yet reliable: `core`'s SemanticIndexSuite dogfoods the whole project's
+# out/ tree, which isn't consistent inside Stryker's isolated per-mutant compile sandbox; `mcp` hits
+# a distinct `UnableToFixCompilerErrorsException` (a stryker4s mutant-rollback edge case unrelated
+# to #2068). Both need separate follow-up before `--module all`/`core`/`mcp` can be trusted in CI.
 name: Mutation Testing
 
 on:
@@ -13,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       modules:
-        description: 'Space-separated modules to mutate: analysis, core, mcp, or all'
+        description: 'Space-separated modules to mutate: analysis, core, mcp, or all (only analysis is currently reliable — see workflow header)'
         required: false
         default: 'analysis'
   pull_request:
@@ -25,9 +29,7 @@ permissions:
   issues: write
 
 env:
-  STRYKER4S_COMMIT: '2c0f5bd7'
-  STRYKER4S_PLUGIN_VERSION: '0.21.0+33-2c0f5bd7-SNAPSHOT'
-  STRYKER: '1'
+  STRYKER4S_COMMIT: '86aa9ed1'
   MUTATION_HIGH_THRESHOLD: '80'
   MUTATION_LOW_THRESHOLD: '60'
   # Initial rollout grace period from docs/research/stryker4s-alert-strategy.md:
@@ -39,8 +41,6 @@ jobs:
   stryker:
     name: Stryker4s
     runs-on: ubuntu-latest
-    # Disabled: sbt build removed, no working Mill port yet. See header comment.
-    if: false
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,9 +50,27 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-          cache: sbt
 
+      - name: Cache coursier + Mill
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/coursier
+            ~/.cache/mill/download
+          key: mill-${{ runner.os }}-${{ hashFiles('build.mill', '.mill-version') }}
+          restore-keys: |
+            mill-${{ runner.os }}-
+
+      # sbt is only used here to build stryker4s's OWN plugin jar (stryker4s has no Mill build of
+      # itself yet) — unrelated to this project's build, which is pure Mill.
       - uses: sbt/setup-sbt@v1
+
+      - name: Cache stryker4s Mill plugin snapshot
+        id: stryker-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ivy2/local/io.stryker-mutator
+          key: stryker4s-mill-${{ env.STRYKER4S_COMMIT }}
 
       - name: Decide mutation scope
         id: scope
@@ -74,7 +92,7 @@ jobs:
             modules="analysis"
           elif [[ "$EVENT_NAME" == "pull_request" ]]; then
             files="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')"
-            if grep -qE '^(stryker4s\.conf|scripts/(run-stryker|mutation-summary)\.sh|\.github/workflows/mutation\.yml)$' <<<"$files"; then
+            if grep -qE '^(stryker4s\.conf|scripts/(run-stryker|mutation-summary|generate-stryker-overlay)\.(sh|py)|\.github/workflows/mutation\.yml)$' <<<"$files"; then
               modules="analysis"
             else
               grep -q '^analysis/src/main/scala/' <<<"$files" && modules="$modules analysis"
@@ -89,28 +107,6 @@ jobs:
             echo "Mutation modules: $modules"
           fi
 
-      # sbt-stryker4s 0.21.0 has an ABI incompatibility with sbt 2.0.0 final; use the pinned
-      # snapshot built from master at commit 2c0f5bd7. See project/plugins.sbt for context.
-      - name: Restore stryker4s local ivy cache
-        if: steps.scope.outputs.modules != ''
-        id: stryker-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.ivy2/local/io.stryker-mutator
-          key: stryker4s-${{ env.STRYKER4S_COMMIT }}
-
-      - name: Build and publishLocal stryker4s
-        if: steps.scope.outputs.modules != '' && steps.stryker-cache.outputs.cache-hit != 'true'
-        run: |
-          git clone https://github.com/stryker-mutator/stryker4s.git /tmp/stryker4s
-          cd /tmp/stryker4s
-          git checkout "$STRYKER4S_COMMIT"
-          sbt sbtPlugin3/publishLocal
-
-      - name: Compile clean sources
-        if: steps.scope.outputs.modules != ''
-        run: sbt --batch compile
-
       - name: Run Stryker4s modules
         if: steps.scope.outputs.modules != ''
         env:
@@ -120,15 +116,9 @@ jobs:
           mkdir -p reports/mutation
           for module in $MODULES; do
             mkdir -p "reports/mutation/$module"
-            MUTATION_MODULE="$module" \
-            MUTATION_REPORT_DEST="reports/mutation/$module/report.json" \
-              scripts/run-stryker.sh --local --module "$module" 2>&1 \
+            scripts/run-stryker.sh --local --module "$module" 2>&1 \
               | tee "reports/mutation/$module/summary.txt"
           done
-
-      - name: Verify clean dogfood tests after mutation
-        if: steps.scope.outputs.modules != ''
-        run: sbt --batch test
 
       - name: Build mutation PR comment
         if: steps.scope.outputs.modules != '' && github.event_name == 'pull_request'

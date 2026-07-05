@@ -1,5 +1,6 @@
 package com.github.mercurievv.scalasemantic.analysis
 
+import com.github.mercurievv.scalasemantic.model.CallHierarchyNode
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 import org.scalacheck.Gen
@@ -112,3 +113,79 @@ class AnalyzerCorePropertySuite extends munit.ScalaCheckSuite:
       val r = analyzer((showCls +: givens)*).resolveImplicits(tpe(s"${P}Show#"))
       r.candidates.size == n && (r.chosen.isDefined == (n == 1))
     }
+
+  // ---------------------------------------------------------------------------
+  // callHierarchy: depth bound + cycle-breaking, over arbitrary call graphs
+  // ---------------------------------------------------------------------------
+  //
+  // AnalyzerCoreSuite checks callHierarchy's depth-first expansion, depth limit, and
+  // cycle-breaking-to-a-leaf against a handful of hand-built call graphs (a->b->c, a<->b). This
+  // generalises all three to an arbitrary node count, edge set, root, depth, and direction. Call
+  // edges are attributed by callGraph to "the most recent method DEFINITION in source order", so a
+  // graph is encoded directly as that occurrence sequence: a DEFINITION for method i followed by a
+  // REFERENCE for each of its callees (self-edges are excluded — a REFERENCE to the
+  // currently-open definition is not attributed as an edge, so they cannot be expressed this way).
+  //
+  // The single recursive check below is an independent restatement of callHierarchy's own contract
+  // (depth-limited, per-path cycle-breaking, direct-edge expansion) against the plain `Int` edge
+  // map the test built the fixture from — not a call into callHierarchy's own adjacency maps.
+
+  private def methSym(i: Int): String = s"${P}M#m$i()."
+
+  private def callGraphDoc(n: Int, edges: Map[Int, Set[Int]]): s.TextDocument =
+    def occ(sym: String, role: s.SymbolOccurrence.Role, line: Int) =
+      s.SymbolOccurrence(Some(s.Range(line, 0, line, 1)), sym, role)
+    val occs = (0 until n).flatMap { i =>
+      occ(methSym(i), s.SymbolOccurrence.Role.DEFINITION, i) +:
+        edges
+          .getOrElse(i, Set.empty)
+          .toList
+          .map(j => occ(methSym(j), s.SymbolOccurrence.Role.REFERENCE, i))
+    }
+    val methods =
+      (0 until n).map(i => info(methSym(i), s.SymbolInformation.Kind.METHOD, s"m$i", s.NoSignature))
+    s.TextDocument(uri = "ch.scala", symbols = methods.toVector, occurrences = occs.toVector)
+
+  private val genCallGraph: Gen[(Int, Map[Int, Set[Int]])] =
+    for
+      n <- Gen.choose(1, 5)
+      edges <- Gen.sequence[List[Set[Int]], Set[Int]](
+        (0 until n).toList.map(i => Gen.someOf((0 until n).filterNot(_ == i)).map(_.toSet))
+      )
+    yield (n, (0 until n).zip(edges).toMap)
+
+  property(
+    "callHierarchy: every node's children equal its direct edges, unless depth-limited or " +
+      "already visited on this path (which makes it a leaf) — for any call graph, root, depth, " +
+      "and direction"
+  ):
+    forAll(
+      genCallGraph,
+      Gen.choose(0, 4),
+      Gen.choose(1, 4),
+      Gen.oneOf("callees", "callers")
+    ) { case ((n, edges), rootOffset, depth, direction) =>
+      val rootIdx = rootOffset % n
+      val az = Analyzer(SemanticIndex(Vector(callGraphDoc(n, edges))))
+      val reverseEdges: Map[Int, Set[Int]] =
+        (0 until n)
+          .map(j => j -> (0 until n).filter(edges.getOrElse(_, Set.empty).contains(j)).toSet)
+          .toMap
+      val adjUsed = if direction == "callees" then edges else reverseEdges
+
+      def idxOf(displayName: String): Int = displayName.stripPrefix("m").toInt
+
+      def checkNode(node: CallHierarchyNode, depthSoFar: Int, ancestors: Set[Int]): Boolean =
+        val idx = idxOf(node.method.displayName)
+        val expectedChildren =
+          if ancestors.contains(idx) || depthSoFar >= depth then Set.empty[Int]
+          else adjUsed.getOrElse(idx, Set.empty)
+        val actualChildren = node.children.map(c => idxOf(c.method.displayName)).toSet
+        actualChildren == expectedChildren &&
+        node.children.forall(c => checkNode(c, depthSoFar + 1, ancestors + idx))
+
+      val h = az.callHierarchy(method(methSym(rootIdx)), positiveInt(depth), direction)
+      checkNode(h.root, 0, Set.empty)
+    }
+
+  private def positiveInt(v: Int) = PositiveInt.from(v, "depth").fold(fail(_), identity)
