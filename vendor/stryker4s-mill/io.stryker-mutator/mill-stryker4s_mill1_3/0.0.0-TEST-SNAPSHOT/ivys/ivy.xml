@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ivy-module version="2.0" xmlns:e="http://ant.apache.org/ivy/extra">
-  <info organisation="io.stryker-mutator" module="mill-stryker4s_mill1_3" revision="0.0.0-TEST-SNAPSHOT" status="integration" publication="20260705072254" e:info.versionScheme="semver-spec">
+  <info organisation="io.stryker-mutator" module="mill-stryker4s_mill1_3" revision="0.0.0-TEST-SNAPSHOT" status="integration" publication="20260705184531" e:info.versionScheme="semver-spec">
     <description homepage="https://stryker-mutator.io/">Stryker4s, the mutation testing framework for Scala.</description>
   </info>
   <configurations>

@@ -6,15 +6,47 @@
 # `analysis` is the only module currently proven to run cleanly end-to-end (744 mutants, full
 # report, no InitialTestRunFailedException — that exception, which blocked every earlier attempt,
 # was fixed upstream by stryker-mutator/stryker4s#2068 "handle messages larger than socket buffer").
-# `core` and `mcp` are NOT wired as reliable:
-#   - `core`'s only test class, SemanticIndexSuite, dogfoods the whole project's own live SemanticDB
-#     — the original sbt-era stryker4s.conf deliberately excluded it for exactly this self-reference
-#     reason, and core has no other test suite, so it structurally cannot be mutation-tested.
-#   - `mcp` had two real compile-time gaps (now fixed in the overlay: BuildInfo's generated source
-#     wasn't inherited by mcpStryker, and the MethodExpression mutator produces a `Files.forall`
-#     variant that doesn't compile against `java.nio.file.Files`) but still hangs/crashes running
-#     the actual mutants against McpSuite — a separate, unresolved performance issue.
-# Both need further follow-up before `--module all`/`core`/`mcp` can be trusted in CI.
+# `core` is NOT wired as reliable: its only test class, SemanticIndexSuite, dogfoods the whole
+# project's own live SemanticDB — the original sbt-era stryker4s.conf deliberately excluded it for
+# exactly this self-reference reason, and core has no other test suite, so it structurally cannot
+# be mutation-tested.
+# `mcp` had several gaps, all fixed:
+# - Two compile-time gaps: BuildInfo's generated source wasn't inherited by mcpStryker, and the
+#   MethodExpression mutator produces a `Files.forall` variant that doesn't compile against
+#   `java.nio.file.Files` (excluded via strykerExcludedMutations).
+# - `McpTools.all`'s single ~800-line tool-construction method tripped the JVM's 64KB-per-method
+#   bytecode cap under certain mutants ("Method too large"); wrapping each tool in a by-name
+#   `toolDef(t: => Tool)` call moved each into its own synthetic method, but Scala/dotty still
+#   compiles those onto the SAME enclosing class file, so the *class*'s constant pool then tripped
+#   the JVM's per-class size cap instead ("Class too large"). Fixed by physically splitting the 19
+#   tools across 4 sibling top-level objects (`McpToolsGroupA-D`), each its own class file/budget.
+# - The real blocker, `InitialTestRunFailedException` with zero diagnostic detail in any stryker4s
+#   log: the Mill plugin's `MillConfigSource` hardcodes `baseDir = moduleDir` (e.g. `mcp/`), so the
+#   forked test-runner subprocess's cwd is the module dir, not the repo root. `McpSuite` dogfoods via
+#   `SemanticIndex.fromProject(".")`, which needs cwd = repo root (see CLAUDE.md) to see every
+#   module's SemanticDB output; under the wrong cwd it silently resolves to an empty index, every
+#   SemanticDB-backed assertion fails, and the whole suite reports `Status.Failure` with zero
+#   individual test failures recorded — stryker4s surfaces only its generic
+#   `InitialTestRunFailedException`, with nothing in its own logs to explain why. Root-caused by
+#   patching diagnostic logging directly into a locally rebuilt stryker4s (its own
+#   `--log-test-runner-stdout` CLI flag turned out to be misdocumented too — it's a bare flag, not
+#   `--debug.log-test-runner-stdout` — and even correctly enabled, the underlying event handler for
+#   the *initial* test run discards individual failed-test detail entirely, unlike the per-mutant
+#   handler). Fixed in scripts/run-stryker.sh: `run_module` now passes `--base-dir "$run_dir"`
+#   (CLI config outranks the Mill plugin's own baseDir source), and `module_mutate_patterns` globs
+#   are now repo-root-relative to match.
+# - A second, unrelated failure surfaced once the initial run actually executed real tests:
+#   `smart_code_duplications` (a whole-project scan) exceeded munit's default 30s per-test timeout
+#   when 5 concurrent test-runner JVMs compete for CPU during mutation testing. Fixed by bumping
+#   `McpSuite`'s `munitTimeout` to 120s.
+# - `McpSuite` no longer runs the two presentation-compiler-backed tests (moved to `McpPcSuite`,
+#   which `--test-filter McpSuite` never touches), keeping per-mutant test execution cheap.
+# It's still heavy: 700+ mutants recompiled in-process against McpTools.scala is legitimately slow
+# (~20-30 min) and memory-hungry — this predates the Mill migration entirely (see
+# docs/research/stryker4s-alert-strategy.md #4 "Implementation note from #133": the old sbt CI
+# already needed `SBT_OPTS=-Xmx4G` for the same reason). The `Run Stryker4s modules` step below sets
+# the Mill-side equivalent (`JAVA_TOOL_OPTIONS: -Xmx4g`). `core` still needs a structural fix (or
+# acceptance that it's out of scope) before `--module all`/`core` can be trusted in CI.
 #
 # On success, this workflow commits reports/mutation/**/report.json (the stable per-module report
 # mutation-summary.sh writes) back to the branch being tested, so mutation score/survivor history
@@ -113,6 +145,12 @@ jobs:
         if: steps.scope.outputs.modules != ''
         env:
           MODULES: ${{ steps.scope.outputs.modules }}
+          # mcp has always needed extra heap under mutation testing (800+ mutants recompiled
+          # in-process) — the old sbt-era CI set `SBT_OPTS=-Xmx4G` for exactly this reason (see
+          # docs/research/stryker4s-alert-strategy.md #4 "Implementation note from #133"). Mill
+          # runs the equivalent recompile loop inside its own daemon JVM, so bump its heap the
+          # same way via JAVA_TOOL_OPTIONS (picked up by any JVM, including Mill's launcher).
+          JAVA_TOOL_OPTIONS: -Xmx4g
         run: |
           set -euo pipefail
           mkdir -p reports/mutation
