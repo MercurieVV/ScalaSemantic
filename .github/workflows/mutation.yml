@@ -203,7 +203,7 @@ jobs:
           name: stryker4s-report
           path: |
             reports/mutation/**
-            */target/stryker4s-report/**
+            target/stryker4s-report/**
           if-no-files-found: error
 
       - name: Comment mutation summary on PR
