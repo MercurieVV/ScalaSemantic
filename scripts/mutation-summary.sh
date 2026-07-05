@@ -2,12 +2,13 @@
 # Copy the Stryker4s JSON report to a stable path and print alert categories.
 #
 # Stryker emits the machine-readable report (mutation-testing-elements schema) at
-#   <module>/target/stryker4s-report/<timestamp>/report.json   (the `json` reporter)
-# which lives under the gitignored target/ dir. Copy it verbatim to MUTATION_REPORT_DEST, or to the
-# historical repo-root mutation-report.json when that variable is unset.
+#   target/stryker4s-report/<timestamp>/report.json   (the `json` reporter)
+# relative to --base-dir (the repo root, see run-stryker.sh), under the gitignored target/ dir.
+# Copy it verbatim to MUTATION_REPORT_DEST, or to the historical repo-root mutation-report.json
+# when that variable is unset.
 # Usage:
 #   scripts/mutation-summary.sh [path/to/report.json]
-# With no arg, the newest report under any module's target/stryker4s-report is used.
+# With no arg, the newest report under target/stryker4s-report is used.
 #
 # Alerts are intentionally stricter than Stryker's built-in threshold reporting:
 #   - mutation score below MUTATION_SCORE_ALERT_THRESHOLD, or report thresholds.high when unset
@@ -31,11 +32,11 @@ alert_mutators="${MUTATION_ALERT_MUTATORS:-ConditionalExpression,EqualityOperato
 module_label="${MUTATION_MODULE:-mutation}"
 report="${1:-}"
 if [[ -z "$report" ]]; then
-  report="$(find . -path '*/target/stryker4s-report/*/report.json' -print0 2>/dev/null \
+  report="$(find target/stryker4s-report -path '*/report.json' -print0 2>/dev/null \
     | xargs -0 ls -t 2>/dev/null | head -1 || true)"
 fi
 if [[ -z "$report" || ! -f "$report" ]]; then
-  echo "error: no report.json found (looked under */target/stryker4s-report/*/)" >&2
+  echo "error: no report.json found (looked under target/stryker4s-report/*/)" >&2
   echo "       run 'scripts/run-stryker.sh --local --module <module>' first, or pass the report path explicitly." >&2
   exit 1
 fi
