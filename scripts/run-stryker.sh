@@ -243,10 +243,12 @@ run_module() {
     exit $status
   fi
 
-  report="$(find "$run_dir/$target_module/target/stryker4s-report" -name report.json -print0 2>/dev/null \
+  # Reports land relative to --base-dir ("$run_dir", the repo root), not the mutated module's own
+  # dir, since run_module now passes --base-dir uniformly (see the --base-dir comment above).
+  report="$(find "$run_dir/target/stryker4s-report" -name report.json -print0 2>/dev/null \
     | xargs -0 ls -t 2>/dev/null | head -1 || true)"
   if [[ -z "$report" || ! -f "$report" ]]; then
-    echo "error: no report.json produced under $run_label/$target_module/target/stryker4s-report" >&2
+    echo "error: no report.json produced under $run_label/target/stryker4s-report" >&2
     exit 1
   fi
 
