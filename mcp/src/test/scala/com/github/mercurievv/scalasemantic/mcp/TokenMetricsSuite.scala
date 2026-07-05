@@ -91,14 +91,19 @@ class TokenMetricsSuite extends munit.FunSuite:
 
   private lazy val queries: List[QueryMetric] =
     val fixtureSources = scalaFilesUnder(
-      Seq("analysis/src/test/scala", "compat-fixtures/src/main/scala-3")
+      Seq(
+        "analysis/src/test/scala",
+        "compat-fixtures/src/main/scala-3",
+        "target/vendor-corpus/scala-2.13",
+        "target/vendor-corpus/scala-3"
+      )
     )
     List(
       QueryMetric(
         id = "find-usages-animal",
         query = "Find all definitions and references of the Animal trait.",
         tool = "find_usages",
-        baseline = "Text grep for Animal across fixture source trees.",
+        baseline = "Text grep for Animal across fixture and vendored corpus source trees.",
         toolOutput = call("find_usages", ujson.Obj("symbol" -> Animal)),
         baselineOutput = grep("Animal", fixtureSources)
       ),

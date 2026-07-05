@@ -185,7 +185,7 @@ The project must have been compiled at least once so that SemanticDB output
 exists under each module's `target/` directory:
 
 ```bash
-sbt compile
+./mill __.compile
 ```
 
 ### Run in verification mode (default)
@@ -195,7 +195,7 @@ match the freshly-computed values. Any drift (e.g. after adding a new fixture
 symbol) is reported as a test failure:
 
 ```bash
-sbt "mcp/testOnly com.github.mercurievv.scalasemantic.mcp.TokenMetricsSuite"
+./mill mcp.test.testOnly com.github.mercurievv.scalasemantic.mcp.TokenMetricsSuite
 ```
 
 ### Regenerate artifacts
@@ -204,7 +204,7 @@ Set `UPDATE_TOKEN_METRICS=1` to overwrite both
 `docs/research/token-metrics.json` and `docs/research/token-metrics-methodology.md` in place:
 
 ```bash
-UPDATE_TOKEN_METRICS=1 sbt "mcp/testOnly com.github.mercurievv.scalasemantic.mcp.TokenMetricsSuite"
+UPDATE_TOKEN_METRICS=1 ./mill mcp.test.testOnly com.github.mercurievv.scalasemantic.mcp.TokenMetricsSuite
 ```
 
 After regeneration, commit both updated files together.

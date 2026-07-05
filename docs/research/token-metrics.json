@@ -13,7 +13,7 @@
       "id": "find-usages-animal",
       "query": "Find all definitions and references of the Animal trait.",
       "tool": "find_usages",
-      "baseline": "Text grep for Animal across fixture source trees.",
+      "baseline": "Text grep for Animal across fixture and vendored corpus source trees.",
       "toolChars": 399,
       "baselineChars": 7924,
       "toolTokens": 100,
