@@ -11,6 +11,7 @@ on:
       - '*.md'
       - '.gitignore'
       - '.agents/**'
+      - 'reports/mutation/**'
   pull_request:
     branches: ['**']
     paths-ignore:
@@ -20,6 +21,7 @@ on:
       - '*.md'
       - '.gitignore'
       - '.agents/**'
+      - 'reports/mutation/**'
   workflow_dispatch: # manual dry-run: builds, then publishes a -SNAPSHOT (exercises creds + signing)
 
 concurrency:

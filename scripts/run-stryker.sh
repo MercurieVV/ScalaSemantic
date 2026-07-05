@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
 # Run stryker4s mutation testing (Mill-side).
 #
-# stryker4s has no Maven Central release of its Mill plugin yet; this script builds and publishes
-# a local snapshot from a pinned stryker4s commit (via THEIR sbt build — stryker4s itself has no
-# Mill build, only the plugin it ships targets Mill), then patches an isolated worktree copy of
-# build.mill with scripts/generate-stryker-overlay.py (never the committed build.mill — see that
-# script's docstring and docs/MILL_MIGRATION.md §10 item 3 for why). STRYKER4S_COMMIT below is
-# pinned past stryker-mutator/stryker4s#2068 ("handle messages larger than socket buffer"), which
-# fixed a reproducible InitialTestRunFailedException that blocked every earlier attempt at this.
+# stryker4s has no Maven Central release of its Mill plugin yet, so vendor/stryker4s-mill/ carries
+# a pre-built local snapshot (jar + ivy.xml only, ~1.9M — built once from stryker4s commit 86aa9ed1,
+# past stryker-mutator/stryker4s#2068 "handle messages larger than socket buffer", which fixed a
+# reproducible InitialTestRunFailedException that blocked every earlier attempt at this) — installed
+# into ~/.ivy2/local at run time, no sbt/network build step needed. To refresh it: clone stryker4s,
+# checkout the desired commit, run `sbt publishMillLocal`, then copy the resulting
+# ~/.ivy2/local/io.stryker-mutator/*/0.0.0-TEST-SNAPSHOT/{jars,ivys} dirs into vendor/stryker4s-mill/
+# (only the Scala-3, non-test artifacts: mill-stryker4s_mill1_3, stryker4s-{core,api}_3,
+# stryker4s-testrunner{,-api}_3 — everything else in that tree is either test-scoped or cross-built
+# for Scala 2 we don't use).
+#
+# This script then patches an isolated worktree copy of build.mill with
+# scripts/generate-stryker-overlay.py (never the committed build.mill — see that script's docstring
+# and docs/MILL_MIGRATION.md §10 item 3 for why).
 #
 # Default mode runs in an isolated, reusable git worktree so the current checkout's out/
 # directories stay untouched. Use --local to run in this checkout and keep all Stryker churn under
@@ -24,13 +31,11 @@
 set -euo pipefail
 
 usage() {
-  sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,30p' "$0" | sed 's/^# \{0,1\}//'
 }
 
-STRYKER4S_COMMIT="${STRYKER4S_COMMIT:-86aa9ed1}"
 STRYKER4S_PLUGIN_VERSION="0.0.0-TEST-SNAPSHOT"
 STRYKER4S_PLUGIN_ARTIFACT="mill-stryker4s_mill1_3"
-stryker4s_src_cache="${STRYKER4S_SRC_CACHE:-$HOME/.cache/scalasemantic/stryker4s-src}"
 
 local_run=0
 module="analysis"
@@ -91,30 +96,29 @@ fi
 GIT="git"
 command -v rtk >/dev/null 2>&1 && GIT="rtk git"
 
-# --- ensure the stryker4s Mill plugin snapshot is published locally --------------------------
+# --- install the vendored stryker4s Mill plugin snapshot into ~/.ivy2/local -------------------
 
-ensure_stryker_plugin_published() {
+ensure_stryker_plugin_installed() {
   local marker="$HOME/.ivy2/local/io.stryker-mutator/$STRYKER4S_PLUGIN_ARTIFACT/$STRYKER4S_PLUGIN_VERSION/jars/$STRYKER4S_PLUGIN_ARTIFACT.jar"
   if [[ -f "$marker" ]]; then
-    echo "stryker4s Mill plugin already published locally ($marker)"
+    echo "stryker4s Mill plugin already installed ($marker)"
     return
   fi
-  echo "publishing stryker4s Mill plugin snapshot (commit $STRYKER4S_COMMIT) to ~/.ivy2/local ..."
-  if [[ -d "$stryker4s_src_cache/.git" ]]; then
-    git -C "$stryker4s_src_cache" fetch --quiet origin "$STRYKER4S_COMMIT"
-  else
-    mkdir -p "$(dirname "$stryker4s_src_cache")"
-    git clone --quiet https://github.com/stryker-mutator/stryker4s.git "$stryker4s_src_cache"
+  local vendor_dir="$repo_root/vendor/stryker4s-mill/io.stryker-mutator"
+  if [[ ! -d "$vendor_dir" ]]; then
+    echo "error: no vendored plugin at $vendor_dir" >&2
+    exit 1
   fi
-  git -C "$stryker4s_src_cache" checkout --quiet "$STRYKER4S_COMMIT"
-  (cd "$stryker4s_src_cache" && sbt --batch publishMillLocal)
+  echo "installing vendored stryker4s Mill plugin into ~/.ivy2/local ..."
+  mkdir -p "$HOME/.ivy2/local"
+  cp -r "$vendor_dir/." "$HOME/.ivy2/local/io.stryker-mutator/"
   if [[ ! -f "$marker" ]]; then
-    echo "error: publishMillLocal did not produce $marker" >&2
+    echo "error: installing the vendored plugin did not produce $marker" >&2
     exit 1
   fi
 }
 
-ensure_stryker_plugin_published
+ensure_stryker_plugin_installed
 
 run_dir="$repo_root"
 run_label="local checkout"
