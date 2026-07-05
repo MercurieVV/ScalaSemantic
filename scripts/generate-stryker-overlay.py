@@ -4,13 +4,18 @@
 Only ever run against the throwaway worktree copy scripts/run-stryker.sh operates in (or --local's
 own checkout) — never against the committed build.mill. See docs/MILL_MIGRATION.md §10 item 3 for
 why this can't be a permanent, unconditional part of build.mill: the plugin has no Maven Central
-release, only a locally-published snapshot (mill-stryker4s_mill1, version 0.0.0-TEST-SNAPSHOT),
+release, only a locally-published snapshot (mill-stryker4s_mill1_3, version 0.0.0-TEST-SNAPSHOT),
 and Mill's `//| mvnDeps:` header resolves statically on every invocation — adding it unconditionally
 would break every plain `./mill compile` the moment that local-only jar is missing.
+
+The artifact coordinate below is the exact published name (verified against a real `publishMillLocal`
+run) — Mill's `::`/`:::` cross-version shorthand does NOT reproduce it (`::` yields `_3`, `:::`
+yields the full `_3.8.2` Scala version; the real artifact is suffixed `_mill1_3`), so it must be
+the literal single-colon coordinate, not a `::`-shorthand one.
 """
 import sys
 
-STRYKER_MVN_DEP = "//| - io.stryker-mutator::mill-stryker4s_mill1:0.0.0-TEST-SNAPSHOT"
+STRYKER_MVN_DEP = "//| - io.stryker-mutator:mill-stryker4s_mill1_3:0.0.0-TEST-SNAPSHOT"
 STRYKER_IMPORT = "import stryker4s.mill.Stryker4sModule"
 
 OVERLAY = '''
@@ -52,13 +57,16 @@ def patch(path: str) -> None:
     if any("mill-stryker4s_mill1" in line for line in lines):
         return  # already patched (e.g. re-run in a reused worktree)
 
-    last_header = -1
+    # Anchor on the last `//| -` *list item* line, not just the last `//|` header line overall —
+    # a later scalar header key (e.g. `//| bspScriptIgnore: [...]`) is not part of the mvnDeps
+    # list, and inserting after it produces an invalid YAML header (a list item outside its list).
+    last_mvn_dep = -1
     for i, line in enumerate(lines):
-        if line.startswith("//|"):
-            last_header = i
-    if last_header == -1:
-        sys.exit("error: no `//|` header block found at top of build.mill")
-    lines.insert(last_header + 1, STRYKER_MVN_DEP + "\n")
+        if line.startswith("//| -"):
+            last_mvn_dep = i
+    if last_mvn_dep == -1:
+        sys.exit("error: no `//| -` mvnDeps list item found at top of build.mill")
+    lines.insert(last_mvn_dep + 1, STRYKER_MVN_DEP + "\n")
 
     import_idx = next(
         (i for i, line in enumerate(lines) if line.startswith("import mill.contrib.buildinfo.BuildInfo")),

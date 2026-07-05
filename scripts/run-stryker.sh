@@ -1,29 +1,36 @@
 #!/usr/bin/env bash
-# Run stryker4s mutation testing.
+# Run stryker4s mutation testing (Mill-side).
 #
-# INACTIVE since the Mill cutover: this script shells out to `sbt`, and build.sbt/project/ were
-# deleted (see docs/MILL_MIGRATION.md §2/§10 "Hardest" item 3 — no released Mill build of stryker4s
-# exists yet, and a local snapshot hit a reproducible InitialTestRunFailedException in its Mill
-# test-runner glue). .github/workflows/mutation.yml is disabled (`if: false`) for the same reason.
-# Kept as reference for when stryker4s ships a working Mill port.
+# stryker4s has no Maven Central release of its Mill plugin yet; this script builds and publishes
+# a local snapshot from a pinned stryker4s commit (via THEIR sbt build — stryker4s itself has no
+# Mill build, only the plugin it ships targets Mill), then patches an isolated worktree copy of
+# build.mill with scripts/generate-stryker-overlay.py (never the committed build.mill — see that
+# script's docstring and docs/MILL_MIGRATION.md §10 item 3 for why). STRYKER4S_COMMIT below is
+# pinned past stryker-mutator/stryker4s#2068 ("handle messages larger than socket buffer"), which
+# fixed a reproducible InitialTestRunFailedException that blocked every earlier attempt at this.
 #
-# Default mode runs in an isolated, reusable git worktree so the current checkout's target/
+# Default mode runs in an isolated, reusable git worktree so the current checkout's out/
 # directories stay untouched. Use --local to run in this checkout and keep all Stryker churn under
-# the normal local ./target directories.
+# the normal local ./out directories.
 #
 # Usage:
 #   scripts/run-stryker.sh <name>                         # .worktrees/stryker4s-<name>
 #   scripts/run-stryker.sh --module core <name>           # one module in a worktree
 #   scripts/run-stryker.sh --module all <name>            # core, analysis, and mcp
-#   scripts/run-stryker.sh --local --module analysis      # current checkout, ./target
+#   scripts/run-stryker.sh --local --module analysis      # current checkout, ./out
 #
 # On success it copies the stryker JSON report back to mutation-report.json and applies the alert
-# rules in scripts/mutation-summary.sh. The full sbt log is kept beside the run.
+# rules in scripts/mutation-summary.sh. The full Mill log is kept beside the run.
 set -euo pipefail
 
 usage() {
-  sed -n '3,13p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//'
 }
+
+STRYKER4S_COMMIT="${STRYKER4S_COMMIT:-86aa9ed1}"
+STRYKER4S_PLUGIN_VERSION="0.0.0-TEST-SNAPSHOT"
+STRYKER4S_PLUGIN_ARTIFACT="mill-stryker4s_mill1_3"
+stryker4s_src_cache="${STRYKER4S_SRC_CACHE:-$HOME/.cache/scalasemantic/stryker4s-src}"
 
 local_run=0
 module="analysis"
@@ -75,8 +82,39 @@ if [[ "$local_run" -eq 1 && -n "$name" ]]; then
   exit 2
 fi
 
+# --local patches this checkout's build.mill in place (safe on an ephemeral CI runner, but leaves a
+# stray diff on a developer's real checkout) — always restore it on exit, success or failure.
+if [[ "$local_run" -eq 1 ]]; then
+  trap 'git -C "$repo_root" checkout --quiet -- build.mill 2>/dev/null || true' EXIT
+fi
+
 GIT="git"
 command -v rtk >/dev/null 2>&1 && GIT="rtk git"
+
+# --- ensure the stryker4s Mill plugin snapshot is published locally --------------------------
+
+ensure_stryker_plugin_published() {
+  local marker="$HOME/.ivy2/local/io.stryker-mutator/$STRYKER4S_PLUGIN_ARTIFACT/$STRYKER4S_PLUGIN_VERSION/jars/$STRYKER4S_PLUGIN_ARTIFACT.jar"
+  if [[ -f "$marker" ]]; then
+    echo "stryker4s Mill plugin already published locally ($marker)"
+    return
+  fi
+  echo "publishing stryker4s Mill plugin snapshot (commit $STRYKER4S_COMMIT) to ~/.ivy2/local ..."
+  if [[ -d "$stryker4s_src_cache/.git" ]]; then
+    git -C "$stryker4s_src_cache" fetch --quiet origin "$STRYKER4S_COMMIT"
+  else
+    mkdir -p "$(dirname "$stryker4s_src_cache")"
+    git clone --quiet https://github.com/stryker-mutator/stryker4s.git "$stryker4s_src_cache"
+  fi
+  git -C "$stryker4s_src_cache" checkout --quiet "$STRYKER4S_COMMIT"
+  (cd "$stryker4s_src_cache" && sbt --batch publishMillLocal)
+  if [[ ! -f "$marker" ]]; then
+    echo "error: publishMillLocal did not produce $marker" >&2
+    exit 1
+  fi
+}
+
+ensure_stryker_plugin_published
 
 run_dir="$repo_root"
 run_label="local checkout"
@@ -101,10 +139,13 @@ if [[ "$local_run" -eq 0 ]]; then
   run_label="$wt"
 fi
 
+# Patch the worktree's build.mill with the *Stryker overlay objects (never the committed build.mill).
+python3 "$repo_root/scripts/generate-stryker-overlay.py" "$run_dir/build.mill"
+
 log="$run_dir/stryker-run.log"
 if [[ "$local_run" -eq 1 ]]; then
-  mkdir -p "$repo_root/target"
-  log="$repo_root/target/stryker-run.log"
+  mkdir -p "$repo_root/out"
+  log="$repo_root/out/stryker-run.log"
 fi
 
 echo "running stryker4s in $run_label (full log: $log) ..."
@@ -158,7 +199,7 @@ run_module() {
     module_log="${log%.log}-$target_module.log"
   fi
 
-  local args=("$target_module / stryker")
+  local args=()
   while IFS= read -r pattern; do
     args+=("--mutate" "$pattern")
   done < <(module_mutate_patterns "$target_module")
@@ -174,7 +215,7 @@ run_module() {
 
   echo "running module $target_module (log: $module_log) ..."
   set +e
-  (cd "$run_dir" && STRYKER=1 SBT_OPTS="${SBT_OPTS:--Xmx4G}" sbt --batch -Dstryker=true "${args[*]}") >"$module_log" 2>&1
+  (cd "$run_dir" && ./mill "${target_module}Stryker.stryker" "${args[@]}") >"$module_log" 2>&1
   local status=$?
   set -e
 
@@ -208,7 +249,7 @@ else
   run_module "$module"
 fi
 if [[ "$local_run" -eq 1 ]]; then
-  echo "done. local Stryker output kept under */target and target/stryker-run*.log"
+  echo "done. local Stryker output kept under */target and out/stryker-run*.log"
 else
   echo "done. worktree kept at $wt (rerun reuses it; remove with: git worktree remove $wt)"
 fi
