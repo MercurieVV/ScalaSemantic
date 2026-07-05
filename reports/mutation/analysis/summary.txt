@@ -1,0 +1,26 @@
+installing vendored stryker4s Mill plugin into ~/.ivy2/local ...
+running stryker4s in local checkout (full log: /home/runner/work/ScalaSemantic/ScalaSemantic/out/stryker-run.log) ...
+running module analysis (log: /home/runner/work/ScalaSemantic/ScalaSemantic/out/stryker-run.log) ...
+295] 144 mutant(s) detected as having no code coverage. They will be skipped and marked as NoCoverage
+295] 58 mutant(s) detected as static. They will be skipped and marked as Ignored
+295] Written JSON report to /home/runner/work/ScalaSemantic/ScalaSemantic/analysis/target/stryker4s-report/1783251408160/report.json
+wrote reports/mutation/analysis/report.json from /home/runner/work/ScalaSemantic/ScalaSemantic/analysis/target/stryker4s-report/1783251408160/report.json
+analysis mutation score: 62.23% (463/744 detected, alert threshold 80%)
+mutants by status:
+  Ignored: 58
+  Killed: 463
+  NoCoverage: 144
+  Survived: 137
+surviving mutants by type:
+  LogicalOperator: 40
+  EqualityOperator: 39
+  ConditionalExpression: 26
+  StringLiteral: 19
+  MethodExpression: 12
+  BooleanLiteral: 1
+alert: analysis mutation score 62.23% is below 80%
+alert: surviving mutants match MUTATION_ALERT_MUTATORS=ConditionalExpression,EqualityOperator,LogicalOperator
+  ConditionalExpression: 26 (src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:144 #319, src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:123 #327, src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:123 #328)
+  EqualityOperator: 39 (src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:93 #251, src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:93 #255, src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:93 #256)
+  LogicalOperator: 40 (src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:45 #235, src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:45 #239, src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:93 #246)
+done. local Stryker output kept under */target and out/stryker-run*.log
