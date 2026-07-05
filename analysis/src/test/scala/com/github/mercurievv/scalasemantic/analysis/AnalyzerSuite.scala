@@ -51,39 +51,42 @@ class AnalyzerSuite extends munit.FunSuite:
 
   // Cross-build trait: compat-fixtures emits SemanticDB under both scala-3 and scala-2.13, and the
   // same .semanticdb can be present in more than one target dir — exercises dedup + path scoping.
-  private val CompatAnimal = "com/github/mercurievv/scalasemantic/compat/Animal#"
+  // `VirtualBase` (CallGraph.scala) is identically defined in both compat-fixtures version trees.
+  private val CompatVirtualBase = "com/github/mercurievv/scalasemantic/compat/VirtualBase#"
 
   test("findSymbol kind filters to a single SymbolInformation kind") {
-    val traits = az.findSymbol("Animal", kind = Some("TRAIT")).map(_.symbol).toSet
-    assertEquals(traits, Set(Animal, CompatAnimal))
-    assert(az.findSymbol("Animal", kind = Some("TRAIT")).forall(_.kind == SymbolKind.Trait))
+    val traits = az.findSymbol("VirtualBase", kind = Some("TRAIT")).map(_.symbol).toSet
+    assertEquals(traits, Set(CompatVirtualBase))
+    assert(az.findSymbol("VirtualBase", kind = Some("TRAIT")).forall(_.kind == SymbolKind.Trait))
   }
 
   test("findSymbol exact matches the whole display name only") {
-    val sub = az.findSymbol("Animal").map(_.displayName)
-    assert(sub.contains("CompatAnimal"), "substring search includes CompatAnimal")
-    val exact = az.findSymbol("Animal", exact = true).map(_.displayName)
-    assert(exact.forall(_ == "Animal"), exact.toString)
-    assert(az.findSymbol("Anim", exact = true).isEmpty, "no symbol is named exactly 'Anim'")
+    val exact = az.findSymbol("VirtualBase", exact = true).map(_.displayName)
+    assert(exact.forall(_ == "VirtualBase"), exact.toString)
+    assert(
+      az.findSymbol("VirtualBas", exact = true).isEmpty,
+      "no symbol is named exactly 'VirtualBas'"
+    )
   }
 
   test("findSymbol pathFilter scopes by the symbol's definition uri") {
-    val scoped = az.findSymbol("Animal", kind = Some("TRAIT"), pathFilter = Some("*compat*"))
-    assertEquals(scoped.map(_.symbol), List(CompatAnimal))
+    val scoped = az.findSymbol("VirtualBase", kind = Some("TRAIT"), pathFilter = Some("*compat*"))
+    assertEquals(scoped.map(_.symbol), List(CompatVirtualBase))
   }
 
   test("findUsages dedups occurrence locations (no repeated uri:line:col)") {
-    val u = az.findUsages(sym(CompatAnimal))
+    val u = az.findUsages(sym(CompatVirtualBase))
     assertEquals(u.definitions, u.definitions.distinct, "definitions must be unique")
     assertEquals(u.references, u.references.distinct, "references must be unique")
-    // golden counts after dedup: 2 defs (scala-3 + scala-2.13), 6 refs across both builds.
+    // golden counts after dedup: 2 defs (scala-3 + scala-2.13); VirtualBase is referenced by
+    // VirtualImpl1/VirtualImpl2 (extends) and callVirtual's param type — 3 refs per build.
     assertEquals(u.definitions.size, 2, u.definitions.map(_.uri).toString)
     assertEquals(u.references.size, 6, u.references.map(_.uri).toString)
   }
 
   test("findUsages pathFilter scopes occurrences to matching document uris") {
-    val all = az.findUsages(sym(CompatAnimal))
-    val scoped = az.findUsages(sym(CompatAnimal), Some("*scala-3*"))
+    val all = az.findUsages(sym(CompatVirtualBase))
+    val scoped = az.findUsages(sym(CompatVirtualBase), Some("*scala-3*"))
     assert(scoped.references.size < all.references.size, "filter must drop non-matching refs")
     assert(
       scoped.references.forall(_.uri.contains("scala-3")),
@@ -93,13 +96,13 @@ class AnalyzerSuite extends munit.FunSuite:
       scoped.definitions.forall(_.uri.contains("scala-3")),
       scoped.definitions.map(_.uri).toString
     )
-    // golden: only the scala-3 build remains — 1 def, 4 refs.
+    // golden: only the scala-3 build remains — 1 def, 3 refs.
     assertEquals(scoped.definitions.size, 1)
-    assertEquals(scoped.references.size, 4)
+    assertEquals(scoped.references.size, 3)
   }
 
   test("findUsages with no pathFilter is unchanged (None keeps everything)") {
-    assertEquals(az.findUsages(sym(CompatAnimal), None), az.findUsages(sym(CompatAnimal)))
+    assertEquals(az.findUsages(sym(CompatVirtualBase), None), az.findUsages(sym(CompatVirtualBase)))
   }
 
   test("methodSignature captures type params and an implicit/using parameter list") {

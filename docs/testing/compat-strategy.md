@@ -105,7 +105,26 @@ parity. Concretely:
   pipeline at the vendored corpus directories directly (git submodule / fetched source under a
   clearly licensed vendor path), so future upstream additions flow through without manual re-copying.
 
-This conclusion is **not yet applied** — `#156`'s snippet-based implementation stands as merged and
-green. A followup task should: (1) vendor the full corpora rather than excerpts, (2) run
-CompatSuite/golden generation over them, (3) prune this repo's redundant hand-written fixtures down
-to gap-only cases, (4) keep license/attribution handling for the now-larger vendored trees.
+**Applied** (#200, #201, #202): (1) `build.mill`'s `corpus` cross module fetches the full Scalameta
+`semanticdb-integration` (2.13) and Scala-3-compiler `tests/semanticdb/expect` (3.x) source trees
+under `target/vendor-corpus/` / compiles them via `corpus.*.compile`, gated behind `corpusGoldenAll`
+(#200); (2) `CompatSuite` runs universal structural invariants (no throwing, no empty
+signature/param types across `classHierarchy`/`members`/`resolveImplicits`/`findUsages`/
+`methodSignature`) over every symbol in `target/corpus/scala-{2.13,3}/` (#201); (3) this repo's
+redundant hand-written fixtures were pruned (#202): `BasicClasses`, `Inheritance`, `Generics`,
+`Overloads`, `Implicits`, the baseline `Calls.a/b/c` call chain, and the snippet-copy
+`VendoredFixtures.scala` (both version trees) are deleted — their constructs (plain trait/class
+inheritance, generics, implicit resolution, overloads, enums, opaque/value classes, implicit
+classes, package objects) are exercised at far greater scale by the vendored corpora. `CompatSuite`
+gained named corpus-backed probes re-expressing that intent against genuine corpus equivalents
+(`example.A`/`B` from `Overrides.scala` for hierarchy/members/find-usages/method-signature,
+`classes.C1`/`M.C5` from `Classes.scala` for value/implicit classes, `Enums.Colour` for enum cases,
+`NewModifiers.OpaqueB` for opaque types, `flags.p.package.z` for package objects). Two constructs had
+no corpus equivalent (Scala-2 procedure syntax, Scala-3 parameterized traits) and their tests were
+removed rather than repointed — a genuine coverage gap, but out of scope for a fixture-pruning pass;
+(4) `THIRD_PARTY.md` already carries the corpus attribution (upstream repo/ref/archive/license per
+corpus), so no license text was lost when `VendoredFixtures.scala`'s pasted headers went away with
+the file. What remains hand-authored in `compat-fixtures` is now only what the corpora do not
+target: this tool's own polymorphic/implicit call-path depth fixtures (`VirtualBase`/
+`PolymorphicCalls.entry1`/`callVirtual`, `ImplicitCalls.triggerShout`/`shout`/`shout2`) and
+Scala-3-only type-printer shapes (`VersionSpecific.scala`).

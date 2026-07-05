@@ -89,13 +89,15 @@ class McpSuite extends munit.FunSuite:
     val exact = call("find_symbol", ujson.Obj("query" -> "Animal", "exact" -> true))
     assert(exact("symbols").arr.forall(_("name").str == "Animal"), exact.render())
 
+    // `VirtualBase` (compat-fixtures' CallGraph.scala) is identically defined in both compat-fixtures
+    // version trees.
     val scoped =
       call(
         "find_symbol",
-        ujson.Obj("query" -> "Animal", "kind" -> "TRAIT", "pathFilter" -> "*compat*")
+        ujson.Obj("query" -> "VirtualBase", "kind" -> "TRAIT", "pathFilter" -> "*compat*")
       )
     val syms = jsonArray(scoped("symbols")).map(_("symbol").str)
-    assertEquals(syms.toList, List("com/github/mercurievv/scalasemantic/compat/Animal#"))
+    assertEquals(syms.toList, List("com/github/mercurievv/scalasemantic/compat/VirtualBase#"))
   }
 
   test("structure ranks types by coupling and rolls up modules (dogfood)") {
@@ -355,7 +357,7 @@ class McpSuite extends munit.FunSuite:
   }
 
   test("find_usages pathFilter scopes references by document-uri glob") {
-    val compat = "com/github/mercurievv/scalasemantic/compat/Animal#"
+    val compat = "com/github/mercurievv/scalasemantic/compat/VirtualBase#"
     val all = call("find_usages", ujson.Obj("symbol" -> compat))
     val scoped = call("find_usages", ujson.Obj("symbol" -> compat, "pathFilter" -> "*scala-3*"))
     assert(scoped("referenceCount").num < all("referenceCount").num, "filter must drop refs")
