@@ -179,19 +179,21 @@ module_test_filters() {
 }
 
 module_mutate_patterns() {
+  # Patterns are repo-root-relative (see --base-dir in run_module below), so each glob is prefixed
+  # with the module's own directory name.
   case "$1" in
     analysis)
       printf '%s\n' \
-        "src/main/scala/**/*.scala" \
-        "!src/main/scala/com/github/mercurievv/scalasemantic/analysis/DuplicationAnalyzer.scala"
+        "analysis/src/main/scala/**/*.scala" \
+        "!analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/DuplicationAnalyzer.scala"
       ;;
     core)
-      printf '%s\n' "src/main/scala/**/*.scala"
+      printf '%s\n' "core/src/main/scala/**/*.scala"
       ;;
     mcp)
       printf '%s\n' \
-        "src/main/scala/**/*.scala" \
-        "!src/main/scala/com/github/mercurievv/scalasemantic/Main.scala"
+        "mcp/src/main/scala/**/*.scala" \
+        "!mcp/src/main/scala/com/github/mercurievv/scalasemantic/Main.scala"
       ;;
   esac
 }
@@ -216,6 +218,16 @@ run_module() {
   args+=("--thresholds.break" "${MUTATION_BREAK_THRESHOLD:-0}")
   args+=("--timeout" "${MUTATION_TIMEOUT:-30s}")
   args+=("--timeout-factor" "${MUTATION_TIMEOUT_FACTOR:-3.0}")
+  # The Mill plugin hardcodes baseDir = the mutated module's own directory (MillConfigSource sets
+  # it from `moduleDir`), so the forked test-runner subprocess's cwd is e.g. `mcp/`, not the repo
+  # root. Dogfood tests load `SemanticIndex.fromProject(".")` expecting cwd = repo root (see
+  # CLAUDE.md); under the module-dir cwd that resolves to an empty index, so every SemanticDB-backed
+  # assertion silently returns zero results and the whole suite reports Status.Failure with zero
+  # individual test failures recorded — surfacing only as stryker4s's generic
+  # `InitialTestRunFailedException`, with no diagnostic detail anywhere in its own logs. `--base-dir`
+  # on the CLI (ConfigOrder 5) outranks the Mill plugin's own baseDir config source (ConfigOrder 15),
+  # so this overrides it back to the repo root, matching testForked's behavior.
+  args+=("--base-dir" "$run_dir")
 
   echo "running module $target_module (log: $module_log) ..."
   set +e
