@@ -19,63 +19,12 @@ class AnalyzerHelpersSuite extends munit.FunSuite:
   private def ref(symbol: String, args: s.Type*): s.Type =
     s.TypeRef(s.Type.Empty, symbol, args.toList)
   private val IntT = ref("scala/Int#")
-  private val StringT = ref("scala/Predef.String#")
 
-  test("renderType: TypeRef with and without type arguments"):
-    assertEquals(h.renderType(IntT), "Int")
-    assertEquals(h.renderType(ref("scala/collection/immutable/List#", IntT)), "List[Int]")
-    assertEquals(h.renderType(ref("scala/Predef.Map#", IntT, StringT)), "Map[Int, String]")
-
-  test("renderType: every non-TypeRef shape and the empty default"):
-    assertEquals(h.renderType(s.SingleType(s.Type.Empty, "a/B.")), "B.type")
-    assertEquals(h.renderType(s.ThisType("a/B#")), "B.this")
-    assertEquals(h.renderType(s.SuperType(s.Type.Empty, "a/B#")), "B")
-    assertEquals(h.renderType(s.ByNameType(IntT)), "=> Int")
-    assertEquals(h.renderType(s.RepeatedType(IntT)), "Int*")
-    assertEquals(h.renderType(s.WithType(List(IntT, StringT))), "Int with String")
-    assertEquals(h.renderType(s.IntersectionType(List(IntT, StringT))), "Int & String")
-    assertEquals(h.renderType(s.UnionType(List(IntT, StringT))), "Int | String")
-    assertEquals(h.renderType(s.AnnotatedType(Nil, IntT)), "Int")
-    assertEquals(h.renderType(s.ExistentialType(IntT, None)), "Int")
-    assertEquals(h.renderType(s.UniversalType(None, IntT)), "Int")
-    assertEquals(h.renderType(s.StructuralType(IntT, None)), "Int")
-    assertEquals(h.renderType(s.Type.Empty), "")
-
-  test("renderType: ConstantType delegates to renderConstant"):
-    assertEquals(h.renderType(s.ConstantType(s.IntConstant(42))), "42")
-
-  test("renderConstant: every constant kind"):
-    assertEquals(h.renderConstant(s.IntConstant(42)), "42")
-    assertEquals(h.renderConstant(s.LongConstant(7L)), "7L")
-    assertEquals(h.renderConstant(s.FloatConstant(1.5f)), "1.5f")
-    assertEquals(h.renderConstant(s.DoubleConstant(2.5)), "2.5")
-    assertEquals(h.renderConstant(s.BooleanConstant(true)), "true")
-    assertEquals(h.renderConstant(s.CharConstant('a'.toInt)), "'a'")
-    assertEquals(h.renderConstant(s.StringConstant("x")), "\"x\"")
-    assertEquals(h.renderConstant(s.ShortConstant(3)), "3")
-    assertEquals(h.renderConstant(s.ByteConstant(4)), "4")
-    assertEquals(h.renderConstant(s.UnitConstant()), "Unit")
-    assertEquals(h.renderConstant(s.NullConstant()), "null")
-
-  test("renderMethod: type params, implicit lists, separators"):
-    def p(name: String, tpe: String) = Parameter(name, tpe, isImplicit = false)
-    assertEquals(
-      h.renderMethod("f", Nil, List(ParameterList(List(p("x", "Int")), isImplicit = false)), "Int"),
-      "def f(x: Int): Int"
-    )
-    assertEquals(
-      h.renderMethod(
-        "g",
-        List("A", "B"),
-        List(ParameterList(List(p("x", "A"), p("y", "B")), isImplicit = false)),
-        "B"
-      ),
-      "def g[A, B](x: A, y: B): B"
-    )
-    assertEquals(
-      h.renderMethod("e", Nil, List(ParameterList(List(p("c", "C")), isImplicit = true)), "Unit"),
-      "def e(implicit c: C): Unit"
-    )
+  // renderType (every constructor shape, arbitrary nesting), renderConstant (every constant
+  // kind, arbitrary values), and renderMethod (type params/implicit lists/separators, arbitrary
+  // names and arities) are now covered as properties in AnalyzerHelpersPropertySuite — the fixed
+  // examples that used to live here enumerated exactly the constructor shapes those properties
+  // now generate generatively.
 
   test("rangeContains is inclusive at start, exclusive at end"):
     val r = s.Range(1, 2, 3, 4)
@@ -87,10 +36,12 @@ class AnalyzerHelpersSuite extends munit.FunSuite:
     assert(!h.rangeContains(r, 3, 4), "the end position itself is excluded")
     assert(!h.rangeContains(r, 4, 0), "a later line is excluded")
 
-  test("rangeSpan weights lines over characters"):
-    assertEquals(h.rangeSpan(s.Range(1, 0, 3, 5)), 20005L)
-    assertEquals(h.rangeSpan(s.Range(2, 4, 2, 9)), 5L)
+  // rangeSpan's line-dominant formula and non-negativity are now covered as properties in
+  // AnalyzerHelpersPropertySuite over any well-formed range.
 
+  // Kept as concrete examples (rather than folded into the general alreadyAscribed property in
+  // AnalyzerHelpersPropertySuite): these exercise realistic Scala syntax shapes (a param list, a
+  // type-param list) that a synthetic bracket/colon/equals generator wouldn't reliably produce.
   test("alreadyAscribed finds a top-level colon before the body's ="):
     assert(h.alreadyAscribed("val x: Int = 1", 4), "explicit ascription")
     assert(!h.alreadyAscribed("val x = 1", 4), "no ascription")
@@ -245,19 +196,10 @@ class AnalyzerHelpersSuite extends munit.FunSuite:
     assertEquals(lin.distinct, lin, s"no duplicate ancestors: $lin")
     assertEquals(lin.toSet, Set("d/B#", "d/C#", "d/D#"))
 
-  // --- isGivenDefinition / implicitsProducing -------------------------------
-
-  test("isGivenDefinition requires implicit AND an object/def kind"):
-    def info(kind: s.SymbolInformation.Kind, props: Int) =
-      sigInfo("g/x.", kind, "x").copy(properties = props)
-    val IMPL = s.SymbolInformation.Property.IMPLICIT.value
-    assert(h.isGivenDefinition(info(s.SymbolInformation.Kind.OBJECT, IMPL)), "implicit object")
-    assert(h.isGivenDefinition(info(s.SymbolInformation.Kind.METHOD, IMPL)), "implicit def")
-    assert(
-      !h.isGivenDefinition(info(s.SymbolInformation.Kind.OBJECT, 0)),
-      "object but not implicit"
-    )
-    assert(!h.isGivenDefinition(info(s.SymbolInformation.Kind.FIELD, IMPL)), "implicit but a field")
+  // --- implicitsProducing ---------------------------------------------------
+  //
+  // isGivenDefinition's implicit-bit-AND-kind law is now covered as a property in
+  // AnalyzerHelpersPropertySuite, over every SymbolInformation.Kind.
 
   test("implicitsProducing returns only givens whose produced type matches"):
     val IMPL = s.SymbolInformation.Property.IMPLICIT.value

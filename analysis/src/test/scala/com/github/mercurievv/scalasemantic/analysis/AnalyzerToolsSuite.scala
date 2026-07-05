@@ -305,77 +305,26 @@ class AnalyzerToolsSuite extends munit.FunSuite:
     assertEquals(plan.signature, "def ex2(a: Int): (Int, Int)")
     assertEquals(plan.call, "val (b, c) = ex2(a)")
 
-  test("extractMethodPlan: occurrences without a range never enter the selection sets"):
-    // Each range-less occurrence would flip an `exists`->`forall` mutant (forall is vacuously true
-    // on None), so the plan must ignore them entirely.
-    val symbols = Seq(
-      exMethod,
-      exLocal("local0", "p"), // genuine free-var param
-      exLocal("local1", "nd"), // DEF range-less -> must not count as defined-inside
-      exLocal("local2", "nr"), // REF range-less inside -> must not count as read-inside (no param)
-      exLocal("local3", "na") // REF range-less after -> must not count as read-after (no return)
-    )
-    val occs = Seq(
-      occ("ex/M#run().", DEF, 0, 2, 0, 5),
-      occ("local0", DEF, 1, 8, 1, 9), // before selection
-      occ("local0", REF, 3, 10, 3, 11), // inside -> p is a param
-      s.SymbolOccurrence(None, "local1", DEF), // range-less DEF
-      s.SymbolOccurrence(None, "local2", REF), // range-less REF
-      occ("local3", DEF, 3, 6, 3, 7), // inside
-      s.SymbolOccurrence(None, "local3", REF) // range-less REF (would be "after")
-    )
-    val az = Analyzer(index(doc("ex.scala", symbols, occs)))
-    val range = SourceRange.from(2, 0, 5, 0).fold(fail(_), identity)
-    val name = ScalaIdentifier.from("exn").fold(fail(_), identity)
-    val plan = az.extractMethodPlan(docUri("ex.scala"), range, name).getOrElse(fail("not indexed"))
-    assertEquals(plan.parameters.map(_.name), List("p"), "only the ranged free read is a param")
-    assertEquals(plan.returns, Nil, "no local is read after via a real range")
-
-  test("extractMethodPlan: two params render with separators; a param read after is not a return"):
-    // a and b are both free reads (params); a is also read after the selection but, being defined
-    // OUTSIDE, must NOT become a return (kills the `DEF && inSel`->`||` widening of the returns set).
+  // The range-less-occurrence exclusion and the free-read/defined-outside-is-not-a-return rule are
+  // now covered generatively in AnalyzerToolsPropertySuite ("extractMethodPlan: parameter iff
+  // ranged-read-inside without ranged-def-inside; ..."), over an arbitrary number of locals and
+  // occurrence-shape combinations. Kept here: the two-param rendering with an "and" separator,
+  // which is a formatting detail the property doesn't assert.
+  test("extractMethodPlan: two free-var params render with a ', ' separator"):
     val symbols = Seq(exMethod, exLocal("local0", "a"), exLocal("local1", "b"))
     val occs = Seq(
       occ("ex/M#run().", DEF, 0, 2, 0, 5),
       occ("local0", DEF, 1, 8, 1, 9), // before
       occ("local1", DEF, 1, 12, 1, 13), // before
       occ("local0", REF, 3, 4, 3, 5), // inside -> a
-      occ("local1", REF, 3, 8, 3, 9), // inside -> b
-      occ("local0", REF, 6, 4, 6, 5) // a read after, but defined outside
+      occ("local1", REF, 3, 8, 3, 9) // inside -> b
     )
     val az = Analyzer(index(doc("ex.scala", symbols, occs)))
     val range = SourceRange.from(2, 0, 5, 0).fold(fail(_), identity)
     val name = ScalaIdentifier.from("exp").fold(fail(_), identity)
     val plan = az.extractMethodPlan(docUri("ex.scala"), range, name).getOrElse(fail("not indexed"))
-    assertEquals(plan.parameters.map(_.name), List("a", "b"))
-    assertEquals(plan.returns, Nil, "a is defined outside, so reading it after is not a return")
     assertEquals(plan.signature, "def exp(a: Int, b: Int): Unit")
     assertEquals(plan.call, "exp(a, b)")
-
-  test("extractMethodPlan: range-less DEF occurrences are ignored for params and returns"):
-    // nd: a range-less DEF read inside -> still a free read, so a param (kills defInside exists->forall).
-    // rd: a range-less DEF read after -> must NOT be a return (kills returns exists->forall).
-    val symbols =
-      Seq(exMethod, exLocal("local0", "p"), exLocal("local1", "nd"), exLocal("local2", "rd"))
-    val occs = Seq(
-      occ("ex/M#run().", DEF, 0, 2, 0, 5),
-      occ("local0", DEF, 1, 8, 1, 9), // before
-      occ("local0", REF, 3, 4, 3, 5), // inside -> p
-      s.SymbolOccurrence(None, "local1", DEF), // range-less DEF
-      occ("local1", REF, 3, 8, 3, 9), // inside -> nd is a free read
-      s.SymbolOccurrence(None, "local2", DEF), // range-less DEF
-      occ("local2", REF, 6, 4, 6, 5) // read after
-    )
-    val az = Analyzer(index(doc("ex.scala", symbols, occs)))
-    val range = SourceRange.from(2, 0, 5, 0).fold(fail(_), identity)
-    val name = ScalaIdentifier.from("exr").fold(fail(_), identity)
-    val plan = az.extractMethodPlan(docUri("ex.scala"), range, name).getOrElse(fail("not indexed"))
-    assertEquals(
-      plan.parameters.map(_.name).toSet,
-      Set("p", "nd"),
-      "range-less DEF is not 'inside'"
-    )
-    assertEquals(plan.returns, Nil, "a range-less DEF is never a return")
 
   test("extractMethodPlan: a range-less method definition is not chosen as the enclosing method"):
     val symbols = Seq(

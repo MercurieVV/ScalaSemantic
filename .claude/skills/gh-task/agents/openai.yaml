@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub Task"
+  short_description: "Run one GitHub issue through PR cleanup"
+  default_prompt: "Use $gh-task to run GitHub issue 15 end to end."

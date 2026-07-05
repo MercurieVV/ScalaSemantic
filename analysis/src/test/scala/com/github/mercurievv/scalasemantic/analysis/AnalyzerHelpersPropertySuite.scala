@@ -1,10 +1,13 @@
 package com.github.mercurievv.scalasemantic.analysis
 
+import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import com.github.mercurievv.scalasemantic.testing.PropertyGens
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 
 import scala.meta.internal.semanticdb as s
+import scala.util.Try
 
 /** Property-based tests for the pure helper methods in [[AnalyzerHelpers]] that are stateless or
   * only depend on the empty index. These are fast, filter-safe, and cover behaviours that the
@@ -17,6 +20,18 @@ import scala.meta.internal.semanticdb as s
   *   - **packageDotted**: output never contains slashes; empty input yields empty output.
   *   - **joinFqn**: identity laws and separator placement.
   *   - **globMatcher with None**: always returns true (replaces a single concrete example).
+  *   - **rangeSpan**: the exact line-dominant formula, and non-negativity, over any well-formed
+  *     range (replaces two fixed-number examples).
+  *   - **alreadyAscribed**: agreement with an independently-written scan over arbitrary
+  *     bracket/colon/equals strings of any nesting depth, plus the out-of-range boundary.
+  *   - **isGivenDefinition**: the implicit-bit-AND-kind boolean law, for every `Kind` (replaces
+  *     four fixed kind/bit combinations).
+  *   - **renderType**: per-constructor rendering laws (recursive prefix/suffix/join/delegate rules)
+  *     over arbitrarily deep generated type trees, plus a never-throws smoke property.
+  *   - **renderConstant**: the exact literal-formatting rule for every constant kind, over
+  *     arbitrary numeric/string/char values (not just one hardcoded example per kind).
+  *   - **renderMethod**: the exact `def name[tparams](params): ret` assembly rule over arbitrary
+  *     names, type-parameter counts, and parameter lists (reusing [[PropertyGens.parameterList]]).
   *
   * Note: `rangeContains` has a Stainless-verified `require` that the s.Range must be well-formed
   * (`endLine >= startLine`; if same line `endChar >= startChar`; all values non-negative) and the
@@ -241,4 +256,272 @@ class AnalyzerHelpersPropertySuite extends munit.ScalaCheckSuite:
     forAll(genClassDag) { (index, root, parents) =>
       val lin = AnalyzerHelpers(index).linearize(root)
       lin.toSet == transitiveAncestors(root, parents)
+    }
+
+  // ---------------------------------------------------------------------------
+  // rangeSpan
+  // ---------------------------------------------------------------------------
+
+  property("rangeSpan matches the line-dominant formula (lines x10000 + character delta)"):
+    forAll(genValidRange) { r =>
+      h.rangeSpan(r) == (r.endLine.toLong - r.startLine) * 10000L +
+        (r.endCharacter.toLong - r.startCharacter)
+    }
+
+  property("rangeSpan is always non-negative for a well-formed range"):
+    forAll(genValidRange) { r =>
+      h.rangeSpan(r) >= 0L
+    }
+
+  // ---------------------------------------------------------------------------
+  // alreadyAscribed
+  // ---------------------------------------------------------------------------
+  //
+  // Generalises the fixed line/nameStart examples in AnalyzerHelpersSuite over synthetic
+  // bracket/colon/equals strings: an independently-written (imperative, not tail-recursive)
+  // scan must agree with the production implementation for every nesting depth and start index.
+
+  private val genAscribedChar: Gen[Char] = Gen.oneOf(':', '=', '(', ')', '[', ']', 'x')
+  private val genAscribedLine: Gen[String] =
+    Gen.choose(0, 12).flatMap(n => Gen.listOfN(n, genAscribedChar).map(_.mkString))
+  private val genAscribedStart: Gen[Int] = Gen.chooseNum(-3, 15)
+
+  /** An alternative (imperative, index-mutating) implementation of the same "top-level colon before
+    * top-level equals" scan that [[AnalyzerHelpers.alreadyAscribed]] performs, used as an
+    * independent oracle rather than a copy of the production algorithm.
+    */
+  private def oracleAlreadyAscribed(line: String, nameStart: Int): Boolean =
+    if nameStart < 0 || nameStart >= line.length then false
+    else
+      val (_, found) =
+        line.substring(nameStart).foldLeft((0, Option.empty[Boolean])) { case ((depth, acc), c) =>
+          acc match
+            case some @ Some(_) => (depth, some) // already decided; stop reacting to further chars
+            case None           =>
+              c match
+                case '=' if depth == 0 => (depth, Some(false))
+                case ':' if depth == 0 => (depth, Some(true))
+                case '(' | '['         => (depth + 1, None)
+                case ')' | ']'         => (depth - 1, None)
+                case _                 => (depth, None)
+        }
+      found.getOrElse(false)
+
+  property(
+    "alreadyAscribed agrees with an independent depth-tracking scan for any bracket/colon/equals string"
+  ):
+    forAll(genAscribedLine, genAscribedStart) { (line, start) =>
+      h.alreadyAscribed(line, start) == oracleAlreadyAscribed(line, start)
+    }
+
+  property("alreadyAscribed is always false when nameStart is out of the line's bounds"):
+    forAll(genAscribedLine, Gen.chooseNum(-5, -1)) { (line, start) =>
+      !h.alreadyAscribed(line, start)
+    } && forAll(genAscribedLine) { line =>
+      !h.alreadyAscribed(line, line.length) && !h.alreadyAscribed(line, line.length + 5)
+    }
+
+  // ---------------------------------------------------------------------------
+  // isGivenDefinition
+  // ---------------------------------------------------------------------------
+
+  private val genKind: Gen[s.SymbolInformation.Kind] = Gen.oneOf(
+    s.SymbolInformation.Kind.OBJECT,
+    s.SymbolInformation.Kind.METHOD,
+    s.SymbolInformation.Kind.FIELD,
+    s.SymbolInformation.Kind.CLASS,
+    s.SymbolInformation.Kind.TRAIT,
+    s.SymbolInformation.Kind.PARAMETER,
+    s.SymbolInformation.Kind.UNKNOWN_KIND
+  )
+
+  property(
+    "isGivenDefinition (empty index, top-level symbol) is true iff implicit AND kind is OBJECT or METHOD"
+  ):
+    forAll(genKind, Gen.oneOf(true, false)) { (kind, implicit_) =>
+      val info = s.SymbolInformation(
+        symbol = "g/x.",
+        kind = kind,
+        properties = if implicit_ then IMPLICIT_BIT else 0
+      )
+      val expected = implicit_ &&
+        (kind == s.SymbolInformation.Kind.OBJECT || kind == s.SymbolInformation.Kind.METHOD)
+      h.isGivenDefinition(info) == expected
+    }
+
+  // ---------------------------------------------------------------------------
+  // renderType / renderConstant / renderMethod
+  // ---------------------------------------------------------------------------
+  //
+  // genType builds arbitrarily deep synthetic type trees over a small alphabet of fabricated
+  // global symbols ("a/Name#"); on an empty index, SemanticIndex.displayName falls back to a
+  // global symbol's last descriptor name, so `refOf("Foo")` always renders its base as "Foo".
+
+  private val leafNames = List("Foo", "Bar", "Baz", "Int", "String")
+
+  private def refOf(name: String, args: List[s.Type] = Nil): s.Type =
+    s.TypeRef(s.Type.Empty, s"a/$name#", args)
+
+  private def genLeaf: Gen[s.Type] = Gen.oneOf(leafNames).map(n => refOf(n))
+
+  private def genType(depth: Int): Gen[s.Type] =
+    if depth <= 0 then genLeaf
+    else
+      Gen.oneOf(
+        genLeaf,
+        for
+          n <- Gen.oneOf(leafNames)
+          argc <- Gen.chooseNum(0, 2)
+          args <- Gen.listOfN(argc, genType(depth - 1))
+        yield refOf(n, args),
+        genType(depth - 1).map(s.ByNameType(_)),
+        genType(depth - 1).map(s.RepeatedType(_)),
+        Gen.listOfN(2, genType(depth - 1)).map(s.WithType(_)),
+        Gen.listOfN(2, genType(depth - 1)).map(s.IntersectionType(_)),
+        Gen.listOfN(2, genType(depth - 1)).map(s.UnionType(_)),
+        genType(depth - 1).map(t => s.AnnotatedType(Nil, t)),
+        genType(depth - 1).map(t => s.ExistentialType(t, None)),
+        genType(depth - 1).map(t => s.UniversalType(None, t)),
+        genType(depth - 1).map(t => s.StructuralType(t, None))
+      )
+
+  private val genConstant: Gen[s.Constant] = Gen.oneOf(
+    Gen.chooseNum(Int.MinValue, Int.MaxValue).map(s.IntConstant(_)),
+    Gen.chooseNum(Long.MinValue, Long.MaxValue).map(s.LongConstant(_)),
+    Gen.chooseNum(Float.MinValue, Float.MaxValue).map(s.FloatConstant(_)),
+    Gen.chooseNum(Double.MinValue, Double.MaxValue).map(s.DoubleConstant(_)),
+    Gen.oneOf(true, false).map(s.BooleanConstant(_)),
+    Gen.chooseNum(0, 0xd7ff).map(s.CharConstant(_)),
+    Gen.asciiPrintableStr.map(s.StringConstant(_)),
+    Gen.chooseNum(Short.MinValue.toInt, Short.MaxValue.toInt).map(s.ShortConstant(_)),
+    Gen.chooseNum(Byte.MinValue.toInt, Byte.MaxValue.toInt).map(s.ByteConstant(_))
+  )
+
+  property("renderType never throws for any generated type shape, however deeply nested"):
+    forAll(genType(4)) { t =>
+      Try(h.renderType(t)).isSuccess
+    }
+
+  property(
+    "renderType(TypeRef) renders the symbol's simple name, bracketing recursively-rendered args iff non-empty"
+  ):
+    forAll(Gen.oneOf(leafNames), Gen.listOf(genType(1))) { (name, args) =>
+      val rendered = h.renderType(refOf(name, args))
+      if args.isEmpty then rendered == name
+      else rendered == args.map(h.renderType).mkString(s"$name[", ", ", "]")
+    }
+
+  property("renderType(ByNameType(t)) always prefixes '=> ' onto the inner rendering"):
+    forAll(genType(2)) { t =>
+      h.renderType(s.ByNameType(t)) == s"=> ${h.renderType(t)}"
+    }
+
+  property("renderType(RepeatedType(t)) always suffixes '*' onto the inner rendering"):
+    forAll(genType(2)) { t =>
+      h.renderType(s.RepeatedType(t)) == s"${h.renderType(t)}*"
+    }
+
+  property("renderType(WithType) joins renders with ' with '"):
+    forAll(Gen.listOfN(3, genType(1))) { ts =>
+      h.renderType(s.WithType(ts)) == ts.map(h.renderType).mkString(" with ")
+    }
+
+  property("renderType(IntersectionType) joins renders with ' & '"):
+    forAll(Gen.listOfN(3, genType(1))) { ts =>
+      h.renderType(s.IntersectionType(ts)) == ts.map(h.renderType).mkString(" & ")
+    }
+
+  property("renderType(UnionType) joins renders with ' | '"):
+    forAll(Gen.listOfN(3, genType(1))) { ts =>
+      h.renderType(s.UnionType(ts)) == ts.map(h.renderType).mkString(" | ")
+    }
+
+  property(
+    "renderType unwraps Annotated/Existential/Universal/Structural to the inner rendering, discarding the wrapper"
+  ):
+    forAll(genType(2), Gen.oneOf(0, 1, 2, 3)) { (t, which) =>
+      val wrapped = which match
+        case 0 => s.AnnotatedType(Nil, t)
+        case 1 => s.ExistentialType(t, None)
+        case 2 => s.UniversalType(None, t)
+        case _ => s.StructuralType(t, None)
+      h.renderType(wrapped) == h.renderType(t)
+    }
+
+  property("renderType(ConstantType(c)) delegates to renderConstant(c) for any constant"):
+    forAll(genConstant) { c =>
+      h.renderType(s.ConstantType(c)) == h.renderConstant(c)
+    }
+
+  property("renderConstant(IntConstant) renders as the plain decimal number"):
+    forAll(Gen.chooseNum(Int.MinValue, Int.MaxValue)) { v =>
+      h.renderConstant(s.IntConstant(v)) == v.toString
+    }
+
+  property("renderConstant(LongConstant) renders with an 'L' suffix"):
+    forAll(Gen.chooseNum(Long.MinValue, Long.MaxValue)) { v =>
+      h.renderConstant(s.LongConstant(v)) == s"${v}L"
+    }
+
+  property("renderConstant(FloatConstant) renders with an 'f' suffix"):
+    forAll(Gen.chooseNum(Float.MinValue, Float.MaxValue)) { v =>
+      h.renderConstant(s.FloatConstant(v)) == s"${v}f"
+    }
+
+  property("renderConstant(DoubleConstant) renders as its plain toString"):
+    forAll(Gen.chooseNum(Double.MinValue, Double.MaxValue)) { v =>
+      h.renderConstant(s.DoubleConstant(v)) == v.toString
+    }
+
+  property("renderConstant(BooleanConstant) renders 'true'/'false' for both values"):
+    forAll(Gen.oneOf(true, false)) { v =>
+      h.renderConstant(s.BooleanConstant(v)) == v.toString
+    }
+
+  property("renderConstant(CharConstant) renders as a single-quoted character"):
+    forAll(Gen.chooseNum(0, 0xd7ff)) { code =>
+      h.renderConstant(s.CharConstant(code)) == s"'${code.toChar}'"
+    }
+
+  property("renderConstant(StringConstant) renders as a double-quoted string"):
+    forAll(Gen.asciiPrintableStr) { v =>
+      h.renderConstant(s.StringConstant(v)) == s"\"$v\""
+    }
+
+  property("renderConstant(ShortConstant/ByteConstant) render as the plain decimal number"):
+    forAll(
+      Gen.chooseNum(Short.MinValue.toInt, Short.MaxValue.toInt),
+      Gen.chooseNum(Byte.MinValue.toInt, Byte.MaxValue.toInt)
+    ) { (sv, bv) =>
+      h.renderConstant(s.ShortConstant(sv)) == sv.toString &&
+      h.renderConstant(s.ByteConstant(bv)) == bv.toString
+    }
+
+  property("renderConstant(UnitConstant) is always \"Unit\""):
+    h.renderConstant(s.UnitConstant()) == "Unit"
+
+  property("renderConstant(NullConstant) is always \"null\""):
+    h.renderConstant(s.NullConstant()) == "null"
+
+  property(
+    "renderMethod assembles 'def name[tparams](params): ret' exactly, for arbitrary names/arities"
+  ):
+    forAll(
+      PropertyGens.nonEmptyString,
+      Gen.listOf(PropertyGens.nonEmptyString),
+      Gen.listOf(PropertyGens.parameterList),
+      PropertyGens.nonEmptyString
+    ) { (name, tparams, plists, ret) =>
+      val expectedTp = if tparams.isEmpty then "" else tparams.mkString("[", ", ", "]")
+      val expectedPs = plists.map { pl =>
+        val prefix = if pl.isImplicit then "implicit " else ""
+        pl.parameters.map(p => s"${p.name}: ${p.tpe}").mkString(s"($prefix", ", ", ")")
+      }.mkString
+      h.renderMethod(name, tparams, plists, ret) == s"def $name$expectedTp$expectedPs: $ret"
+    }
+
+  property("renderMethod's parameter list is prefixed with 'implicit ' iff that list is implicit"):
+    forAll(Gen.listOf(PropertyGens.parameter), Gen.oneOf(true, false)) { (params, isImplicitList) =>
+      val out = h.renderMethod("m", Nil, List(ParameterList(params, isImplicitList)), "R")
+      out.contains("(implicit ") == isImplicitList
     }

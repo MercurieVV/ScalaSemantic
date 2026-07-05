@@ -29,13 +29,11 @@ class InputTypesSuite extends munit.ScalaCheckSuite:
     ) // the field name is in the message
     assertLeft(SemanticDbSymbol.from("foo"), "invalid SemanticDB symbol")
 
-  test("MethodSymbol.from accepts a method, rejects a type and a non-global"):
-    assert(MethodSymbol.from("com/example/Foo#bar().").isRight)
+  // MethodSymbol.from / TypeSymbol.from accept-vs-reject logic is covered generatively below
+  // ("... accepts exactly a global .../type descriptor, for any name"); kept here only for the
+  // error-message text, which the properties don't assert.
+  test("MethodSymbol.from and TypeSymbol.from report the expected-kind in their error message"):
     assertLeft(MethodSymbol.from("com/example/Foo#"), "expected method symbol")
-    assertLeft(MethodSymbol.from("local0"), "expected method symbol")
-
-  test("TypeSymbol.from accepts a type, rejects a method"):
-    assert(TypeSymbol.from("com/example/Foo#").isRight)
     assertLeft(TypeSymbol.from("com/example/Foo#bar()."), "expected type symbol")
 
   test("PackageSymbol.from: blank -> empty, appends slash, rejects non-package"):
@@ -53,8 +51,10 @@ class InputTypesSuite extends munit.ScalaCheckSuite:
     assertLeft(PackageSymbol.from("a b"), "invalid package symbol")
     assertLeft(PackageSymbol.from("com//example"), "invalid package symbol")
 
-  test("DocumentUri.from: relative ok; rejects blank, absolute, and dot-dot"):
-    assert(DocumentUri.from("src/Main.scala").isRight)
+  // The relative/dot-dot accept-vs-reject logic is covered generatively below ("DocumentUri.from
+  // accepts any relative path ..." / "... rejects a '..' segment at any position"); kept here for
+  // the blank/absolute cases and the error-message text the properties don't assert.
+  test("DocumentUri.from rejects blank and absolute paths, with the expected messages"):
     assertLeft(DocumentUri.from("   "), "non-empty")
     assertLeft(DocumentUri.from("   "), "document uri") // the field name is in the message
     assertLeft(DocumentUri.from("/etc/passwd"), "must be relative")
@@ -99,15 +99,12 @@ class InputTypesSuite extends munit.ScalaCheckSuite:
     assertLeft(SourcePosition.from(-1, 0), "line")
     assertLeft(SourcePosition.from(0, -1), "character")
 
-  test("SourceRange.from requires end strictly after start; contains/startsAtOrAfterEnd"):
+  // contains/startsAtOrAfterEnd accept-vs-reject logic is covered generatively below
+  // ("SourceRange.contains is exactly ..." / "SourceRange.startsAtOrAfterEnd is exactly ...");
+  // kept here for the field accessors and the rejection error message.
+  test("SourceRange.from exposes start/end fields and rejects a non-strictly-after end"):
     val r = SourceRange.from(1, 0, 2, 5).toOption.get
     assertEquals((r.startLine, r.startCharacter, r.endLine, r.endCharacter), (1, 0, 2, 5))
-    assert(r.contains(1, 0, 2, 5), "the full span is contained")
-    assert(r.contains(1, 2, 2, 1), "an inner span is contained")
-    assert(!r.contains(0, 0, 2, 5), "a span starting before is not contained")
-    assert(!r.contains(1, 0, 3, 0), "a span ending after is not contained")
-    assert(r.startsAtOrAfterEnd(2, 5), "the end position is at-or-after the end")
-    assert(!r.startsAtOrAfterEnd(1, 4), "a mid position is before the end")
     assertLeft(SourceRange.from(2, 0, 1, 0), "after")
     assertLeft(SourceRange.from(1, 5, 1, 5), "after") // empty range rejected
 
@@ -170,15 +167,8 @@ class InputTypesSuite extends munit.ScalaCheckSuite:
       p.atOrBefore(l2, c2) == atOrBefore && p.atOrAfter(l2, c2) == atOrAfter
     }
 
-  property("PackageSymbol normalization is slash-terminated (or empty) and idempotent"):
-    forAll(Gen.listOf(Gen.alphaLowerChar).map(_.mkString)) { name =>
-      val seg = if name.isEmpty then "" else s"pkg/$name"
-      PackageSymbol.from(seg).toOption.map(_.value) match
-        case Some("")  => seg.isEmpty
-        case Some(out) =>
-          out.endsWith("/") && PackageSymbol.from(out).toOption.map(_.value).contains(out)
-        case None => false
-    }
+  // PackageSymbol normalization/idempotency is covered generatively below, over arbitrary segment
+  // depth ("PackageSymbol.from accepts any number of segments ...").
 
   property("NonNegativeInt.from accepts exactly n >= 0"):
     forAll(Gen.choose(Int.MinValue, Int.MaxValue)) { n =>
@@ -200,4 +190,97 @@ class InputTypesSuite extends munit.ScalaCheckSuite:
   property("SourcePosition.from is Right iff both line and character are >= 0"):
     forAll(Gen.choose(-5, 5), Gen.choose(-5, 5)) { (l, c) =>
       SourcePosition.from(l, c).isRight == (l >= 0 && c >= 0)
+    }
+
+  // --- SourceRange.contains / startsAtOrAfterEnd, generalised over any well-formed range --------
+
+  /** (startLine, startChar, endLine, endChar) with end strictly after start, matching what
+    * SourceRange.from itself requires.
+    */
+  private val genStrictQuad: Gen[(Int, Int, Int, Int)] =
+    for
+      sl <- coord
+      sc <- coord
+      el <- Gen.choose(sl, 6)
+      ec <- if el == sl then Gen.choose(sc + 1, 7) else coord
+    yield (sl, sc, el, ec)
+
+  /** A quad satisfying `contains`'s own precondition (end at-or-after start), used as the queried
+    * sub-span.
+    */
+  private val genOrderedQuad: Gen[(Int, Int, Int, Int)] =
+    for
+      sl <- coord
+      sc <- coord
+      el <- Gen.choose(sl, 6)
+      ec <- if el == sl then Gen.choose(sc, 7) else coord
+    yield (sl, sc, el, ec)
+
+  property("SourceRange.contains is exactly atOrBefore(start) && atOrAfter(end)"):
+    forAll(genStrictQuad, genOrderedQuad) { case ((sl, sc, el, ec), (ql, qc, ql2, qc2)) =>
+      val range = SourceRange.from(sl, sc, el, ec).toOption.get
+      val expected =
+        (sl < ql || (sl == ql && sc <= qc)) && (el > ql2 || (el == ql2 && ec >= qc2))
+      range.contains(ql, qc, ql2, qc2) == expected
+    }
+
+  property("SourceRange.startsAtOrAfterEnd is exactly end.atOrBefore(that point)"):
+    forAll(genStrictQuad, coord, coord) { case ((sl, sc, el, ec), l, c) =>
+      val range = SourceRange.from(sl, sc, el, ec).toOption.get
+      range.startsAtOrAfterEnd(l, c) == (el < l || (el == l && ec <= c))
+    }
+
+  // --- MethodSymbol / TypeSymbol, generalised over arbitrary names ------------------------------
+
+  property(
+    "MethodSymbol.from accepts exactly a global method descriptor, for any name"
+  ):
+    forAll(Gen.alphaLowerStr.suchThat(_.nonEmpty)) { name =>
+      MethodSymbol.from(s"com/example/Foo#$name().").isRight &&
+      MethodSymbol.from(s"com/example/$name#").isLeft &&
+      MethodSymbol.from(s"com/example/$name.").isLeft &&
+      MethodSymbol.from(s"local$name").isLeft
+    }
+
+  property(
+    "TypeSymbol.from accepts exactly a global type descriptor, for any name"
+  ):
+    forAll(Gen.alphaLowerStr.suchThat(_.nonEmpty)) { name =>
+      TypeSymbol.from(s"com/example/$name#").isRight &&
+      TypeSymbol.from(s"com/example/Foo#$name().").isLeft &&
+      TypeSymbol.from(s"com/example/$name.").isLeft &&
+      TypeSymbol.from(s"local$name").isLeft
+    }
+
+  // --- DocumentUri, generalised over path depth and '..' position -------------------------------
+
+  private val genPathSegment: Gen[String] = Gen.alphaNumStr.suchThat(_.nonEmpty)
+  private val genPathSegments: Gen[List[String]] =
+    Gen.choose(1, 4).flatMap(n => Gen.listOfN(n, genPathSegment))
+
+  property("DocumentUri.from accepts any relative path built from plain alphanumeric segments"):
+    forAll(genPathSegments) { segs =>
+      DocumentUri.from(segs.mkString("/")).isRight
+    }
+
+  property("DocumentUri.from rejects a '..' segment at any position in the path"):
+    forAll(genPathSegments, Gen.choose(0, 4)) { (segs, at) =>
+      val i = at % (segs.length + 1)
+      val withDotDot = (segs.take(i) :+ "..") ++ segs.drop(i)
+      DocumentUri.from(withDotDot.mkString("/")).isLeft
+    }
+
+  // --- PackageSymbol, generalised to arbitrary segment depth (not just zero/one) ----------------
+
+  property(
+    "PackageSymbol.from accepts any number of segments, normalizing to a trailing slash, idempotently"
+  ):
+    forAll(Gen.choose(0, 5).flatMap(n => Gen.listOfN(n, Gen.alphaLowerStr.suchThat(_.nonEmpty)))) {
+      segs =>
+        val path = segs.mkString("/")
+        val expected = if segs.isEmpty then "" else s"$path/"
+        PackageSymbol.from(path).toOption.map(_.value) match
+          case Some(out) =>
+            out == expected && PackageSymbol.from(out).toOption.map(_.value).contains(out)
+          case None => false
     }
