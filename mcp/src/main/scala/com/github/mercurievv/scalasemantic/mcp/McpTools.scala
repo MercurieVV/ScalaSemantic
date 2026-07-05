@@ -45,13 +45,22 @@ object McpTools:
     // PC-only (see the category comment above `all`) and never touches `az.index`, so it's exempt.
     if az.isIndexEmpty then
       tools.map(t =>
-        if t.name == "type_at_position" then t else t.copy(run = a => withEmptyIndexHint(t.run(a)))
+        if t.name == "type_at_position" then t
+        else t.copy(run = a => McpToolsSupport.withEmptyIndexHint(t.run(a)))
       )
     else tools
 
+// Shared helpers used by `McpTools.all` and every `McpToolsGroup*` object. Kept as its own
+// top-level object (rather than living inside `McpTools`) so the dependency between `McpTools`
+// (which calls into the groups) and the groups (which use these helpers) stays one-directional —
+// otherwise `McpToolsGroup*.tools` importing `McpTools.*` while `McpTools.all` calls
+// `McpToolsGroup*.tools` would form a symbol-level cycle between first-party mcp-module symbols
+// (caught by analysis's own dogfood test, AnalyzerStructureSuite).
+private[mcp] object McpToolsSupport:
   // Passing each tool's construction as a by-name argument compiles it into its own synthetic
-  // Function0-shaped method rather than inlining it into the caller — see the comment above `all`
-  // for why this alone wasn't enough and the tool groups also had to move to separate objects.
+  // Function0-shaped method rather than inlining it into the caller — see the comment above
+  // `McpTools.all` for why this alone wasn't enough and the tool groups also had to move to
+  // separate objects.
   private[mcp] def toolDef(t: => Tool): Tool = t
 
   private[mcp] val EmptyIndexHint =
@@ -353,7 +362,7 @@ object McpTools:
 // Each group below is a physically separate class file (own bytecode/constant-pool budget) — see
 // the comment above `McpTools.all` for why per-method splitting inside one object wasn't enough.
 private[mcp] object McpToolsGroupA:
-  import McpTools.*
+  import McpToolsSupport.*
 
   def tools(az: Analyzer, root: java.nio.file.Path): List[Tool] =
     List(
@@ -595,7 +604,7 @@ private[mcp] object McpToolsGroupA:
     )
 
 private[mcp] object McpToolsGroupB:
-  import McpTools.*
+  import McpToolsSupport.*
 
   def tools(az: Analyzer, root: java.nio.file.Path): List[Tool] =
     List(
@@ -811,7 +820,7 @@ private[mcp] object McpToolsGroupB:
     )
 
 private[mcp] object McpToolsGroupC:
-  import McpTools.*
+  import McpToolsSupport.*
 
   def tools(az: Analyzer, root: java.nio.file.Path): List[Tool] =
     List(
@@ -993,7 +1002,7 @@ private[mcp] object McpToolsGroupC:
     )
 
 private[mcp] object McpToolsGroupD:
-  import McpTools.*
+  import McpToolsSupport.*
 
   def tools(az: Analyzer, root: java.nio.file.Path): List[Tool] =
     List(
