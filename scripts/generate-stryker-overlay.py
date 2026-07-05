@@ -41,11 +41,20 @@ object analysisStryker extends Common with Stryker4sModule {
   def unmanagedClasspath = analysis.unmanagedClasspath
   def strykerTestModule = analysis.test
 }
+// mcpStryker additionally delegates `generatedSources` to the real module: `mcp` mixes in Mill's
+// BuildInfo trait, whose generated `BuildInfo.scala` isn't picked up otherwise, and that reference
+// (`Mcp.scala`'s `ServerVersion`) would then fail to compile in EVERY mutant, not just a mutated
+// one — Stryker can't roll that back since it isn't mutant-induced. `strykerExcludedMutations`
+// drops the MethodExpression mutator: it rewrites `Files.exists(..)` to sibling boolean-method
+// names like `Files.forall(..)`, which `java.nio.file.Files` doesn't have, so that mutant never
+// compiles either (a stryker4s limitation on receiver-specific method sets, not our code).
 object mcpStryker extends Common with Stryker4sModule {
   def moduleDir = mcp.moduleDir
   def moduleDeps = mcp.moduleDeps
   def mvnDeps = mcp.mvnDeps
+  def generatedSources = mcp.generatedSources
   def strykerTestModule = mcp.test
+  def strykerExcludedMutations = Some(Seq("MethodExpression"))
 }
 '''
 

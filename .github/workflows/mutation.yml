@@ -1,14 +1,26 @@
-# Runs stryker4s mutation testing via scripts/run-stryker.sh (Mill-side, see that script's header
-# and scripts/generate-stryker-overlay.py for how the unreleased Mill plugin snapshot is built and
-# patched into an isolated build.mill copy — never the committed one).
+# Runs stryker4s mutation testing via scripts/run-stryker.sh (Mill-side). The unreleased Mill
+# plugin snapshot lives vendored at vendor/stryker4s-mill/ (jar + ivy.xml, ~1.9M — no sbt/network
+# build step in CI, see that script's header for how to refresh it) and is patched into an isolated
+# build.mill copy via scripts/generate-stryker-overlay.py — never the committed one.
 #
 # `analysis` is the only module currently proven to run cleanly end-to-end (744 mutants, full
 # report, no InitialTestRunFailedException — that exception, which blocked every earlier attempt,
 # was fixed upstream by stryker-mutator/stryker4s#2068 "handle messages larger than socket buffer").
-# `core` and `mcp` are NOT yet reliable: `core`'s SemanticIndexSuite dogfoods the whole project's
-# out/ tree, which isn't consistent inside Stryker's isolated per-mutant compile sandbox; `mcp` hits
-# a distinct `UnableToFixCompilerErrorsException` (a stryker4s mutant-rollback edge case unrelated
-# to #2068). Both need separate follow-up before `--module all`/`core`/`mcp` can be trusted in CI.
+# `core` and `mcp` are NOT wired as reliable:
+#   - `core`'s only test class, SemanticIndexSuite, dogfoods the whole project's own live SemanticDB
+#     — the original sbt-era stryker4s.conf deliberately excluded it for exactly this self-reference
+#     reason, and core has no other test suite, so it structurally cannot be mutation-tested.
+#   - `mcp` had two real compile-time gaps (now fixed in the overlay: BuildInfo's generated source
+#     wasn't inherited by mcpStryker, and the MethodExpression mutator produces a `Files.forall`
+#     variant that doesn't compile against `java.nio.file.Files`) but still hangs/crashes running
+#     the actual mutants against McpSuite — a separate, unresolved performance issue.
+# Both need further follow-up before `--module all`/`core`/`mcp` can be trusted in CI.
+#
+# On success, this workflow commits reports/mutation/**/report.json (the stable per-module report
+# mutation-summary.sh writes) back to the branch being tested, so mutation score/survivor history
+# is diffable in git log — NOT the timestamped stryker4s-report/ HTML (still upload-artifact'd, not
+# committed: large and not text-diffable). paths-ignore on the pull_request trigger below stops a
+# report-only commit from re-triggering this workflow (or ci.yml, via its own paths-ignore) in a loop.
 name: Mutation Testing
 
 on:
@@ -22,14 +34,15 @@ on:
         default: 'analysis'
   pull_request:
     types: [opened, synchronize, reopened, labeled]
+    paths-ignore:
+      - 'reports/mutation/**'
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
   issues: write
 
 env:
-  STRYKER4S_COMMIT: '86aa9ed1'
   MUTATION_HIGH_THRESHOLD: '80'
   MUTATION_LOW_THRESHOLD: '60'
   # Initial rollout grace period from docs/research/stryker4s-alert-strategy.md:
@@ -61,17 +74,6 @@ jobs:
           restore-keys: |
             mill-${{ runner.os }}-
 
-      # sbt is only used here to build stryker4s's OWN plugin jar (stryker4s has no Mill build of
-      # itself yet) — unrelated to this project's build, which is pure Mill.
-      - uses: sbt/setup-sbt@v1
-
-      - name: Cache stryker4s Mill plugin snapshot
-        id: stryker-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.ivy2/local/io.stryker-mutator
-          key: stryker4s-mill-${{ env.STRYKER4S_COMMIT }}
-
       - name: Decide mutation scope
         id: scope
         env:
@@ -92,7 +94,7 @@ jobs:
             modules="analysis"
           elif [[ "$EVENT_NAME" == "pull_request" ]]; then
             files="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')"
-            if grep -qE '^(stryker4s\.conf|scripts/(run-stryker|mutation-summary|generate-stryker-overlay)\.(sh|py)|\.github/workflows/mutation\.yml)$' <<<"$files"; then
+            if grep -qE '^(stryker4s\.conf|scripts/(run-stryker|mutation-summary|generate-stryker-overlay)\.(sh|py)|vendor/stryker4s-mill/.*|\.github/workflows/mutation\.yml)$' <<<"$files"; then
               modules="analysis"
             else
               grep -q '^analysis/src/main/scala/' <<<"$files" && modules="$modules analysis"
@@ -116,7 +118,9 @@ jobs:
           mkdir -p reports/mutation
           for module in $MODULES; do
             mkdir -p "reports/mutation/$module"
-            scripts/run-stryker.sh --local --module "$module" 2>&1 \
+            MUTATION_MODULE="$module" \
+            MUTATION_REPORT_DEST="reports/mutation/$module/report.json" \
+              scripts/run-stryker.sh --local --module "$module" 2>&1 \
               | tee "reports/mutation/$module/summary.txt"
           done
 
@@ -139,6 +143,20 @@ jobs:
             done
             echo "HTML and JSON reports are attached to the workflow run as the stryker4s-report artifact."
           } > reports/mutation/comment.md
+
+      - name: Commit mutation report
+        if: steps.scope.outputs.modules != ''
+        run: |
+          set -euo pipefail
+          git add reports/mutation/*/report.json reports/mutation/*/summary.txt
+          if git diff --cached --quiet; then
+            echo "no report changes to commit"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git commit -m "chore(mutation): update stryker4s report [${{ steps.scope.outputs.modules }}]"
+            git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
+          fi
 
       - name: Upload mutation reports
         if: steps.scope.outputs.modules != ''

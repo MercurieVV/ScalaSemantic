@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ivy-module version="2.0" xmlns:e="http://ant.apache.org/ivy/extra">
+  <info organisation="io.stryker-mutator" module="stryker4s-core_3" revision="0.0.0-TEST-SNAPSHOT" status="integration" publication="20260705072241" e:info.versionScheme="semver-spec">
+    <description homepage="https://stryker-mutator.io/">Stryker4s, the mutation testing framework for Scala.</description>
+  </info>
+  <configurations>
+    <conf name="plugin" visibility="public" description=""/>
+    <conf name="pom" visibility="public" description=""/>
+    <conf extends="runtime" name="test" visibility="public" description=""/>
+    <conf name="provided" visibility="public" description=""/>
+    <conf extends="compile,optional,provided" name="compile-internal" visibility="public" description=""/>
+    <conf name="docs" visibility="public" description=""/>
+    <conf name="optional" visibility="public" description=""/>
+    <conf name="protobuf" visibility="public" description=""/>
+    <conf name="protobuf-src" visibility="public" description=""/>
+    <conf name="compile" visibility="public" description=""/>
+    <conf extends="test,optional,provided" name="test-internal" visibility="public" description=""/>
+    <conf name="scala-repl-tool" visibility="public" description=""/>
+    <conf name="scala-tool" visibility="public" description=""/>
+    <conf name="scala-doc-tool" visibility="public" description=""/>
+    <conf name="sources" visibility="public" description=""/>
+    <conf extends="compile" name="runtime" visibility="public" description=""/>
+    <conf extends="runtime,optional" name="runtime-internal" visibility="public" description=""/>
+  </configurations>
+  <publications>
+    <artifact name="stryker4s-core_3" type="jar" ext="jar" conf="compile"/>
+    <artifact e:classifier="sources" name="stryker4s-core_3" type="src" ext="jar" conf="sources"/>
+    <artifact e:classifier="javadoc" name="stryker4s-core_3" type="doc" ext="jar" conf="docs"/>
+    <artifact name="stryker4s-core_3" type="pom" ext="pom" conf="pom"/>
+  </publications>
+  <dependencies>
+    <dependency org="org.scala-lang" name="scala3-compiler_3" rev="3.3.8" conf="scala-tool->default(compile)"> </dependency>
+    <dependency org="org.scala-lang" name="scaladoc_3" rev="3.3.8" conf="scala-doc-tool->default(compile)"> </dependency>
+    <dependency org="io.stryker-mutator" name="stryker4s-api_3" rev="0.0.0-TEST-SNAPSHOT" conf="compile->default(runtime)"> </dependency>
+    <dependency org="io.stryker-mutator" name="stryker4s-testrunner-api_3" rev="0.0.0-TEST-SNAPSHOT" conf="compile->default(runtime)"> </dependency>
+    <dependency org="io.stryker-mutator" name="stryker4s-testkit_3" rev="0.0.0-TEST-SNAPSHOT" conf="test->default(runtime)"> </dependency>
+    <dependency org="org.scala-lang" name="scala3-library_3" rev="3.3.8" conf="compile->default(runtime)"> </dependency>
+    <dependency org="org.typelevel" name="cats-core_3" rev="2.13.0" conf="compile->default(runtime)"> </dependency>
+    <dependency org="org.typelevel" name="cats-effect_3" rev="3.7.0" conf="compile->default(runtime)"> </dependency>
+    <dependency org="io.circe" name="circe-core_3" rev="0.14.16" conf="compile->default(runtime)"> </dependency>
+    <dependency org="is.cir" name="ciris_3" rev="3.15.0" conf="compile->default(runtime)"> </dependency>
+    <dependency org="com.lihaoyi" name="fansi_3" rev="0.5.1" conf="compile->default(runtime)"> </dependency>
+    <dependency org="co.fs2" name="fs2-core_3" rev="3.13.0" conf="compile->default(runtime)"> </dependency>
+    <dependency org="co.fs2" name="fs2-io_3" rev="3.13.0" conf="compile->default(runtime)"> </dependency>
+    <dependency org="com.typesafe" name="config" rev="1.4.9" conf="compile->default(runtime)"> </dependency>
+    <dependency org="io.stryker-mutator" name="mutation-testing-elements" rev="3.8.0" conf="compile->default(runtime)"> </dependency>
+    <dependency org="org.scalameta" name="scalameta_2.13" rev="4.17.0" conf="compile->default(runtime)">
+      <exclude org="com.lihaoyi" module="sourcecode_2.13" name="*" type="*" ext="*" conf="" matcher="exact"/>
+    </dependency>
+    <dependency org="com.github.scopt" name="scopt_3" rev="4.1.0" conf="compile->default(runtime)"> </dependency>
+    <dependency org="com.softwaremill.sttp.client4" name="circe_3" rev="4.0.25" conf="compile->default(runtime)"> </dependency>
+    <dependency org="com.softwaremill.sttp.client4" name="fs2_3" rev="4.0.25" conf="compile->default(runtime)"> </dependency>
+    <dependency org="io.stryker-mutator" name="weapon-regex_3" rev="2.0.3" conf="compile->default(runtime)"> </dependency>
+    <dependency org="io.stryker-mutator" name="mutation-testing-metrics_3" rev="3.8.3" conf="compile->default(runtime)"> </dependency>
+    <dependency org="io.stryker-mutator" name="mutation-testing-metrics-circe_3" rev="3.8.3" conf="compile->default(runtime)"> </dependency>
+    <dependency org="io.stryker-mutator" name="mutation-testing-metrics-cats_3" rev="3.8.3" conf="compile->default(runtime)"> </dependency>
+  </dependencies>
+</ivy-module>
