@@ -223,3 +223,104 @@ class CompatSuite extends munit.FunSuite:
           }
         }
   }
+
+  // --- Corpus-wide invariants (#201) ------------------------------------------------------------
+  // Golden dirs above are small hand-authored fixtures probed by name (Dog/Animal/Show/...). These
+  // corpus roots hold real third-party sources (scalameta + scala-3 compiler corpora, produced by
+  // `./mill corpusGoldenAll` — build.mill `corpus` cross module — under `target/corpus/scala-
+  // <binVer>/`) — too large and unstable to name individual symbols, so we assert universal
+  // structural invariants over EVERY symbol instead: no exception, no silently empty/blank render.
+  // This surfaces printer/symbol-grammar gaps that named probes would miss.
+  private val corpusRoot: Option[Path] =
+    val rels = List("target/corpus")
+    val start = Paths.get("").toAbsolutePath
+    val bases =
+      Iterator
+        .unfold(start)(path => Option(path).map(current => current -> current.getParent))
+        .take(8)
+        .toList
+    (for base <- bases.iterator; rel <- rels.iterator; p = base.resolve(rel) if Files.isDirectory(p)
+    yield p).nextOption()
+
+  private val corpusVersionDirs: List[Path] =
+    corpusRoot match
+      case None    => Nil
+      case Some(r) =>
+        val s = Files.list(r)
+        try s.iterator.asScala.filter(Files.isDirectory(_)).toList.sortBy(_.getFileName.toString)
+        finally s.close()
+
+  corpusVersionDirs.foreach { dir =>
+    val version = dir.getFileName.toString
+    val idx = SemanticIndex.fromRoots(Seq(dir))
+    val az = Analyzer(idx)
+
+    val isType = (s: String) => s.endsWith("#")
+    val isMethod = (s: String) => s.endsWith(").")
+    val isCtor = (s: String) => s.contains("`<init>`")
+
+    test(s"[corpus $version] golden root has semanticdb symbols"):
+      assert(idx.symbols.nonEmpty, s"[corpus $version] no symbols loaded from $dir")
+
+    // `example/Shadow#*` (scala-3 corpus, `ShadowedParameters.scala`) is a fixture that deliberately
+    // makes every method in the class shadow its own parameters with a same-named local
+    // (`def f(x: Int) = { val x = ... }`) to stress-test shadowed-parameter symbol tracking. This
+    // is a confirmed scalac 3.8.4 SemanticDB-emission quirk, not an Analyzer gap: for each such
+    // method the compiler records its `MethodSignature.parameterLists` scope pointing at the
+    // block-shadowing locals (e.g. `Scope(Vector(local6, local5), Vector())`) instead of the real
+    // parameter symbols, and one of those locals carries a bogus `$anon`/untyped
+    // `SymbolInformation` — verified by dumping the raw info for `shadowInParamBlock`/`multiParams`.
+    // The printer correctly renders the empty type it was given. Excluded by owner prefix (not a
+    // broader filter), so any other real gap in the rest of the corpus still fails this invariant.
+    val knownEmptyTypeExceptionOwner = "example/Shadow#"
+
+    test(s"[corpus $version] no method signature renders an empty type (whole corpus)"):
+      idx.symbols.keys
+        .filter(s => isMethod(s) && !isCtor(s) && !s.startsWith(knownEmptyTypeExceptionOwner))
+        .flatMap(s => MethodSymbol.from(s).toOption)
+        .flatMap(m => az.methodSignature(m))
+        .foreach { sig =>
+          assert(!sig.returnType.isEmpty, s"[corpus $version] empty return type in: ${sig.symbol}")
+          sig.parameterLists.flatMap(_.parameters).foreach { p =>
+            assert(
+              !p.tpe.isEmpty,
+              s"[corpus $version] empty param type for ${p.name} in ${sig.symbol}"
+            )
+          }
+        }
+
+    test(s"[corpus $version] class-hierarchy runs over every type symbol without throwing"):
+      idx.symbols.keys
+        .filter(isType)
+        .flatMap(s => TypeSymbol.from(s).toOption)
+        .foreach { t =>
+          try az.classHierarchy(t)
+          catch case e: Throwable => fail(s"[corpus $version] classHierarchy threw on $t: $e")
+        }
+
+    test(s"[corpus $version] members runs over every type symbol without throwing"):
+      idx.symbols.keys
+        .filter(isType)
+        .flatMap(s => TypeSymbol.from(s).toOption)
+        .foreach { t =>
+          try az.members(t)
+          catch case e: Throwable => fail(s"[corpus $version] members threw on $t: $e")
+        }
+
+    test(s"[corpus $version] resolve-implicits runs over every type symbol without throwing"):
+      idx.symbols.keys
+        .filter(isType)
+        .flatMap(s => TypeSymbol.from(s).toOption)
+        .foreach { t =>
+          try az.resolveImplicits(t)
+          catch case e: Throwable => fail(s"[corpus $version] resolveImplicits threw on $t: $e")
+        }
+
+    test(s"[corpus $version] find-usages runs over every symbol without throwing"):
+      idx.symbols.keys
+        .flatMap(s => SemanticDbSymbol.from(s).toOption)
+        .foreach { sym =>
+          try az.findUsages(sym)
+          catch case e: Throwable => fail(s"[corpus $version] findUsages threw on $sym: $e")
+        }
+  }
