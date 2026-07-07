@@ -235,6 +235,148 @@ class McpPcSuite extends munit.FunSuite:
     assert(body("symbol").str.startsWith("ext/External#name"), body.render())
   }
 
+  test("launcher smoke switches workspace root statefully") {
+    val temp = java.nio.file.Files.createTempDirectory("mcp-root-switch").nn
+    val rootA = temp.resolve("root-a").nn
+    val rootB = temp.resolve("root-b").nn
+    java.nio.file.Files.createDirectories(rootA)
+    java.nio.file.Files.createDirectories(rootB)
+
+    def findSemanticdb(name: String, marker: String): java.nio.file.Path =
+      scala.util.Using.resource(java.nio.file.Files.walk(java.nio.file.Paths.get("out"))) {
+        stream =>
+          stream
+            .filter(p => java.nio.file.Files.isRegularFile(p))
+            .filter(p => p.getFileName.toString == name)
+            .filter(p => p.toString.contains(marker))
+            .findFirst()
+            .orElseThrow(() => AssertionError(s"missing semanticdb fixture: $marker/$name"))
+            .nn
+      }
+
+    def copySemanticdb(from: java.nio.file.Path, root: java.nio.file.Path): Unit =
+      val rel = from.subpath(from.getNameCount - 8, from.getNameCount).nn
+      val dest = root.resolve("META-INF/semanticdb").resolve(rel).nn
+      java.nio.file.Files.createDirectories(dest.getParent)
+      val _ =
+        java.nio.file.Files.copy(from, dest, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+
+    copySemanticdb(
+      findSemanticdb("DuplicationAnalyzer.scala.semanticdb", "analysis/compile"),
+      rootA
+    )
+    copySemanticdb(findSemanticdb("Mcp.scala.semanticdb", "mcp/compile"), rootB)
+
+    val fakeBin = temp.resolve("fake-bin").nn
+    java.nio.file.Files.createDirectories(fakeBin)
+    val fakeCs = fakeBin.resolve("cs").nn
+    java.nio.file.Files.writeString(
+      fakeCs,
+      s"""|#!/usr/bin/env sh
+          |set -eu
+          |while [ "$$#" -gt 0 ] && [ "$$1" != "--" ]; do shift; done
+          |[ "$$#" -gt 0 ] && shift
+          |exec "${sys.props(
+           "java.home"
+         )}/bin/java" -cp "$$SCALASEMANTIC_TEST_CP" com.github.mercurievv.scalasemantic.mcpServer "$$@"
+          |""".stripMargin
+    )
+    val _ = fakeCs.toFile.setExecutable(true)
+
+    val script = java.nio.file.Paths.get("scripts/scalasemantic-mcp.sh").toAbsolutePath.nn
+    val builder =
+      ProcessBuilder("sh", script.toString, "serve", rootA.toString)
+        .directory(java.io.File("."))
+        .redirectError(ProcessBuilder.Redirect.PIPE)
+        .redirectOutput(ProcessBuilder.Redirect.PIPE)
+    val processEnv = builder.environment()
+    processEnv.put(
+      "PATH",
+      fakeBin.toString + java.io.File.pathSeparator + processEnv.getOrDefault("PATH", "")
+    )
+    processEnv.put("SCALASEMANTIC_TEST_CP", currentRuntimeClasspath)
+    val process = builder.start()
+
+    val requests = List(
+      ujson.Obj(
+        "jsonrpc" -> "2.0",
+        "id" -> ujson.Num(1),
+        "method" -> "initialize",
+        "params" -> ujson.Obj("protocolVersion" -> "2025-06-18")
+      ),
+      req(
+        "tools/call",
+        ujson.Obj(
+          "name" -> "find_symbol",
+          "arguments" -> ujson.Obj("query" -> "DuplicationAnalyzer", "exact" -> true)
+        ),
+        id = ujson.Num(2)
+      ),
+      req(
+        "tools/call",
+        ujson
+          .Obj("name" -> "set_workspace_root", "arguments" -> ujson.Obj("path" -> rootB.toString)),
+        id = ujson.Num(3)
+      ),
+      req(
+        "tools/call",
+        ujson.Obj(
+          "name" -> "find_symbol",
+          "arguments" -> ujson.Obj("query" -> "Mcp", "exact" -> true)
+        ),
+        id = ujson.Num(4)
+      ),
+      req(
+        "tools/call",
+        ujson.Obj(
+          "name" -> "find_symbol",
+          "arguments" -> ujson.Obj("query" -> "DuplicationAnalyzer", "exact" -> true)
+        ),
+        id = ujson.Num(5)
+      ),
+      req(
+        "tools/call",
+        ujson.Obj("name" -> "get_workspace_root", "arguments" -> ujson.Obj()),
+        id = ujson.Num(6)
+      )
+    )
+
+    val os = process.getOutputStream.nn
+    requests.foreach(r =>
+      os.write((ujson.write(r) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    )
+    os.close()
+
+    val finished = process.waitFor(90, java.util.concurrent.TimeUnit.SECONDS)
+    if !finished then process.destroyForcibly()
+    val stdout =
+      String(process.getInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+    val stderr =
+      String(process.getErrorStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+    assert(finished, stderr)
+    assertEquals(process.exitValue(), 0, stderr)
+
+    val lines = stdout.linesIterator.filter(_.nonEmpty).map(ujson.read(_)).toVector
+    assertEquals(lines.size, requests.size, s"stdout=$stdout\nstderr=$stderr")
+    def body(index: Int): ujson.Value =
+      ujson.read(lines(index)("result")("content")(0)("text").str)
+
+    val rootAFind = body(1)
+    assert(
+      rootAFind("symbols").arr.exists(_("symbol").str.endsWith("/DuplicationAnalyzer.")),
+      rootAFind.render()
+    )
+    val setRoot = body(2)
+    assertEquals(setRoot("root").str, rootB.toString)
+    assertEquals(setRoot("cached").bool, false)
+    val rootBFind = body(3)
+    assert(rootBFind("symbols").arr.exists(_("symbol").str.endsWith("/Mcp.")), rootBFind.render())
+    val staleFind = body(4)
+    assertEquals(staleFind("count").num, 0.0)
+    val currentRoot = body(5)
+    assertEquals(currentRoot("root").str, rootB.toString)
+  }
+
   test("launcher smoke with missing/empty classpath falls back to index-only (PC disabled)") {
     val root = java.nio.file.Files.createTempDirectory("mcp-launcher-empty").nn
     val appDir = root.resolve("app").nn

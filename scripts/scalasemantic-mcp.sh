@@ -8,7 +8,8 @@
 #       SCALA_SEMANTIC_RULES.md + the per-client steering file (CLAUDE.md/AGENTS.md/.cursorrules/...),
 #       prefetches (downloads+caches) the server jar, and merges an MCP server entry into each
 #       client's config file (.mcp.json, .codex/config.toml, .gemini/settings.json, ...) — re-running
-#       is safe, it only ever touches the "scala-semantic" entry.
+#       is safe, it only ever touches the "scala-semantic" entry. Generated launch args use "." as
+#       the root so worktree checkouts do not inherit the setup-time absolute path.
 #   scalasemantic-mcp.sh serve <semanticdb-root> [classpath]   (also the default with no subcommand)
 #       Runs the server. Two paths, picked automatically:
 #         1. if `cs` (coursier) is on PATH — resolve + cache the artifact from Maven Central and run
@@ -27,6 +28,8 @@
 #   serve arguments are forwarded verbatim to the server: arg 1 = SemanticDB root, optional arg 2 =
 #   the compile classpath metadata file (normally `.scala-semantic/classpath-<tool>.json`) that
 #   enables the presentation-compiler backend for live overlay of uncompiled buffers.
+#   If an agent changes cwd while the same stdio server process stays alive, call the MCP tool
+#   `set_workspace_root` with the new absolute path before other ScalaSemantic tool calls.
 #   --log / --log-output  Forwarded to the server to turn on its (off-by-default) file log:
 #               --log writes a startup line + one line per tool call; --log-output additionally
 #               logs each JSON-RPC response sent to the LLM. (Env equivalents: SCALASEMANTIC_LOG,
@@ -530,6 +533,8 @@ For Scala source questions, use ScalaSemantic MCP tools before shell text tools.
 
 Do not use `cat`, `sed`, `rg`, or similar tools to inspect `.scala` files for symbol, type, signature, hierarchy, implicit, reference, or call-path questions when ScalaSemantic tools are available.
 
+After changing working directories for any reason (worktree switch, `cd`, subproject entry, or subagent cwd change), call `set_workspace_root` with the new absolute path before any other ScalaSemantic tool call. If unsure, call `get_workspace_root` first. This is a discipline rule, not a harness-enforced guarantee.
+
 Use shell for builds, tests, git, config, docs, scripts, and non-Scala text work.
 EOF
     echo "scalasemantic-mcp: created $_rules" >&2
@@ -791,7 +796,7 @@ write_client_configs() {
       json)
         _entry="{
       \"command\": \"$_cmd_esc\",
-      \"args\": [\"serve\", \"$_proj_esc\", \"$_cp_esc\"]$(extra_json_fields "$c")
+      \"args\": [\"serve\", \".\", \"$_cp_esc\"]$(extra_json_fields "$c")
     }"
         MCPM_SERVER="scala-semantic" MCPM_ENTRY="$_entry" \
           awk -f "$CACHE/lib/json-merge.awk" "$_out" > "$_tmp"
@@ -800,7 +805,7 @@ write_client_configs() {
         _header="[mcp_servers.scala-semantic]"
         _fresh="[mcp_servers.scala-semantic]
 command = \"$_cmd_esc\"
-args = [\"serve\", \"$_proj_esc\", \"$_cp_esc\"]
+args = [\"serve\", \".\", \"$_cp_esc\"]
 startup_timeout_sec = 60
 tool_timeout_sec = 60"
         MCPM_HEADER="$_header" MCPM_FRESH="$_fresh" \
@@ -812,7 +817,7 @@ tool_timeout_sec = 60"
     command: \"$_cmd_esc\"
     args:
       - \"serve\"
-      - \"$_proj_esc\"
+      - \".\"
       - \"$_cp_esc\"
     connectionTimeout: 60000"
         _freshfull="name: ScalaSemantic MCP
@@ -880,7 +885,7 @@ Usage:
 
 setup writes MCP client config that launches this same script:
   command = $SELF
-  args    = [serve, <project>, <classpath-file>]
+  args    = [serve, ., <classpath-file>]
 EOF
 }
 

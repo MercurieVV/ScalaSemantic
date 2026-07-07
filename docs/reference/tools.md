@@ -21,8 +21,14 @@ ScalaSemantic exposes MCP tools over stdio JSON-RPC. For most workflows, start w
 | `rename_plan` | Produce the exact edits to rename a symbol everywhere it is used. |
 | `move_plan` | Produce the edits to move a top-level definition to another package. |
 | `extract_method_plan` | Produce the edits to extract a code range into a new method. |
+| `set_workspace_root` | Update the session's current workspace root after a worktree or cwd change. |
+| `get_workspace_root` | Report the session's current workspace root. |
 
 Results are lean by default: compact locations, one-line signatures, omitted empty fields. Use `"detailed": true` on tools that support it for structured breakdowns. `find_usages` is paged with `limit` and `offset`.
+
+After changing working directories, call `set_workspace_root` with the new absolute path before any
+other ScalaSemantic tool. If the current state is unclear, call `get_workspace_root` first. This
+works around stdio MCP clients that keep the same server process alive across cwd/worktree changes.
 
 ## SemanticDB symbol grammar
 
@@ -43,4 +49,3 @@ Use `find_symbol` to resolve a human name to its symbol; use `type_at_position` 
 ## Request shape
 
 MCP clients call tools automatically. For manual stdio checks, direct integrations, and full request/response JSON examples for every tool, see [Examples](../usage/examples.md).
-

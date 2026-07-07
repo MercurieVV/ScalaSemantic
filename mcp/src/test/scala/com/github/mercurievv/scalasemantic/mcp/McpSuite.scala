@@ -13,7 +13,10 @@ class McpSuite extends munit.FunSuite:
   override val munitTimeout: scala.concurrent.duration.Duration =
     scala.concurrent.duration.Duration("120s")
 
-  private val tools = McpTools.all(Analyzer(SemanticIndex.fromProject(".")))
+  private val tools = Mcp.toolsFor(
+    Analyzer(SemanticIndex.fromProject(".")),
+    java.nio.file.Paths.get(".").toAbsolutePath.nn
+  )
 
   private val Animal = "com/github/mercurievv/scalasemantic/fixtures/Animal#"
   private val Robot = "com/github/mercurievv/scalasemantic/fixtures/Robot#"
@@ -53,7 +56,7 @@ class McpSuite extends munit.FunSuite:
   test("tools/list exposes all sixteen tools with schemas") {
     val r = Mcp.handle(req("tools/list", ujson.Obj()), tools).get
     val names = r("result")("tools").arr.map(_("name").str).toSet
-    assertEquals(names.size, 19)
+    assertEquals(names.size, 21)
     assert(names.contains("value_flow"), names.toString)
     assert(names.contains("find_symbol"), names.toString)
     assert(names.contains("find_usages"), names.toString)
@@ -68,6 +71,27 @@ class McpSuite extends munit.FunSuite:
     assert(names.contains("smart_code_duplications"), names.toString)
     // every tool carries an object input schema
     assert(r("result")("tools").arr.forall(_("inputSchema")("type").str == "object"))
+  }
+
+  test("setup-generated client args use cwd root instead of setup-time absolute project path") {
+    val script =
+      java.nio.file.Files.readString(java.nio.file.Paths.get("scripts/scalasemantic-mcp.sh"))
+    assert(
+      !script.contains("\\\"args\\\": [\\\"serve\\\", \\\"$_proj_esc\\\""),
+      "JSON config must not bake project root"
+    )
+    assert(
+      !script.contains("args = [\\\"serve\\\", \\\"$_proj_esc\\\""),
+      "TOML config must not bake project root"
+    )
+    assert(
+      script.contains("\\\"args\\\": [\\\"serve\\\", \\\".\\\", \\\"$_cp_esc\\\"]"),
+      "JSON config should use cwd root"
+    )
+    assert(
+      script.contains("args = [\\\"serve\\\", \\\".\\\", \\\"$_cp_esc\\\"]"),
+      "TOML config should use cwd root"
+    )
   }
 
   test("smart_code_duplications exposes code clones across the project") {
@@ -470,5 +494,5 @@ class McpSuite extends munit.FunSuite:
     // 4 lines in (one blank, one notification) → 2 responses out, with matching ids
     assertEquals(out.size, 2)
     assertEquals(ujson.read(out(0))("id").num, 1.0)
-    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 19)
+    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 21)
   }

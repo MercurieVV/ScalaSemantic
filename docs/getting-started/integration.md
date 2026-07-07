@@ -106,7 +106,7 @@ does not already configure SemanticDB, and registers this command:
 ```sh
 scala-cli run --dependency "io.github.mercurievv::scalasemantic-mcp:latest.release" \
   --main-class com.github.mercurievv.scalasemantic.mcpServer \
-  -- /abs/path/to/project /abs/path/to/project/.scala-semantic/classpath-sbt.json
+  -- . /abs/path/to/project/.scala-semantic/classpath-sbt.json
 ```
 
 The MCP client runs that command over stdio. Note this does **not** invoke the setup script itself —
@@ -117,6 +117,15 @@ re-resolves to the newest published release.
 
 To pin a specific version instead of `latest.release`, edit `ServerDependency` in a local copy of the
 script and re-run `setup`.
+
+### Worktrees and cwd changes
+
+Generated configs use `.` as the server root so a newly spawned MCP server indexes the directory it
+was launched from, not the directory where `setup` originally ran. Some stdio MCP clients keep the
+same server process alive when the agent later changes cwd or enters a git worktree, and do not
+reliably send root-change notifications. After such a cwd change, call `set_workspace_root` with the
+new absolute path before other ScalaSemantic tools; use `get_workspace_root` to confirm the current
+state.
 
 ### Option B — auto-download launcher
 
@@ -134,7 +143,8 @@ Then register manually in your client config:
     "scala-semantic": {
       "command": "~/.local/bin/scalasemantic-mcp",
       "args": [
-        "/abs/path/to/project-to-analyze",
+        "serve",
+        ".",
         "/abs/path/to/project-to-analyze/.scala-semantic/classpath-sbt.json"
       ]
     }
@@ -151,7 +161,7 @@ Download `scalasemantic-mcp.jar` from the [latest release](https://github.com/Me
   "mcpServers": {
     "scala-semantic": {
       "command": "java",
-      "args": ["-jar", "/abs/path/to/scalasemantic-mcp.jar", "/abs/path/to/project-to-analyze"]
+      "args": ["-jar", "/abs/path/to/scalasemantic-mcp.jar", "."]
     }
   }
 }

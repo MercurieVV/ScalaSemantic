@@ -10,3 +10,4 @@ Preferably compile code before usage, therefore more SclaSemantic functions coul
    * **For all other queries** (searching, finding usages, hierarchies, etc.): Select the appropriate tool from the registered `scala-semantic` MCP tools.
 3. **Exceptions**: You may use generic tools on non-Scala files (such as `.sbt`, `.json`, `.md`), or if the `scala-semantic` MCP tools are completely
 failing/unavailable.
+4. **ALWAYS** call `set_workspace_root` with the new absolute path before any other `scala-semantic` tool call after changing working directories (worktree switch, `cd`, subproject entry, or subagent cwd change). If unsure, call `get_workspace_root` first. This is a discipline rule, not a harness-enforced guarantee.

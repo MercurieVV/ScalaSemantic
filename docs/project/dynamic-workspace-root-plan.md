@@ -216,6 +216,20 @@ temporary project directory containing distinct SemanticDB output, then call any
    contract, not before.
 6. Task 6 (docs) — last, once tool names/behavior are final.
 
+## Implementation Notes
+
+- Implemented generated client config args as `["serve", ".", <classpath-file>]`; setup-time
+  filesystem operations still use the absolute project path.
+- Added `set_workspace_root` and `get_workspace_root`; the server keeps a per-process current root
+  and lazily caches `Analyzer`/tool sets by resolved root path.
+- Added the explicit cwd-change rule to this repo's `SCALA_SEMANTIC_RULES.md`, the setup-generated
+  rules template, server initialize instructions, and the tool reference.
+- Added a real launcher smoke test that starts `scripts/scalasemantic-mcp.sh serve`, queries one
+  temporary SemanticDB root, switches to a second root, and verifies the old-root symbol is no
+  longer visible.
+- Did not rely on MCP `roots` notifications for this implementation. The explicit tools remain the
+  supported workaround until client root-change behavior is independently verified.
+
 ## Out of Scope
 
 - Solving concurrent multi-agent shared-process root switching (not needed: parallel workers already
