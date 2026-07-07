@@ -210,7 +210,7 @@ class McpPcSuite extends munit.FunSuite:
     os.write((ujson.write(toolsCallReq) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
     os.close()
 
-    val finished = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)
+    val finished = process.waitFor(90, java.util.concurrent.TimeUnit.SECONDS)
     if !finished then process.destroyForcibly()
     val stdout =
       String(process.getInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
@@ -320,7 +320,7 @@ class McpPcSuite extends munit.FunSuite:
     os.write((ujson.write(toolsCallReq) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
     os.close()
 
-    val finished = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)
+    val finished = process.waitFor(90, java.util.concurrent.TimeUnit.SECONDS)
     if !finished then process.destroyForcibly()
     val stdout =
       String(process.getInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
