@@ -196,11 +196,10 @@ Setup creates `.scala-semantic/` if needed, but the build tool owns file content
 ## Rollout Order
 
 1. Add metadata model and MCP reader while preserving flat classpath support. Done.
-2. Add setup-generated sbt writer using `Compile / fullClasspath`. Done as an explicit task;
-   automatic dependency/config refresh integration is pending.
+2. Add setup-generated sbt writer using `Compile / fullClasspath`. Done.
 3. Update setup to point projects at `.scala-semantic/classpath-<tool>.json`. Done.
 4. Add Mill writer. Done for this repository as `scalaSemanticWriteClasspath`.
-5. Add build-tool-native refresh integration for sbt dependency/config changes. Pending.
-6. Add build-tool-native refresh integration for Mill dependency/config changes. Pending.
-7. Add Scala CLI writer and dependency/config refresh path. Pending.
-8. Document troubleshooting and migration from the old flat classpath file. Partially done.
+5. Add build-tool-native refresh integration for sbt dependency/config changes (via Global / onLoad hook). Done.
+6. Add build-tool-native refresh integration for Mill dependency/config changes (via compileClasspath override and external cp sandbox bypass). Done.
+7. Add Scala CLI writer and dependency/config refresh path (via scala-cli compile --print-class-path in setup). Done.
+8. Document troubleshooting and migration from the old flat classpath file. Done.

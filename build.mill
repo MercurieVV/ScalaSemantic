@@ -49,6 +49,7 @@ def munitDeps = Seq(
 // warts as ERRORS in Compile, dropped in Test) is done by overriding scalacOptions in `object test`.
 // ---------------------------------------------------------------------------------------------
 trait Common extends SbtModule {
+  def id: String
   def scalaVersion = V.scala3
 
   // SemanticDB emission for dogfooding + scalafix. Mill's `semanticDbEnabled` only feeds the IDE
@@ -114,6 +115,28 @@ trait Common extends SbtModule {
   ) ++ (if (useWartremover)
           wartFlags(warnWarts, "only-warn-traverser") ++ wartFlags(strictWarts, "traverser")
         else Nil)
+
+  override def compileClasspath = Task {
+    val cp = super.compileClasspath()
+    val root = build.moduleDir
+    val baseDir = this.moduleDir
+    val scalaVersion = this.scalaVersion()
+    val classesDir = build.moduleDir / "out" / id / "compile.dest" / "classes"
+    val module = ScalaSemanticClasspathMetadata.Module(
+      id = id,
+      baseDir = baseDir,
+      scalaVersion = scalaVersion,
+      classpath = classesDir +: cp.map(_.path)
+    )
+    val moduleContent = ScalaSemanticClasspathMetadata.render(root, Seq(module))
+    val destFile = Task.dest / s"classpath-mill-$id.json"
+    os.write.over(destFile, moduleContent)
+
+    val finalDir = root / ".scala-semantic"
+    os.proc("mkdir", "-p", finalDir.toString).call(cwd = root)
+    os.proc("cp", destFile.toString, (finalDir / s"classpath-mill-$id.json").toString).call(cwd = root)
+    cp
+  }
 
   // scalafix via scalafix-interfaces (a stable, Maven-Central-published embedding API), NOT the
   // mill-scalafix plugin — that plugin has no mill1.x build and breaks build.mill entirely if
@@ -206,6 +229,7 @@ trait Common extends SbtModule {
 // core — load + index SemanticDB. No deps.
 // ---------------------------------------------------------------------------------------------
 object core extends Common with PublishModule {
+  def id = "core"
   def artifactName = "scalasemantic-core"
   def publishVersion = build.publishVersion()
   def pomSettings = commonPom("scalasemantic-core")
@@ -221,6 +245,7 @@ object core extends Common with PublishModule {
 // Warts OFF (Java interop) — build.sbt `.disablePlugins(WartRemover)`.
 // ---------------------------------------------------------------------------------------------
 object pc extends Common with PublishModule {
+  def id = "pc"
   def artifactName = "scalasemantic-pc"
   def publishVersion = build.publishVersion()
   def pomSettings = commonPom("scalasemantic-pc")
@@ -237,6 +262,7 @@ object pc extends Common with PublishModule {
 // analysis — query engine + models. dependsOn core, pc. Unmanaged stainless jar from lib/.
 // ---------------------------------------------------------------------------------------------
 object analysis extends Common with PublishModule {
+  def id = "analysis"
   def artifactName = "scalasemantic-analysis"
   def publishVersion = build.publishVersion()
   def pomSettings = commonPom("scalasemantic-analysis")
@@ -265,6 +291,7 @@ object analysis extends Common with PublishModule {
 // mcp — stdio JSON-RPC server + entrypoint. test->test dep on analysis. Version source + assembly.
 // ---------------------------------------------------------------------------------------------
 object mcp extends Common with PublishModule with BuildInfo {
+  def id = "mcp"
   def artifactName = "scalasemantic-mcp"
   def publishVersion = build.publishVersion()
   def pomSettings = commonPom("scalasemantic-mcp")

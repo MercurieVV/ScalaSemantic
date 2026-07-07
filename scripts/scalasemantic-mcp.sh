@@ -224,6 +224,7 @@ ensure_semanticdb_config() {
     ensure_semanticdb_gradle "$_project"
   elif [ -f "$_project/project.scala" ] || ls "$_project"/*.scala >/dev/null 2>&1 || ls "$_project"/*.sc >/dev/null 2>&1; then
     ensure_semanticdb_scalacli "$_project"
+    write_scalacli_classpath "$_project"
   else
     echo "scalasemantic-mcp: no sbt/Mill/Gradle/scala-cli build files found in $_project; enable SemanticDB manually (see docs/getting-started/integration.md) before using ScalaSemantic" >&2
   fi
@@ -312,6 +313,18 @@ ThisBuild / scalaSemanticWriteClasspath := {
   out
 }
 
+Global / onLoad := {
+  val prev = (Global / onLoad).value
+  prev.andThen { state =>
+    val key = AttributeKey[Boolean]("scalaSemanticClasspathWritten")
+    if (state.get(key).getOrElse(false)) state
+    else {
+      val newState = state.put(key, true)
+      "scalaSemanticWriteClasspath" :: newState
+    }
+  }
+}
+
 EOF
     echo "scalasemantic-mcp: created $_file" >&2
   elif [ "$has_semanticdb" -eq 0 ]; then
@@ -386,6 +399,92 @@ ensure_semanticdb_scalacli() {
     fi
     echo "scalasemantic-mcp: created $_file" >&2
   fi
+}
+
+write_scalacli_classpath() {
+  local _project _command _cp _entries _entry _scala_ver _out_dir _out _json_entries _rel_path
+  _project="$1"
+  _command="$2"
+  
+  if [ -z "$_command" ] || [ "$_command" = "$SELF" ]; then
+    if command -v scala-cli >/dev/null 2>&1; then
+      _command="scala-cli"
+    elif command -v scala >/dev/null 2>&1; then
+      _command="scala"
+    else
+      _command="scala-cli"
+    fi
+  fi
+  
+  if ! command -v "$_command" >/dev/null 2>&1; then
+    echo "scalasemantic-mcp: warning: '$_command' not found; skipping Scala CLI classpath generation" >&2
+    return 0
+  fi
+
+  echo "scalasemantic-mcp: gathering Scala CLI classpath using '$_command'..." >&2
+  _cp=$("$_command" compile --print-class-path "$_project" 2>/dev/null)
+  if [ $? -ne 0 ] || [ -z "$_cp" ]; then
+    echo "scalasemantic-mcp: warning: failed to run '$_command compile --print-class-path'" >&2
+    return 0
+  fi
+
+  _scala_ver="3.8.4"
+  _cp=$(echo "$_cp" | tr ';' ':')
+  
+  for _entry in $(echo "$_cp" | tr ':' '\n'); do
+    case "$(basename "$_entry")" in
+      scala3-library_3-*)
+        _scala_ver=$(basename "$_entry" | sed 's/scala3-library_3-//;s/\.jar//' | cut -d'-' -f1)
+        break
+        ;;
+      scala-library-*)
+        _scala_ver=$(basename "$_entry" | sed 's/scala-library-//;s/\.jar//')
+        break
+        ;;
+    esac
+  done
+
+  _json_entries=""
+  for _entry in $(echo "$_cp" | tr ':' '\n'); do
+    [ -n "$_entry" ] || continue
+    local abs_proj abs_entry
+    abs_proj=$(cd "$_project" && pwd)
+    abs_entry=$(cd "$(dirname "$_entry")" 2>/dev/null && pwd)/$(basename "$_entry")
+    if [ "${abs_entry#$abs_proj/}" != "$abs_entry" ]; then
+      _rel_path="${abs_entry#$abs_proj/}"
+    else
+      _rel_path="$abs_entry"
+    fi
+    _rel_path=$(echo "$_rel_path" | sed 's/\\/\\\\/g;s/"/\\"/g')
+    if [ -z "$_json_entries" ]; then
+      _json_entries="        \"$_rel_path\""
+    else
+      _json_entries="$_json_entries,\n        \"$_rel_path\""
+    fi
+  done
+
+  _out_dir="$_project/.scala-semantic"
+  mkdir -p "$_out_dir"
+  _out="$_out_dir/classpath-scala-cli.json"
+  
+  cat > "$_out" <<EOF
+{
+  "schemaVersion": 1,
+  "buildTool": "scala-cli",
+  "modules": [
+    {
+      "id": "root",
+      "baseDir": ".",
+      "scalaVersion": "$_scala_ver",
+      "configuration": "Compile",
+      "classpath": [
+$(printf "$_json_entries")
+      ]
+    }
+  ]
+}
+EOF
+  echo "scalasemantic-mcp: generated Scala CLI classpath metadata: $_out" >&2
 }
 
 ensure_steer_file() {

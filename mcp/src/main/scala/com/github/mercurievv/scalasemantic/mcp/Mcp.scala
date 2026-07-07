@@ -373,24 +373,43 @@ object Mcp:
 
   private def resolveClasspathMetadata(path: Path, rootPath: Path): Option[ResolvedClasspath] =
     scala.util.Try {
-      val json = ujson.read(Files.readString(path))
-      val modules = json("modules").arr.toVector.flatMap { module =>
-        val classpath = module("classpath").arr.toVector
-          .map(entry => resolvePath(entry.str, rootPath))
-          .distinct
-        if classpath.isEmpty then None
-        else
-          val id = module.obj.get("id").map(_.str).getOrElse("")
-          val baseDir = module.obj.get("baseDir").map(_.str).getOrElse(".")
-          Some(
-            ResolvedClasspathModule(
-              id = id,
-              baseDir = resolvePath(baseDir, rootPath),
-              scalaVersion = module.obj.get("scalaVersion").map(_.str),
-              configuration = module.obj.get("configuration").map(_.str),
-              classpath = classpath
+      val files =
+        if path.getFileName.toString == "classpath-mill.json" then
+          val parent = path.getParent
+          if parent != null && Files.exists(parent) then
+            scala.util.Using.resource(Files.list(parent)) { stream =>
+              stream
+                .iterator()
+                .asScala
+                .filter(p =>
+                  Files.isRegularFile(p) && p.getFileName.toString
+                    .startsWith("classpath-mill-") && p.getFileName.toString.endsWith(".json")
+                )
+                .toVector
+            } :+ path
+          else Vector(path)
+        else Vector(path)
+
+      val modules = files.distinct.filter(Files.exists(_)).flatMap { f =>
+        val json = ujson.read(Files.readString(f))
+        json("modules").arr.toVector.flatMap { module =>
+          val classpath = module("classpath").arr.toVector
+            .map(entry => resolvePath(entry.str, rootPath))
+            .distinct
+          if classpath.isEmpty then None
+          else
+            val id = module.obj.get("id").map(_.str).getOrElse("")
+            val baseDir = module.obj.get("baseDir").map(_.str).getOrElse(".")
+            Some(
+              ResolvedClasspathModule(
+                id = id,
+                baseDir = resolvePath(baseDir, rootPath),
+                scalaVersion = module.obj.get("scalaVersion").map(_.str),
+                configuration = module.obj.get("configuration").map(_.str),
+                classpath = classpath
+              )
             )
-          )
+        }
       }
       ResolvedClasspath(modules)
     }.toOption
