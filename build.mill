@@ -1245,6 +1245,111 @@ object ConfigMerger {
   }
 }
 
+object ScalaSemanticClasspathMetadata {
+  final case class Module(
+      id: String,
+      baseDir: os.Path,
+      scalaVersion: String,
+      classpath: Seq[os.Path]
+  )
+
+  def metadataPath(root: os.Path): os.Path =
+    root / ".scala-semantic" / "classpath-mill.json"
+
+  def render(root: os.Path, modules: Seq[Module]): String = {
+    val renderedModules = modules.map(renderModule(root, _)).mkString(",\n")
+    s"""|{
+        |  "schemaVersion": 1,
+        |  "buildTool": "mill",
+        |  "modules": [
+        |$renderedModules
+        |  ]
+        |}
+        |""".stripMargin
+  }
+
+  def writeIfChanged(path: os.Path, content: String): Boolean = {
+    val normalized = if (content.endsWith("\n")) content else content + "\n"
+    if (os.exists(path) && os.read(path) == normalized) false
+    else {
+      os.makeDir.all(path / os.up)
+      val tmp = (path / os.up) / s".${path.last}.tmp"
+      os.write.over(tmp, normalized)
+      os.move.over(tmp, path)
+      true
+    }
+  }
+
+  private def renderModule(root: os.Path, module: Module): String = {
+    val cp = module.classpath.distinct
+      .map(p => s"      ${jsonString(pathString(root, p))}")
+      .mkString(",\n")
+    s"""|    {
+        |      "id": ${jsonString(module.id)},
+        |      "baseDir": ${jsonString(pathString(root, module.baseDir))},
+        |      "scalaVersion": ${jsonString(module.scalaVersion)},
+        |      "configuration": "Compile",
+        |      "classpath": [
+        |$cp
+        |      ]
+        |    }""".stripMargin
+  }
+
+  private def pathString(root: os.Path, path: os.Path): String =
+    if (path.startsWith(root)) path.relativeTo(root).toString else path.toString
+
+  private def jsonString(value: String): String =
+    "\"" + value.flatMap {
+      case '"'          => "\\\""
+      case '\\'         => "\\\\"
+      case '\b'         => "\\b"
+      case '\f'         => "\\f"
+      case '\n'         => "\\n"
+      case '\r'         => "\\r"
+      case '\t'         => "\\t"
+      case c if c < ' ' => "\\u%04x".format(c.toInt)
+      case c            => c.toString
+    } + "\""
+}
+
+// Writes the module-aware compile classpath metadata consumed by live-buffer MCP tools.
+def scalaSemanticWriteClasspath() = Task.Command {
+  val root = build.moduleDir
+  val modules = Seq(
+    ScalaSemanticClasspathMetadata.Module(
+      id = "core",
+      baseDir = core.moduleDir,
+      scalaVersion = core.scalaVersion(),
+      classpath = core.compile().classes.path +: core.compileClasspath().map(_.path)
+    ),
+    ScalaSemanticClasspathMetadata.Module(
+      id = "pc",
+      baseDir = pc.moduleDir,
+      scalaVersion = pc.scalaVersion(),
+      classpath = pc.compile().classes.path +: pc.compileClasspath().map(_.path)
+    ),
+    ScalaSemanticClasspathMetadata.Module(
+      id = "analysis",
+      baseDir = analysis.moduleDir,
+      scalaVersion = analysis.scalaVersion(),
+      classpath = analysis.compile().classes.path +: analysis.compileClasspath().map(_.path)
+    ),
+    ScalaSemanticClasspathMetadata.Module(
+      id = "mcp",
+      baseDir = mcp.moduleDir,
+      scalaVersion = mcp.scalaVersion(),
+      classpath = mcp.compile().classes.path +: mcp.compileClasspath().map(_.path)
+    )
+  )
+  val out = ScalaSemanticClasspathMetadata.metadataPath(root)
+  val changed = ScalaSemanticClasspathMetadata.writeIfChanged(
+    out,
+    ScalaSemanticClasspathMetadata.render(root, modules)
+  )
+  val verb = if (changed) "Wrote" else "Up to date"
+  Task.log.info(s"$verb ScalaSemantic classpath metadata: $out")
+}
+
 // build.sbt `mcpClientConfig` (root inputKey) — install the stable launcher + write/merge client
 // MCP config pointing at it. `client` = one client name, or "all" to write every known client.
 def mcpClientConfig(client: String = "claude") = Task.Command {
@@ -1263,7 +1368,8 @@ def mcpClientConfig(client: String = "claude") = Task.Command {
       Task.log.warn(s"jar prefetch skipped (${e.getMessage}); it will download on first connect.")
   }
 
-  val cpFile = (launcher / os.up) / "scala-semantic-classpath.txt"
+  val cpFile = ScalaSemanticClasspathMetadata.metadataPath(root)
+  os.makeDir.all(cpFile / os.up)
   val argv = Seq(launcher.toString, root.toString, cpFile.toString)
   val serverName = "scala-semantic"
   val clients =

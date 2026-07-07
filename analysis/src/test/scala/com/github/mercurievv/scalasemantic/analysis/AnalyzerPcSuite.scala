@@ -57,6 +57,21 @@ class AnalyzerPcSuite extends munit.FunSuite:
     assert(sig.rendered.contains("loud: Boolean"), sig.rendered)
   }
 
+  test("withBuffer routes the PC backend by document uri") {
+    val routedUris = java.util.concurrent.atomic.AtomicReference[List[String]](Nil)
+    val routed = new Analyzer(
+      new SemanticIndex(Vector.empty),
+      pcSelector = Some(docUri =>
+        val _ = routedUris.updateAndGet(docUri :: _)
+        Some(backend)
+      )
+    )
+
+    val live = routed.withBuffer(uri, source, "module-a/src/main/scala/Dog.scala")
+    assert(live.findSymbol("Dog").nonEmpty, "routed backend must still overlay the buffer")
+    assertEquals(routedUris.get, List("module-a/src/main/scala/Dog.scala"))
+  }
+
   test("type_at_position resolves on an uncompiled buffer via the PC overlay") {
     val live = az.withBuffer(uri, source)
     // Line 3 (0-based), the `bark` definition occurrence: `  def bark(...)`.

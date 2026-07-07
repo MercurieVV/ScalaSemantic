@@ -24,10 +24,13 @@ import scala.meta.internal.semanticdb as s
   */
 final class Analyzer(
     index: SemanticIndex,
-    pc: Option[PresentationCompilerBackend] = None
+    pc: Option[PresentationCompilerBackend] = None,
+    pcSelector: Option[String => Option[PresentationCompilerBackend]] = None
 ):
 
   private val h = AnalyzerHelpers(index)
+  private val backendFor: String => Option[PresentationCompilerBackend] =
+    pcSelector.getOrElse(_ => pc)
 
   /** True when no `*.semanticdb` file was found/loaded at all — SemanticDB likely isn't enabled or
     * the project hasn't been compiled yet, as opposed to a query simply matching nothing.
@@ -43,9 +46,10 @@ final class Analyzer(
     * describe a single file. Without a PC backend this is a no-op returning `this`.
     */
   def withBuffer(fileUri: URI, code: String, docUri: String): Analyzer =
-    pc match
-      case Some(backend) => new Analyzer(backend.overlay(index, fileUri, code, docUri), pc)
-      case None          => this
+    backendFor(docUri) match
+      case Some(backend) =>
+        new Analyzer(backend.overlay(index, fileUri, code, docUri), pc, pcSelector)
+      case None => this
 
   /** [[withBuffer]] keyed by the file's own uri (the simple single-file case). */
   def withBuffer(uri: URI, code: String): Analyzer =
@@ -58,7 +62,7 @@ final class Analyzer(
     * document. `None` when there is no PC backend (the caller falls back to the disk index).
     */
   def bufferOnly(fileUri: URI, code: String, docUri: String): Option[Analyzer] =
-    pc.map(backend =>
+    backendFor(docUri).map(backend =>
       new Analyzer(SemanticIndex(Vector(backend.semanticdb(fileUri, code, docUri))))
     )
 
