@@ -568,6 +568,20 @@ def checkFormatFirstParty() = Task.Command {
   )()
 }
 
+def smokeTest() = Task.Command {
+  mcp.assembly()
+  val script = build.moduleDir / "scripts" / "smoke-test.sh"
+  val res = os.proc("sh", script.toString).call(
+    cwd = build.moduleDir,
+    stdout = os.Inherit,
+    stderr = os.Inherit,
+    check = false
+  )
+  if (res.exitCode != 0) {
+    sys.error(s"E2E Smoke Test failed with exit status ${res.exitCode}")
+  }
+}
+
 def prePush() = Task.Command {
   checkFormatFirstParty()()
   core.scalafixCheck()
@@ -580,6 +594,7 @@ def prePush() = Task.Command {
   analysis.test.testForked()()
   mcp.test.testForked()()
   analysis.stainlessVerify()()
+  smokeTest()()
 }
 
 // build.mill itself lives in its own evaluator context (meta-level 1), unreachable from a level-0
