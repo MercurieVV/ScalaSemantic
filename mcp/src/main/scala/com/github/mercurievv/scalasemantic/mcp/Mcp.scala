@@ -376,7 +376,7 @@ object Mcp:
       val files =
         if path.getFileName.toString == "classpath-mill.json" then
           val parent = path.getParent
-          if parent != null && Files.exists(parent) then
+          if Option(parent).isDefined && Files.exists(parent) then
             scala.util.Using.resource(Files.list(parent)) { stream =>
               stream
                 .iterator()
@@ -428,7 +428,10 @@ object Mcp:
 
   private def pathForUri(uri: String, rootPath: Path): Path =
     val raw =
-      scala.util.Try(java.net.URI.create(uri)).toOption.filter(_.getScheme != null) match
+      scala.util
+        .Try(java.net.URI.create(uri))
+        .toOption
+        .filter(u => Option(u.getScheme).isDefined) match
         case Some(parsed) if parsed.getScheme == "file" => Paths.get(parsed)
         case _                                          => Paths.get(uri)
     if raw.isAbsolute then raw.normalize().nn else rootPath.resolve(raw).normalize().nn
