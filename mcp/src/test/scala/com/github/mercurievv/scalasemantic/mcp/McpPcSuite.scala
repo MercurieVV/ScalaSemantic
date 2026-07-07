@@ -176,23 +176,40 @@ class McpPcSuite extends munit.FunSuite:
     processEnv.put("SCALASEMANTIC_LOG_FILE", logFile.toString)
     val process = builder.start()
 
-    process.getOutputStream.write(
-      (ujson.write(
-        req(
-          "tools/call",
-          ujson.Obj(
-            "name" -> "type_at_position",
-            "arguments" -> ujson.Obj(
-              "uri" -> uri,
-              "line" -> 5,
-              "character" -> 24,
-              "source" -> source
-            )
-          )
-        )
-      ) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8)
+    val initializeReq = ujson.Obj(
+      "jsonrpc" -> "2.0",
+      "id" -> ujson.Num(1),
+      "method" -> "initialize",
+      "params" -> ujson.Obj("protocolVersion" -> "2025-06-18")
     )
-    process.getOutputStream.close()
+    val initializedNotification = ujson.Obj(
+      "jsonrpc" -> "2.0",
+      "method" -> "notifications/initialized",
+      "params" -> ujson.Obj()
+    )
+    val toolsCallReq = req(
+      "tools/call",
+      ujson.Obj(
+        "name" -> "type_at_position",
+        "arguments" -> ujson.Obj(
+          "uri" -> uri,
+          "line" -> 5,
+          "character" -> 24,
+          "source" -> source
+        )
+      ),
+      id = ujson.Num(2)
+    )
+
+    val os = process.getOutputStream.nn
+    os.write((ujson.write(initializeReq) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    os.write(
+      (ujson.write(initializedNotification) + "\n")
+        .getBytes(java.nio.charset.StandardCharsets.UTF_8)
+    )
+    os.write((ujson.write(toolsCallReq) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    os.close()
+
     val finished = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)
     if !finished then process.destroyForcibly()
     val stdout =
@@ -204,15 +221,121 @@ class McpPcSuite extends munit.FunSuite:
     assert(finished, stderr)
     assertEquals(process.exitValue(), 0, stderr)
 
-    val response =
-      ujson.read(stdout.linesIterator.filter(_.nonEmpty).toList.headOption.getOrElse(""))
-    val body = ujson.read(response("result")("content")(0)("text").str)
+    val lines = stdout.linesIterator.filter(_.nonEmpty).toList
+    val initResp = ujson.read(lines.headOption.getOrElse(""))
+    assert(initResp.obj.contains("result"), s"Invalid init response: $initResp")
+
+    val callResp = ujson.read(lines.lift(1).getOrElse(""))
+    val body = ujson.read(callResp("result")("content")(0)("text").str)
     assert(
       body.obj.contains("type"),
       s"stdout=$stdout\nstderr=$stderr\nlog=$log\nbody=${body.render()}"
     )
     assertEquals(body("name").str, "name")
     assert(body("symbol").str.startsWith("ext/External#name"), body.render())
+  }
+
+  test("launcher smoke with missing/empty classpath falls back to index-only (PC disabled)") {
+    val root = java.nio.file.Files.createTempDirectory("mcp-launcher-empty").nn
+    val appDir = root.resolve("app").nn
+    val srcDir = appDir.resolve("src/main/scala").nn
+    java.nio.file.Files.createDirectories(srcDir)
+
+    val uri = "app/src/main/scala/Widget.scala"
+    val source =
+      """|package demo
+         |
+         |import ext.External
+         |
+         |class Widget:
+         |  def value = External.name()
+         |""".stripMargin
+    java.nio.file.Files.writeString(root.resolve(uri), source)
+
+    val cpFile = root.resolve("nonexistent-classpath.json").nn
+
+    val fakeBin = root.resolve("fake-bin").nn
+    java.nio.file.Files.createDirectories(fakeBin)
+    val fakeCs = fakeBin.resolve("cs").nn
+    java.nio.file.Files.writeString(
+      fakeCs,
+      s"""|#!/usr/bin/env sh
+          |set -eu
+          |while [ "$$#" -gt 0 ] && [ "$$1" != "--" ]; do shift; done
+          |[ "$$#" -gt 0 ] && shift
+          |exec "${sys.props(
+           "java.home"
+         )}/bin/java" -cp "$$SCALASEMANTIC_TEST_CP" com.github.mercurievv.scalasemantic.mcpServer "$$@"
+          |""".stripMargin
+    )
+    val _ = fakeCs.toFile.setExecutable(true)
+
+    val script = java.nio.file.Paths.get("scripts/scalasemantic-mcp.sh").toAbsolutePath.nn
+    val logFile = root.resolve("mcp.log").nn
+    val builder =
+      ProcessBuilder("sh", script.toString, "serve", root.toString, cpFile.toString, "--log")
+        .directory(java.io.File("."))
+        .redirectError(ProcessBuilder.Redirect.PIPE)
+        .redirectOutput(ProcessBuilder.Redirect.PIPE)
+    val processEnv = builder.environment()
+    processEnv.put(
+      "PATH",
+      fakeBin.toString + java.io.File.pathSeparator + processEnv.getOrDefault("PATH", "")
+    )
+    processEnv.put("SCALASEMANTIC_TEST_CP", currentRuntimeClasspath)
+    processEnv.put("SCALASEMANTIC_LOG_FILE", logFile.toString)
+    val process = builder.start()
+
+    val initializeReq = ujson.Obj(
+      "jsonrpc" -> "2.0",
+      "id" -> ujson.Num(1),
+      "method" -> "initialize",
+      "params" -> ujson.Obj("protocolVersion" -> "2025-06-18")
+    )
+    val initializedNotification = ujson.Obj(
+      "jsonrpc" -> "2.0",
+      "method" -> "notifications/initialized",
+      "params" -> ujson.Obj()
+    )
+    val toolsCallReq = req(
+      "tools/call",
+      ujson.Obj(
+        "name" -> "type_at_position",
+        "arguments" -> ujson.Obj(
+          "uri" -> uri,
+          "line" -> 5,
+          "character" -> 24,
+          "source" -> source
+        )
+      ),
+      id = ujson.Num(2)
+    )
+
+    val os = process.getOutputStream.nn
+    os.write((ujson.write(initializeReq) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    os.write(
+      (ujson.write(initializedNotification) + "\n")
+        .getBytes(java.nio.charset.StandardCharsets.UTF_8)
+    )
+    os.write((ujson.write(toolsCallReq) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    os.close()
+
+    val finished = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)
+    if !finished then process.destroyForcibly()
+    val stdout =
+      String(process.getInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+    val stderr =
+      String(process.getErrorStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+    assert(finished, stderr)
+    assertEquals(process.exitValue(), 0, stderr)
+
+    val lines = stdout.linesIterator.filter(_.nonEmpty).toList
+    val initResp = ujson.read(lines.headOption.getOrElse(""))
+    assert(initResp.obj.contains("result"), s"Invalid init response: $initResp")
+
+    val callResp = ujson.read(lines.lift(1).getOrElse(""))
+    val body = ujson.read(callResp("result")("content")(0)("text").str)
+    assertEquals(body("found").bool, false)
   }
 
   test(

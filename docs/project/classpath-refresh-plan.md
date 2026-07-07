@@ -203,3 +203,4 @@ Setup creates `.scala-semantic/` if needed, but the build tool owns file content
 6. Add build-tool-native refresh integration for Mill dependency/config changes (via compileClasspath override and external cp sandbox bypass). Done.
 7. Add Scala CLI writer and dependency/config refresh path (via scala-cli compile --print-class-path in setup). Done.
 8. Document troubleshooting and migration from the old flat classpath file. Done.
+9. Implement automated smoke test. Done.
