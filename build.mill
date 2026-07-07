@@ -134,7 +134,8 @@ trait Common extends SbtModule {
 
     val finalDir = root / ".scala-semantic"
     os.proc("mkdir", "-p", finalDir.toString).call(cwd = root)
-    os.proc("cp", destFile.toString, (finalDir / s"classpath-mill-$id.json").toString).call(cwd = root)
+    os.proc("cp", destFile.toString, (finalDir / s"classpath-mill-$id.json").toString)
+      .call(cwd = root)
     cp
   }
 
@@ -571,12 +572,14 @@ def checkFormatFirstParty() = Task.Command {
 def smokeTest() = Task.Command {
   mcp.assembly()
   val script = build.moduleDir / "scripts" / "smoke-test.sh"
-  val res = os.proc("sh", script.toString).call(
-    cwd = build.moduleDir,
-    stdout = os.Inherit,
-    stderr = os.Inherit,
-    check = false
-  )
+  val res = os
+    .proc("sh", script.toString)
+    .call(
+      cwd = build.moduleDir,
+      stdout = os.Inherit,
+      stderr = os.Inherit,
+      check = false
+    )
   if (res.exitCode != 0) {
     sys.error(s"E2E Smoke Test failed with exit status ${res.exitCode}")
   }
