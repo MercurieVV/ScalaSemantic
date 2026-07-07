@@ -404,7 +404,7 @@ ensure_semanticdb_scalacli() {
 write_scalacli_classpath() {
   local _project _command _cp _entries _entry _scala_ver _out_dir _out _json_entries _rel_path
   _project="$1"
-  _command="$2"
+  _command="${2:-}"
   
   if [ -z "$_command" ] || [ "$_command" = "$SELF" ]; then
     if command -v scala-cli >/dev/null 2>&1; then
