@@ -8,7 +8,9 @@ types for current source text. The MCP server should not discover that classpath
 build-tool discovery can be slow, may trigger network/downloads, and can block MCP tool discovery.
 
 The build tool should own classpath freshness and materialize a stable project-local classpath file
-as part of the normal build lifecycle.
+when the build definition, module graph, Scala version, or dependency graph changes. Source-only
+compiles should not be the refresh trigger: they are too frequent and do not usually change the
+presentation compiler classpath.
 
 ## Design Choices
 
@@ -19,6 +21,8 @@ as part of the normal build lifecycle.
   - `.scala-semantic/classpath-scala-cli.json`
 - Use `Compile / fullClasspath` for sbt and the equivalent compile classpath for other build
   tools. Live-buffer typechecking should match normal compilation, not runtime execution.
+- Refresh metadata from build-tool dependency/configuration refresh points, not from MCP startup
+  and not from ordinary source compilation.
 - Keep MCP startup non-blocking. If no usable classpath metadata exists, the server starts in
   index-only mode.
 - Keep backward compatibility with the existing flat path-separated classpath string/file.
@@ -90,17 +94,14 @@ Generated setup responsibilities:
 - Skip rewriting if the content is unchanged.
 - Keep the writer available as an explicit task.
 
-Compile-hook sketch that still needs a safe implementation:
+Refresh integration target:
 
-```scala
-Compile / compile := (Compile / compile)
-  .dependsOn(Compile / scalaSemanticWriteClasspath)
-  .value
-```
-
-The direct generated `.sbt` hook was tested against sbt 1.12.9 and avoided because it caused the
-temp smoke build to hang after normal compilation. Revisit this in a packaged plugin where task
-scoping can be tested with scripted tests.
+- Refresh after sbt reload/dependency resolution/build-structure changes, not after every
+  `Compile / compile`.
+- The writer may read `Compile / fullClasspath`, but the trigger should be tied to the point where
+  sbt has refreshed dependency/configuration state.
+- Avoid cycles with `update`, `fullClasspath`, and project aggregation. This likely belongs in a
+  packaged sbt plugin with scripted tests rather than an ad hoc generated `.sbt` compile hook.
 
 Potential opt-out setting for the plugin version:
 
@@ -108,7 +109,7 @@ Potential opt-out setting for the plugin version:
 scalaSemanticAutoClasspath := true
 ```
 
-If disabled, the task remains available but is not attached to `compile`.
+If disabled, the task remains available but is not attached to dependency/config refresh.
 
 ## Mill Implementation
 
@@ -121,7 +122,9 @@ Implemented for this repository as a root `scalaSemanticWriteClasspath` command 
 - Write atomically and skip unchanged content.
 
 Future work: extract this into a reusable Mill trait/plugin and investigate a low-friction way to
-attach it to normal compile without creating aggregate task cycles.
+refresh metadata when Mill's dependency/module configuration tasks change. The target is not
+`compile`; the target is a build-tool-native dependency/configuration refresh path that can reuse
+Mill task caching and avoid rewriting on source-only compiles.
 
 ## Scala CLI Implementation
 
@@ -130,7 +133,9 @@ Scala CLI support is lower priority because module structure is less uniform.
 - Write `.scala-semantic/classpath-scala-cli.json`.
 - Represent the root source set as one module initially.
 - Use Scala CLI's exported/printed compile classpath when available.
-- Do not run Scala CLI from MCP startup.
+- Refresh when Scala CLI resolves project directives/dependencies/build options, not from MCP
+  startup and not from every source compile. If Scala CLI does not expose a native persistent hook,
+  use wrapper/setup integration as the first safe step.
 
 ## Setup Changes
 
@@ -152,10 +157,17 @@ Setup creates `.scala-semantic/` if needed, but the build tool owns file content
 - Unit tests for JSON encode/decode and module selection by `uri`.
 - Unit tests for flat classpath backward compatibility.
 - sbt scripted test:
-  - compile writes `.scala-semantic/classpath-sbt.json`
+  - dependency/config refresh writes `.scala-semantic/classpath-sbt.json`
   - dependency jars and project output dirs appear in the expected module classpath
   - changing dependencies updates the file
+  - source-only compile does not need to rewrite the file
   - unchanged content does not rewrite the file
+- Mill integration test:
+  - dependency/module configuration changes update `.scala-semantic/classpath-mill.json`
+  - source-only compile does not need to rewrite the file
+- Scala CLI integration test:
+  - directive/dependency changes update `.scala-semantic/classpath-scala-cli.json`
+  - source-only compile does not need to rewrite the file
 - MCP tests:
   - missing metadata starts index-only
   - empty/invalid metadata degrades without protocol failure
@@ -185,8 +197,10 @@ Setup creates `.scala-semantic/` if needed, but the build tool owns file content
 
 1. Add metadata model and MCP reader while preserving flat classpath support. Done.
 2. Add setup-generated sbt writer using `Compile / fullClasspath`. Done as an explicit task;
-   automatic compile attachment is pending.
+   automatic dependency/config refresh integration is pending.
 3. Update setup to point projects at `.scala-semantic/classpath-<tool>.json`. Done.
 4. Add Mill writer. Done for this repository as `scalaSemanticWriteClasspath`.
-5. Add Scala CLI writer. Pending.
-6. Document troubleshooting and migration from the old flat classpath file. Partially done.
+5. Add build-tool-native refresh integration for sbt dependency/config changes. Pending.
+6. Add build-tool-native refresh integration for Mill dependency/config changes. Pending.
+7. Add Scala CLI writer and dependency/config refresh path. Pending.
+8. Document troubleshooting and migration from the old flat classpath file. Partially done.
