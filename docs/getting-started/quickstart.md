@@ -10,5 +10,9 @@ Shortest path for any project.
    ```sh
    sbt compile
    ```
+3. **Refresh live-buffer classpath metadata after dependency/build changes**:
+   ```sh
+   sbt scalaSemanticWriteClasspath
+   ```
 
 For manual configurations or other integration options (Scala CLI remote script, plain `java -jar`), see [Integration](integration.md).

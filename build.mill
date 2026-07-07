@@ -49,6 +49,7 @@ def munitDeps = Seq(
 // warts as ERRORS in Compile, dropped in Test) is done by overriding scalacOptions in `object test`.
 // ---------------------------------------------------------------------------------------------
 trait Common extends SbtModule {
+  def id: String
   def scalaVersion = V.scala3
 
   // SemanticDB emission for dogfooding + scalafix. Mill's `semanticDbEnabled` only feeds the IDE
@@ -114,6 +115,28 @@ trait Common extends SbtModule {
   ) ++ (if (useWartremover)
           wartFlags(warnWarts, "only-warn-traverser") ++ wartFlags(strictWarts, "traverser")
         else Nil)
+
+  override def compileClasspath = Task {
+    val cp = super.compileClasspath()
+    val root = build.moduleDir
+    val baseDir = this.moduleDir
+    val scalaVersion = this.scalaVersion()
+    val classesDir = build.moduleDir / "out" / id / "compile.dest" / "classes"
+    val module = ScalaSemanticClasspathMetadata.Module(
+      id = id,
+      baseDir = baseDir,
+      scalaVersion = scalaVersion,
+      classpath = classesDir +: cp.map(_.path)
+    )
+    val moduleContent = ScalaSemanticClasspathMetadata.render(root, Seq(module))
+    val destFile = Task.dest / s"classpath-mill-$id.json"
+    os.write.over(destFile, moduleContent)
+
+    val finalDir = root / ".scala-semantic"
+    os.proc("mkdir", "-p", finalDir.toString).call(cwd = root)
+    os.proc("cp", destFile.toString, (finalDir / s"classpath-mill-$id.json").toString).call(cwd = root)
+    cp
+  }
 
   // scalafix via scalafix-interfaces (a stable, Maven-Central-published embedding API), NOT the
   // mill-scalafix plugin — that plugin has no mill1.x build and breaks build.mill entirely if
@@ -206,6 +229,7 @@ trait Common extends SbtModule {
 // core — load + index SemanticDB. No deps.
 // ---------------------------------------------------------------------------------------------
 object core extends Common with PublishModule {
+  def id = "core"
   def artifactName = "scalasemantic-core"
   def publishVersion = build.publishVersion()
   def pomSettings = commonPom("scalasemantic-core")
@@ -221,6 +245,7 @@ object core extends Common with PublishModule {
 // Warts OFF (Java interop) — build.sbt `.disablePlugins(WartRemover)`.
 // ---------------------------------------------------------------------------------------------
 object pc extends Common with PublishModule {
+  def id = "pc"
   def artifactName = "scalasemantic-pc"
   def publishVersion = build.publishVersion()
   def pomSettings = commonPom("scalasemantic-pc")
@@ -237,6 +262,7 @@ object pc extends Common with PublishModule {
 // analysis — query engine + models. dependsOn core, pc. Unmanaged stainless jar from lib/.
 // ---------------------------------------------------------------------------------------------
 object analysis extends Common with PublishModule {
+  def id = "analysis"
   def artifactName = "scalasemantic-analysis"
   def publishVersion = build.publishVersion()
   def pomSettings = commonPom("scalasemantic-analysis")
@@ -265,6 +291,7 @@ object analysis extends Common with PublishModule {
 // mcp — stdio JSON-RPC server + entrypoint. test->test dep on analysis. Version source + assembly.
 // ---------------------------------------------------------------------------------------------
 object mcp extends Common with PublishModule with BuildInfo {
+  def id = "mcp"
   def artifactName = "scalasemantic-mcp"
   def publishVersion = build.publishVersion()
   def pomSettings = commonPom("scalasemantic-mcp")
@@ -1245,6 +1272,111 @@ object ConfigMerger {
   }
 }
 
+object ScalaSemanticClasspathMetadata {
+  final case class Module(
+      id: String,
+      baseDir: os.Path,
+      scalaVersion: String,
+      classpath: Seq[os.Path]
+  )
+
+  def metadataPath(root: os.Path): os.Path =
+    root / ".scala-semantic" / "classpath-mill.json"
+
+  def render(root: os.Path, modules: Seq[Module]): String = {
+    val renderedModules = modules.map(renderModule(root, _)).mkString(",\n")
+    s"""|{
+        |  "schemaVersion": 1,
+        |  "buildTool": "mill",
+        |  "modules": [
+        |$renderedModules
+        |  ]
+        |}
+        |""".stripMargin
+  }
+
+  def writeIfChanged(path: os.Path, content: String): Boolean = {
+    val normalized = if (content.endsWith("\n")) content else content + "\n"
+    if (os.exists(path) && os.read(path) == normalized) false
+    else {
+      os.makeDir.all(path / os.up)
+      val tmp = (path / os.up) / s".${path.last}.tmp"
+      os.write.over(tmp, normalized)
+      os.move.over(tmp, path)
+      true
+    }
+  }
+
+  private def renderModule(root: os.Path, module: Module): String = {
+    val cp = module.classpath.distinct
+      .map(p => s"      ${jsonString(pathString(root, p))}")
+      .mkString(",\n")
+    s"""|    {
+        |      "id": ${jsonString(module.id)},
+        |      "baseDir": ${jsonString(pathString(root, module.baseDir))},
+        |      "scalaVersion": ${jsonString(module.scalaVersion)},
+        |      "configuration": "Compile",
+        |      "classpath": [
+        |$cp
+        |      ]
+        |    }""".stripMargin
+  }
+
+  private def pathString(root: os.Path, path: os.Path): String =
+    if (path.startsWith(root)) path.relativeTo(root).toString else path.toString
+
+  private def jsonString(value: String): String =
+    "\"" + value.flatMap {
+      case '"'          => "\\\""
+      case '\\'         => "\\\\"
+      case '\b'         => "\\b"
+      case '\f'         => "\\f"
+      case '\n'         => "\\n"
+      case '\r'         => "\\r"
+      case '\t'         => "\\t"
+      case c if c < ' ' => "\\u%04x".format(c.toInt)
+      case c            => c.toString
+    } + "\""
+}
+
+// Writes the module-aware compile classpath metadata consumed by live-buffer MCP tools.
+def scalaSemanticWriteClasspath() = Task.Command {
+  val root = build.moduleDir
+  val modules = Seq(
+    ScalaSemanticClasspathMetadata.Module(
+      id = "core",
+      baseDir = core.moduleDir,
+      scalaVersion = core.scalaVersion(),
+      classpath = core.compile().classes.path +: core.compileClasspath().map(_.path)
+    ),
+    ScalaSemanticClasspathMetadata.Module(
+      id = "pc",
+      baseDir = pc.moduleDir,
+      scalaVersion = pc.scalaVersion(),
+      classpath = pc.compile().classes.path +: pc.compileClasspath().map(_.path)
+    ),
+    ScalaSemanticClasspathMetadata.Module(
+      id = "analysis",
+      baseDir = analysis.moduleDir,
+      scalaVersion = analysis.scalaVersion(),
+      classpath = analysis.compile().classes.path +: analysis.compileClasspath().map(_.path)
+    ),
+    ScalaSemanticClasspathMetadata.Module(
+      id = "mcp",
+      baseDir = mcp.moduleDir,
+      scalaVersion = mcp.scalaVersion(),
+      classpath = mcp.compile().classes.path +: mcp.compileClasspath().map(_.path)
+    )
+  )
+  val out = ScalaSemanticClasspathMetadata.metadataPath(root)
+  val changed = ScalaSemanticClasspathMetadata.writeIfChanged(
+    out,
+    ScalaSemanticClasspathMetadata.render(root, modules)
+  )
+  val verb = if (changed) "Wrote" else "Up to date"
+  Task.log.info(s"$verb ScalaSemantic classpath metadata: $out")
+}
+
 // build.sbt `mcpClientConfig` (root inputKey) — install the stable launcher + write/merge client
 // MCP config pointing at it. `client` = one client name, or "all" to write every known client.
 def mcpClientConfig(client: String = "claude") = Task.Command {
@@ -1263,7 +1395,8 @@ def mcpClientConfig(client: String = "claude") = Task.Command {
       Task.log.warn(s"jar prefetch skipped (${e.getMessage}); it will download on first connect.")
   }
 
-  val cpFile = (launcher / os.up) / "scala-semantic-classpath.txt"
+  val cpFile = ScalaSemanticClasspathMetadata.metadataPath(root)
+  os.makeDir.all(cpFile / os.up)
   val argv = Seq(launcher.toString, root.toString, cpFile.toString)
   val serverName = "scala-semantic"
   val clients =

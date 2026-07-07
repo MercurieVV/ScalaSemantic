@@ -15,6 +15,15 @@ The server reads SemanticDB; it does not generate it. The project must be compil
 semanticdbEnabled := true
 ```
 
+The setup script also creates `scala-semantic.sbt` with a small
+`scalaSemanticWriteClasspath` task. It reads `Compile / fullClasspath` for every project, writes
+`.scala-semantic/classpath-sbt.json`, and should be run after dependency or module configuration
+changes:
+
+```sh
+sbt scalaSemanticWriteClasspath
+```
+
 **Mill** — Mill's `def semanticDbEnabled = true` only feeds the on-demand `semanticDbData` target;
 a plain `mill __.compile` emits **no** `*.semanticdb`, so that flag alone leaves ScalaSemantic with an
 empty index. Instead make the normal compile emit it via the compiler flag, in each `ScalaModule`
@@ -28,6 +37,14 @@ def scalacOptions = super.scalacOptions() ++
 
 (Alternatively, keep `def semanticDbEnabled = true` and run `mill __.semanticDbData` instead of
 `mill __.compile` — the Mill-native target that materializes the files under `out/`.)
+
+For live-buffer typechecking, write `.scala-semantic/classpath-mill.json` from the build. This repo
+ships a compact Mill example as the root task `scalaSemanticWriteClasspath`; run it after dependency
+or module configuration changes:
+
+```sh
+./mill scalaSemanticWriteClasspath
+```
 
 **Gradle** — no native flag; pass the compiler option directly via the Scala plugin's compile task. Scala 3:
 
@@ -89,7 +106,7 @@ does not already configure SemanticDB, and registers this command:
 ```sh
 scala-cli run --dependency "io.github.mercurievv::scalasemantic-mcp:latest.release" \
   --main-class com.github.mercurievv.scalasemantic.mcpServer \
-  -- /abs/path/to/project ~/.local/bin/scala-semantic-classpath.txt
+  -- /abs/path/to/project /abs/path/to/project/.scala-semantic/classpath-sbt.json
 ```
 
 The MCP client runs that command over stdio. Note this does **not** invoke the setup script itself —
@@ -116,7 +133,10 @@ Then register manually in your client config:
   "mcpServers": {
     "scala-semantic": {
       "command": "~/.local/bin/scalasemantic-mcp",
-      "args": ["/abs/path/to/project-to-analyze"]
+      "args": [
+        "/abs/path/to/project-to-analyze",
+        "/abs/path/to/project-to-analyze/.scala-semantic/classpath-sbt.json"
+      ]
     }
   }
 }
@@ -164,3 +184,25 @@ printf '%s\n' \
 Expect four JSON-RPC responses on stdout. The `initialize` response carries an `instructions` field; `find_symbol` turns `"Animal"` into the symbol string that `class_hierarchy` then uses.
 
 Next, use the [Tool reference](../reference/tools.md) for the full tool list and [Examples](../usage/examples.md) for worked requests.
+
+## Classpath Metadata & Migration from Flat Classpath
+
+In previous versions, a single flat, colon-separated classpath file was passed to the server. The server now expects a module-aware JSON classpath file (e.g., `classpath-sbt.json`, `classpath-mill.json`, or `classpath-scala-cli.json`) to support multi-module projects correctly.
+
+### Automatic Migration
+The setup command (via option A/B) automatically detects the build tool and generates the correct `.scala-semantic/classpath-<tool>.json` file. It also configures the build tool (e.g., creating `scala-semantic.sbt` for sbt) to maintain classpath freshness automatically.
+
+### Troubleshooting Classpath Freshness
+If you import your project and live-buffer typechecking is not working (e.g., you see unresolved types or imports for new code):
+1. **For sbt projects:** Starting sbt or reloading the build will automatically trigger classpath generation via the `onLoad` hook. You can also run the task manually:
+   ```sh
+   sbt scalaSemanticWriteClasspath
+   ```
+2. **For Mill projects:** Compiling the project (`mill __.compile` or via BSP/IDE build import) automatically updates each module's classpath metadata. You can also run the command manually:
+   ```sh
+   ./mill scalaSemanticWriteClasspath
+   ```
+3. **For Scala CLI projects:** Re-run the setup command to regenerate the classpath metadata:
+   ```sh
+   scala-cli https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.scala -- setup --client <your-client>
+   ```

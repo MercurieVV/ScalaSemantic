@@ -250,6 +250,82 @@ class McpSuite extends munit.FunSuite:
     assert(lines.get(1).nn.startsWith(s"[${Mcp.ServerName}] "), lines.get(1))
   }
 
+  test("resolveClasspathSpec preserves flat classpath file compatibility") {
+    val root = java.nio.file.Files.createTempDirectory("ss-flat-cp").nn
+    val cpFile = root.resolve("classpath.txt").nn
+    java.nio.file.Files.writeString(cpFile, "lib/a.jar\nlib/b.jar")
+
+    val resolved = Mcp.resolveClasspathSpec(cpFile.toString, root)
+    assertEquals(resolved.modules.map(_.id).toList, List("flat"))
+    assertEquals(
+      resolved.merged.toList,
+      List(root.resolve("lib/a.jar").normalize().nn, root.resolve("lib/b.jar").normalize().nn)
+    )
+  }
+
+  test("resolveClasspathSpec parses module-aware JSON and selects the longest baseDir match") {
+    val root = java.nio.file.Files.createTempDirectory("ss-json-cp").nn
+    val dir = root.resolve(".scala-semantic").nn
+    java.nio.file.Files.createDirectories(dir)
+    val cpFile = dir.resolve("classpath-sbt.json").nn
+    val json = ujson.Obj(
+      "schemaVersion" -> 1,
+      "buildTool" -> "sbt",
+      "modules" -> ujson.Arr(
+        ujson.Obj(
+          "id" -> "app",
+          "baseDir" -> "app",
+          "scalaVersion" -> "3.8.4",
+          "configuration" -> "Compile",
+          "classpath" -> ujson.Arr("app/target/classes", "shared.jar")
+        ),
+        ujson.Obj(
+          "id" -> "app.jvm",
+          "baseDir" -> "app/jvm",
+          "scalaVersion" -> "3.8.4",
+          "configuration" -> "Compile",
+          "classpath" -> ujson.Arr("app/jvm/target/classes", "shared.jar")
+        )
+      )
+    )
+    java.nio.file.Files.writeString(cpFile, ujson.write(json))
+
+    val resolved = Mcp.resolveClasspathSpec(".scala-semantic/classpath-sbt.json", root)
+    assertEquals(resolved.modules.map(_.id).toList, List("app", "app.jvm"))
+    assertEquals(
+      resolved.moduleFor("app/jvm/src/main/scala/Main.scala", root).map(_.id),
+      Some("app.jvm")
+    )
+    assertEquals(
+      resolved.classpathFor("app/jvm/src/main/scala/Main.scala", root).toList,
+      List(
+        root.resolve("app/jvm/target/classes").normalize().nn,
+        root.resolve("shared.jar").normalize().nn
+      )
+    )
+    assertEquals(
+      resolved.classpathFor("other/src/main/scala/Main.scala", root).toList,
+      List(
+        root.resolve("app/target/classes").normalize().nn,
+        root.resolve("shared.jar").normalize().nn,
+        root.resolve("app/jvm/target/classes").normalize().nn
+      )
+    )
+    assertEquals(
+      resolved.moduleFor("other/src/main/scala/Main.scala", root).map(_.id),
+      Some("merged")
+    )
+  }
+
+  test("resolveClasspath ignores missing or invalid metadata files") {
+    val root = java.nio.file.Files.createTempDirectory("ss-bad-cp").nn
+    assertEquals(Mcp.resolveClasspath(Some(root.resolve("missing.txt").toString), root), None)
+
+    val invalid = root.resolve("classpath-sbt.json").nn
+    java.nio.file.Files.writeString(invalid, "{not-json")
+    assertEquals(Mcp.resolveClasspath(Some(invalid.toString), root), None)
+  }
+
   test("notifications get no response") {
     val n = ujson.Obj("jsonrpc" -> "2.0", "method" -> "notifications/initialized")
     assertEquals(Mcp.handle(n, tools), None)

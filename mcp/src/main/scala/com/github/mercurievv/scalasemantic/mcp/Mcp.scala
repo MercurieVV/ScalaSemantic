@@ -7,6 +7,8 @@ import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.concurrent.ConcurrentHashMap
+import scala.jdk.CollectionConverters.*
 
 /** A single MCP tool: its name, one-line description, JSON-Schema for arguments, and a handler
   * producing a (deliberately lean) JSON result.
@@ -199,9 +201,9 @@ object Mcp:
     log(s"call $name $shown")
 
   /** Logging configuration, off by default. When `enabled` is false NO log file is created — the
-    * server is silent. `enabled` turns on diagnostic logging (startup line + one line per tool
-    * call); `logOutputs` additionally records each JSON-RPC response sent back to the client (i.e.
-    * what the LLM receives). `logOutputs` implies a sink, so it works even without `enabled`.
+    * server is silent. `enabled` turns on diagnostic logging (startup line + per-tool-call lines);
+    * `logOutputs` additionally records each JSON-RPC response sent back to the client (i.e. what
+    * the LLM receives). `logOutputs` implies a sink, so it works even without `enabled`.
     */
   final case class LogConfig(enabled: Boolean = false, logOutputs: Boolean = false):
     /** A sink is needed if either kind of logging is on. */
@@ -209,13 +211,74 @@ object Mcp:
   object LogConfig:
     val off: LogConfig = LogConfig()
 
+  final case class ResolvedClasspath(modules: Vector[ResolvedClasspathModule]):
+    lazy val merged: Seq[Path] =
+      modules.iterator.flatMap(_.classpath).toVector.distinct
+
+    def moduleFor(uri: String, rootPath: Path): Option[ResolvedClasspathModule] =
+      val sourcePath = pathForUri(uri, rootPath)
+      val matched = modules
+        .filter(module => sourcePath.startsWith(module.baseDir))
+        .sortBy(module => -module.baseDir.getNameCount)
+        .headOption
+      matched.orElse:
+        Option.when(merged.nonEmpty):
+          ResolvedClasspathModule(
+            id = "merged",
+            baseDir = rootPath,
+            scalaVersion = None,
+            configuration = None,
+            classpath = merged
+          )
+
+    def classpathFor(uri: String, rootPath: Path): Seq[Path] =
+      moduleFor(uri, rootPath).map(_.classpath).getOrElse(Nil)
+
+  final case class ResolvedClasspathModule(
+      id: String,
+      baseDir: Path,
+      scalaVersion: Option[String],
+      configuration: Option[String],
+      classpath: Seq[Path]
+  )
+
+  @SuppressWarnings(Array("org.wartremover.warts.MutableDataStructures"))
+  private[mcp] final class ModulePresentationCompilerBackends(
+      classpath: ResolvedClasspath,
+      rootPath: Path,
+      log: String => Unit = _ => ()
+  ) extends AutoCloseable:
+
+    private val backends = ConcurrentHashMap[String, PresentationCompilerBackend]()
+
+    def backendFor(docUri: String): Option[PresentationCompilerBackend] =
+      classpath.moduleFor(docUri, rootPath).map { module =>
+        backends.computeIfAbsent(
+          module.id,
+          _ =>
+            val targetId = s"scala-semantic-pc-${module.id.replaceAll("[^A-Za-z0-9_.-]", "_")}"
+            log(
+              s"PC backend opened for module '${module.id}' (${module.classpath.size} classpath entries)"
+            )
+            new PresentationCompilerBackend(
+              module.classpath,
+              workspace = Some(rootPath),
+              buildTargetId = targetId
+            )
+        )
+      }
+
+    def close(): Unit =
+      backends.values().asScala.foreach(_.close())
+
   /** Blocking stdio loop. Loads the SemanticDB index for `root` once, then serves requests.
     *
     * `classpath`, when given, enables the presentation-compiler second backend (live overlay of
     * uncompiled buffers via the tools' `source` argument). It is the target project's compile
-    * classpath, supplied as either a path-separated string or a path to a file containing one
-    * (newline or path-separator delimited). Falls back to the `SCALASEMANTIC_CLASSPATH` env var.
-    * Absent, the server is index-only and `source` arguments are ignored.
+    * classpath, supplied as either a path-separated string, a path to a flat classpath file, or a
+    * module-aware `.scala-semantic/classpath-<tool>.json` metadata file. Falls back to the
+    * `SCALASEMANTIC_CLASSPATH` env var. Absent, the server is index-only and `source` arguments are
+    * ignored.
     *
     * `logging` controls the (opt-in) file log; see [[LogConfig]]. Default: no log file at all.
     */
@@ -230,11 +293,15 @@ object Mcp:
     // Acquire the (optional) PC backend through the #140 bracket helper so the compiler instance
     // is always shut down when the server exits — normally, on EOF, or on an unhandled exception —
     // without a hand-rolled try/finally here.
-    resolveClasspath(classpath) match
+    resolveClasspath(classpath, rootPath) match
       case Some(cp) =>
-        log(s"PC backend enabled (${cp.size} classpath entries)")
-        PresentationCompilerBackend.use(cp, workspace = Some(rootPath)) { backend =>
-          runLoop(root, rootPath, Some(backend), log, logging)
+        val mergedClasspath = cp.merged
+        log(
+          s"PC backend enabled (${cp.modules.size} modules, ${mergedClasspath.size} merged classpath entries)"
+        )
+        scala.util.Using.resource(ModulePresentationCompilerBackends(cp, rootPath, log)) {
+          backends =>
+            runLoop(root, rootPath, Some(backends.backendFor), log, logging)
         }
       case None =>
         runLoop(root, rootPath, None, log, logging)
@@ -246,14 +313,16 @@ object Mcp:
   private def runLoop(
       root: String,
       rootPath: Path,
-      backend: Option[PresentationCompilerBackend],
+      backendFor: Option[String => Option[PresentationCompilerBackend]],
       log: String => Unit,
       logging: LogConfig
   ): Unit =
-    val tools = McpTools.all(Analyzer(SemanticIndex.fromProject(root), backend), rootPath)
+    val tools =
+      McpTools.all(Analyzer(SemanticIndex.fromProject(root), pcSelector = backendFor), rootPath)
     log(
       s"serving from '$root' with ${tools.size} tools" +
-        (if backend.isEmpty then " (index-only; pass a classpath to enable live buffers)" else "")
+        (if backendFor.isEmpty then " (index-only; pass a classpath to enable live buffers)"
+         else "")
     )
     val reader = java.io.BufferedReader(java.io.InputStreamReader(System.in, "UTF-8"))
     val out = java.io.PrintStream(System.out, true, "UTF-8")
@@ -265,35 +334,107 @@ object Mcp:
       out.println(line)
     }
 
-  /** Resolve the classpath spec (arg or `SCALASEMANTIC_CLASSPATH`) to a list of paths. A spec that
-    * names an existing file is read as its contents (newline- or path-separator-delimited);
-    * anything else is treated as a literal path-separated classpath.
+  /** Resolve the classpath spec (arg or `SCALASEMANTIC_CLASSPATH`) to classpath metadata. A spec
+    * that names an existing JSON file is parsed as module-aware metadata. A spec that names any
+    * other existing file is read as a flat classpath file (newline- or path-separator-delimited).
+    * Anything else is treated as a literal path-separated classpath.
     */
-  private def resolveClasspath(arg: Option[String]): Option[Seq[Path]] =
+  private[mcp] def resolveClasspath(
+      arg: Option[String],
+      rootPath: Path
+  ): Option[ResolvedClasspath] =
     arg
       .orElse(Option(System.getenv("SCALASEMANTIC_CLASSPATH")))
       .map(_.trim)
       .filter(_.nonEmpty)
-      .map(resolveClasspathSpec)
-      .filter(_.nonEmpty)
+      .map(resolveClasspathSpec(_, rootPath))
+      .filter(_.merged.nonEmpty)
 
-  private def resolveClasspathSpec(spec: String): Seq[Path] =
-    // A spec with no path separator that names nothing on disk is a classpath FILE that hasn't
-    // been written yet (e.g. `mcpClientConfig` printed the path before `mcpClasspathFile` ran).
-    // Treat it as "no classpath" -> index-only, rather than a bogus single-entry classpath.
-    val asFile = Paths.get(spec)
-    val missingFileRef =
-      !spec.contains(java.io.File.pathSeparator) && !Files.exists(asFile)
-    if missingFileRef then Vector.empty
+  private[mcp] def resolveClasspathSpec(spec: String, rootPath: Path): ResolvedClasspath =
+    val fileRef = !spec.contains(java.io.File.pathSeparator)
+    val asFile = if fileRef then resolvePath(spec, rootPath) else Paths.get(spec)
+    val missingFileRef = fileRef && !Files.exists(asFile)
+    if missingFileRef then ResolvedClasspath(Vector.empty)
+    else if fileRef && Files.isRegularFile(asFile) && spec.endsWith(".json") then
+      resolveClasspathMetadata(asFile, rootPath).getOrElse(ResolvedClasspath(Vector.empty))
     else
-      val raw = if Files.isRegularFile(asFile) then Files.readString(asFile) else spec
-      raw
-        .split("[\n" + java.io.File.pathSeparator + "]")
-        .iterator
-        .map(_.trim)
-        .filter(_.nonEmpty)
-        .map(Paths.get(_))
-        .toVector
+      val raw = if fileRef && Files.isRegularFile(asFile) then Files.readString(asFile) else spec
+      ResolvedClasspath(
+        Vector(
+          ResolvedClasspathModule(
+            id = "flat",
+            baseDir = rootPath,
+            scalaVersion = None,
+            configuration = None,
+            classpath = splitClasspath(raw).map(resolvePath(_, rootPath))
+          )
+        )
+      )
+
+  private def resolveClasspathMetadata(path: Path, rootPath: Path): Option[ResolvedClasspath] =
+    scala.util.Try {
+      val files =
+        if path.getFileName.toString == "classpath-mill.json" then
+          val parent = path.getParent
+          if Option(parent).isDefined && Files.exists(parent) then
+            scala.util.Using.resource(Files.list(parent)) { stream =>
+              stream
+                .iterator()
+                .asScala
+                .filter(p =>
+                  Files.isRegularFile(p) && p.getFileName.toString
+                    .startsWith("classpath-mill-") && p.getFileName.toString.endsWith(".json")
+                )
+                .toVector
+            } :+ path
+          else Vector(path)
+        else Vector(path)
+
+      val modules = files.distinct.filter(Files.exists(_)).flatMap { f =>
+        val json = ujson.read(Files.readString(f))
+        json("modules").arr.toVector.flatMap { module =>
+          val classpath = module("classpath").arr.toVector
+            .map(entry => resolvePath(entry.str, rootPath))
+            .distinct
+          if classpath.isEmpty then None
+          else
+            val id = module.obj.get("id").map(_.str).getOrElse("")
+            val baseDir = module.obj.get("baseDir").map(_.str).getOrElse(".")
+            Some(
+              ResolvedClasspathModule(
+                id = id,
+                baseDir = resolvePath(baseDir, rootPath),
+                scalaVersion = module.obj.get("scalaVersion").map(_.str),
+                configuration = module.obj.get("configuration").map(_.str),
+                classpath = classpath
+              )
+            )
+        }
+      }
+      ResolvedClasspath(modules)
+    }.toOption
+
+  private def splitClasspath(raw: String): Vector[String] =
+    raw
+      .split("[\\n" + java.io.File.pathSeparator + "]")
+      .iterator
+      .map(_.trim)
+      .filter(_.nonEmpty)
+      .toVector
+
+  private def resolvePath(path: String, rootPath: Path): Path =
+    val p = Paths.get(path)
+    if p.isAbsolute then p.normalize().nn else rootPath.resolve(p).normalize().nn
+
+  private def pathForUri(uri: String, rootPath: Path): Path =
+    val raw =
+      scala.util
+        .Try(java.net.URI.create(uri))
+        .toOption
+        .filter(u => Option(u.getScheme).isDefined) match
+        case Some(parsed) if parsed.getScheme == "file" => Paths.get(parsed)
+        case _                                          => Paths.get(uri)
+    if raw.isAbsolute then raw.normalize().nn else rootPath.resolve(raw).normalize().nn
 
   // --- JSON-RPC envelope helpers --------------------------------------------
 
