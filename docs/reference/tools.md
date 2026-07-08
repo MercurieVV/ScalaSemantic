@@ -29,6 +29,8 @@ Results are lean by default: compact locations, one-line signatures, omitted emp
 After changing working directories, call `set_workspace_root` with the new absolute path before any
 other ScalaSemantic tool. If the current state is unclear, call `get_workspace_root` first. This
 works around stdio MCP clients that keep the same server process alive across cwd/worktree changes.
+The active root also controls classpath discovery: the server remembers the discovered
+`.scala-semantic/classpath-*.json` path for that root until `set_workspace_root` changes the root.
 
 ## SemanticDB symbol grammar
 

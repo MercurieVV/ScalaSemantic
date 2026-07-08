@@ -85,12 +85,12 @@ class McpSuite extends munit.FunSuite:
       "TOML config must not bake project root"
     )
     assert(
-      script.contains("\\\"args\\\": [\\\"serve\\\", \\\".\\\", \\\"$_cp_esc\\\"]"),
-      "JSON config should use cwd root"
+      script.contains("\\\"args\\\": [\\\"serve\\\", \\\".\\\"]"),
+      "JSON config should use cwd root and implicit classpath discovery"
     )
     assert(
-      script.contains("args = [\\\"serve\\\", \\\".\\\", \\\"$_cp_esc\\\"]"),
-      "TOML config should use cwd root"
+      script.contains("args = [\\\"serve\\\", \\\".\\\"]"),
+      "TOML config should use cwd root and implicit classpath discovery"
     )
   }
 
@@ -338,6 +338,92 @@ class McpSuite extends munit.FunSuite:
     assertEquals(
       resolved.moduleFor("other/src/main/scala/Main.scala", root).map(_.id),
       Some("merged")
+    )
+  }
+
+  test("resolveClasspath discovers root metadata when no classpath argument is supplied") {
+    val root = java.nio.file.Files.createTempDirectory("ss-discover-root-cp").nn
+    val dir = root.resolve(".scala-semantic").nn
+    java.nio.file.Files.createDirectories(dir)
+    val cpFile = dir.resolve("classpath-sbt.json").nn
+    java.nio.file.Files.writeString(
+      cpFile,
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "buildTool" -> "sbt",
+          "modules" -> ujson.Arr(
+            ujson.Obj(
+              "id" -> "root",
+              "baseDir" -> ".",
+              "scalaVersion" -> "3.8.4",
+              "configuration" -> "Compile",
+              "classpath" -> ujson.Arr("target/classes")
+            )
+          )
+        )
+      )
+    )
+
+    val files = Mcp.discoverClasspathMetadata(root)
+    assertEquals(files.toList, List(cpFile))
+    val resolved = Mcp.resolveClasspath(None, root).getOrElse(fail("classpath not discovered"))
+    assertEquals(resolved.modules.map(_.id).toList, List("root"))
+    assertEquals(resolved.merged.toList, List(root.resolve("target/classes").normalize().nn))
+  }
+
+  test("resolveClasspath discovers submodule metadata without entering hidden directories") {
+    val root = java.nio.file.Files.createTempDirectory("ss-discover-sub-cp").nn
+    val sub = root.resolve("modules").resolve("app").nn
+    val hidden = root.resolve(".hidden").resolve("app").nn
+    java.nio.file.Files.createDirectories(sub.resolve(".scala-semantic"))
+    java.nio.file.Files.createDirectories(hidden.resolve(".scala-semantic"))
+    val cpFile = sub.resolve(".scala-semantic").resolve("classpath-mill.json").nn
+    val hiddenFile = hidden.resolve(".scala-semantic").resolve("classpath-sbt.json").nn
+    java.nio.file.Files.writeString(
+      cpFile,
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "buildTool" -> "mill",
+          "modules" -> ujson.Arr(
+            ujson.Obj(
+              "id" -> "app",
+              "baseDir" -> "modules/app",
+              "scalaVersion" -> "3.8.4",
+              "configuration" -> "Compile",
+              "classpath" -> ujson.Arr("modules/app/out/classes")
+            )
+          )
+        )
+      )
+    )
+    java.nio.file.Files.writeString(
+      hiddenFile,
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "buildTool" -> "sbt",
+          "modules" -> ujson.Arr(
+            ujson.Obj(
+              "id" -> "hidden",
+              "baseDir" -> ".hidden/app",
+              "scalaVersion" -> "3.8.4",
+              "configuration" -> "Compile",
+              "classpath" -> ujson.Arr(".hidden/app/target/classes")
+            )
+          )
+        )
+      )
+    )
+
+    val files = Mcp.discoverClasspathMetadata(root)
+    assertEquals(files.toList, List(cpFile))
+    val resolved = Mcp.resolveClasspath(None, root).getOrElse(fail("classpath not discovered"))
+    assertEquals(resolved.modules.map(_.id).toList, List("app"))
+    assertEquals(
+      resolved.classpathFor("modules/app/src/main/scala/Main.scala", root).toList,
+      List(root.resolve("modules/app/out/classes").normalize().nn)
     )
   }
 

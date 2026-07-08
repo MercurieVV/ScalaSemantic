@@ -76,8 +76,11 @@ project root.
 6. If no module matches, fall back to a merged classpath from all modules in the metadata file.
 7. If no classpath is available, run index-only and ignore `source` overlays as today.
 
-When multiple build-tool metadata files exist, prefer the file explicitly passed by client config.
-Automatic discovery can be added later, but the first implementation should avoid guessing.
+When multiple build-tool metadata files exist, prefer an explicitly passed classpath file or
+`SCALASEMANTIC_CLASSPATH`. If neither is supplied, discover metadata from the active workspace root:
+first check `<root>/.scala-semantic/classpath-*.json`; if none exists, scan non-hidden
+subdirectories for submodule `.scala-semantic/classpath-*.json` files. The MCP process remembers the
+discovered path(s) in the current workspace-root state until `set_workspace_root` changes roots.
 
 ## sbt Implementation
 
@@ -139,11 +142,13 @@ Scala CLI support is lower priority because module structure is less uniform.
 
 ## Setup Changes
 
-Update setup/client config generation to pass the project-local metadata file path:
+Update setup/client config generation to rely on root-relative metadata discovery by default:
 
-- sbt project: `.scala-semantic/classpath-sbt.json`
-- Mill project: `.scala-semantic/classpath-mill.json`
-- Scala CLI project: `.scala-semantic/classpath-scala-cli.json`
+- Generated launch args use `serve .` with no classpath argument.
+- Explicit classpath arguments remain supported for overrides and backward compatibility.
+- The server discovers `.scala-semantic/classpath-sbt.json`,
+  `.scala-semantic/classpath-mill.json`, `.scala-semantic/classpath-scala-cli.json`, or submodule
+  metadata below the active root.
 
 Implemented in both setup entrypoints:
 
@@ -179,8 +184,8 @@ Setup creates `.scala-semantic/` if needed, but the build tool owns file content
     equivalent runtime classpath, so the presentation compiler can resolve the Scala library and
     ScalaSemantic test dependencies
   - launch the server through the same process boundary users exercise:
-    `scalasemantic-mcp.sh serve <temp-root> <classpath-file>` when a cached/local jar path is
-    available, or the generated dev launcher from the build when testing without network
+    `scalasemantic-mcp.sh serve <temp-root>` when a cached/local jar path is available, or the
+    generated dev launcher from the build when testing without network
   - send JSON-RPC over stdio: `initialize`, `notifications/initialized`, then
     `tools/call type_at_position` with `uri`, `line`, `character`, and full `source`
   - assert the response resolves a symbol/type from the uncompiled buffer, proving the classpath

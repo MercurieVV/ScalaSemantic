@@ -106,7 +106,7 @@ does not already configure SemanticDB, and registers this command:
 ```sh
 scala-cli run --dependency "io.github.mercurievv::scalasemantic-mcp:latest.release" \
   --main-class com.github.mercurievv.scalasemantic.mcpServer \
-  -- . /abs/path/to/project/.scala-semantic/classpath-sbt.json
+  -- .
 ```
 
 The MCP client runs that command over stdio. Note this does **not** invoke the setup script itself —
@@ -121,11 +121,13 @@ script and re-run `setup`.
 ### Worktrees and cwd changes
 
 Generated configs use `.` as the server root so a newly spawned MCP server indexes the directory it
-was launched from, not the directory where `setup` originally ran. Some stdio MCP clients keep the
-same server process alive when the agent later changes cwd or enters a git worktree, and do not
-reliably send root-change notifications. After such a cwd change, call `set_workspace_root` with the
-new absolute path before other ScalaSemantic tools; use `get_workspace_root` to confirm the current
-state.
+was launched from, not the directory where `setup` originally ran. The server also discovers
+`.scala-semantic/classpath-*.json` from that active root, or from submodules below it when the root
+does not have its own metadata. Some stdio MCP clients keep the same server process alive when the
+agent later changes cwd or enters a git worktree, and do not reliably send root-change
+notifications. After such a cwd change, call `set_workspace_root` with the new absolute path before
+other ScalaSemantic tools; use `get_workspace_root` to confirm the current state and discovered
+classpath metadata.
 
 ### Option B — auto-download launcher
 
@@ -144,8 +146,7 @@ Then register manually in your client config:
       "command": "~/.local/bin/scalasemantic-mcp",
       "args": [
         "serve",
-        ".",
-        "/abs/path/to/project-to-analyze/.scala-semantic/classpath-sbt.json"
+        "."
       ]
     }
   }
@@ -197,10 +198,19 @@ Next, use the [Tool reference](../reference/tools.md) for the full tool list and
 
 ## Classpath Metadata & Migration from Flat Classpath
 
-In previous versions, a single flat, colon-separated classpath file was passed to the server. The server now expects a module-aware JSON classpath file (e.g., `classpath-sbt.json`, `classpath-mill.json`, or `classpath-scala-cli.json`) to support multi-module projects correctly.
+In previous versions, a single flat, colon-separated classpath file was passed to the server. The
+server now discovers module-aware JSON classpath metadata by default from
+`.scala-semantic/classpath-sbt.json`, `.scala-semantic/classpath-mill.json`, or
+`.scala-semantic/classpath-scala-cli.json` under the active workspace root. If the active root has no
+metadata, it scans non-hidden subdirectories for submodule metadata. You can still pass an explicit
+classpath file as the optional second `serve` argument, or set `SCALASEMANTIC_CLASSPATH`, to override
+discovery.
 
 ### Automatic Migration
-The setup command (via option A/B) automatically detects the build tool and generates the correct `.scala-semantic/classpath-<tool>.json` file. It also configures the build tool (e.g., creating `scala-semantic.sbt` for sbt) to maintain classpath freshness automatically.
+The setup command (via option A/B) automatically detects the build tool and generates the correct
+`.scala-semantic/classpath-<tool>.json` file. It also configures the build tool (e.g., creating
+`scala-semantic.sbt` for sbt) to maintain classpath freshness automatically. Generated MCP client
+configs no longer pass this file path; the server finds it from the current workspace root.
 
 ### Troubleshooting Classpath Freshness
 If you import your project and live-buffer typechecking is not working (e.g., you see unresolved types or imports for new code):

@@ -1,6 +1,6 @@
 [mcp_servers.scala-semantic]
 command = "/path/to/scalasemantic-mcp.sh"
-args = ["serve", ".", "/path/to/scala-semantic-classpath.txt", "--log", "--log-output"]
+args = ["serve", ".", "--log", "--log-output"]
 startup_timeout_sec = 60
 tool_timeout_sec = 60
 

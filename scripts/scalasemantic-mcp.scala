@@ -392,7 +392,6 @@ object ScalaSemanticMcpScript:
         )
 
   private def writeClientConfigs(project: Path, opts: SetupOptions): Unit =
-    val cpFile = classpathFile(project)
     val argv = Seq(
       opts.command,
       "run",
@@ -401,8 +400,7 @@ object ScalaSemanticMcpScript:
       "--main-class",
       ServerMainClass,
       "--",
-      project.toString,
-      cpFile.toString
+      "."
     )
     val clients =
       if opts.client.trim.toLowerCase == "all" then
@@ -424,15 +422,6 @@ object ScalaSemanticMcpScript:
 
   private def ensureClasspathMetadataDir(project: Path): Unit =
     Files.createDirectories(project.resolve(".scala-semantic"))
-
-  private def classpathFile(project: Path): Path =
-    val dir = project.resolve(".scala-semantic")
-    if hasSbt(project) then dir.resolve("classpath-sbt.json")
-    else if Files.exists(project.resolve("build.mill")) || Files.exists(project.resolve("build.sc")) then
-      dir.resolve("classpath-mill.json")
-    else if Files.exists(project.resolve("project.scala")) || hasSuffix(project, ".scala") || hasSuffix(project, ".sc") then
-      dir.resolve("classpath-scala-cli.json")
-    else dir.resolve("classpath.json")
 
   private def hasSbt(project: Path): Boolean =
     hasSuffix(project, ".sbt")
@@ -695,7 +684,7 @@ object ScalaSemanticMcpScript:
           |every launch is just a coursier-cached jar load, not a re-download + recompile of this
           |script):
           |  command = scala-cli
-          |  args    = [run, --dependency, $ServerDependency, --main-class, $ServerMainClass, --, <project>, <classpath-file>]
+          |  args    = [run, --dependency, $ServerDependency, --main-class, $ServerMainClass, --, .]
           |
           |To pin a version instead of latest.release, re-run setup after editing ServerDependency in
           |a local copy of this script.

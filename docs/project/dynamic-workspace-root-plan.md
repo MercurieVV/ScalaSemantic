@@ -36,8 +36,7 @@ for a harness-level gap, not a full protocol fix — document it as such.
 **Owner target:** shell scripting, no Scala changes.
 
 - File: `scripts/scalasemantic-mcp.sh`, function `setup_main` (`_project=...`) and
-  `write_client_configs` (emits `"args": ["serve", "$_proj_esc", "$_cp_esc"]` and TOML/YAML
-  equivalents).
+  `write_client_configs` (previously emitted setup-time root/classpath arguments).
 - Change: stop baking the absolute `_project` path into the generated `args`. Emit `"."` (or omit
   the root positional entirely and let `serve_main`'s default apply) so every generated config is
   cwd-relative and identical/safe across worktree checkouts.
@@ -47,9 +46,8 @@ for a harness-level gap, not a full protocol fix — document it as such.
   `.codex/`, `.gemini/`, `.agents/`, `.cline/`, `.roo/`, `.continue/` if present) via
   `scripts/scalasemantic-mcp.sh setup --client all` (or hand-edit) to confirm the new output has no
   absolute path.
-- Do not change the classpath-file argument in this task — that is covered by
-  `docs/project/classpath-refresh-plan.md` and is orthogonal (it's a shared cache file by design,
-  not a per-worktree root).
+- Classpath-file defaults are covered by `docs/project/classpath-refresh-plan.md`; generated
+  configs now omit the classpath argument and rely on root-relative metadata discovery.
 
 **Acceptance check:** `git grep -n "$(pwd)"` (or the known absolute repo path) inside every
 generated client config returns nothing after re-running `setup`.
@@ -218,8 +216,8 @@ temporary project directory containing distinct SemanticDB output, then call any
 
 ## Implementation Notes
 
-- Implemented generated client config args as `["serve", ".", <classpath-file>]`; setup-time
-  filesystem operations still use the absolute project path.
+- Implemented generated client config args as `["serve", "."]`; setup-time filesystem operations
+  still use the absolute project path.
 - Added `set_workspace_root` and `get_workspace_root`; the server keeps a per-process current root
   and lazily caches `Analyzer`/tool sets by resolved root path.
 - Added the explicit cwd-change rule to this repo's `SCALA_SEMANTIC_RULES.md`, the setup-generated

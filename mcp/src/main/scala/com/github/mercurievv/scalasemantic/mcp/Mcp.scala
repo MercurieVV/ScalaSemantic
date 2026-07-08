@@ -30,7 +30,15 @@ final case class Tool(
   */
 object Mcp:
 
-  private[mcp] final case class McpState(root: Path, analyzer: Analyzer, tools: List[Tool])
+  private[mcp] final case class McpState(
+      root: Path,
+      analyzer: Analyzer,
+      tools: List[Tool],
+      pcBackends: Option[ModulePresentationCompilerBackends] = None,
+      classpathSource: Option[String] = None
+  ):
+    def pcSelector: Option[String => Option[PresentationCompilerBackend]] =
+      pcBackends.map(_.backendFor)
 
   @SuppressWarnings(Array("org.wartremover.warts.Var"))
   @volatile private[mcp] var state: Option[McpState] = None
@@ -40,6 +48,10 @@ object Mcp:
     None
   @SuppressWarnings(Array("org.wartremover.warts.Var"))
   @volatile private[mcp] var log: String => Unit = _ => ()
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
+  @volatile private[mcp] var stateFactory: Path => McpState = root =>
+    val az = Analyzer(SemanticIndex.fromProject(root.toString), pcSelector = None)
+    new McpState(root, az, toolsFor(az, root))
 
   private[mcp] def currentState: Option[McpState] = state
 
@@ -51,9 +63,10 @@ object Mcp:
 
   private[mcp] def activateState(next: McpState): Unit =
     state = Some(next)
+    backendFor = next.pcSelector
 
   private[mcp] def toolsFor(az: Analyzer, root: Path): List[Tool] =
-    McpTools.all(az, root) ++ List(setWorkspaceRootTool(backendFor, log), getWorkspaceRootTool)
+    McpTools.all(az, root) ++ List(setWorkspaceRootTool(log), getWorkspaceRootTool)
 
   val ProtocolVersion = "2025-06-18"
   val ServerName = "scala-semantic-mcp"
@@ -326,31 +339,34 @@ object Mcp:
     // Acquire the (optional) PC backend through the #140 bracket helper so the compiler instance
     // is always shut down when the server exits — normally, on EOF, or on an unhandled exception —
     // without a hand-rolled try/finally here.
-    resolveClasspath(classpath, rootPath) match {
-      case Some(cp) =>
-        val mergedClasspath = cp.merged
-        currentLog(
-          s"PC backend enabled (${cp.modules.size} modules, ${mergedClasspath.size} merged classpath entries)"
+    stateCache.clear()
+    Mcp.stateFactory = path => buildState(path, classpath, currentLog)
+    val initialState = stateFactory(rootPath)
+    activateState(initialState)
+    Mcp.stateCache.put(rootPath, initialState)
+    try runLoop(root, rootPath, initialState.pcSelector, currentLog, logging)
+    finally
+      stateCache.values().asScala.foreach(_.pcBackends.foreach(_.close()))
+
+  private[mcp] def buildState(
+      rootPath: Path,
+      classpath: Option[String],
+      log: String => Unit
+  ): McpState =
+    resolveClasspathWithSource(classpath, rootPath) match
+      case Some(resolved) =>
+        val cp = resolved.classpath
+        val backends = ModulePresentationCompilerBackends(cp, rootPath, log)
+        log(
+          s"PC backend enabled from ${resolved.source} (${cp.modules.size} modules, ${cp.merged.size} merged classpath entries)"
         )
-        scala.util.Using.resource(ModulePresentationCompilerBackends(cp, rootPath, currentLog)) {
-          backends =>
-            Mcp.backendFor = Some(backends.backendFor)
-            val initialAz = Analyzer(SemanticIndex.fromProject(root), pcSelector = Mcp.backendFor)
-            val initialTools = toolsFor(initialAz, rootPath)
-            val initialState = new McpState(rootPath, initialAz, initialTools)
-            activateState(initialState)
-            Mcp.stateCache.put(rootPath, initialState)
-            runLoop(root, rootPath, Some(backends.backendFor), currentLog, logging)
-        }
+        val selector = Some(backends.backendFor)
+        val az = Analyzer(SemanticIndex.fromProject(rootPath.toString), pcSelector = selector)
+        new McpState(rootPath, az, toolsFor(az, rootPath), Some(backends), Some(resolved.source))
       case None =>
-        Mcp.backendFor = None
-        val initialAz = Analyzer(SemanticIndex.fromProject(root), pcSelector = None)
-        val initialTools = toolsFor(initialAz, rootPath)
-        val initialState = new McpState(rootPath, initialAz, initialTools)
-        activateState(initialState)
-        Mcp.stateCache.put(rootPath, initialState)
-        runLoop(root, rootPath, None, currentLog, logging)
-    }
+        log(s"PC backend disabled for $rootPath; no classpath metadata found")
+        val az = Analyzer(SemanticIndex.fromProject(rootPath.toString), pcSelector = None)
+        new McpState(rootPath, az, toolsFor(az, rootPath))
 
   /** The read/eval/write loop, parameterized over the (already-acquired, optional) PC backend.
     * Split out of [[serve]] so the backend's acquire/release stays bracketed by
@@ -383,21 +399,40 @@ object Mcp:
       out.println(line)
     }
 
-  /** Resolve the classpath spec (arg or `SCALASEMANTIC_CLASSPATH`) to classpath metadata. A spec
-    * that names an existing JSON file is parsed as module-aware metadata. A spec that names any
-    * other existing file is read as a flat classpath file (newline- or path-separator-delimited).
-    * Anything else is treated as a literal path-separated classpath.
+  private[mcp] final case class ResolvedClasspathWithSource(
+      classpath: ResolvedClasspath,
+      source: String
+  )
+
+  /** Resolve the classpath spec (arg or `SCALASEMANTIC_CLASSPATH`) to classpath metadata. If
+    * neither is supplied, discover project-local `.scala-semantic/classpath-*.json` files from the
+    * active root and non-hidden subdirectories. A spec that names an existing JSON file is parsed
+    * as module-aware metadata. A spec that names any other existing file is read as a flat
+    * classpath file (newline- or path-separator-delimited). Anything else is treated as a literal
+    * path-separated classpath.
     */
   private[mcp] def resolveClasspath(
       arg: Option[String],
       rootPath: Path
   ): Option[ResolvedClasspath] =
+    resolveClasspathWithSource(arg, rootPath).map(_.classpath)
+
+  private[mcp] def resolveClasspathWithSource(
+      arg: Option[String],
+      rootPath: Path
+  ): Option[ResolvedClasspathWithSource] =
     arg
       .orElse(Option(System.getenv("SCALASEMANTIC_CLASSPATH")))
       .map(_.trim)
-      .filter(_.nonEmpty)
-      .map(resolveClasspathSpec(_, rootPath))
-      .filter(_.merged.nonEmpty)
+      .filter(_.nonEmpty) match
+      case Some(spec) =>
+        val cp = resolveClasspathSpec(spec, rootPath)
+        Option.when(cp.merged.nonEmpty)(ResolvedClasspathWithSource(cp, spec))
+      case None =>
+        val files = discoverClasspathMetadata(rootPath)
+        resolveClasspathMetadataFiles(files, rootPath)
+          .filter(_.merged.nonEmpty)
+          .map(cp => ResolvedClasspathWithSource(cp, files.map(_.toString).mkString(", ")))
 
   private[mcp] def resolveClasspathSpec(spec: String, rootPath: Path): ResolvedClasspath =
     val fileRef = !spec.contains(java.io.File.pathSeparator)
@@ -420,25 +455,104 @@ object Mcp:
         )
       )
 
-  private def resolveClasspathMetadata(path: Path, rootPath: Path): Option[ResolvedClasspath] =
-    scala.util.Try {
-      val files =
-        if path.getFileName.toString == "classpath-mill.json" then
-          val parent = path.getParent
-          if Option(parent).isDefined && Files.exists(parent) then
-            scala.util.Using.resource(Files.list(parent)) { stream =>
-              stream
-                .iterator()
-                .asScala
-                .filter(p =>
-                  Files.isRegularFile(p) && p.getFileName.toString
-                    .startsWith("classpath-mill-") && p.getFileName.toString.endsWith(".json")
-                )
-                .toVector
-            } :+ path
-          else Vector(path)
-        else Vector(path)
+  private[mcp] def discoverClasspathMetadata(rootPath: Path): Vector[Path] =
+    val root = rootPath.toAbsolutePath.normalize().nn
+    val direct = classpathMetadataFilesIn(root)
+    if direct.nonEmpty then direct
+    else
+      val maxDepth = 8
+      val maxDirs = 2000
+      def loop(
+          queue: Vector[(Path, Int)],
+          seen: Set[Path],
+          visited: Int,
+          found: Vector[Path]
+      ): Vector[Path] =
+        queue.headOption match
+          case None                               => found.distinct
+          case Some((_, _)) if visited >= maxDirs => found.distinct
+          case Some((dir, depth))                 =>
+            val nextFound =
+              if depth > 0 then found ++ classpathMetadataFilesIn(dir)
+              else found
+            val children =
+              if depth >= maxDepth then Vector.empty
+              else
+                scala.util
+                  .Try {
+                    scala.util.Using.resource(Files.list(dir)) { stream =>
+                      stream.iterator().asScala.toVector
+                    }
+                  }
+                  .getOrElse(Vector.empty)
+            val nextChildren = children
+              .filter(p => Files.isDirectory(p) && shouldSearchDirectory(p))
+              .map(_.toAbsolutePath.normalize().nn)
+              .filterNot(seen.contains)
+            loop(
+              queue.drop(1) ++ nextChildren.map(_ -> (depth + 1)),
+              seen ++ nextChildren,
+              visited + 1,
+              nextFound
+            )
 
+      loop(Vector(root -> 0), Set(root), 0, Vector.empty)
+
+  private def classpathMetadataFilesIn(dir: Path): Vector[Path] =
+    val metadataDir = dir.resolve(".scala-semantic").nn
+    if !Files.isDirectory(metadataDir) then Vector.empty
+    else
+      val preferred = Vector(
+        "classpath-sbt.json",
+        "classpath-mill.json",
+        "classpath-scala-cli.json",
+        "classpath.json"
+      ).map(metadataDir.resolve(_).nn).filter(p => Files.isRegularFile(p))
+      val millFragments =
+        scala.util
+          .Try {
+            scala.util.Using.resource(Files.list(metadataDir)) { stream =>
+              stream.iterator().asScala.toVector.filter { p =>
+                Files.isRegularFile(p) &&
+                p.getFileName.toString.startsWith("classpath-mill-") &&
+                p.getFileName.toString.endsWith(".json")
+              }
+            }
+          }
+          .getOrElse(Vector.empty)
+      (preferred ++ millFragments).distinct
+
+  private def shouldSearchDirectory(path: Path): Boolean =
+    val name = path.getFileName.toString
+    !name.startsWith(".") &&
+    !Set("target", "out", "node_modules", "project").contains(name)
+
+  private def resolveClasspathMetadata(path: Path, rootPath: Path): Option[ResolvedClasspath] =
+    resolveClasspathMetadataFiles(metadataFilesFor(path), rootPath)
+
+  private def metadataFilesFor(path: Path): Vector[Path] =
+    if path.getFileName.toString == "classpath-mill.json" then
+      val parent = path.getParent
+      if Option(parent).isDefined && Files.exists(parent) then
+        scala.util.Using.resource(Files.list(parent)) { stream =>
+          stream
+            .iterator()
+            .asScala
+            .filter(p =>
+              Files.isRegularFile(p) && p.getFileName.toString
+                .startsWith("classpath-mill-") && p.getFileName.toString.endsWith(".json")
+            )
+            .toVector
+        } :+ path
+      else Vector(path)
+    else Vector(path)
+
+  private def resolveClasspathMetadataFiles(
+      paths: Vector[Path],
+      rootPath: Path
+  ): Option[ResolvedClasspath] =
+    scala.util.Try {
+      val files = paths.flatMap(metadataFilesFor).distinct
       val modules = files.distinct.filter(Files.exists(_)).flatMap { f =>
         val json = ujson.read(Files.readString(f))
         json("modules").arr.toVector.flatMap { module =>
@@ -503,7 +617,6 @@ object Mcp:
   private def obj(fields: (String, ujson.Value)*): ujson.Value = ujson.Obj.from(fields)
 
   private[mcp] def setWorkspaceRootTool(
-      backendFor: Option[String => Option[PresentationCompilerBackend]],
       log: String => Unit
   ): Tool =
     McpToolsSupport.tool(
@@ -532,9 +645,7 @@ object Mcp:
         resolvedPath,
         r => {
           log(s"Initializing Analyzer for new workspace root: $r")
-          val newAz = Analyzer(SemanticIndex.fromProject(r.toString), pcSelector = backendFor)
-          val newTools = toolsFor(newAz, r)
-          new McpState(r, newAz, newTools)
+          stateFactory(r)
         }
       )
 
@@ -542,7 +653,8 @@ object Mcp:
 
       ujson.Obj(
         "root" -> ujson.Str(resolvedPath.toString),
-        "cached" -> ujson.Bool(isCached)
+        "cached" -> ujson.Bool(isCached),
+        "classpath" -> newState.classpathSource.fold[ujson.Value](ujson.Null)(ujson.Str(_))
       )
     }
 
@@ -553,5 +665,6 @@ object Mcp:
       Nil,
       Nil
     ) { _ =>
-      ujson.Obj("root" -> ujson.Str(currentRoot.toString))
+      val cp = currentState.flatMap(_.classpathSource).fold[ujson.Value](ujson.Null)(ujson.Str(_))
+      ujson.Obj("root" -> ujson.Str(currentRoot.toString), "classpath" -> cp)
     }

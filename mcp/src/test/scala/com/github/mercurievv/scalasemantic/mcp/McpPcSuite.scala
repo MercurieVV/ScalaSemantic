@@ -80,7 +80,7 @@ class McpPcSuite extends munit.FunSuite:
     }
   }
 
-  test("launcher smoke applies module-aware classpath metadata to live buffers") {
+  test("launcher smoke discovers module-aware classpath metadata for live buffers") {
     val root = java.nio.file.Files.createTempDirectory("mcp-launcher").nn
     val appDir = root.resolve("app").nn
     val srcDir = appDir.resolve("src/main/scala").nn
@@ -163,7 +163,7 @@ class McpPcSuite extends munit.FunSuite:
     val script = java.nio.file.Paths.get("scripts/scalasemantic-mcp.sh").toAbsolutePath.nn
     val logFile = root.resolve("mcp.log").nn
     val builder =
-      ProcessBuilder("sh", script.toString, "serve", root.toString, cpFile.toString, "--log")
+      ProcessBuilder("sh", script.toString, "serve", root.toString, "--log")
         .directory(java.io.File("."))
         .redirectError(ProcessBuilder.Redirect.PIPE)
         .redirectOutput(ProcessBuilder.Redirect.PIPE)

@@ -26,8 +26,8 @@
 #
 #   --prefetch  Download + cache the artifact, then exit WITHOUT serving.
 #   serve arguments are forwarded verbatim to the server: arg 1 = SemanticDB root, optional arg 2 =
-#   the compile classpath metadata file (normally `.scala-semantic/classpath-<tool>.json`) that
-#   enables the presentation-compiler backend for live overlay of uncompiled buffers.
+#   an explicit compile classpath metadata file. By default the server discovers project-local
+#   `.scala-semantic/classpath-*.json` metadata from the active root or its submodules.
 #   If an agent changes cwd while the same stdio server process stays alive, call the MCP tool
 #   `set_workspace_root` with the new absolute path before other ScalaSemantic tool calls.
 #   --log / --log-output  Forwarded to the server to turn on its (off-by-default) file log:
@@ -775,14 +775,12 @@ AWK_EOF
 }
 
 write_client_configs() {
-  local _project _client _command _cpfile _clients c _t _relpath _fmt _cmd_esc _proj_esc _cp_esc
+  local _project _client _command _clients c _t _relpath _fmt _cmd_esc
   local _entry _header _fresh _item _itemline _freshfull _out _tmp
-  _project="$1"; _client="$2"; _command="$3"; _cpfile="$4"
+  _project="$1"; _client="$2"; _command="$3"
   if [ "$_client" = "all" ]; then _clients="$ALL_CLIENTS"; else _clients="$_client"; fi
   write_awk_libs
   _cmd_esc=$(json_escape "$_command")
-  _proj_esc=$(json_escape "$_project")
-  _cp_esc=$(json_escape "$_cpfile")
   for c in $_clients; do
     _t=$(target_for "$c")
     [ -n "$_t" ] || { echo "scalasemantic-mcp: unsupported client '$c'" >&2; continue; }
@@ -796,7 +794,7 @@ write_client_configs() {
       json)
         _entry="{
       \"command\": \"$_cmd_esc\",
-      \"args\": [\"serve\", \".\", \"$_cp_esc\"]$(extra_json_fields "$c")
+      \"args\": [\"serve\", \".\"]$(extra_json_fields "$c")
     }"
         MCPM_SERVER="scala-semantic" MCPM_ENTRY="$_entry" \
           awk -f "$CACHE/lib/json-merge.awk" "$_out" > "$_tmp"
@@ -805,7 +803,7 @@ write_client_configs() {
         _header="[mcp_servers.scala-semantic]"
         _fresh="[mcp_servers.scala-semantic]
 command = \"$_cmd_esc\"
-args = [\"serve\", \".\", \"$_cp_esc\"]
+args = [\"serve\", \".\"]
 startup_timeout_sec = 60
 tool_timeout_sec = 60"
         MCPM_HEADER="$_header" MCPM_FRESH="$_fresh" \
@@ -818,7 +816,6 @@ tool_timeout_sec = 60"
     args:
       - \"serve\"
       - \".\"
-      - \"$_cp_esc\"
     connectionTimeout: 60000"
         _freshfull="name: ScalaSemantic MCP
 version: 1.0.0
@@ -850,7 +847,7 @@ classpath_file_for_project() {
 }
 
 setup_main() {
-  local _project _client _command _skip_semanticdb _cpfile
+  local _project _client _command _skip_semanticdb
   _project=$(CDPATH= cd -- "." && pwd)
   _client="all"
   _command="$SELF"
@@ -872,9 +869,7 @@ setup_main() {
   echo "scalasemantic-mcp: prefetching the server jar ..." >&2
   serve_main --prefetch "$_project" || echo "scalasemantic-mcp: prefetch skipped (will download on first serve)" >&2
 
-  _cpfile=$(classpath_file_for_project "$_project")
-
-  write_client_configs "$_project" "$_client" "$_command" "$_cpfile"
+  write_client_configs "$_project" "$_client" "$_command"
 }
 
 usage() {
@@ -885,7 +880,7 @@ Usage:
 
 setup writes MCP client config that launches this same script:
   command = $SELF
-  args    = [serve, ., <classpath-file>]
+  args    = [serve, .]
 EOF
 }
 

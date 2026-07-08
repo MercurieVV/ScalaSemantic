@@ -22,8 +22,8 @@
 #
 #   -Prefetch  Download + cache the artifact, then exit WITHOUT serving.
 #   All other arguments to `serve` are forwarded verbatim to the server: arg 1 = SemanticDB root,
-#   optional arg 2 = the compile classpath (a path-separated string or a file containing one) that
-#   enables the presentation-compiler backend for live overlay of uncompiled buffers.
+#   optional arg 2 = an explicit compile classpath metadata file. By default the server discovers
+#   project-local `.scala-semantic/classpath-*.json` metadata from the active root or its submodules.
 #   --log / --log-output  Forwarded to the server to turn on its (off-by-default) file log:
 #               --log writes a startup line + one line per tool call; --log-output additionally
 #               logs each JSON-RPC response sent to the LLM. (Env equivalents: SCALASEMANTIC_LOG,
@@ -405,10 +405,7 @@ function Setup-Main {
   try { Serve-Main -Rest @('-Prefetch', $Project) | Out-Null }
   catch { [Console]::Error.WriteLine("scalasemantic-mcp: prefetch skipped (will download on first serve)") }
 
-  $CpFile = Join-Path $Cache 'scalasemantic-mcp-classpath.txt'
-  if (-not (Test-Path $CpFile)) { New-Item -ItemType File -Path $CpFile | Out-Null }
-
-  $argv = @($Command) + @('serve', $Project, $CpFile)
+  $argv = @($Command) + @('serve', '.')
   Write-ClientConfigs $Project $Client $argv
 }
 
@@ -420,7 +417,7 @@ Usage:
 
 setup writes MCP client config that launches this same script:
   command = powershell
-  args    = [-NoProfile, -ExecutionPolicy, Bypass, -File, $Self, serve, <project>, <classpath-file>]
+  args    = [-NoProfile, -ExecutionPolicy, Bypass, -File, $Self, serve, .]
 "@)
 }
 
