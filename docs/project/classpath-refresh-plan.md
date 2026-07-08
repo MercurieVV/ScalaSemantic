@@ -78,8 +78,9 @@ project root.
 
 When multiple build-tool metadata files exist, prefer an explicitly passed classpath file or
 `SCALASEMANTIC_CLASSPATH`. If neither is supplied, discover metadata from the active workspace root:
-first check `<root>/.scala-semantic/classpath-*.json`; if none exists, scan non-hidden
-subdirectories for submodule `.scala-semantic/classpath-*.json` files, including
+first check `<root>/.scala-semantic/classpath-*.json`, then follow
+`<root>/.scala-semantic/modules-*.json` to child source and output directories, and finally scan
+non-hidden subdirectories for submodule `.scala-semantic/classpath-*.json` files, including
 `<submoduleOutDir>/.scala-semantic/classpath.json` in visible build output directories. The MCP
 process remembers the discovered path(s) in the current workspace-root state until
 `set_workspace_root` changes roots.

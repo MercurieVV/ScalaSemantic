@@ -255,6 +255,8 @@ ThisBuild / semanticdbEnabled := true
 
 lazy val scalaSemanticWriteClasspath =
   taskKey[File]("Write module-aware compile classpath metadata for ScalaSemantic MCP.")
+lazy val scalaSemanticWriteModules =
+  taskKey[File]("Write module-structure metadata for ScalaSemantic MCP.")
 
 def scalaSemanticJsonString(value: String): String =
   "\"" + value.flatMap {
@@ -276,6 +278,7 @@ def scalaSemanticRel(root: File, file: File): String = {
 }
 
 ThisBuild / scalaSemanticWriteClasspath := {
+  (ThisBuild / scalaSemanticWriteModules).value
   val root = (ThisBuild / baseDirectory).value
   val ids = name.all(ScopeFilter(inAnyProject)).value
   val dirs = baseDirectory.all(ScopeFilter(inAnyProject)).value
@@ -316,6 +319,44 @@ ThisBuild / scalaSemanticWriteClasspath := {
   out
 }
 
+ThisBuild / scalaSemanticWriteModules := {
+  val root = (ThisBuild / baseDirectory).value
+  val ids = name.all(ScopeFilter(inAnyProject)).value
+  val dirs = baseDirectory.all(ScopeFilter(inAnyProject)).value
+  val outDirs = (Compile / classDirectory).all(ScopeFilter(inAnyProject)).value.map(_.getParentFile.getParentFile)
+  val modules = ids.zip(dirs).zip(outDirs).map {
+    case ((id, dir), outDir) =>
+      s"""    {
+         |      "name": ${scalaSemanticJsonString(id)},
+         |      "path_from_root": ${scalaSemanticJsonString(scalaSemanticRel(root, dir))},
+         |      "path_to_out_dir": ${scalaSemanticJsonString(scalaSemanticRel(root, outDir))}
+         |    }""".stripMargin
+  }.mkString(",\n")
+  val content =
+    s"""{
+       |  "schemaVersion": 1,
+       |  "buildTool": "sbt",
+       |  "parent": {
+       |    "name": "root",
+       |    "path_from_root": ".",
+       |    "path_to_out_dir": "target"
+       |  },
+       |  "modules": [
+       |$modules
+       |  ]
+       |}
+       |""".stripMargin
+  val out = root / ".scala-semantic" / "modules-sbt.json"
+  IO.createDirectory(out.getParentFile)
+  val current = if (out.isFile) IO.read(out) else ""
+  if (current != content) {
+    val tmp = out.getParentFile / (out.getName + ".tmp")
+    IO.write(tmp, content)
+    Files.move(tmp.toPath, out.toPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+  }
+  out
+}
+
 Global / onLoad := {
   val prev = (Global / onLoad).value
   prev.andThen { state =>
@@ -323,7 +364,7 @@ Global / onLoad := {
     if (state.get(key).getOrElse(false)) state
     else {
       val newState = state.put(key, true)
-      "scalaSemanticWriteClasspath" :: newState
+      "scalaSemanticWriteModules" :: "scalaSemanticWriteClasspath" :: newState
     }
   }
 }

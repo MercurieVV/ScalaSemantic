@@ -15,10 +15,10 @@ The server reads SemanticDB; it does not generate it. The project must be compil
 semanticdbEnabled := true
 ```
 
-The setup script also creates `scala-semantic.sbt` with a small
-`scalaSemanticWriteClasspath` task. It reads `Compile / fullClasspath` for every project, writes
-`.scala-semantic/classpath-sbt.json`, and should be run after dependency or module configuration
-changes:
+The setup script also creates `scala-semantic.sbt` with small `scalaSemanticWriteClasspath` and
+`scalaSemanticWriteModules` tasks. They read build modules and `Compile / fullClasspath`, write
+`.scala-semantic/classpath-sbt.json` plus `.scala-semantic/modules-sbt.json`, and should be run
+after dependency or module configuration changes:
 
 ```sh
 sbt scalaSemanticWriteClasspath
@@ -38,9 +38,10 @@ def scalacOptions = super.scalacOptions() ++
 (Alternatively, keep `def semanticDbEnabled = true` and run `mill __.semanticDbData` instead of
 `mill __.compile` — the Mill-native target that materializes the files under `out/`.)
 
-For live-buffer typechecking, write `.scala-semantic/classpath-mill.json` from the build. This repo
-ships a compact Mill example as the root task `scalaSemanticWriteClasspath`; run it after dependency
-or module configuration changes:
+For live-buffer typechecking, write `.scala-semantic/classpath-mill.json` and
+`.scala-semantic/modules-mill.json` from the build. This repo ships compact Mill examples as root
+tasks `scalaSemanticWriteClasspath` and `scalaSemanticWriteModules`; run the classpath task after
+dependency or module configuration changes:
 
 ```sh
 ./mill scalaSemanticWriteClasspath
@@ -122,9 +123,9 @@ script and re-run `setup`.
 
 Generated configs use `.` as the server root so a newly spawned MCP server indexes the directory it
 was launched from, not the directory where `setup` originally ran. The server also discovers
-`.scala-semantic/classpath-*.json` from that active root, or from submodules below it when the root
-does not have its own metadata, including `<submoduleOutDir>/.scala-semantic/classpath.json` in
-visible build output directories. Some stdio MCP clients keep the same server process alive when
+`.scala-semantic/classpath-*.json` from that active root, follows `.scala-semantic/modules-*.json`
+to child source and output directories, and falls back to visible submodule scanning when no direct
+or module-guided metadata exists. Some stdio MCP clients keep the same server process alive when
 the agent later changes cwd or enters a git worktree, and do not reliably send root-change
 notifications. After such a cwd change, call `set_workspace_root` with the new absolute path before
 other ScalaSemantic tools; use `get_workspace_root` to confirm the current state and discovered
@@ -202,16 +203,20 @@ Next, use the [Tool reference](../reference/tools.md) for the full tool list and
 In previous versions, a single flat, colon-separated classpath file was passed to the server. The
 server now discovers module-aware JSON classpath metadata by default from
 `.scala-semantic/classpath-sbt.json`, `.scala-semantic/classpath-mill.json`, or
-`.scala-semantic/classpath-scala-cli.json` under the active workspace root. If the active root has no
-metadata, it scans non-hidden subdirectories for submodule metadata, including
+`.scala-semantic/classpath-scala-cli.json` under the active workspace root. It also follows
+`.scala-semantic/modules-sbt.json`, `.scala-semantic/modules-mill.json`,
+`.scala-semantic/modules-scala-cli.json`, or `.scala-semantic/modules.json` to discover child module
+metadata in source and output directories. If no direct or module-guided metadata exists, it scans
+non-hidden subdirectories for submodule metadata, including
 `<submoduleOutDir>/.scala-semantic/classpath.json` in visible build output directories. You can still
 pass an explicit classpath file as the optional second `serve` argument, or set
 `SCALASEMANTIC_CLASSPATH`, to override discovery.
 
 ### Automatic Migration
 The setup command (via option A/B) automatically detects the build tool and generates the correct
-`.scala-semantic/classpath-<tool>.json` file. It also configures the build tool (e.g., creating
-`scala-semantic.sbt` for sbt) to maintain classpath freshness automatically. Generated MCP client
+`.scala-semantic/classpath-<tool>.json` file, plus `.scala-semantic/modules-<tool>.json` when the
+build integration can expose module topology. It also configures the build tool (e.g., creating
+`scala-semantic.sbt` for sbt) to maintain metadata freshness automatically. Generated MCP client
 configs no longer pass this file path; the server finds it from the current workspace root.
 
 ### Troubleshooting Classpath Freshness

@@ -21,8 +21,11 @@ trap 'rm -rf "$TEMP_DIR"' EXIT INT TERM
 
 echo "Created temporary workspace: $TEMP_DIR"
 
-# Create a minimal Scala source file
-cat > "$TEMP_DIR/Widget.scala" <<'EOF'
+# Create a minimal Scala source file under a hidden parent directory. That keeps the fallback
+# visible-directory scan from finding classpath metadata, so the valid run must use modules JSON.
+MODULE_DIR="$TEMP_DIR/.modules/fixture"
+mkdir -p "$MODULE_DIR"
+cat > "$MODULE_DIR/Widget.scala" <<'EOF'
 package demo
 
 object Widget {
@@ -33,14 +36,46 @@ EOF
 echo "Running setup on temporary project..."
 # We run setup using the local script. We specify --project and client.
 # This generates the scala-cli / project.scala setup and prints classpath.
-"$REPO_ROOT/scripts/scalasemantic-mcp.sh" setup --project "$TEMP_DIR" --client generic
+"$REPO_ROOT/scripts/scalasemantic-mcp.sh" setup --project "$MODULE_DIR" --client generic
 
 # Verify that setup successfully generated the classpath file
-CP_FILE="$TEMP_DIR/.scala-semantic/classpath-scala-cli.json"
+CP_FILE="$MODULE_DIR/.scala-semantic/classpath-scala-cli.json"
 if [ ! -f "$CP_FILE" ]; then
   echo "Error: setup failed to generate $CP_FILE" >&2
   exit 1
 fi
+
+TMP_CP="$TEMP_DIR/classpath-scala-cli.tmp"
+awk '
+  /"baseDir":/ { sub(/"baseDir": "."/, "\"baseDir\": \".modules/fixture\""); print; next }
+  /"classpath": \[/ { in_cp = 1; print; next }
+  in_cp && /^[[:space:]]*]/ { in_cp = 0; print; next }
+  in_cp && /^[[:space:]]*"/ && $0 !~ /^[[:space:]]*"\// {
+    sub(/"/, "\".modules/fixture/")
+  }
+  { print }
+' "$CP_FILE" > "$TMP_CP"
+mv "$TMP_CP" "$CP_FILE"
+
+mkdir -p "$TEMP_DIR/.scala-semantic"
+cat > "$TEMP_DIR/.scala-semantic/modules-scala-cli.json" <<'EOF'
+{
+  "schemaVersion": 1,
+  "buildTool": "scala-cli",
+  "parent": {
+    "name": "root",
+    "path_from_root": ".",
+    "path_to_out_dir": "."
+  },
+  "modules": [
+    {
+      "name": "fixture",
+      "path_from_root": ".modules/fixture",
+      "path_to_out_dir": ".modules/fixture"
+    }
+  ]
+}
+EOF
 
 echo "Verifying E2E server launch with valid classpath (PC enabled)..."
 
@@ -51,9 +86,9 @@ STDERR_VALID="$TEMP_DIR/stderr-valid.log"
 (
   printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}\n'
   printf '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n'
-  printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"type_at_position","arguments":{"uri":"Widget.scala","line":3,"character":6,"source":"package demo\\n\\nobject Widget {\\n  def value: String = \\"ok\\"\\n}\\n"}}}\n'
+  printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"type_at_position","arguments":{"uri":".modules/fixture/Widget.scala","line":3,"character":6,"source":"package demo\\n\\nobject Widget {\\n  def value: String = \\"ok\\"\\n}\\n"}}}\n'
   sleep 4
-) | SCALASEMANTIC_VERSION=local "$REPO_ROOT/scripts/scalasemantic-mcp.sh" serve "$TEMP_DIR" "$CP_FILE" --log > "$STDOUT_VALID" 2> "$STDERR_VALID" || true
+) | SCALASEMANTIC_VERSION=local "$REPO_ROOT/scripts/scalasemantic-mcp.sh" serve "$TEMP_DIR" --log > "$STDOUT_VALID" 2> "$STDERR_VALID" || true
 
 # Verify tools/call output
 if ! grep -q '"id":2' "$STDOUT_VALID"; then
@@ -83,6 +118,12 @@ if ! grep -q 'demo/Widget\.value' "$STDOUT_VALID"; then
   exit 1
 fi
 
+if ! grep -q '.modules/fixture/.scala-semantic/classpath-scala-cli.json' "$TEMP_DIR/scala-semantic-mcp.log"; then
+  echo "Error: expected valid run to discover hidden child module classpath metadata" >&2
+  cat "$TEMP_DIR/scala-semantic-mcp.log" >&2
+  exit 1
+fi
+
 echo "Verifying E2E server launch with missing classpath (PC disabled)..."
 STDOUT_INVALID="$TEMP_DIR/stdout-invalid.log"
 STDERR_INVALID="$TEMP_DIR/stderr-invalid.log"
@@ -90,7 +131,7 @@ STDERR_INVALID="$TEMP_DIR/stderr-invalid.log"
 (
   printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}\n'
   printf '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n'
-  printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"type_at_position","arguments":{"uri":"Widget.scala","line":3,"character":6,"source":"package demo\\n\\nobject Widget {\\n  def value: String = \\"ok\\"\\n}\\n"}}}\n'
+  printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"type_at_position","arguments":{"uri":".modules/fixture/Widget.scala","line":3,"character":6,"source":"package demo\\n\\nobject Widget {\\n  def value: String = \\"ok\\"\\n}\\n"}}}\n'
   sleep 4
 ) | SCALASEMANTIC_VERSION=local "$REPO_ROOT/scripts/scalasemantic-mcp.sh" serve "$TEMP_DIR" "$TEMP_DIR/nonexistent.json" --log > "$STDOUT_INVALID" 2> "$STDERR_INVALID" || true
 

@@ -114,6 +114,8 @@ object ScalaSemanticMcpScript:
              |
              |lazy val scalaSemanticWriteClasspath =
              |  taskKey[File]("Write module-aware compile classpath metadata for ScalaSemantic MCP.")
+             |lazy val scalaSemanticWriteModules =
+             |  taskKey[File]("Write module-structure metadata for ScalaSemantic MCP.")
              |
              |def scalaSemanticJsonString(value: String): String =
              |  "\"" + value.flatMap {
@@ -135,6 +137,7 @@ object ScalaSemanticMcpScript:
              |}
              |
              |ThisBuild / scalaSemanticWriteClasspath := {
+             |  (ThisBuild / scalaSemanticWriteModules).value
              |  val root = (ThisBuild / baseDirectory).value
              |  val ids = name.all(ScopeFilter(inAnyProject)).value
              |  val dirs = baseDirectory.all(ScopeFilter(inAnyProject)).value
@@ -174,6 +177,43 @@ object ScalaSemanticMcpScript:
              |  out
              |}
              |
+             |ThisBuild / scalaSemanticWriteModules := {
+             |  val root = (ThisBuild / baseDirectory).value
+             |  val ids = name.all(ScopeFilter(inAnyProject)).value
+             |  val dirs = baseDirectory.all(ScopeFilter(inAnyProject)).value
+             |  val outDirs = (Compile / classDirectory).all(ScopeFilter(inAnyProject)).value.map(_.getParentFile.getParentFile)
+             |  val modules = ids.zip(dirs).zip(outDirs).map {
+             |    case ((id, dir), outDir) =>
+             |      "    {\n" +
+             |        "      \"name\": " + scalaSemanticJsonString(id) + ",\n" +
+             |        "      \"path_from_root\": " + scalaSemanticJsonString(scalaSemanticRel(root, dir)) + ",\n" +
+             |        "      \"path_to_out_dir\": " + scalaSemanticJsonString(scalaSemanticRel(root, outDir)) + "\n" +
+             |        "    }"
+             |  }.mkString(",\n")
+             |  val content =
+             |    "{\n" +
+             |      "  \"schemaVersion\": 1,\n" +
+             |      "  \"buildTool\": \"sbt\",\n" +
+             |      "  \"parent\": {\n" +
+             |      "    \"name\": \"root\",\n" +
+             |      "    \"path_from_root\": \".\",\n" +
+             |      "    \"path_to_out_dir\": \"target\"\n" +
+             |      "  },\n" +
+             |      "  \"modules\": [\n" +
+             |      modules + "\n" +
+             |      "  ]\n" +
+             |      "}\n"
+             |  val out = root / ".scala-semantic" / "modules-sbt.json"
+             |  IO.createDirectory(out.getParentFile)
+             |  val current = if (out.isFile) IO.read(out) else ""
+             |  if (current != content) {
+             |    val tmp = out.getParentFile / (out.getName + ".tmp")
+             |    IO.write(tmp, content)
+             |    Files.move(tmp.toPath, out.toPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+             |  }
+             |  out
+             |}
+             |
              |Global / onLoad := {
              |  val prev = (Global / onLoad).value
              |  prev.andThen { state =>
@@ -181,7 +221,7 @@ object ScalaSemanticMcpScript:
              |    if (state.get(key).getOrElse(false)) state
              |    else {
              |      val newState = state.put(key, true)
-             |      "scalaSemanticWriteClasspath" :: newState
+             |      "scalaSemanticWriteModules" :: "scalaSemanticWriteClasspath" :: newState
              |    }
              |  }
              |}
