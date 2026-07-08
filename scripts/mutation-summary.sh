@@ -4,8 +4,8 @@
 # Stryker emits the machine-readable report (mutation-testing-elements schema) at
 #   target/stryker4s-report/<timestamp>/report.json   (the `json` reporter)
 # relative to --base-dir (the repo root, see run-stryker.sh), under the gitignored target/ dir.
-# Copy it verbatim to MUTATION_REPORT_DEST, or to the historical repo-root mutation-report.json
-# when that variable is unset.
+# Pretty-print it to MUTATION_REPORT_DEST, or to the historical repo-root mutation-report.json when
+# that variable is unset.
 # Usage:
 #   scripts/mutation-summary.sh [path/to/report.json]
 # With no arg, the newest report under target/stryker4s-report is used.
@@ -41,16 +41,16 @@ if [[ -z "$report" || ! -f "$report" ]]; then
   exit 1
 fi
 
-report_abs="$(cd "$(dirname "$report")" && pwd)/$(basename "$report")"
 dest="${MUTATION_REPORT_DEST:-mutation-report.json}"
 dest_dir="$(dirname "$dest")"
 if [[ "$dest_dir" != "." ]]; then
   mkdir -p "$dest_dir"
 fi
-dest_abs="$(cd "$dest_dir" && pwd)/$(basename "$dest")"
-if [[ "$report_abs" != "$dest_abs" ]]; then
-  cp "$report" "$dest"
-fi
+tmp_dest="$(mktemp "$dest_dir/.report.json.XXXXXX")"
+trap 'rm -f "$tmp_dest"' EXIT
+jq . "$report" > "$tmp_dest"
+mv "$tmp_dest" "$dest"
+trap - EXIT
 echo "wrote $dest from $report"
 
 score_line="$(jq -r '
