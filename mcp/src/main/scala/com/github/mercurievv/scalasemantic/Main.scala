@@ -18,6 +18,9 @@ import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
   *     the LLM. Implies a sink, so it works on its own. Flags are positional-order-independent.
   */
 @main def mcpServer(args: String*): Unit =
+  Launcher.run(args)(serveMcp)
+
+private[scalasemantic] def serveMcp(args: Seq[String]): Unit =
   val (flags, positional) = args.partition(_.startsWith("--"))
   def envOn(name: String): Boolean =
     sys.env.get(name).map(_.trim.toLowerCase).exists(Set("1", "true", "yes", "on"))

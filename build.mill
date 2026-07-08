@@ -289,6 +289,16 @@ object analysis extends Common with PublishModule {
 }
 
 // ---------------------------------------------------------------------------------------------
+// launcher — jar-side setup/config dispatcher used by the shell launcher and mcp entrypoint.
+// ---------------------------------------------------------------------------------------------
+object launcher extends Common with PublishModule {
+  def id = "launcher"
+  def artifactName = "scalasemantic-launcher"
+  def publishVersion = build.publishVersion()
+  def pomSettings = commonPom("scalasemantic-launcher")
+}
+
+// ---------------------------------------------------------------------------------------------
 // mcp — stdio JSON-RPC server + entrypoint. test->test dep on analysis. Version source + assembly.
 // ---------------------------------------------------------------------------------------------
 object mcp extends Common with PublishModule with BuildInfo {
@@ -296,7 +306,7 @@ object mcp extends Common with PublishModule with BuildInfo {
   def artifactName = "scalasemantic-mcp"
   def publishVersion = build.publishVersion()
   def pomSettings = commonPom("scalasemantic-mcp")
-  def moduleDeps = Seq(analysis)
+  def moduleDeps = Seq(analysis, build.launcher)
   def mvnDeps = Seq(mvn"com.lihaoyi::upickle:${V.upickle}")
 
   // build.sbt: two @main — pin the entrypoint for run + assembly manifest.

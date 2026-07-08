@@ -74,23 +74,15 @@ class McpSuite extends munit.FunSuite:
   }
 
   test("setup-generated client args use cwd root instead of setup-time absolute project path") {
-    val script =
-      java.nio.file.Files.readString(java.nio.file.Paths.get("scripts/scalasemantic-mcp.sh"))
+    val root = java.nio.file.Files.createTempDirectory("ss-setup-config").nn
+    com.github.mercurievv.scalasemantic.Launcher.run(
+      Seq("setup", "--project", root.toString, "--client", "claude", "--skip-semanticdb-config")
+    )(_ => fail("setup must not start the MCP server"))
+    val config = java.nio.file.Files.readString(root.resolve(".mcp.json"))
+    assert(!config.contains(root.toString), "JSON config must not bake project root")
     assert(
-      !script.contains("\\\"args\\\": [\\\"serve\\\", \\\"$_proj_esc\\\""),
-      "JSON config must not bake project root"
-    )
-    assert(
-      !script.contains("args = [\\\"serve\\\", \\\"$_proj_esc\\\""),
-      "TOML config must not bake project root"
-    )
-    assert(
-      script.contains("\\\"args\\\": [\\\"serve\\\", \\\".\\\"]"),
+      config.contains("\"args\": [\"serve\", \".\"]"),
       "JSON config should use cwd root and implicit classpath discovery"
-    )
-    assert(
-      script.contains("args = [\\\"serve\\\", \\\".\\\"]"),
-      "TOML config should use cwd root and implicit classpath discovery"
     )
   }
 
