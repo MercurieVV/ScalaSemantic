@@ -1387,8 +1387,12 @@ object ScalaSemanticModuleMetadata {
   private def renderModule(root: os.Path, module: Module): String =
     s"""|    {
         |      "name": ${ScalaSemanticClasspathMetadata.jsonString(module.name)},
-        |      "path_from_root": ${ScalaSemanticClasspathMetadata.jsonString(ScalaSemanticClasspathMetadata.pathString(root, module.pathFromRoot))},
-        |      "path_to_out_dir": ${ScalaSemanticClasspathMetadata.jsonString(ScalaSemanticClasspathMetadata.pathString(root, module.pathToOutDir))}
+        |      "path_from_root": ${ScalaSemanticClasspathMetadata.jsonString(
+         ScalaSemanticClasspathMetadata.pathString(root, module.pathFromRoot)
+       )},
+        |      "path_to_out_dir": ${ScalaSemanticClasspathMetadata.jsonString(
+         ScalaSemanticClasspathMetadata.pathString(root, module.pathToOutDir)
+       )}
         |    }""".stripMargin
 }
 

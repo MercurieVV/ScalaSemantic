@@ -8,6 +8,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 import scala.jdk.CollectionConverters.*
 
 /** A single MCP tool: its name, one-line description, JSON-Schema for arguments, and a handler
@@ -40,20 +41,17 @@ object Mcp:
     def pcSelector: Option[String => Option[PresentationCompilerBackend]] =
       pcBackends.map(_.backendFor)
 
-  @SuppressWarnings(Array("org.wartremover.warts.Var"))
-  @volatile private[mcp] var state: Option[McpState] = None
+  private[mcp] val state = new AtomicReference[Option[McpState]](None)
   private[mcp] val stateCache = new java.util.concurrent.ConcurrentHashMap[Path, McpState]()
-  @SuppressWarnings(Array("org.wartremover.warts.Var"))
-  @volatile private[mcp] var backendFor: Option[String => Option[PresentationCompilerBackend]] =
-    None
-  @SuppressWarnings(Array("org.wartremover.warts.Var"))
-  @volatile private[mcp] var log: String => Unit = _ => ()
-  @SuppressWarnings(Array("org.wartremover.warts.Var"))
-  @volatile private[mcp] var stateFactory: Path => McpState = root =>
+  private[mcp] val backendFor =
+    new AtomicReference[Option[String => Option[PresentationCompilerBackend]]](None)
+  private[mcp] val log = new AtomicReference[String => Unit](_ => ())
+  private[mcp] val stateFactory = new AtomicReference[Path => McpState](root =>
     val az = Analyzer(SemanticIndex.fromProject(root.toString), pcSelector = None)
     new McpState(root, az, toolsFor(az, root))
+  )
 
-  private[mcp] def currentState: Option[McpState] = state
+  private[mcp] def currentState: Option[McpState] = state.get()
 
   private[mcp] def currentRoot: Path =
     currentState.map(_.root).getOrElse(Paths.get(".").toAbsolutePath.normalize().nn)
@@ -62,11 +60,11 @@ object Mcp:
     currentState.map(_.tools).getOrElse(fallback)
 
   private[mcp] def activateState(next: McpState): Unit =
-    state = Some(next)
-    backendFor = next.pcSelector
+    state.set(Some(next))
+    backendFor.set(next.pcSelector)
 
   private[mcp] def toolsFor(az: Analyzer, root: Path): List[Tool] =
-    McpTools.all(az, root) ++ List(setWorkspaceRootTool(log), getWorkspaceRootTool)
+    McpTools.all(az, root) ++ List(setWorkspaceRootTool(log.get()), getWorkspaceRootTool)
 
   val ProtocolVersion = "2025-06-18"
   val ServerName = "scala-semantic-mcp"
@@ -335,13 +333,13 @@ object Mcp:
   ): Unit =
     val rootPath = Paths.get(root).toAbsolutePath.nn
     val currentLog: String => Unit = if logging.active then fileLogger(rootPath) else (_ => ())
-    Mcp.log = currentLog
+    Mcp.log.set(currentLog)
     // Acquire the (optional) PC backend through the #140 bracket helper so the compiler instance
     // is always shut down when the server exits — normally, on EOF, or on an unhandled exception —
     // without a hand-rolled try/finally here.
     stateCache.clear()
-    Mcp.stateFactory = path => buildState(path, classpath, currentLog)
-    val initialState = stateFactory(rootPath)
+    Mcp.stateFactory.set(path => buildState(path, classpath, currentLog))
+    val initialState = stateFactory.get()(rootPath)
     activateState(initialState)
     Mcp.stateCache.put(rootPath, initialState)
     try runLoop(root, rootPath, initialState.pcSelector, currentLog, logging)
@@ -379,7 +377,7 @@ object Mcp:
       log: String => Unit,
       logging: LogConfig
   ): Unit =
-    val tools = state
+    val tools = currentState
       .map(_.tools)
       .getOrElse(
         toolsFor(Analyzer(SemanticIndex.fromProject(root), pcSelector = backendFor), rootPath)
@@ -706,7 +704,7 @@ object Mcp:
         resolvedPath,
         r => {
           log(s"Initializing Analyzer for new workspace root: $r")
-          stateFactory(r)
+          stateFactory.get()(r)
         }
       )
 
