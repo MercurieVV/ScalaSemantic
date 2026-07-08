@@ -8,7 +8,8 @@
 #       SCALA_SEMANTIC_RULES.md + the per-client steering file (CLAUDE.md/AGENTS.md/.cursorrules/...),
 #       prefetches (downloads+caches) the server jar, and merges an MCP server entry into each
 #       client's config file (.mcp.json, .codex/config.toml, .gemini/settings.json, ...) — re-running
-#       is safe, it only ever touches the "scala-semantic" entry.
+#       is safe, it only ever touches the "scala-semantic" entry. Generated launch args use "." as
+#       the root so worktree checkouts do not inherit the setup-time absolute path.
 #   scalasemantic-mcp.sh serve <semanticdb-root> [classpath]   (also the default with no subcommand)
 #       Runs the server. Two paths, picked automatically:
 #         1. if `cs` (coursier) is on PATH — resolve + cache the artifact from Maven Central and run
@@ -25,8 +26,10 @@
 #
 #   --prefetch  Download + cache the artifact, then exit WITHOUT serving.
 #   serve arguments are forwarded verbatim to the server: arg 1 = SemanticDB root, optional arg 2 =
-#   the compile classpath metadata file (normally `.scala-semantic/classpath-<tool>.json`) that
-#   enables the presentation-compiler backend for live overlay of uncompiled buffers.
+#   an explicit compile classpath metadata file. By default the server discovers project-local
+#   `.scala-semantic/classpath-*.json` metadata from the active root or its submodules.
+#   If an agent changes cwd while the same stdio server process stays alive, call the MCP tool
+#   `set_workspace_root` with the new absolute path before other ScalaSemantic tool calls.
 #   --log / --log-output  Forwarded to the server to turn on its (off-by-default) file log:
 #               --log writes a startup line + one line per tool call; --log-output additionally
 #               logs each JSON-RPC response sent to the LLM. (Env equivalents: SCALASEMANTIC_LOG,
@@ -252,6 +255,8 @@ ThisBuild / semanticdbEnabled := true
 
 lazy val scalaSemanticWriteClasspath =
   taskKey[File]("Write module-aware compile classpath metadata for ScalaSemantic MCP.")
+lazy val scalaSemanticWriteModules =
+  taskKey[File]("Write module-structure metadata for ScalaSemantic MCP.")
 
 def scalaSemanticJsonString(value: String): String =
   "\"" + value.flatMap {
@@ -273,6 +278,7 @@ def scalaSemanticRel(root: File, file: File): String = {
 }
 
 ThisBuild / scalaSemanticWriteClasspath := {
+  (ThisBuild / scalaSemanticWriteModules).value
   val root = (ThisBuild / baseDirectory).value
   val ids = name.all(ScopeFilter(inAnyProject)).value
   val dirs = baseDirectory.all(ScopeFilter(inAnyProject)).value
@@ -313,6 +319,44 @@ ThisBuild / scalaSemanticWriteClasspath := {
   out
 }
 
+ThisBuild / scalaSemanticWriteModules := {
+  val root = (ThisBuild / baseDirectory).value
+  val ids = name.all(ScopeFilter(inAnyProject)).value
+  val dirs = baseDirectory.all(ScopeFilter(inAnyProject)).value
+  val outDirs = (Compile / classDirectory).all(ScopeFilter(inAnyProject)).value.map(_.getParentFile.getParentFile)
+  val modules = ids.zip(dirs).zip(outDirs).map {
+    case ((id, dir), outDir) =>
+      s"""    {
+         |      "name": ${scalaSemanticJsonString(id)},
+         |      "path_from_root": ${scalaSemanticJsonString(scalaSemanticRel(root, dir))},
+         |      "path_to_out_dir": ${scalaSemanticJsonString(scalaSemanticRel(root, outDir))}
+         |    }""".stripMargin
+  }.mkString(",\n")
+  val content =
+    s"""{
+       |  "schemaVersion": 1,
+       |  "buildTool": "sbt",
+       |  "parent": {
+       |    "name": "root",
+       |    "path_from_root": ".",
+       |    "path_to_out_dir": "target"
+       |  },
+       |  "modules": [
+       |$modules
+       |  ]
+       |}
+       |""".stripMargin
+  val out = root / ".scala-semantic" / "modules-sbt.json"
+  IO.createDirectory(out.getParentFile)
+  val current = if (out.isFile) IO.read(out) else ""
+  if (current != content) {
+    val tmp = out.getParentFile / (out.getName + ".tmp")
+    IO.write(tmp, content)
+    Files.move(tmp.toPath, out.toPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+  }
+  out
+}
+
 Global / onLoad := {
   val prev = (Global / onLoad).value
   prev.andThen { state =>
@@ -320,7 +364,7 @@ Global / onLoad := {
     if (state.get(key).getOrElse(false)) state
     else {
       val newState = state.put(key, true)
-      "scalaSemanticWriteClasspath" :: newState
+      "scalaSemanticWriteModules" :: "scalaSemanticWriteClasspath" :: newState
     }
   }
 }
@@ -529,6 +573,8 @@ ensure_rules() {
 For Scala source questions, use ScalaSemantic MCP tools before shell text tools. Preferably compile code before usage, then more ScalaSemantic functions can be used with better results.
 
 Do not use `cat`, `sed`, `rg`, or similar tools to inspect `.scala` files for symbol, type, signature, hierarchy, implicit, reference, or call-path questions when ScalaSemantic tools are available.
+
+After changing working directories for any reason (worktree switch, `cd`, subproject entry, or subagent cwd change), call `set_workspace_root` with the new absolute path before any other ScalaSemantic tool call. If unsure, call `get_workspace_root` first. This is a discipline rule, not a harness-enforced guarantee.
 
 Use shell for builds, tests, git, config, docs, scripts, and non-Scala text work.
 EOF
@@ -770,14 +816,12 @@ AWK_EOF
 }
 
 write_client_configs() {
-  local _project _client _command _cpfile _clients c _t _relpath _fmt _cmd_esc _proj_esc _cp_esc
+  local _project _client _command _clients c _t _relpath _fmt _cmd_esc
   local _entry _header _fresh _item _itemline _freshfull _out _tmp
-  _project="$1"; _client="$2"; _command="$3"; _cpfile="$4"
+  _project="$1"; _client="$2"; _command="$3"
   if [ "$_client" = "all" ]; then _clients="$ALL_CLIENTS"; else _clients="$_client"; fi
   write_awk_libs
   _cmd_esc=$(json_escape "$_command")
-  _proj_esc=$(json_escape "$_project")
-  _cp_esc=$(json_escape "$_cpfile")
   for c in $_clients; do
     _t=$(target_for "$c")
     [ -n "$_t" ] || { echo "scalasemantic-mcp: unsupported client '$c'" >&2; continue; }
@@ -791,7 +835,7 @@ write_client_configs() {
       json)
         _entry="{
       \"command\": \"$_cmd_esc\",
-      \"args\": [\"serve\", \"$_proj_esc\", \"$_cp_esc\"]$(extra_json_fields "$c")
+      \"args\": [\"serve\", \".\"]$(extra_json_fields "$c")
     }"
         MCPM_SERVER="scala-semantic" MCPM_ENTRY="$_entry" \
           awk -f "$CACHE/lib/json-merge.awk" "$_out" > "$_tmp"
@@ -800,7 +844,7 @@ write_client_configs() {
         _header="[mcp_servers.scala-semantic]"
         _fresh="[mcp_servers.scala-semantic]
 command = \"$_cmd_esc\"
-args = [\"serve\", \"$_proj_esc\", \"$_cp_esc\"]
+args = [\"serve\", \".\"]
 startup_timeout_sec = 60
 tool_timeout_sec = 60"
         MCPM_HEADER="$_header" MCPM_FRESH="$_fresh" \
@@ -812,8 +856,7 @@ tool_timeout_sec = 60"
     command: \"$_cmd_esc\"
     args:
       - \"serve\"
-      - \"$_proj_esc\"
-      - \"$_cp_esc\"
+      - \".\"
     connectionTimeout: 60000"
         _freshfull="name: ScalaSemantic MCP
 version: 1.0.0
@@ -845,7 +888,7 @@ classpath_file_for_project() {
 }
 
 setup_main() {
-  local _project _client _command _skip_semanticdb _cpfile
+  local _project _client _command _skip_semanticdb
   _project=$(CDPATH= cd -- "." && pwd)
   _client="all"
   _command="$SELF"
@@ -867,9 +910,7 @@ setup_main() {
   echo "scalasemantic-mcp: prefetching the server jar ..." >&2
   serve_main --prefetch "$_project" || echo "scalasemantic-mcp: prefetch skipped (will download on first serve)" >&2
 
-  _cpfile=$(classpath_file_for_project "$_project")
-
-  write_client_configs "$_project" "$_client" "$_command" "$_cpfile"
+  write_client_configs "$_project" "$_client" "$_command"
 }
 
 usage() {
@@ -880,7 +921,7 @@ Usage:
 
 setup writes MCP client config that launches this same script:
   command = $SELF
-  args    = [serve, <project>, <classpath-file>]
+  args    = [serve, .]
 EOF
 }
 

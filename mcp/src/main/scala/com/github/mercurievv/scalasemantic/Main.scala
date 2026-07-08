@@ -6,9 +6,10 @@ import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 /** Start the MCP server over stdio. Usage: `runMain com.github.mercurievv.scalasemantic.mcpServer
   * [semanticdbRoot] [classpath] [--log] [--log-output]`.
   *   - `semanticdbRoot` (default `.`): where it recursively finds emitted `*.semanticdb` files.
-  *   - `classpath` (optional): the target project's compile classpath — a path-separated string or
-  *     a file containing one — which enables the presentation-compiler backend for live overlay of
-  *     uncompiled buffers (the tools' `source` argument). Also read from `SCALASEMANTIC_CLASSPATH`.
+  *   - `classpath` (optional): explicit compile classpath metadata, a flat classpath file, or a
+  *     path-separated classpath. When omitted, the server discovers project-local
+  *     `.scala-semantic/classpath-*.json` metadata from the active root or its submodules. Also
+  *     read from `SCALASEMANTIC_CLASSPATH`.
   *
   * Logging is OFF by default (no log file is written). Enable via flags — passed straight through
   * the launcher from your `.mcp.json` args — or the matching env vars:

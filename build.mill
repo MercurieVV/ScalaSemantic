@@ -134,7 +134,8 @@ trait Common extends SbtModule {
 
     val finalDir = root / ".scala-semantic"
     os.proc("mkdir", "-p", finalDir.toString).call(cwd = root)
-    os.proc("cp", destFile.toString, (finalDir / s"classpath-mill-$id.json").toString).call(cwd = root)
+    os.proc("cp", destFile.toString, (finalDir / s"classpath-mill-$id.json").toString)
+      .call(cwd = root)
     cp
   }
 
@@ -571,12 +572,14 @@ def checkFormatFirstParty() = Task.Command {
 def smokeTest() = Task.Command {
   mcp.assembly()
   val script = build.moduleDir / "scripts" / "smoke-test.sh"
-  val res = os.proc("sh", script.toString).call(
-    cwd = build.moduleDir,
-    stdout = os.Inherit,
-    stderr = os.Inherit,
-    check = false
-  )
+  val res = os
+    .proc("sh", script.toString)
+    .call(
+      cwd = build.moduleDir,
+      stdout = os.Inherit,
+      stderr = os.Inherit,
+      check = false
+    )
   if (res.exitCode != 0) {
     sys.error(s"E2E Smoke Test failed with exit status ${res.exitCode}")
   }
@@ -1337,10 +1340,10 @@ object ScalaSemanticClasspathMetadata {
         |    }""".stripMargin
   }
 
-  private def pathString(root: os.Path, path: os.Path): String =
+  def pathString(root: os.Path, path: os.Path): String =
     if (path.startsWith(root)) path.relativeTo(root).toString else path.toString
 
-  private def jsonString(value: String): String =
+  def jsonString(value: String): String =
     "\"" + value.flatMap {
       case '"'          => "\\\""
       case '\\'         => "\\\\"
@@ -1354,9 +1357,73 @@ object ScalaSemanticClasspathMetadata {
     } + "\""
 }
 
+object ScalaSemanticModuleMetadata {
+  final case class Module(
+      name: String,
+      pathFromRoot: os.Path,
+      pathToOutDir: os.Path
+  )
+
+  def metadataPath(root: os.Path): os.Path =
+    root / ".scala-semantic" / "modules-mill.json"
+
+  def render(root: os.Path, modules: Seq[Module]): String = {
+    val renderedModules = modules.map(renderModule(root, _)).mkString(",\n")
+    s"""|{
+        |  "schemaVersion": 1,
+        |  "buildTool": "mill",
+        |  "parent": {
+        |    "name": "root",
+        |    "path_from_root": ".",
+        |    "path_to_out_dir": "out"
+        |  },
+        |  "modules": [
+        |$renderedModules
+        |  ]
+        |}
+        |""".stripMargin
+  }
+
+  private def renderModule(root: os.Path, module: Module): String =
+    s"""|    {
+        |      "name": ${ScalaSemanticClasspathMetadata.jsonString(module.name)},
+        |      "path_from_root": ${ScalaSemanticClasspathMetadata.jsonString(
+         ScalaSemanticClasspathMetadata.pathString(root, module.pathFromRoot)
+       )},
+        |      "path_to_out_dir": ${ScalaSemanticClasspathMetadata.jsonString(
+         ScalaSemanticClasspathMetadata.pathString(root, module.pathToOutDir)
+       )}
+        |    }""".stripMargin
+}
+
+def scalaSemanticModules(root: os.Path): Seq[ScalaSemanticModuleMetadata.Module] =
+  Seq(
+    ScalaSemanticModuleMetadata.Module("core", core.moduleDir, root / "out" / "core"),
+    ScalaSemanticModuleMetadata.Module("pc", pc.moduleDir, root / "out" / "pc"),
+    ScalaSemanticModuleMetadata.Module("analysis", analysis.moduleDir, root / "out" / "analysis"),
+    ScalaSemanticModuleMetadata.Module("mcp", mcp.moduleDir, root / "out" / "mcp")
+  )
+
+// Writes module-structure metadata so MCP can discover nested module classpath files without a
+// fallback filesystem scan.
+def scalaSemanticWriteModules() = Task.Command {
+  val root = build.moduleDir
+  val out = ScalaSemanticModuleMetadata.metadataPath(root)
+  val changed = ScalaSemanticClasspathMetadata.writeIfChanged(
+    out,
+    ScalaSemanticModuleMetadata.render(root, scalaSemanticModules(root))
+  )
+  val verb = if (changed) "Wrote" else "Up to date"
+  Task.log.info(s"$verb ScalaSemantic module metadata: $out")
+}
+
 // Writes the module-aware compile classpath metadata consumed by live-buffer MCP tools.
 def scalaSemanticWriteClasspath() = Task.Command {
   val root = build.moduleDir
+  ScalaSemanticClasspathMetadata.writeIfChanged(
+    ScalaSemanticModuleMetadata.metadataPath(root),
+    ScalaSemanticModuleMetadata.render(root, scalaSemanticModules(root))
+  )
   val modules = Seq(
     ScalaSemanticClasspathMetadata.Module(
       id = "core",

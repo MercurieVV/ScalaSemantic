@@ -15,10 +15,10 @@ The server reads SemanticDB; it does not generate it. The project must be compil
 semanticdbEnabled := true
 ```
 
-The setup script also creates `scala-semantic.sbt` with a small
-`scalaSemanticWriteClasspath` task. It reads `Compile / fullClasspath` for every project, writes
-`.scala-semantic/classpath-sbt.json`, and should be run after dependency or module configuration
-changes:
+The setup script also creates `scala-semantic.sbt` with small `scalaSemanticWriteClasspath` and
+`scalaSemanticWriteModules` tasks. They read build modules and `Compile / fullClasspath`, write
+`.scala-semantic/classpath-sbt.json` plus `.scala-semantic/modules-sbt.json`, and should be run
+after dependency or module configuration changes:
 
 ```sh
 sbt scalaSemanticWriteClasspath
@@ -38,9 +38,10 @@ def scalacOptions = super.scalacOptions() ++
 (Alternatively, keep `def semanticDbEnabled = true` and run `mill __.semanticDbData` instead of
 `mill __.compile` — the Mill-native target that materializes the files under `out/`.)
 
-For live-buffer typechecking, write `.scala-semantic/classpath-mill.json` from the build. This repo
-ships a compact Mill example as the root task `scalaSemanticWriteClasspath`; run it after dependency
-or module configuration changes:
+For live-buffer typechecking, write `.scala-semantic/classpath-mill.json` and
+`.scala-semantic/modules-mill.json` from the build. This repo ships compact Mill examples as root
+tasks `scalaSemanticWriteClasspath` and `scalaSemanticWriteModules`; run the classpath task after
+dependency or module configuration changes:
 
 ```sh
 ./mill scalaSemanticWriteClasspath
@@ -106,7 +107,7 @@ does not already configure SemanticDB, and registers this command:
 ```sh
 scala-cli run --dependency "io.github.mercurievv::scalasemantic-mcp:latest.release" \
   --main-class com.github.mercurievv.scalasemantic.mcpServer \
-  -- /abs/path/to/project /abs/path/to/project/.scala-semantic/classpath-sbt.json
+  -- .
 ```
 
 The MCP client runs that command over stdio. Note this does **not** invoke the setup script itself —
@@ -117,6 +118,18 @@ re-resolves to the newest published release.
 
 To pin a specific version instead of `latest.release`, edit `ServerDependency` in a local copy of the
 script and re-run `setup`.
+
+### Worktrees and cwd changes
+
+Generated configs use `.` as the server root so a newly spawned MCP server indexes the directory it
+was launched from, not the directory where `setup` originally ran. The server also discovers
+`.scala-semantic/classpath-*.json` from that active root, follows `.scala-semantic/modules-*.json`
+to child source and output directories, and falls back to visible submodule scanning when no direct
+or module-guided metadata exists. Some stdio MCP clients keep the same server process alive when
+the agent later changes cwd or enters a git worktree, and do not reliably send root-change
+notifications. After such a cwd change, call `set_workspace_root` with the new absolute path before
+other ScalaSemantic tools; use `get_workspace_root` to confirm the current state and discovered
+classpath metadata.
 
 ### Option B — auto-download launcher
 
@@ -134,8 +147,8 @@ Then register manually in your client config:
     "scala-semantic": {
       "command": "~/.local/bin/scalasemantic-mcp",
       "args": [
-        "/abs/path/to/project-to-analyze",
-        "/abs/path/to/project-to-analyze/.scala-semantic/classpath-sbt.json"
+        "serve",
+        "."
       ]
     }
   }
@@ -151,7 +164,7 @@ Download `scalasemantic-mcp.jar` from the [latest release](https://github.com/Me
   "mcpServers": {
     "scala-semantic": {
       "command": "java",
-      "args": ["-jar", "/abs/path/to/scalasemantic-mcp.jar", "/abs/path/to/project-to-analyze"]
+      "args": ["-jar", "/abs/path/to/scalasemantic-mcp.jar", "."]
     }
   }
 }
@@ -187,10 +200,24 @@ Next, use the [Tool reference](../reference/tools.md) for the full tool list and
 
 ## Classpath Metadata & Migration from Flat Classpath
 
-In previous versions, a single flat, colon-separated classpath file was passed to the server. The server now expects a module-aware JSON classpath file (e.g., `classpath-sbt.json`, `classpath-mill.json`, or `classpath-scala-cli.json`) to support multi-module projects correctly.
+In previous versions, a single flat, colon-separated classpath file was passed to the server. The
+server now discovers module-aware JSON classpath metadata by default from
+`.scala-semantic/classpath-sbt.json`, `.scala-semantic/classpath-mill.json`, or
+`.scala-semantic/classpath-scala-cli.json` under the active workspace root. It also follows
+`.scala-semantic/modules-sbt.json`, `.scala-semantic/modules-mill.json`,
+`.scala-semantic/modules-scala-cli.json`, or `.scala-semantic/modules.json` to discover child module
+metadata in source and output directories. If no direct or module-guided metadata exists, it scans
+non-hidden subdirectories for submodule metadata, including
+`<submoduleOutDir>/.scala-semantic/classpath.json` in visible build output directories. You can still
+pass an explicit classpath file as the optional second `serve` argument, or set
+`SCALASEMANTIC_CLASSPATH`, to override discovery.
 
 ### Automatic Migration
-The setup command (via option A/B) automatically detects the build tool and generates the correct `.scala-semantic/classpath-<tool>.json` file. It also configures the build tool (e.g., creating `scala-semantic.sbt` for sbt) to maintain classpath freshness automatically.
+The setup command (via option A/B) automatically detects the build tool and generates the correct
+`.scala-semantic/classpath-<tool>.json` file, plus `.scala-semantic/modules-<tool>.json` when the
+build integration can expose module topology. It also configures the build tool (e.g., creating
+`scala-semantic.sbt` for sbt) to maintain metadata freshness automatically. Generated MCP client
+configs no longer pass this file path; the server finds it from the current workspace root.
 
 ### Troubleshooting Classpath Freshness
 If you import your project and live-buffer typechecking is not working (e.g., you see unresolved types or imports for new code):

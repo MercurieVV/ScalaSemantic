@@ -100,4 +100,4 @@ gitignored). So note quality == PR-title quality — write good titles. Process:
 ## Scala Code Rules
 @SCALA_SEMANTIC_RULES.md
 
-@scala-rules.md [`scala-rules.md`](scala-rules.md)
+@scala-rules.md

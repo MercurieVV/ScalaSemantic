@@ -216,6 +216,18 @@ class TokenMetricsSuite extends munit.FunSuite:
     ).mkString("\n")
 
   test("token metrics artifacts match regenerated MCP-vs-baseline comparison") {
+    val vendorCorpusDirs = Seq(
+      "target/vendor-corpus/scala-2.13",
+      "target/vendor-corpus/scala-3"
+    )
+    val missingVendorCorpusDirs =
+      vendorCorpusDirs.filterNot(path => Files.isDirectory(root.resolve(path)))
+    if missingVendorCorpusDirs.nonEmpty then
+      assume(
+        false,
+        s"Skipping token metrics comparison; missing vendor corpus dirs: ${missingVendorCorpusDirs.mkString(", ")}"
+      )
+
     val generatedJson = json(queries)
     val generatedTable = markdownTable(queries)
 
