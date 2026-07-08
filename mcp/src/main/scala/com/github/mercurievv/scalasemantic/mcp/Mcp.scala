@@ -406,10 +406,10 @@ object Mcp:
 
   /** Resolve the classpath spec (arg or `SCALASEMANTIC_CLASSPATH`) to classpath metadata. If
     * neither is supplied, discover project-local `.scala-semantic/classpath-*.json` files from the
-    * active root and non-hidden subdirectories. A spec that names an existing JSON file is parsed
-    * as module-aware metadata. A spec that names any other existing file is read as a flat
-    * classpath file (newline- or path-separator-delimited). Anything else is treated as a literal
-    * path-separated classpath.
+    * active root and visible subdirectories, including build output directories. A spec that names
+    * an existing JSON file is parsed as module-aware metadata. A spec that names any other existing
+    * file is read as a flat classpath file (newline- or path-separator-delimited). Anything else is
+    * treated as a literal path-separated classpath.
     */
   private[mcp] def resolveClasspath(
       arg: Option[String],
@@ -525,7 +525,7 @@ object Mcp:
   private def shouldSearchDirectory(path: Path): Boolean =
     val name = path.getFileName.toString
     !name.startsWith(".") &&
-    !Set("target", "out", "node_modules", "project").contains(name)
+    !Set("node_modules", "project").contains(name)
 
   private def resolveClasspathMetadata(path: Path, rootPath: Path): Option[ResolvedClasspath] =
     resolveClasspathMetadataFiles(metadataFilesFor(path), rootPath)

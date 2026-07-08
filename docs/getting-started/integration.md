@@ -123,8 +123,9 @@ script and re-run `setup`.
 Generated configs use `.` as the server root so a newly spawned MCP server indexes the directory it
 was launched from, not the directory where `setup` originally ran. The server also discovers
 `.scala-semantic/classpath-*.json` from that active root, or from submodules below it when the root
-does not have its own metadata. Some stdio MCP clients keep the same server process alive when the
-agent later changes cwd or enters a git worktree, and do not reliably send root-change
+does not have its own metadata, including `<submoduleOutDir>/.scala-semantic/classpath.json` in
+visible build output directories. Some stdio MCP clients keep the same server process alive when
+the agent later changes cwd or enters a git worktree, and do not reliably send root-change
 notifications. After such a cwd change, call `set_workspace_root` with the new absolute path before
 other ScalaSemantic tools; use `get_workspace_root` to confirm the current state and discovered
 classpath metadata.
@@ -202,9 +203,10 @@ In previous versions, a single flat, colon-separated classpath file was passed t
 server now discovers module-aware JSON classpath metadata by default from
 `.scala-semantic/classpath-sbt.json`, `.scala-semantic/classpath-mill.json`, or
 `.scala-semantic/classpath-scala-cli.json` under the active workspace root. If the active root has no
-metadata, it scans non-hidden subdirectories for submodule metadata. You can still pass an explicit
-classpath file as the optional second `serve` argument, or set `SCALASEMANTIC_CLASSPATH`, to override
-discovery.
+metadata, it scans non-hidden subdirectories for submodule metadata, including
+`<submoduleOutDir>/.scala-semantic/classpath.json` in visible build output directories. You can still
+pass an explicit classpath file as the optional second `serve` argument, or set
+`SCALASEMANTIC_CLASSPATH`, to override discovery.
 
 ### Automatic Migration
 The setup command (via option A/B) automatically detects the build tool and generates the correct

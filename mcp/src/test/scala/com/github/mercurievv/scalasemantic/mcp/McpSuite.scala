@@ -427,6 +427,40 @@ class McpSuite extends munit.FunSuite:
     )
   }
 
+  test("resolveClasspath discovers metadata inside submodule output directories") {
+    val root = java.nio.file.Files.createTempDirectory("ss-discover-out-cp").nn
+    val out = root.resolve("out").resolve("app").resolve("compile.dest").nn
+    java.nio.file.Files.createDirectories(out.resolve(".scala-semantic"))
+    val cpFile = out.resolve(".scala-semantic").resolve("classpath.json").nn
+    java.nio.file.Files.writeString(
+      cpFile,
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "buildTool" -> "custom",
+          "modules" -> ujson.Arr(
+            ujson.Obj(
+              "id" -> "app",
+              "baseDir" -> "modules/app",
+              "scalaVersion" -> "3.8.4",
+              "configuration" -> "Compile",
+              "classpath" -> ujson.Arr("out/app/compile.dest/classes")
+            )
+          )
+        )
+      )
+    )
+
+    val files = Mcp.discoverClasspathMetadata(root)
+    assertEquals(files.toList, List(cpFile))
+    val resolved = Mcp.resolveClasspath(None, root).getOrElse(fail("classpath not discovered"))
+    assertEquals(resolved.modules.map(_.id).toList, List("app"))
+    assertEquals(
+      resolved.classpathFor("modules/app/src/main/scala/Main.scala", root).toList,
+      List(root.resolve("out/app/compile.dest/classes").normalize().nn)
+    )
+  }
+
   test("resolveClasspath ignores missing or invalid metadata files") {
     val root = java.nio.file.Files.createTempDirectory("ss-bad-cp").nn
     assertEquals(Mcp.resolveClasspath(Some(root.resolve("missing.txt").toString), root), None)
