@@ -48,11 +48,12 @@
 # the Mill-side equivalent (`JAVA_TOOL_OPTIONS: -Xmx4g`). `core` still needs a structural fix (or
 # acceptance that it's out of scope) before `--module all`/`core` can be trusted in CI.
 #
-# On success, this workflow commits reports/mutation/**/report.json (the stable per-module report
-# mutation-summary.sh writes) back to the branch being tested, so mutation score/survivor history
-# is diffable in git log — NOT the timestamped stryker4s-report/ HTML (still upload-artifact'd, not
-# committed: large and not text-diffable). paths-ignore on the pull_request trigger below stops a
-# report-only commit from re-triggering this workflow (or ci.yml, via its own paths-ignore) in a loop.
+# On non-PR runs, this workflow commits reports/mutation/**/report.json (the stable per-module
+# report mutation-summary.sh writes) back to the branch being tested, so mutation score/survivor
+# history is diffable in git log — NOT the timestamped stryker4s-report/ HTML (still
+# upload-artifact'd, not committed: large and not text-diffable). PR runs publish artifacts/comments
+# only: they execute from a detached merge ref, and automation may merge/delete the source branch
+# before the mutation job reaches its report step.
 name: Mutation Testing
 
 on:
@@ -183,7 +184,7 @@ jobs:
           } > reports/mutation/comment.md
 
       - name: Commit mutation report
-        if: steps.scope.outputs.modules != ''
+        if: steps.scope.outputs.modules != '' && github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git add reports/mutation/*/report.json reports/mutation/*/summary.txt
