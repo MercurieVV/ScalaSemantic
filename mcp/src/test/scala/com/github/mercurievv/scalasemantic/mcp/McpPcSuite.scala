@@ -146,19 +146,22 @@ class McpPcSuite extends munit.FunSuite:
 
     val fakeBin = root.resolve("fake-bin").nn
     java.nio.file.Files.createDirectories(fakeBin)
-    val fakeCs = fakeBin.resolve("cs").nn
+    val fakeJava = fakeBin.resolve("java").nn
     java.nio.file.Files.writeString(
-      fakeCs,
+      fakeJava,
       s"""|#!/usr/bin/env sh
-          |set -eu
-          |while [ "$$#" -gt 0 ] && [ "$$1" != "--" ]; do shift; done
-          |[ "$$#" -gt 0 ] && shift
-          |exec "${sys.props(
+            |set -eu
+            |[ "$$1" = "-jar" ] && shift 2
+            |exec "${sys.props(
            "java.home"
          )}/bin/java" -cp "$$SCALASEMANTIC_TEST_CP" com.github.mercurievv.scalasemantic.mcpServer "$$@"
-          |""".stripMargin
+            |""".stripMargin
     )
-    val _ = fakeCs.toFile.setExecutable(true)
+    val _ = fakeJava.toFile.setExecutable(true)
+    val cache = root.resolve("cache").nn
+    val jarCache = cache.resolve("scalasemantic-mcp").nn
+    java.nio.file.Files.createDirectories(jarCache)
+    java.nio.file.Files.writeString(jarCache.resolve("scalasemantic-mcp-local.jar"), "")
 
     val script = java.nio.file.Paths.get("scripts/scalasemantic-mcp.sh").toAbsolutePath.nn
     val logFile = root.resolve("mcp.log").nn
@@ -174,6 +177,8 @@ class McpPcSuite extends munit.FunSuite:
     )
     processEnv.put("SCALASEMANTIC_TEST_CP", currentRuntimeClasspath)
     processEnv.put("SCALASEMANTIC_LOG_FILE", logFile.toString)
+    processEnv.put("SCALASEMANTIC_VERSION", "local")
+    processEnv.put("XDG_CACHE_HOME", cache.toString)
     val process = builder.start()
 
     val initializeReq = ujson.Obj(
@@ -269,19 +274,22 @@ class McpPcSuite extends munit.FunSuite:
 
     val fakeBin = temp.resolve("fake-bin").nn
     java.nio.file.Files.createDirectories(fakeBin)
-    val fakeCs = fakeBin.resolve("cs").nn
+    val fakeJava = fakeBin.resolve("java").nn
     java.nio.file.Files.writeString(
-      fakeCs,
+      fakeJava,
       s"""|#!/usr/bin/env sh
-          |set -eu
-          |while [ "$$#" -gt 0 ] && [ "$$1" != "--" ]; do shift; done
-          |[ "$$#" -gt 0 ] && shift
-          |exec "${sys.props(
+            |set -eu
+            |[ "$$1" = "-jar" ] && shift 2
+            |exec "${sys.props(
            "java.home"
          )}/bin/java" -cp "$$SCALASEMANTIC_TEST_CP" com.github.mercurievv.scalasemantic.mcpServer "$$@"
-          |""".stripMargin
+            |""".stripMargin
     )
-    val _ = fakeCs.toFile.setExecutable(true)
+    val _ = fakeJava.toFile.setExecutable(true)
+    val cache = temp.resolve("cache").nn
+    val jarCache = cache.resolve("scalasemantic-mcp").nn
+    java.nio.file.Files.createDirectories(jarCache)
+    java.nio.file.Files.writeString(jarCache.resolve("scalasemantic-mcp-local.jar"), "")
 
     val script = java.nio.file.Paths.get("scripts/scalasemantic-mcp.sh").toAbsolutePath.nn
     val builder =
@@ -295,6 +303,8 @@ class McpPcSuite extends munit.FunSuite:
       fakeBin.toString + java.io.File.pathSeparator + processEnv.getOrDefault("PATH", "")
     )
     processEnv.put("SCALASEMANTIC_TEST_CP", currentRuntimeClasspath)
+    processEnv.put("SCALASEMANTIC_VERSION", "local")
+    processEnv.put("XDG_CACHE_HOME", cache.toString)
     val process = builder.start()
 
     val requests = List(
@@ -398,19 +408,22 @@ class McpPcSuite extends munit.FunSuite:
 
     val fakeBin = root.resolve("fake-bin").nn
     java.nio.file.Files.createDirectories(fakeBin)
-    val fakeCs = fakeBin.resolve("cs").nn
+    val fakeJava = fakeBin.resolve("java").nn
     java.nio.file.Files.writeString(
-      fakeCs,
+      fakeJava,
       s"""|#!/usr/bin/env sh
-          |set -eu
-          |while [ "$$#" -gt 0 ] && [ "$$1" != "--" ]; do shift; done
-          |[ "$$#" -gt 0 ] && shift
-          |exec "${sys.props(
+            |set -eu
+            |[ "$$1" = "-jar" ] && shift 2
+            |exec "${sys.props(
            "java.home"
          )}/bin/java" -cp "$$SCALASEMANTIC_TEST_CP" com.github.mercurievv.scalasemantic.mcpServer "$$@"
-          |""".stripMargin
+            |""".stripMargin
     )
-    val _ = fakeCs.toFile.setExecutable(true)
+    val _ = fakeJava.toFile.setExecutable(true)
+    val cache = root.resolve("cache").nn
+    val jarCache = cache.resolve("scalasemantic-mcp").nn
+    java.nio.file.Files.createDirectories(jarCache)
+    java.nio.file.Files.writeString(jarCache.resolve("scalasemantic-mcp-local.jar"), "")
 
     val script = java.nio.file.Paths.get("scripts/scalasemantic-mcp.sh").toAbsolutePath.nn
     val logFile = root.resolve("mcp.log").nn
@@ -426,6 +439,8 @@ class McpPcSuite extends munit.FunSuite:
     )
     processEnv.put("SCALASEMANTIC_TEST_CP", currentRuntimeClasspath)
     processEnv.put("SCALASEMANTIC_LOG_FILE", logFile.toString)
+    processEnv.put("SCALASEMANTIC_VERSION", "local")
+    processEnv.put("XDG_CACHE_HOME", cache.toString)
     val process = builder.start()
 
     val initializeReq = ujson.Obj(

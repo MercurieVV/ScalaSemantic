@@ -2,6 +2,7 @@
 
 For any Scala (`.scala`, `.sc`, `.mill`) source questions, file operations, search, or analysis, use ScalaSemantic MCP tools before shell text tools. 
 Preferably compile code before usage, therefore more SclaSemantic functions could be used with better result.
+If sources are not indexed - need to launch project compilation
 
 1. **NEVER** use generic text/file-reading, viewing, or searching tools (whether built-in agent tools like `view_file`/`grep_search`, or shell commands like
 `rg`/`grep`/`cat`/`sed`) on `.scala`, `.sc`, `.mill` files.
