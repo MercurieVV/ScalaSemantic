@@ -133,11 +133,6 @@ const sidebars = {
           id: 'research/claude-interaction-study',
           label: 'Claude Interaction Study',
         },
-        {
-          type: 'doc',
-          id: 'research/plan',
-          label: 'Plan & Tracker',
-        },
       ],
     },
     {
