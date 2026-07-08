@@ -29,12 +29,14 @@ OVERLAY = '''
 // name-derived one) so sources resolve and the JSON/HTML report lands under the same
 // `<module>/target/stryker4s-report/` path scripts/run-stryker.sh and mutation-summary.sh expect.
 object coreStryker extends Common with Stryker4sModule {
+  def id = "coreStryker"
   def moduleDir = core.moduleDir
   def moduleDeps = core.moduleDeps
   def mvnDeps = core.mvnDeps
   def strykerTestModule = core.test
 }
 object analysisStryker extends Common with Stryker4sModule {
+  def id = "analysisStryker"
   def moduleDir = analysis.moduleDir
   def moduleDeps = analysis.moduleDeps
   def mvnDeps = analysis.mvnDeps
@@ -49,6 +51,7 @@ object analysisStryker extends Common with Stryker4sModule {
 // names like `Files.forall(..)`, which `java.nio.file.Files` doesn't have, so that mutant never
 // compiles either (a stryker4s limitation on receiver-specific method sets, not our code).
 object mcpStryker extends Common with Stryker4sModule {
+  def id = "mcpStryker"
   def moduleDir = mcp.moduleDir
   def moduleDeps = mcp.moduleDeps
   def mvnDeps = mcp.mvnDeps

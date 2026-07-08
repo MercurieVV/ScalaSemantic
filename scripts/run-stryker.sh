@@ -88,9 +88,13 @@ if [[ "$local_run" -eq 1 && -n "$name" ]]; then
 fi
 
 # --local patches this checkout's build.mill in place (safe on an ephemeral CI runner, but leaves a
-# stray diff on a developer's real checkout) — always restore it on exit, success or failure.
+# stray diff on a developer's real checkout) — always restore the exact pre-run file on exit,
+# success or failure.
+build_mill_backup=""
 if [[ "$local_run" -eq 1 ]]; then
-  trap 'git -C "$repo_root" checkout --quiet -- build.mill 2>/dev/null || true' EXIT
+  build_mill_backup="$(mktemp)"
+  cp "$repo_root/build.mill" "$build_mill_backup"
+  trap 'cp "$build_mill_backup" "$repo_root/build.mill" 2>/dev/null || true; rm -f "$build_mill_backup" 2>/dev/null || true' EXIT
 fi
 
 GIT="git"
