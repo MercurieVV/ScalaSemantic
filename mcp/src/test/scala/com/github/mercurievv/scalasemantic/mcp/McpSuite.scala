@@ -372,6 +372,299 @@ class McpSuite extends munit.FunSuite:
     assertEquals(resolved.merged.toList, List(root.resolve("target/classes").normalize().nn))
   }
 
+  test("resolveClasspath follows module metadata from root to child source directory") {
+    val root = java.nio.file.Files.createTempDirectory("ss-discover-module-src-cp").nn
+    val rootMetadata = root.resolve(".scala-semantic").nn
+    val child = root.resolve("modules").resolve("app").nn
+    java.nio.file.Files.createDirectories(rootMetadata)
+    java.nio.file.Files.createDirectories(child.resolve(".scala-semantic"))
+    val rootCp = rootMetadata.resolve("classpath-sbt.json").nn
+    val childCp = child.resolve(".scala-semantic").resolve("classpath-mill.json").nn
+    java.nio.file.Files.writeString(
+      rootMetadata.resolve("modules-mill.json"),
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "buildTool" -> "mill",
+          "modules" -> ujson.Arr(
+            ujson.Obj(
+              "name" -> "app",
+              "path_from_root" -> "modules/app",
+              "path_to_out_dir" -> "out/app"
+            )
+          )
+        )
+      )
+    )
+    java.nio.file.Files.writeString(
+      rootCp,
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "buildTool" -> "sbt",
+          "modules" -> ujson.Arr(
+            ujson.Obj(
+              "id" -> "root",
+              "baseDir" -> ".",
+              "scalaVersion" -> "3.8.4",
+              "configuration" -> "Compile",
+              "classpath" -> ujson.Arr("target/classes")
+            )
+          )
+        )
+      )
+    )
+    java.nio.file.Files.writeString(
+      childCp,
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "buildTool" -> "mill",
+          "modules" -> ujson.Arr(
+            ujson.Obj(
+              "id" -> "app",
+              "baseDir" -> "modules/app",
+              "scalaVersion" -> "3.8.4",
+              "configuration" -> "Compile",
+              "classpath" -> ujson.Arr("out/app/classes")
+            )
+          )
+        )
+      )
+    )
+
+    val files = Mcp.discoverClasspathMetadata(root)
+    assertEquals(files.toList, List(rootCp, childCp))
+    val resolved = Mcp.resolveClasspath(None, root).getOrElse(fail("classpath not discovered"))
+    assertEquals(resolved.modules.map(_.id).toList, List("root", "app"))
+    assertEquals(
+      resolved.classpathFor("modules/app/src/main/scala/Main.scala", root).toList,
+      List(root.resolve("out/app/classes").normalize().nn)
+    )
+  }
+
+  test("resolveClasspath follows module metadata to output directories") {
+    val root = java.nio.file.Files.createTempDirectory("ss-discover-module-out-cp").nn
+    val rootMetadata = root.resolve(".scala-semantic").nn
+    val out = root.resolve("out").resolve("modules").resolve("app").nn
+    java.nio.file.Files.createDirectories(rootMetadata)
+    java.nio.file.Files.createDirectories(out.resolve(".scala-semantic"))
+    val cpFile = out.resolve(".scala-semantic").resolve("classpath.json").nn
+    java.nio.file.Files.writeString(
+      rootMetadata.resolve("modules-mill.json"),
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "buildTool" -> "mill",
+          "modules" -> ujson.Arr(
+            ujson.Obj(
+              "name" -> "app",
+              "path_from_root" -> "modules/app",
+              "path_to_out_dir" -> "out/modules/app"
+            )
+          )
+        )
+      )
+    )
+    java.nio.file.Files.writeString(
+      cpFile,
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "buildTool" -> "custom",
+          "modules" -> ujson.Arr(
+            ujson.Obj(
+              "id" -> "app",
+              "baseDir" -> "modules/app",
+              "scalaVersion" -> "3.8.4",
+              "configuration" -> "Compile",
+              "classpath" -> ujson.Arr("out/modules/app/classes")
+            )
+          )
+        )
+      )
+    )
+
+    val files = Mcp.discoverClasspathMetadata(root)
+    assertEquals(files.toList, List(cpFile))
+    val resolved = Mcp.resolveClasspath(None, root).getOrElse(fail("classpath not discovered"))
+    assertEquals(resolved.modules.map(_.id).toList, List("app"))
+  }
+
+  test("resolveClasspath merges per-tool module metadata lists") {
+    val root = java.nio.file.Files.createTempDirectory("ss-discover-module-tools-cp").nn
+    val rootMetadata = root.resolve(".scala-semantic").nn
+    val app = root.resolve("modules").resolve("app").nn
+    val lib = root.resolve("modules").resolve("lib").nn
+    java.nio.file.Files.createDirectories(rootMetadata)
+    java.nio.file.Files.createDirectories(app.resolve(".scala-semantic"))
+    java.nio.file.Files.createDirectories(lib.resolve(".scala-semantic"))
+    val appCp = app.resolve(".scala-semantic").resolve("classpath-mill.json").nn
+    val libCp = lib.resolve(".scala-semantic").resolve("classpath-sbt.json").nn
+    java.nio.file.Files.writeString(
+      rootMetadata.resolve("modules-mill.json"),
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "buildTool" -> "mill",
+          "modules" -> ujson.Arr(
+            ujson.Obj(
+              "name" -> "app",
+              "path_from_root" -> "modules/app",
+              "path_to_out_dir" -> "out/app"
+            )
+          )
+        )
+      )
+    )
+    java.nio.file.Files.writeString(
+      rootMetadata.resolve("modules-sbt.json"),
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "buildTool" -> "sbt",
+          "modules" -> ujson.Arr(
+            ujson.Obj(
+              "name" -> "lib",
+              "path_from_root" -> "modules/lib",
+              "path_to_out_dir" -> "target/lib"
+            )
+          )
+        )
+      )
+    )
+    java.nio.file.Files.writeString(
+      appCp,
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "buildTool" -> "mill",
+          "modules" -> ujson.Arr(
+            ujson.Obj("id" -> "app", "baseDir" -> "modules/app", "classpath" -> ujson.Arr("a"))
+          )
+        )
+      )
+    )
+    java.nio.file.Files.writeString(
+      libCp,
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "buildTool" -> "sbt",
+          "modules" -> ujson.Arr(
+            ujson.Obj("id" -> "lib", "baseDir" -> "modules/lib", "classpath" -> ujson.Arr("b"))
+          )
+        )
+      )
+    )
+
+    val files = Mcp.discoverClasspathMetadata(root)
+    assertEquals(files.toSet, Set(appCp, libCp))
+    val resolved = Mcp.resolveClasspath(None, root).getOrElse(fail("classpath not discovered"))
+    assertEquals(resolved.modules.map(_.id).toSet, Set("app", "lib"))
+  }
+
+  test("resolveClasspath allows module metadata paths outside the root") {
+    val root = java.nio.file.Files.createTempDirectory("ss-discover-external-root-cp").nn
+    val parent = root.getParent.nn
+    val external =
+      java.nio.file.Files.createTempDirectory(parent, "ss-discover-external-module-cp").nn
+    val rootMetadata = root.resolve(".scala-semantic").nn
+    java.nio.file.Files.createDirectories(rootMetadata)
+    java.nio.file.Files.createDirectories(external.resolve(".scala-semantic"))
+    val relativeExternal = root.relativize(external).toString
+    val cpFile = external.resolve(".scala-semantic").resolve("classpath.json").nn
+    java.nio.file.Files.writeString(
+      rootMetadata.resolve("modules.json"),
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "modules" -> ujson.Arr(
+            ujson.Obj(
+              "name" -> "external",
+              "path_from_root" -> relativeExternal,
+              "path_to_out_dir" -> "missing-out"
+            )
+          )
+        )
+      )
+    )
+    java.nio.file.Files.writeString(
+      cpFile,
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "modules" -> ujson.Arr(
+            ujson.Obj(
+              "id" -> "external",
+              "baseDir" -> relativeExternal,
+              "classpath" -> ujson.Arr(s"$relativeExternal/classes")
+            )
+          )
+        )
+      )
+    )
+
+    val files = Mcp.discoverClasspathMetadata(root)
+    assertEquals(files.toList, List(cpFile))
+    val resolved = Mcp.resolveClasspath(None, root).getOrElse(fail("classpath not discovered"))
+    assertEquals(resolved.modules.map(_.id).toList, List("external"))
+  }
+
+  test("resolveClasspath terminates module metadata cycles and deduplicates classpath files") {
+    val root = java.nio.file.Files.createTempDirectory("ss-discover-module-cycle-cp").nn
+    val rootMetadata = root.resolve(".scala-semantic").nn
+    val child = root.resolve("modules").resolve("app").nn
+    java.nio.file.Files.createDirectories(rootMetadata)
+    java.nio.file.Files.createDirectories(child.resolve(".scala-semantic"))
+    val cpFile = child.resolve(".scala-semantic").resolve("classpath.json").nn
+    java.nio.file.Files.writeString(
+      rootMetadata.resolve("modules.json"),
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "modules" -> ujson.Arr(
+            ujson.Obj(
+              "name" -> "app-a",
+              "path_from_root" -> "modules/app",
+              "path_to_out_dir" -> "modules/app"
+            ),
+            ujson.Obj(
+              "name" -> "app-b",
+              "pathFromRoot" -> "modules/app",
+              "pathToOutDir" -> "modules/app"
+            )
+          )
+        )
+      )
+    )
+    java.nio.file.Files.writeString(
+      child.resolve(".scala-semantic").resolve("modules.json"),
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "modules" -> ujson.Arr(
+            ujson.Obj("name" -> "root", "path_from_root" -> ".", "path_to_out_dir" -> ".")
+          )
+        )
+      )
+    )
+    java.nio.file.Files.writeString(
+      cpFile,
+      ujson.write(
+        ujson.Obj(
+          "schemaVersion" -> 1,
+          "modules" -> ujson.Arr(
+            ujson.Obj("id" -> "app", "baseDir" -> "modules/app", "classpath" -> ujson.Arr("a"))
+          )
+        )
+      )
+    )
+
+    val files = Mcp.discoverClasspathMetadata(root)
+    assertEquals(files.toList, List(cpFile))
+  }
+
   test("resolveClasspath discovers submodule metadata without entering hidden directories") {
     val root = java.nio.file.Files.createTempDirectory("ss-discover-sub-cp").nn
     val sub = root.resolve("modules").resolve("app").nn

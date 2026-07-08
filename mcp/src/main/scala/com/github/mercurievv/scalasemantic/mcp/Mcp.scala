@@ -458,45 +458,81 @@ object Mcp:
   private[mcp] def discoverClasspathMetadata(rootPath: Path): Vector[Path] =
     val root = rootPath.toAbsolutePath.normalize().nn
     val direct = classpathMetadataFilesIn(root)
-    if direct.nonEmpty then direct
-    else
-      val maxDepth = 8
-      val maxDirs = 2000
-      def loop(
-          queue: Vector[(Path, Int)],
-          seen: Set[Path],
-          visited: Int,
-          found: Vector[Path]
-      ): Vector[Path] =
-        queue.headOption match
-          case None                               => found.distinct
-          case Some((_, _)) if visited >= maxDirs => found.distinct
-          case Some((dir, depth))                 =>
-            val nextFound =
-              if depth > 0 then found ++ classpathMetadataFilesIn(dir)
-              else found
-            val children =
-              if depth >= maxDepth then Vector.empty
-              else
-                scala.util
-                  .Try {
-                    scala.util.Using.resource(Files.list(dir)) { stream =>
-                      stream.iterator().asScala.toVector
-                    }
-                  }
-                  .getOrElse(Vector.empty)
-            val nextChildren = children
-              .filter(p => Files.isDirectory(p) && shouldSearchDirectory(p))
-              .map(_.toAbsolutePath.normalize().nn)
-              .filterNot(seen.contains)
-            loop(
-              queue.drop(1) ++ nextChildren.map(_ -> (depth + 1)),
-              seen ++ nextChildren,
-              visited + 1,
-              nextFound
-            )
+    val structured = discoverClasspathMetadataFromModules(root)
+    val discovered = (direct ++ structured).distinct
+    if discovered.nonEmpty then discovered else scanVisibleClasspathMetadata(root)
 
-      loop(Vector(root -> 0), Set(root), 0, Vector.empty)
+  private def discoverClasspathMetadataFromModules(root: Path): Vector[Path] =
+    val maxDepth = 16
+    val maxDirs = 5000
+    def loop(
+        queue: Vector[(Path, Int)],
+        seenDirs: Set[Path],
+        seenFiles: Set[Path],
+        visited: Int,
+        found: Vector[Path]
+    ): Vector[Path] =
+      queue.headOption match
+        case None                               => found
+        case Some((_, _)) if visited >= maxDirs => found
+        case Some((dir, depth))                 =>
+          val classpathFiles = classpathMetadataFilesIn(dir)
+          val nextFiles = moduleMetadataFilesIn(dir).filterNot(seenFiles.contains)
+          val childDirs =
+            if depth >= maxDepth then Vector.empty
+            else nextFiles.flatMap(moduleMetadataDirs(_, root))
+          val nextDirs = childDirs
+            .map(_.toAbsolutePath.normalize().nn)
+            .filter(Files.isDirectory(_))
+            .filterNot(seenDirs.contains)
+          loop(
+            queue.drop(1) ++ nextDirs.map(_ -> (depth + 1)),
+            seenDirs ++ nextDirs,
+            seenFiles ++ nextFiles,
+            visited + 1,
+            found ++ classpathFiles
+          )
+
+    loop(Vector(root -> 0), Set(root), Set.empty, 0, Vector.empty).distinct
+
+  private def scanVisibleClasspathMetadata(root: Path): Vector[Path] =
+    val maxDepth = 8
+    val maxDirs = 2000
+    def loop(
+        queue: Vector[(Path, Int)],
+        seen: Set[Path],
+        visited: Int,
+        found: Vector[Path]
+    ): Vector[Path] =
+      queue.headOption match
+        case None                               => found.distinct
+        case Some((_, _)) if visited >= maxDirs => found.distinct
+        case Some((dir, depth))                 =>
+          val nextFound =
+            if depth > 0 then found ++ classpathMetadataFilesIn(dir)
+            else found
+          val children =
+            if depth >= maxDepth then Vector.empty
+            else
+              scala.util
+                .Try {
+                  scala.util.Using.resource(Files.list(dir)) { stream =>
+                    stream.iterator().asScala.toVector
+                  }
+                }
+                .getOrElse(Vector.empty)
+          val nextChildren = children
+            .filter(p => Files.isDirectory(p) && shouldSearchDirectory(p))
+            .map(_.toAbsolutePath.normalize().nn)
+            .filterNot(seen.contains)
+          loop(
+            queue.drop(1) ++ nextChildren.map(_ -> (depth + 1)),
+            seen ++ nextChildren,
+            visited + 1,
+            nextFound
+          )
+
+    loop(Vector(root -> 0), Set(root), 0, Vector.empty)
 
   private def classpathMetadataFilesIn(dir: Path): Vector[Path] =
     val metadataDir = dir.resolve(".scala-semantic").nn
@@ -521,6 +557,31 @@ object Mcp:
           }
           .getOrElse(Vector.empty)
       (preferred ++ millFragments).distinct
+
+  private def moduleMetadataFilesIn(dir: Path): Vector[Path] =
+    val metadataDir = dir.resolve(".scala-semantic").nn
+    if !Files.isDirectory(metadataDir) then Vector.empty
+    else
+      Vector(
+        "modules-sbt.json",
+        "modules-mill.json",
+        "modules-scala-cli.json",
+        "modules.json"
+      ).map(metadataDir.resolve(_).nn).filter(p => Files.isRegularFile(p)).distinct
+
+  private def moduleMetadataDirs(path: Path, rootPath: Path): Vector[Path] =
+    scala.util
+      .Try {
+        val json = ujson.read(Files.readString(path))
+        json("modules").arr.toVector.flatMap { module =>
+          val obj = module.obj
+          Vector(
+            obj.get("path_from_root").orElse(obj.get("pathFromRoot")).map(_.str),
+            obj.get("path_to_out_dir").orElse(obj.get("pathToOutDir")).map(_.str)
+          ).flatten.map(resolvePath(_, rootPath))
+        }
+      }
+      .getOrElse(Vector.empty)
 
   private def shouldSearchDirectory(path: Path): Boolean =
     val name = path.getFileName.toString
