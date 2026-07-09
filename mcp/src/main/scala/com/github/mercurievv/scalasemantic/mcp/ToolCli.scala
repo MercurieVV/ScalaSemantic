@@ -1,9 +1,11 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
-import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
-import java.nio.file.{Files, Paths}
+import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+
+import java.nio.file.Files
+import java.nio.file.Paths
 
 object ToolCli:
   def main(args: Array[String]): Unit =
