@@ -76,6 +76,24 @@ println("```")
 
 ---
 
+### method_signature
+
+> **Answers:** The full resolved signature of a method — including the `(using ...)` / implicit parameter lists that are written once at the definition and never at the call sites.
+
+The `render` calls in the source read `render(List(1, 2, 3))` — the `Show` instance is invisible there. The signature makes the whole contract explicit.
+
+```scala mdoc:passthrough
+println("```json")
+println(scalasemantic.docs.ToolRunner.run(
+  "method_signature",
+  """{"symbol":"com/github/mercurievv/scalasemantic/docexamples/Enrich$package.render()."}"""))
+println("```")
+```
+
+**Replaces:** Reading the definition and hand-tracing the implicit list → one resolved signature.
+
+---
+
 ### document_outline
 
 > **Answers:** File outline with compiler-rendered signatures (compiler names, not source text).
@@ -109,6 +127,42 @@ println("```")
 ```
 
 **Replaces:** Hand type inference → compiler's answer.
+
+---
+
+### resolve_implicits
+
+> **Answers:** Which given/implicit definitions can produce a wanted type — the search the compiler does at every implicit parameter, which text search cannot do.
+
+For `Show[_]`, two givens qualify: `intShow` directly and `listShow` (itself parameterized on another `Show`).
+
+```scala mdoc:passthrough
+println("```json")
+println(scalasemantic.docs.ToolRunner.run(
+  "resolve_implicits",
+  """{"type":"com/github/mercurievv/scalasemantic/docexamples/Show#"}"""))
+println("```")
+```
+
+**Replaces:** Guessing which given applies → the compiler's candidate set.
+
+---
+
+### trace_implicit_chain
+
+> **Answers:** The givens that produce a type **and the implicits they transitively pull in** — implicit resolution followed step by step.
+
+`listShow` produces `Show[List[A]]` only by depending on a `Show[A]`; the chain makes that dependency explicit.
+
+```scala mdoc:passthrough
+println("```json")
+println(scalasemantic.docs.ToolRunner.run(
+  "trace_implicit_chain",
+  """{"type":"com/github/mercurievv/scalasemantic/docexamples/Show#"}"""))
+println("```")
+```
+
+**Replaces:** Manually following each given's own implicit needs → the whole chain.
 
 ---
 
@@ -202,6 +256,60 @@ println("```")
 
 ---
 
+### call_path
+
+> **Answers:** Whether method A reaches method B, and the exact call chain that connects them.
+
+`pipeline` never calls `process` directly, but reaches it through `compose` and `transform`. The tool returns the shortest path and the call-site of every edge.
+
+```scala mdoc:passthrough
+println("```json")
+println(scalasemantic.docs.ToolRunner.run(
+  "call_path",
+  """{"from":"com/github/mercurievv/scalasemantic/docexamples/Navigate$package.pipeline().","to":"com/github/mercurievv/scalasemantic/docexamples/Processor#process().","detailed":true}"""))
+println("```")
+```
+
+**Replaces:** Manually reading through call sites to prove reachability.
+
+---
+
+### method_call_hierarchy
+
+> **Answers:** The transitive callers (incoming) or callees (outgoing) of a method, as a tree.
+
+Outgoing from `pipeline`: `compose`, then the two `transform` calls, then `process` — the whole fan-out in one call.
+
+```scala mdoc:passthrough
+println("```json")
+println(scalasemantic.docs.ToolRunner.run(
+  "method_call_hierarchy",
+  """{"symbol":"com/github/mercurievv/scalasemantic/docexamples/Navigate$package.pipeline().","direction":"callees"}"""))
+println("```")
+```
+
+**Replaces:** Opening each callee in turn to build the tree by hand.
+
+---
+
+### value_flow
+
+> **Answers:** How a value propagates through the code — following it across method boundaries into renamed parameters, and classifying where it ends up.
+
+The `input` parameter of `pipeline` flows into `compose`'s `input`, then `transform`'s `input`, then `process`'s `x` — a rename at every hop that text search cannot follow.
+
+```scala mdoc:passthrough
+println("```json")
+println(scalasemantic.docs.ToolRunner.run(
+  "value_flow",
+  """{"file":"docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala","line":19,"column":13}"""))
+println("```")
+```
+
+**Replaces:** Manually chasing a value through renamed parameters across files.
+
+---
+
 ### rename_plan
 
 > **Answers:** Exact character ranges to rewrite for a safe rename.
@@ -287,3 +395,62 @@ println("```")
 ```
 
 **Replaces:** Manual code review for duplication.
+
+---
+
+## Tools on modified code
+
+The tools above read the last compiled SemanticDB. But ScalaSemantic can also answer against a buffer that was **edited but never recompiled**: pass the current file text as `source` and the presentation compiler regenerates the analysis in memory. This is what makes the tools correct on a dirty working buffer.
+
+Below, the only change to `Enrich.scala` is a new `prefix: String` using-parameter on `render`:
+
+```diff
+-def render[A](a: A)(using sh: Show[A]): String =
+-  sh.show(a)
++def render[A](a: A)(using sh: Show[A], prefix: String): String =
++  prefix + sh.show(a)
+```
+
+The three tabs run `method_signature` on the same `render` symbol: against the committed index, against the unmodified file through the presentation compiler (proving the two agree), and against the edited buffer — which reports the new parameter **without any recompile**.
+
+<Tabs>
+<TabItem value="db" label="DB (committed)" default>
+
+```scala mdoc:passthrough
+println("```json")
+println(scalasemantic.docs.ToolRunner.run(
+  "method_signature",
+  """{"symbol":"com/github/mercurievv/scalasemantic/docexamples/Enrich$package.render()."}"""))
+println("```")
+```
+
+</TabItem>
+<TabItem value="pc-same" label="PC (same code)">
+
+```scala mdoc:passthrough
+println("```json")
+println(scalasemantic.docs.ToolRunner.runWithSource(
+  "method_signature",
+  """{"symbol":"com/github/mercurievv/scalasemantic/docexamples/Enrich$package.render()."}""",
+  "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+  "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"))
+println("```")
+```
+
+</TabItem>
+<TabItem value="pc-mod" label="PC (modified)">
+
+```scala mdoc:passthrough
+println("```json")
+println(scalasemantic.docs.ToolRunner.runWithSource(
+  "method_signature",
+  """{"symbol":"com/github/mercurievv/scalasemantic/docexamples/Enrich$package.render()."}""",
+  "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+  "docExamples/edited/Enrich_modified.scala"))
+println("```")
+```
+
+</TabItem>
+</Tabs>
+
+**Replaces:** Recompiling just to ask a question about half-finished code.
