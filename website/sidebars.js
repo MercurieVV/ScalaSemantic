@@ -67,6 +67,11 @@ const sidebars = {
           id: 'usage/examples',
           label: 'Examples',
         },
+        {
+          type: 'doc',
+          id: 'usage/tool-examples',
+          label: 'Tool Examples (Real Output)',
+        },
       ],
     },
     {

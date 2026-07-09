@@ -458,6 +458,17 @@ object mcp extends Common with PublishModule with BuildInfo {
 }
 
 // ---------------------------------------------------------------------------------------------
+// doc-examples — fixture sources for real tool-examples documentation. Warts OFF, unpublished.
+// SemanticDB emitted for indexing, no runtime dependency.
+// ---------------------------------------------------------------------------------------------
+object docExamples extends Common {
+  def id = "doc-examples"
+  override def useWartremover = false
+  // Relax strict warnings to allow illustrative unused code in fixtures.
+  override def scalacOptions =
+    super.scalacOptions().filterNot(o => o == "-Werror" || o.startsWith("-Wunused"))
+}
+
 // compat-fixtures — cross-compiled 2.13.16 + 3.3.4, emits golden SemanticDB. Warts OFF, unpublished.
 // ---------------------------------------------------------------------------------------------
 object compatFixtures extends Cross[CompatModule](V.compatScala)
@@ -505,13 +516,24 @@ trait CompatModule extends SbtModule with Cross.Module[String] {
 
 // ---------------------------------------------------------------------------------------------
 // docs — mdoc *library* (no sbt-mdoc for sbt 2.0). Standalone, Scala 3.3.4, forked run.
+// ToolRunner shells out to ToolCli jar, needs os-lib and upickle (both 3.3-published).
 // ---------------------------------------------------------------------------------------------
 object docs extends SbtModule {
   def scalaVersion = "3.3.4"
   def moduleDir = build.moduleDir / "mdoc-docs"
-  def mvnDeps = Seq(mvn"org.scalameta::mdoc:2.9.0")
+  def mvnDeps = Seq(
+    mvn"org.scalameta::mdoc:2.9.0",
+    mvn"com.lihaoyi::os-lib:0.11.3",
+    mvn"com.lihaoyi::upickle:4.4.3"
+  )
   // build.sbt passes -Dscalasemantic.docs.version=<latestReleaseVersion> and forks from repo root.
-  def forkArgs = Seq(s"-Dscalasemantic.docs.version=${latestReleaseVersion()}")
+  def forkArgs = Task {
+    Seq(
+      s"-Dscalasemantic.docs.version=${latestReleaseVersion()}",
+      s"-Dscalasemantic.docs.toolCliJar=${mcp.assembly().path}",
+      s"-Dscalasemantic.docs.indexDir=${docExamples.compile().classes.path}"
+    )
+  }
   def forkWorkingDir = build.moduleDir
 }
 
