@@ -22,7 +22,7 @@ object PolymorphicCalls {
 // here (not a separate vendored file) since it exists solely to give this call-path fixture
 // something to dispatch through.
 object RichExtensions {
-  implicit class RichString(val s: String) extends AnyVal {
+  implicit class RichString(private val s: String) extends AnyVal {
     def shout: String = s.toUpperCase()
   }
 }
