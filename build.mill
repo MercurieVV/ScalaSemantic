@@ -302,8 +302,11 @@ object mcp extends Common with PublishModule with BuildInfo {
   override def resources = super[BuildInfo].resources
 
   // build.sbt `mcp % "compile->compile;test->test"` — mcp tests depend on analysis tests.
+  // Also depends on `docExamples` (compile-order only, not used at runtime) so its SemanticDB is
+  // guaranteed emitted before DocsToolExamplesGoldenSuite/DocsEnrichingExamplesGoldenSuite scan the
+  // whole-project index for it — mirrors why analysis.test is a dep for the `fixtures` package.
   object test extends CommonTests {
-    def moduleDeps = super.moduleDeps ++ Seq(analysis.test)
+    def moduleDeps = super.moduleDeps ++ Seq(analysis.test, docExamples)
   }
 
   // assembly / fat jar (sbt-assembly). Port of the merge strategy.
@@ -499,13 +502,15 @@ trait CompatModule
 // docs — mdoc *library* (no sbt-mdoc for sbt 2.0). Standalone, forked run, same Scala version as
 // the rest of the project (see the scala3-compiler override below — mdoc's own transitive
 // compiler dep would otherwise pin fences to Scala 3.3 LTS regardless of `scalaVersion` here).
-// ToolRunner still shells out to the ToolCli jar rather than linking `analysis`/`mcp` in-process
-// — that's a design choice (keeps fence output = real assembly-jar output), not a TASTy
-// limitation anymore.
+// ToolRunner calls `mcp` in-process (a real moduleDep below) instead of shelling to the assembly
+// jar — same code path the MCP server itself runs, just without a JVM spin-up per fence. The
+// packaged jar's own correctness (manifest, entrypoint, shading) is covered by mcp's own tests,
+// not by this doc build.
 // ---------------------------------------------------------------------------------------------
 object docs extends SbtModule with ScalafixConfigured with mill.scalalib.scalafmt.ScalafmtModule {
   def scalaVersion = V.scala3
   def moduleDir = build.moduleDir / "mdoc-docs"
+  def moduleDeps = Seq(mcp)
   // OrganizeImports/RemoveUnused (scalafix) require -Wunused enabled to have anything to check.
   def scalacOptions = super.scalacOptions() ++ Seq("-Wunused:all")
   def mvnDeps = Seq(
@@ -522,7 +527,6 @@ object docs extends SbtModule with ScalafixConfigured with mill.scalalib.scalafm
   def forkArgs = Task {
     Seq(
       s"-Dscalasemantic.docs.version=${latestReleaseVersion()}",
-      s"-Dscalasemantic.docs.toolCliJar=${mcp.assembly().path}",
       s"-Dscalasemantic.docs.indexDir=${docExamples.compile().classes.path}"
     )
   }

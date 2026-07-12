@@ -1,9 +1,9 @@
 /** Renders the mdoc documentation for the Docusaurus microsite. The sbt-mdoc plugin has no sbt 2.0
   * build, so we drive the mdoc library directly: it compiles + executes the Scala fences in the
   * Markdown under `docs`, then writes the result into `website/docs`. So every snippet's output is
-  * real and the docs cannot rot. (mdoc's snippet compiler does not support the main build's Scala
-  * version, so this `docs` module is standalone and the snippets are illustrative rather than
-  * in-process analyzer calls — see docs/DESIGN.md.)
+  * real and the docs cannot rot. `ToolRunner` (in this module) calls the `mcp` module in-process —
+  * this `docs` module is standalone only because mdoc's own transitive compiler dep must be pinned
+  * to the main build's Scala version (see the `scala3-compiler` override in build.mill).
   *
   * Usage: `sbt docs/run` (regenerate), or `sbt "docs/run --watch"` (live).
   */

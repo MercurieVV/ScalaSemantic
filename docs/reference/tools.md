@@ -52,4 +52,4 @@ Use `find_symbol` to resolve a human name to its symbol; use `type_at_position` 
 
 ## Request shape
 
-MCP clients call tools automatically. For manual stdio checks, direct integrations, and full request/response JSON examples for every tool, see [Examples](../usage/examples.md).
+MCP clients call tools automatically. For manual stdio checks, direct integrations, and full request/response JSON examples for every tool, see [Tool Examples](../usage/tool-examples.md).

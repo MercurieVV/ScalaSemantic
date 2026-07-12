@@ -1,8 +1,6 @@
 # Tool Examples — Real Output, Self-Verifying
 
-Every tool example on this page is **executed at docs build time** by the real Scala 3.8.4 analyzer. No hand-written JSON; if the tool call fails, the docs build fails. This page cannot rot.
-
-Tools that show the compiler's enriched view of source code (inferred types, resolved implicits, signatures) have moved to their own page: **[Enriching Tools](./enriching-tools.md)**, with a source-vs-enriched diff view.
+Every tool example on this page is **executed at docs build time** by the real Scala 3.8.4 analyzer — no hand-written JSON. If a tool call fails, the docs build fails, so this page cannot rot. Each example's exact tool/args/result triple is also pinned as a golden-file test in the `mcp` module (`DocsToolExamplesGoldenSuite` / `DocsEnrichingExamplesGoldenSuite`), so a change to tool output shows up as a reviewable diff there too, not just a silent docs rebuild.
 
 ## Quick reference
 
@@ -22,7 +20,7 @@ Tools that show the compiler's enriched view of source code (inferred types, res
 | `extract_method_plan` | Extract a code range into a method |
 | `structure` | Dependency graph and cycles |
 | `smart_code_duplications` | Structurally identical blocks |
-| **Enriching tools** ([separate page](./enriching-tools.md)) | |
+| **Enriching tools** | |
 | `annotated_source` | Compiler-visible facts and inferred types |
 | `method_signature` | Full signature with implicit/using params |
 | `document_outline` | File structure with compiler-rendered names |
@@ -36,9 +34,7 @@ These tools return precise semantic answers — a symbol, a usage set, a hierarc
 
 ### find_symbol
 
-```scala mdoc:passthrough
-println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("find_symbol"))
-```
+**Answers:** resolve a name to its definition.
 
 Grep `transform` returns 5+ matches across comments and strings. `find_symbol` returns 1 definition.
 
@@ -54,9 +50,7 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 ### class_hierarchy
 
-```scala mdoc:passthrough
-println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("class_hierarchy"))
-```
+**Answers:** supertypes and subtypes.
 
 ```scala mdoc:passthrough
 val procSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"Processor"}""")
@@ -71,9 +65,7 @@ println(scalasemantic.docs.ToolRunner.runPretty("class_hierarchy", s"""{"symbol"
 
 ### find_overloads
 
-```scala mdoc:passthrough
-println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("find_overloads"))
-```
+**Answers:** all overloads of a method.
 
 ```scala mdoc:passthrough
 val fmtSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"format"}""")
@@ -88,9 +80,7 @@ println(scalasemantic.docs.ToolRunner.runPretty("find_overloads", s"""{"symbol":
 
 ### find_usages
 
-```scala mdoc:passthrough
-println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("find_usages"))
-```
+**Answers:** all references to a symbol.
 
 ```scala mdoc:passthrough
 val useSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"transform"}""")
@@ -105,9 +95,7 @@ println(scalasemantic.docs.ToolRunner.runPretty("find_usages", s"""{"symbol":"$u
 
 ### members
 
-```scala mdoc:passthrough
-println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("members"))
-```
+**Answers:** declared and inherited members.
 
 ```scala mdoc:passthrough
 val memSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"UpperProcessor"}""")
@@ -122,9 +110,7 @@ println(scalasemantic.docs.ToolRunner.runPretty("members", s"""{"symbol":"$memSy
 
 ### call_path
 
-```scala mdoc:passthrough
-println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("call_path"))
-```
+**Answers:** whether method A reaches method B.
 
 `pipeline` never calls `process` directly, but reaches it through `compose` and `transform`. The tool returns the shortest path and the call-site of every edge.
 
@@ -140,9 +126,7 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 ### method_call_hierarchy
 
-```scala mdoc:passthrough
-println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("method_call_hierarchy"))
-```
+**Answers:** all callers or callees.
 
 Outgoing from `pipeline`: `compose`, then the two `transform` calls, then `process` — the whole fan-out in one call.
 
@@ -158,9 +142,7 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 ### value_flow
 
-```scala mdoc:passthrough
-println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("value_flow"))
-```
+**Answers:** trace a value through the call graph.
 
 The `input` parameter of `pipeline` flows into `compose`'s `input`, then `transform`'s `input`, then `process`'s `x` — a rename at every hop that text search cannot follow.
 
@@ -176,9 +158,7 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 ### rename_plan
 
-```scala mdoc:passthrough
-println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("rename_plan"))
-```
+**Answers:** edit ranges for a safe rename.
 
 The tool returns exact line and character ranges for every reference. No over-matching strings or comments.
 
@@ -195,9 +175,7 @@ println(scalasemantic.docs.ToolRunner.runPretty("rename_plan", s"""{"symbol":"$r
 
 ### move_plan
 
-```scala mdoc:passthrough
-println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("move_plan"))
-```
+**Answers:** move a symbol to a new package.
 
 ```scala mdoc:passthrough
 val movSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"calculateTotal"}""")
@@ -212,9 +190,7 @@ println(scalasemantic.docs.ToolRunner.runPretty("move_plan", s"""{"symbol":"$mov
 
 ### extract_method_plan
 
-```scala mdoc:passthrough
-println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("extract_method_plan"))
-```
+**Answers:** extract a code range into a method.
 
 The tool analyzes the range, identifies local variables and scope, returns exact edits.
 
@@ -230,9 +206,7 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 ### structure
 
-```scala mdoc:passthrough
-println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("structure"))
-```
+**Answers:** dependency graph and cycles.
 
 A snapshot of entire dependency structure in one call.
 
@@ -246,9 +220,7 @@ println(scalasemantic.docs.ToolRunner.runPretty("structure", "{}"))
 
 ### smart_code_duplications
 
-```scala mdoc:passthrough
-println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("smart_code_duplications"))
-```
+**Answers:** structurally identical blocks.
 
 The tool finds structural duplicates (same pattern, different names), ignoring syntactic noise.
 
@@ -264,4 +236,180 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 ## Enriching tools
 
-Moved to their own page: **[Enriching Tools](./enriching-tools.md)** — covers `annotated_source`, `method_signature`, `document_outline`, `type_at_position`, `resolve_implicits`, `trace_implicit_chain`, and the presentation-compiler tools on modified/dirty buffers, with a source-vs-enriched diff view.
+These tools show the LLM what the compiler sees but the source text does not — inferred types, synthesized implicit arguments and conversions, resolved signatures. Every example below runs against the same source file, executed at docs build time by the real Scala 3.8.4 analyzer.
+
+### Source under analysis
+
+`Enrich.scala` — a small typeclass (`Show`), two `given` instances, and two calls to a generic `render` method that hides its resolved implicit argument. Read straight from the fixture file the tool calls below actually analyze, so this block can never drift from what's shown as "Original" further down.
+
+```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+println(s"```scala\n${scalasemantic.docs.ToolRunner.readSource(enrichPath)}\n```")
+```
+
+None of the `(using ...)` arguments or inferred return types above are written in the source — the tools below make them visible.
+
+### annotated_source
+
+**Answers:** compiler-visible facts and inferred types.
+
+The compiler injects `(using intShow)` and `(using listShow(...))` into the `render` calls, and infers the return type `: String` on the `out` and `num` bindings — none visible in source text.
+
+```scala mdoc:passthrough
+val annotatedArgs =
+  s"""{"uri":"$enrichPath","format":"compilable","annotationsOnly":false}"""
+val annotatedRaw = scalasemantic.docs.ToolRunner.run("annotated_source", annotatedArgs)
+println(scalasemantic.docs.ToolRunner.requestMarkdown("annotated_source", annotatedArgs))
+```
+
+<div className="row">
+<div className="col col--6">
+
+**Original**
+
+```scala mdoc:passthrough
+println(s"```scala\n${scalasemantic.docs.ToolRunner.readSource(enrichPath)}\n```")
+```
+
+</div>
+<div className="col col--6">
+
+**Enriched (compiler view)**
+
+```scala mdoc:passthrough
+println(s"```scala\n${scalasemantic.docs.ToolRunner.extractField(annotatedRaw, "source")}\n```")
+```
+
+</div>
+</div>
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.detailsMarkdown(annotatedRaw, annotatedArgs))
+```
+
+**Replaces:** Reading 15 lines of source → 10 lines with compiler-visible facts.
+
+---
+
+### method_signature
+
+**Answers:** full signature with implicit/using params.
+
+The `render` calls in the source read `render(List(1, 2, 3))` — the `Show` instance is invisible there. The signature makes the whole contract explicit.
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "method_signature",
+  """{"symbol":"com/github/mercurievv/scalasemantic/docexamples/Enrich$package.render()."}"""))
+```
+
+**Replaces:** Reading the definition and hand-tracing the implicit list → one resolved signature.
+
+---
+
+### document_outline
+
+**Answers:** file structure with compiler-rendered names.
+
+The tool returns a tree with compiler-rendered names instead of a text scan. For a 50-line file, the outline is 5–10 lines; for 1000 lines, still manageable.
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty("document_outline", s"""{"uri":"$enrichPath"}"""))
+```
+
+**Replaces:** Scanning files → structured outline.
+
+---
+
+### type_at_position
+
+**Answers:** type of code at a source location.
+
+No inference needed by hand; the tool returns the exact type the compiler assigned. For complex generics and implicit resolution, invaluable.
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "type_at_position", s"""{"uri":"$enrichPath","line":14,"character":6}"""))
+```
+
+**Replaces:** Hand type inference → compiler's answer.
+
+---
+
+### resolve_implicits
+
+**Answers:** which givens/implicits apply.
+
+For `Show[_]`, two givens qualify: `intShow` directly and `listShow` (itself parameterized on another `Show`).
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "resolve_implicits",
+  """{"type":"com/github/mercurievv/scalasemantic/docexamples/Show#"}"""))
+```
+
+**Replaces:** Guessing which given applies → the compiler's candidate set.
+
+---
+
+### trace_implicit_chain
+
+**Answers:** path of implicit dependencies.
+
+`listShow` produces `Show[List[A]]` only by depending on a `Show[A]`; the chain makes that dependency explicit.
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "trace_implicit_chain",
+  """{"type":"com/github/mercurievv/scalasemantic/docexamples/Show#"}"""))
+```
+
+**Replaces:** Manually following each given's own implicit needs → the whole chain.
+
+---
+
+### Tools on modified code
+
+The tools above read the last compiled SemanticDB. But ScalaSemantic can also answer against a buffer that was **edited but never recompiled**: pass the current file text as `source` and the presentation compiler regenerates the analysis in memory. This is what makes the tools correct on a dirty working buffer.
+
+Below, the only change to `Enrich.scala` is a new `prefix: String` using-parameter on `render`:
+
+```diff
+-def render[A](a: A)(using sh: Show[A]): String =
+-  sh.show(a)
++def render[A](a: A)(using sh: Show[A], prefix: String): String =
++  prefix + sh.show(a)
+```
+
+`method_signature` runs on the same `render` symbol, with the same arguments, three ways: against the committed index, against the unmodified file through the presentation compiler (proving the two agree), and against the edited buffer — which reports the new parameter **without any recompile**.
+
+```scala mdoc:passthrough
+val modSigArgs =
+  """{"symbol":"com/github/mercurievv/scalasemantic/docexamples/Enrich$package.render()."}"""
+println(scalasemantic.docs.ToolRunner.requestMarkdown("method_signature", modSigArgs))
+```
+
+**DB (committed)**
+
+```scala mdoc:passthrough
+val dbRaw = scalasemantic.docs.ToolRunner.run("method_signature", modSigArgs)
+println(s"```scala\n${scalasemantic.docs.ToolRunner.extractField(dbRaw, "signature")}\n```")
+```
+
+**PC (same code)**
+
+```scala mdoc:passthrough
+val pcSameRaw = scalasemantic.docs.ToolRunner.runWithSource(
+  "method_signature", modSigArgs, enrichPath, enrichPath)
+println(s"```scala\n${scalasemantic.docs.ToolRunner.extractField(pcSameRaw, "signature")}\n```")
+```
+
+**PC (modified)**
+
+```scala mdoc:passthrough
+val pcModRaw = scalasemantic.docs.ToolRunner.runWithSource(
+  "method_signature", modSigArgs, enrichPath, "docExamples/edited/Enrich_modified.scala")
+println(s"```scala\n${scalasemantic.docs.ToolRunner.extractField(pcModRaw, "signature")}\n```")
+```
+
+**Replaces:** Recompiling just to ask a question about half-finished code.

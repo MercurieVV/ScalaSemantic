@@ -1,14 +1,29 @@
 package scalasemantic.docs
 
-/** Runs a real ScalaSemantic tool by shelling to the 3.8.4 assembly jar and returns its exact JSON.
-  * Paths come from system properties set by DocsMain (see build.mill forkArgs). Used from mdoc
-  * fences, so it must depend only on os-lib and upickle (3.3-compatible). Any non-zero exit throws
-  * → the docs build fails loudly.
+import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.{McpTools, Tool}
+import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
+import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+
+import java.nio.file.{Files, Path, Paths}
+
+/** Runs a real ScalaSemantic tool in the same JVM as the mdoc fence (no subprocess) and returns its
+  * exact JSON. Paths come from system properties set by DocsMain (see build.mill forkArgs). The mcp
+  * module is a direct compile dependency of this module (see `docs.moduleDeps` in build.mill), so
+  * `tool.run(args)` here is the identical code path the MCP server itself calls — the packaged
+  * assembly jar's own correctness is covered by mcp's own tests, not this page.
   */
 object ToolRunner:
-  private def jar = sys.props("scalasemantic.docs.toolCliJar")
-  private def index = sys.props("scalasemantic.docs.indexDir")
-  private def root = sys.props.getOrElse("scalasemantic.docs.root", ".")
+  private def indexDir = sys.props("scalasemantic.docs.indexDir")
+  private def root: Path = Paths.get(sys.props.getOrElse("scalasemantic.docs.root", "."))
+
+  private lazy val index = SemanticIndex.fromRoots(Seq(Paths.get(indexDir)))
+  private lazy val baseTools: List[Tool] = McpTools.all(Analyzer(index), root)
+
+  private def toolByName(tools: List[Tool], name: String): Tool =
+    tools
+      .find(_.name == name)
+      .getOrElse(sys.error(s"unknown tool: $name (have: ${tools.map(_.name).mkString(",")})"))
 
   /** Field names whose value is source-code-shaped even on a single line (no embedded `\n`), so
     * they're always pulled into their own fenced `scala` block by [[resultMarkdown]] instead of
@@ -17,79 +32,20 @@ object ToolRunner:
   private val codeFields = Set("source", "signature")
 
   def run(tool: String, args: String): String =
-    os
-      .proc(
-        "java",
-        "-cp",
-        jar,
-        "com.github.mercurievv.scalasemantic.mcp.ToolCli",
-        "--index",
-        index,
-        "--root",
-        root,
-        "--tool",
-        tool,
-        "--args",
-        args
-      )
-      .call(check = true)
-      .out
-      .text()
-      .trim
+    ujson.write(toolByName(baseTools, tool).run(ujson.read(args)), indent = 2)
 
-  /** Modified-buffer variant: passes the edited file text + its uri. */
-  def runWithSource(tool: String, args: String, uri: String, sourcePath: String): String =
-    os
-      .proc(
-        "java",
-        "-cp",
-        jar,
-        "com.github.mercurievv.scalasemantic.mcp.ToolCli",
-        "--index",
-        index,
-        "--root",
-        root,
-        "--tool",
-        tool,
-        "--args",
-        args,
-        "--uri",
-        uri,
-        "--source",
-        sourcePath
-      )
-      .call(check = true)
-      .out
-      .text()
-      .trim
-
-  /** Every tool's own `description` field — the same string an MCP client sees via `tools/list` —
-    * fetched with ONE subprocess call and cached for the life of the doc build, instead of a
-    * hand-maintained blurb that can drift, and instead of spawning a fresh JVM per tool (this doc
-    * set alone has ~20 tool sections; that many extra JVM spin-ups per build is unnecessary load).
+  /** Modified-buffer variant: passes the edited file text + its uri through the presentation
+    * compiler, exactly as ToolCli's `--source` branch does.
     */
-  private lazy val descriptions: Map[String, String] =
-    val raw = os
-      .proc(
-        "java",
-        "-cp",
-        jar,
-        "com.github.mercurievv.scalasemantic.mcp.ToolCli",
-        "--index",
-        index,
-        "--root",
-        root,
-        "--tool",
-        "*",
-        "--describe"
-      )
-      .call(check = true)
-      .out
-      .text()
-      .trim
-    ujson.read(raw).arr.map(o => o("name").str -> o("description").str).toMap
-
-  def describe(tool: String): String = descriptions(tool)
+  def runWithSource(tool: String, args: String, uri: String, sourcePath: String): String =
+    val sourceText = new String(Files.readAllBytes(Paths.get(sourcePath)))
+    val argsJson = ujson.read(args)
+    argsJson("source") = sourceText
+    argsJson("uri") = uri
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+      val tools = McpTools.all(Analyzer(index, Some(backend)), root)
+      ujson.write(toolByName(tools, tool).run(argsJson), indent = 2)
+    }
 
   /** Reads a fixture file relative to the docs root — the same file a tool call's `uri`/`source`
     * argument points at, so a "source under analysis" block and a tool's own output are always
@@ -106,10 +62,11 @@ object ToolRunner:
     * in a collapsed `<details>` so the extracted code stays the visually primary content.
     */
   def runPretty(tool: String, args: String): String =
-    requestMarkdown(tool, args) + "\n\n" + resultMarkdown(run(tool, args))
+    requestMarkdown(tool, args) + "\n\n" + resultMarkdown(args, run(tool, args))
 
   def runWithSourcePretty(tool: String, args: String, uri: String, sourcePath: String): String =
     requestMarkdown(tool, args) + "\n\n" + resultMarkdown(
+      args,
       runWithSource(tool, args, uri, sourcePath)
     )
 
@@ -144,22 +101,26 @@ object ToolRunner:
   /** Collapsed `<details>` block with the raw JSON, eliding fields already shown elsewhere (e.g. as
     * an extracted code block via [[extractField]]) so nothing is printed twice.
     */
-  def detailsMarkdown(raw: String, elideFields: Seq[String] = Nil): String =
-    val parsed = ujson.read(raw)
-    val elided = ujson.Obj.from(parsed.obj.toSeq.map { case (k, v) =>
-      if elideFields.contains(k) then k -> ujson.Str("(shown above)") else k -> v
-    })
-    val redactedJson = ujson.write(elided, indent = 2)
+  def detailsMarkdown(input: String, output: String): String =
+    val inputJson = ujson.write(ujson.read(input), indent = 2)
+    val outputJson = ujson.write(ujson.read(output), indent = 2)
+
     s"""<details>
        |<summary>Raw JSON</summary>
        |
+       |Arguments:
        |```json
-       |$redactedJson
+       |$inputJson
+       |```
+       |
+       |Result:
+       |```json
+       |$outputJson
        |```
        |
        |</details>""".stripMargin
 
-  private def resultMarkdown(raw: String): String =
+  private def resultMarkdown(args: String, raw: String): String =
     val parsed = ujson.read(raw)
     val codeLikeFields = parsed.obj.toSeq.collect {
       case (k, ujson.Str(v)) if v.contains("\n") || codeFields.contains(k) =>
@@ -170,4 +131,4 @@ object ToolRunner:
       val codeBlocks = codeLikeFields
         .map { case (k, v) => s"**`$k`:**\n\n```scala\n$v\n```" }
         .mkString("\n\n")
-      s"$codeBlocks\n\n${detailsMarkdown(raw, codeLikeFields.map(_._1))}"
+      s"$codeBlocks\n\n${detailsMarkdown(args, raw)}"

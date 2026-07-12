@@ -196,7 +196,7 @@ printf '%s\n' \
 
 Expect four JSON-RPC responses on stdout. The `initialize` response carries an `instructions` field; `find_symbol` turns `"Animal"` into the symbol string that `class_hierarchy` then uses.
 
-Next, use the [Tool reference](../reference/tools.md) for the full tool list and [Examples](../usage/examples.md) for worked requests.
+Next, use the [Tool reference](../reference/tools.md) for the full tool list and [Tool Examples](../usage/tool-examples.md) for worked requests.
 
 ## Classpath Metadata & Migration from Flat Classpath
 
