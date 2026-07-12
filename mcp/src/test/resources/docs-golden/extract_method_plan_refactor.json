@@ -1,0 +1,21 @@
+{
+  "tool": "extract_method_plan",
+  "args": {
+    "uri": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Refactor.scala",
+    "startLine": 5,
+    "startCharacter": 20,
+    "endLine": 8,
+    "endCharacter": 9
+  },
+  "result": {
+    "uri": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Refactor.scala",
+    "enclosingMethod": "calculateTotal",
+    "signature": "def extracted($anon: ?, Nat_this: Zero.type): Unit",
+    "call": "extracted($anon, Nat_this)",
+    "parameters": [
+      "$anon: ?",
+      "Nat_this: Zero.type"
+    ],
+    "returnType": "Unit"
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "tool": "value_flow",
+  "args": {
+    "file": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala",
+    "line": 19,
+    "column": 13
+  },
+  "result": {
+    "root": {
+      "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.pipeline().(input)",
+      "name": "input",
+      "type": "String",
+      "at": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:19:13",
+      "depth": 0,
+      "enclosingMethod": "pipeline",
+      "kind": "PARAMETER"
+    },
+    "nodes": [
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.pipeline().(input)",
+        "name": "input",
+        "type": "String",
+        "at": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:19:13",
+        "depth": 0,
+        "enclosingMethod": "pipeline",
+        "kind": "PARAMETER"
+      },
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.compose().(input)",
+        "name": "input",
+        "type": "String",
+        "at": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:16:42",
+        "depth": 1,
+        "enclosingMethod": "compose",
+        "kind": "PARAMETER"
+      },
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.transform().(input)",
+        "name": "input",
+        "type": "String",
+        "at": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:13:28",
+        "depth": 2,
+        "enclosingMethod": "transform",
+        "kind": "PARAMETER"
+      },
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Processor#process().(x)",
+        "name": "x",
+        "type": "String",
+        "at": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:3:14",
+        "depth": 3,
+        "enclosingMethod": "process",
+        "kind": "PARAMETER"
+      }
+    ],
+    "edges": [
+      {
+        "from": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.pipeline().(input)",
+        "to": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.compose().(input)",
+        "relation": "passed_as_arg",
+        "at": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:22:22",
+        "paramName": "input",
+        "coParameters": [
+          "p1",
+          "p2"
+        ]
+      },
+      {
+        "from": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.compose().(input)",
+        "to": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.transform().(input)",
+        "relation": "passed_as_arg",
+        "at": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:17:30",
+        "paramName": "input",
+        "coParameters": [
+          "p"
+        ]
+      },
+      {
+        "from": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.transform().(input)",
+        "to": "com/github/mercurievv/scalasemantic/docexamples/Processor#process().(x)",
+        "relation": "passed_as_arg",
+        "at": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:14:12",
+        "paramName": "x"
+      }
+    ],
+    "stoppedAt": [
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Processor#process().(x)",
+        "classification": "discarded",
+        "at": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:3:14"
+      }
+    ]
+  }
+}

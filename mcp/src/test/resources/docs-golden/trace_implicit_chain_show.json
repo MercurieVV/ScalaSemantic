@@ -1,0 +1,22 @@
+{
+  "tool": "trace_implicit_chain",
+  "args": {
+    "type": "com/github/mercurievv/scalasemantic/docexamples/Show#"
+  },
+  "result": {
+    "type": "com/github/mercurievv/scalasemantic/docexamples/Show#",
+    "steps": [
+      {
+        "given": "intShow",
+        "type": "Show[Int]"
+      },
+      {
+        "given": "listShow",
+        "type": "Show[List[A]]",
+        "dependsOn": [
+          "com/github/mercurievv/scalasemantic/docexamples/Show#"
+        ]
+      }
+    ]
+  }
+}

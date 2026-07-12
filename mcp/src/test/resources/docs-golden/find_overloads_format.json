@@ -1,0 +1,14 @@
+{
+  "tool": "find_overloads",
+  "args": {
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/Overloading$package.format()."
+  },
+  "result": {
+    "name": "format",
+    "overloads": [
+      "def format(x: String): String",
+      "def format(x: Int): String",
+      "def format(x: Boolean): String"
+    ]
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "tool": "call_path",
+  "args": {
+    "from": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.pipeline().",
+    "to": "com/github/mercurievv/scalasemantic/docexamples/Processor#process().",
+    "detailed": true
+  },
+  "result": {
+    "from": "pipeline",
+    "to": "process",
+    "reachable": true,
+    "path": [
+      "pipeline",
+      "compose",
+      "transform",
+      "process"
+    ],
+    "edges": [
+      "pipeline->compose@docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:22:2",
+      "compose->transform@docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:17:2",
+      "transform->process@docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:14:4"
+    ]
+  }
+}

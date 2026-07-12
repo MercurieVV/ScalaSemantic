@@ -1,0 +1,10 @@
+{
+  "tool": "method_signature",
+  "args": {
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.render()."
+  },
+  "result": {
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.render().",
+    "signature": "def render[A](a: A)(implicit sh: Show[A]): String"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "tool": "method_call_hierarchy",
+  "args": {
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.pipeline().",
+    "direction": "callees"
+  },
+  "result": {
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.pipeline().",
+    "name": "pipeline",
+    "direction": "callees",
+    "depth": 3,
+    "hierarchy": {
+      "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.pipeline().",
+      "name": "pipeline",
+      "children": [
+        {
+          "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.compose().",
+          "name": "compose",
+          "at": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:22:2",
+          "children": [
+            {
+              "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.transform().",
+              "name": "transform",
+              "at": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:17:2",
+              "children": [
+                {
+                  "symbol": "com/github/mercurievv/scalasemantic/docexamples/Processor#process().",
+                  "name": "process",
+                  "at": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:14:4"
+                }
+              ]
+            },
+            {
+              "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.transform().",
+              "name": "transform",
+              "at": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:17:16",
+              "children": [
+                {
+                  "symbol": "com/github/mercurievv/scalasemantic/docexamples/Processor#process().",
+                  "name": "process",
+                  "at": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:14:4"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

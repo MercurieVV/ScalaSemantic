@@ -1,0 +1,17 @@
+{
+  "tool": "move_plan",
+  "args": {
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/Refactor$package.calculateTotal().",
+    "newOwner": "com/example/math/"
+  },
+  "result": {
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/Refactor$package.calculateTotal().",
+    "move": "com.github.mercurievv.scalasemantic.docexamples.Refactor$package..calculateTotal -> com.example.math.calculateTotal",
+    "definition": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Refactor.scala:2:4",
+    "referenceCount": 2,
+    "references": [
+      "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Refactor.scala:14:18",
+      "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Refactor.scala:15:18"
+    ]
+  }
+}

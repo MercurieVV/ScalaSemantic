@@ -1,0 +1,19 @@
+{
+  "tool": "resolve_implicits",
+  "args": {
+    "type": "com/github/mercurievv/scalasemantic/docexamples/Show#"
+  },
+  "result": {
+    "type": "com/github/mercurievv/scalasemantic/docexamples/Show#",
+    "candidates": [
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.intShow.",
+        "type": "Show[Int]"
+      },
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.listShow().",
+        "type": "Show[List[A]]"
+      }
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "tool": "find_usages",
+  "args": {
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.transform()."
+  },
+  "result": {
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.transform().",
+    "name": "transform",
+    "definitions": [
+      "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:13:4"
+    ],
+    "referenceCount": 2,
+    "references": [
+      "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:17:2",
+      "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:17:16"
+    ]
+  }
+}

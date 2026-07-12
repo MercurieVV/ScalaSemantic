@@ -1,0 +1,14 @@
+{
+  "tool": "members",
+  "args": {
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/UpperProcessor#"
+  },
+  "result": {
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/UpperProcessor#",
+    "name": "UpperProcessor",
+    "declared": [
+      "<init>",
+      "process"
+    ]
+  }
+}

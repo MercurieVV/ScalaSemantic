@@ -1,0 +1,83 @@
+{
+  "tool": "document_outline",
+  "args": {
+    "uri": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+  },
+  "result": {
+    "uri": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+    "outline": [
+      {
+        "name": "Show",
+        "kind": "TRAIT",
+        "line": 2,
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show#",
+        "children": [
+          {
+            "name": "show",
+            "kind": "METHOD",
+            "line": 3,
+            "signature": "def show(a: A): String",
+            "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show#show()."
+          }
+        ]
+      },
+      {
+        "name": "intShow",
+        "kind": "OBJECT",
+        "line": 5,
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.intShow.",
+        "children": [
+          {
+            "name": "show",
+            "kind": "METHOD",
+            "line": 6,
+            "signature": "def show(a: Int): String",
+            "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.intShow.show()."
+          }
+        ]
+      },
+      {
+        "name": "sh",
+        "kind": "METHOD",
+        "line": 8,
+        "signature": ": Show[A]",
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.listShow#sh."
+      },
+      {
+        "name": "listShow",
+        "kind": "METHOD",
+        "line": 8,
+        "signature": "def listShow[A](implicit sh: Show[A]): listShow[A]",
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.listShow()."
+      },
+      {
+        "name": "show",
+        "kind": "METHOD",
+        "line": 9,
+        "signature": "def show(a: List[A]): String",
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.listShow#show()."
+      },
+      {
+        "name": "render",
+        "kind": "METHOD",
+        "line": 11,
+        "signature": "def render[A](a: A)(implicit sh: Show[A]): String",
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.render()."
+      },
+      {
+        "name": "out",
+        "kind": "METHOD",
+        "line": 14,
+        "signature": ": String",
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.out."
+      },
+      {
+        "name": "num",
+        "kind": "METHOD",
+        "line": 15,
+        "signature": ": String",
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.num."
+      }
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "tool": "class_hierarchy",
+  "args": {
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/Processor#"
+  },
+  "result": {
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/Processor#",
+    "name": "Processor",
+    "parents": [
+      "Object"
+    ],
+    "linearization": [
+      "Object"
+    ],
+    "knownSubtypes": [
+      "ReverseProcessor",
+      "UpperProcessor"
+    ]
+  }
+}

@@ -521,7 +521,21 @@ object docs extends SbtModule with ScalafixConfigured with mill.scalalib.scalafm
     // this module's own scalaVersion so mdoc's fence compiler and the module's own classpath
     // agree — without this, coursier leaves both scala3-library versions on the classpath and
     // dotc errors with "package scala contains object and package with same name: caps".
-    mvn"org.scala-lang::scala3-compiler:${V.scala3}"
+    mvn"org.scala-lang::scala3-compiler:${V.scala3}",
+    // mdoc_3:2.9.0's OWN markdown-fence parser is implemented against scalameta's classic 2.13
+    // build (`scalameta_2.13:4.16.0`, not the `_3` cross-build `mcp` pulls in at `V.scalameta`) —
+    // a real, separate artifact coursier won't version-unify on its own. Left alone, both
+    // `trees_2.13:4.16.0` and `trees_3:${V.scalameta}` end up on the runtime classpath defining
+    // overlapping `scala.meta.internal.trees.*` classes at different binary revisions, and
+    // whichever the classloader hits first for a given class wins — surfacing as
+    // `NoSuchMethodError` deep in mdoc's parser (e.g. `XtensionOriginTree.hasComments`). Forcing
+    // the 2.13 artifacts up to the same release coursier already picks for `trees2_2.13`/
+    // `common2_2.13`/`io_2.13` (visible as "4.16.0 -> 4.17.0" in `docs.showMvnDepsTree`) unifies
+    // every scalameta jar on one version, whichever build gets loaded first.
+    mvn"org.scalameta:scalameta_2.13:${V.scalameta}",
+    mvn"org.scalameta:parsers_2.13:${V.scalameta}",
+    mvn"org.scalameta:trees_2.13:${V.scalameta}",
+    mvn"org.scalameta:common_2.13:${V.scalameta}"
   )
   // build.sbt passes -Dscalasemantic.docs.version=<latestReleaseVersion> and forks from repo root.
   def forkArgs = Task {

@@ -1,0 +1,17 @@
+{
+  "tool": "rename_plan",
+  "args": {
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.transform().",
+    "newName": "apply"
+  },
+  "result": {
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.transform().",
+    "rename": "transform -> apply",
+    "editCount": 3,
+    "edits": [
+      "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:13:4-13",
+      "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:17:2-11",
+      "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:17:16-25"
+    ]
+  }
+}
