@@ -87,6 +87,8 @@ object ToolRunner:
       case _ => "*(no parameters)*"
     s"""**Request:** `$tool`
        |
+       |**Arguments:**
+       |
        |$argLines""".stripMargin
 
   private def prettyMarkdown(tool: String, args: String, raw: String): String =

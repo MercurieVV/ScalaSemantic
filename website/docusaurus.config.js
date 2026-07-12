@@ -3,6 +3,8 @@
 // `npm install && npm run build` (or `npm start` to preview).
 // @ts-check
 
+const { themes: prismThemes } = require('prism-react-renderer');
+
 const ORG = 'MercurieVV';
 const REPO = 'ScalaSemantic';
 const SITE = `https://mercurievv.github.io/${REPO}/`;
@@ -102,6 +104,15 @@ const config = {
       footer: {
         style: 'dark',
         copyright: 'ScalaSemantic — MIT licensed.',
+      },
+      // Prism's default bundle omits Scala (and diff, used for the before/after snippet on the
+      // enriching-tools page) — must be opted in explicitly or those fences render unhighlighted.
+      prism: {
+        theme: prismThemes.github,
+        darkTheme: prismThemes.dracula,
+        // 'scala' extends the 'java' grammar, so 'java' must load first or Prism throws trying to
+        // extend an undefined language.
+        additionalLanguages: ['java', 'scala', 'diff', 'json'],
       },
     }),
 };
