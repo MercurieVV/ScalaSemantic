@@ -63,11 +63,13 @@ object ToolRunner:
       .text()
       .trim
 
-  /** The tool's own `description` field — the same string an MCP client sees via `tools/list` —
-    * instead of a hand-maintained doc blurb that can drift from what the server actually reports.
+  /** Every tool's own `description` field — the same string an MCP client sees via `tools/list` —
+    * fetched with ONE subprocess call and cached for the life of the doc build, instead of a
+    * hand-maintained blurb that can drift, and instead of spawning a fresh JVM per tool (this doc
+    * set alone has ~20 tool sections; that many extra JVM spin-ups per build is unnecessary load).
     */
-  def describe(tool: String): String =
-    os
+  private lazy val descriptions: Map[String, String] =
+    val raw = os
       .proc(
         "java",
         "-cp",
@@ -78,13 +80,16 @@ object ToolRunner:
         "--root",
         root,
         "--tool",
-        tool,
+        "*",
         "--describe"
       )
       .call(check = true)
       .out
       .text()
       .trim
+    ujson.read(raw).arr.map(o => o("name").str -> o("description").str).toMap
+
+  def describe(tool: String): String = descriptions(tool)
 
   /** Reads a fixture file relative to the docs root — the same file a tool call's `uri`/`source`
     * argument points at, so a "source under analysis" block and a tool's own output are always
