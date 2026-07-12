@@ -1,0 +1,61 @@
+name: Deploy docs site
+
+# Renders the mdoc docs, builds the Docusaurus site, and deploys to GitHub Pages, on every push to
+# master — including docs/website/mdoc-docs-only changes. Split out of ci.yml (which skips those
+# paths via paths-ignore to avoid the full build/test/verify suite on doc-only commits) so a
+# doc-only merge still redeploys the live site instead of silently going stale.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: docs-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs-site:
+    name: Publish docs site (GitHub Pages)
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write # deploy to Pages
+      id-token: write # OIDC token the deploy-pages action requires
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so `publishVersion`/`latestReleaseVersion` derive from tags
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Cache coursier + Mill
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/coursier
+            ~/.cache/mill/download
+          key: mill-${{ runner.os }}-${{ hashFiles('build.mill', '.mill-version') }}
+          restore-keys: |
+            mill-${{ runner.os }}-
+      - name: Generate release notes page from tags
+        run: scripts/gen-release-notes.sh # writes docs/RELEASE_NOTES.md (gitignored, build-time only)
+      - name: Render docs with mdoc
+        run: ./mill docs.run # writes executed Markdown into website/docs
+      - name: Build Docusaurus site
+        working-directory: website
+        run: |
+          npm install
+          npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/build
+      - id: deployment
+        uses: actions/deploy-pages@v4
