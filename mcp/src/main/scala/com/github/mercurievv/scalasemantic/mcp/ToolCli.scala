@@ -28,15 +28,15 @@ object ToolCli:
         .getOrElse(sys.error(s"unknown tool: $toolName (have: ${tools.map(_.name).mkString(",")})"))
       ujson.write(tool.run(args), indent = 2)
 
-    // `--describe` short-circuits before running the tool: callers pull each tool's live
-    // `description` (the same string an MCP client sees via `tools/list`) instead of a
-    // hand-maintained blurb that can drift from what the server actually reports.
+    // `--describe` short-circuits before running any tool and dumps EVERY tool's live
+    // `description` (the same string an MCP client sees via `tools/list`) as one JSON array, in one
+    // subprocess call — instead of a hand-maintained blurb that can drift from what the server
+    // actually reports, and instead of one JVM spin-up per tool (multiplies badly across a doc
+    // build with dozens of tool sections).
     if m.contains("describe") then
       val tools = McpTools.all(Analyzer(index), root)
-      val tool = tools
-        .find(_.name == toolName)
-        .getOrElse(sys.error(s"unknown tool: $toolName (have: ${tools.map(_.name).mkString(",")})"))
-      println(tool.description)
+      val descriptions = tools.map(t => ujson.Obj("name" -> t.name, "description" -> t.description))
+      println(ujson.write(ujson.Arr(descriptions*), indent = 2))
     else
       val output = m.get("source") match
         case Some(sourcePath) =>
