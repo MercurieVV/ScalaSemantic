@@ -1,11 +1,14 @@
 package scalasemantic.docs
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
-import com.github.mercurievv.scalasemantic.mcp.{McpTools, Tool}
+import com.github.mercurievv.scalasemantic.mcp.McpTools
+import com.github.mercurievv.scalasemantic.mcp.Tool
 import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
 
 /** Runs a real ScalaSemantic tool in the same JVM as the mdoc fence (no subprocess) and returns its
   * exact JSON. Paths come from system properties set by DocsMain (see build.mill forkArgs). The mcp
