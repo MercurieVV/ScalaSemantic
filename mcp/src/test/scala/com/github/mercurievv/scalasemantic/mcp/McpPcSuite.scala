@@ -104,8 +104,22 @@ class McpPcSuite extends munit.FunSuite:
     @SuppressWarnings(Array("org.wartremover.warts.Null"))
     def compileExternal(): Unit =
       val javac = javax.tools.ToolProvider.getSystemJavaCompiler
-      assert(javac != null, "launcher smoke requires a JDK with javac")
-      assertEquals(javac.run(null, null, null, "-d", libClasses.toString, external.toString), 0)
+      assert(
+        javac != null,
+        "launcher smoke requires a JDK with javac"
+      ) // scalafix:ok DisableSyntax.null
+      assertEquals(
+        // in/out/err null means "use System.in/out/err" per javax.tools.JavaCompiler#run's contract.
+        javac.run(
+          null,
+          null,
+          null,
+          "-d",
+          libClasses.toString,
+          external.toString
+        ), // scalafix:ok DisableSyntax.null
+        0
+      )
 
     compileExternal()
 

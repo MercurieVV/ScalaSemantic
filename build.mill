@@ -1,7 +1,7 @@
 //| mvnDeps:
 //| - com.guardsquare:proguard-base:7.9.1
 //| - com.lihaoyi::mill-contrib-buildinfo:$MILL_VERSION
-//| - ch.epfl.scala:scalafix-interfaces:0.14.3
+//| - com.goyeau::mill-scalafix::0.6.0
 //| bspScriptIgnore: [scripts/**, .scala-build/**]
 // scripts/scalasemantic-mcp.scala is a scala-cli script (own `//> using dep`, own .bsp/scala-cli.json
 // connection) — NOT a Mill module. Without bspScriptIgnore above, Mill's BSP support walks the
@@ -18,8 +18,7 @@ import mill.*
 import mill.scalalib.*
 import mill.scalalib.publish.*
 import mill.contrib.buildinfo.BuildInfo
-import scalafix.interfaces.{Scalafix, ScalafixMainMode}
-import scala.jdk.CollectionConverters.*
+import com.goyeau.mill.scalafix.ScalafixModule
 
 // ---------------------------------------------------------------------------------------------
 // Shared versions (were `lazy val`s in build.sbt)
@@ -48,7 +47,15 @@ def munitDeps = Seq(
 // scalacPluginMvnDeps and pass its traverser flags as scalacOptions. The main/test split (strict
 // warts as ERRORS in Compile, dropped in Test) is done by overriding scalacOptions in `object test`.
 // ---------------------------------------------------------------------------------------------
-trait Common extends SbtModule {
+// Shared scalafix wiring (com.goyeau::mill-scalafix, NOT scalafix-interfaces directly) — mixed into
+// every first-party module (via `Common`, and standalone into `docs`) so `m.fix("--check")`/`m.fix()`
+// work uniformly and modules can be discovered reflectively (see `checkScalafixFirstParty`).
+trait ScalafixConfigured extends ScalafixModule {
+  def scalafixConfig = Task(Some(build.moduleDir / ".scalafix.conf"))
+  def scalafixIvyDeps = Seq(mvn"org.typelevel::typelevel-scalafix:0.5.0")
+}
+
+trait Common extends SbtModule with ScalafixConfigured with mill.scalalib.scalafmt.ScalafmtModule {
   def id: String
   def scalaVersion = V.scala3
 
@@ -139,43 +146,6 @@ trait Common extends SbtModule {
     cp
   }
 
-  // scalafix via scalafix-interfaces (a stable, Maven-Central-published embedding API), NOT the
-  // mill-scalafix plugin — that plugin has no mill1.x build and breaks build.mill entirely if
-  // imported (see docs/MILL_MIGRATION.md §2). scalafix-interfaces fetches its own scalafix-core
-  // via coursier at task-run time (network required on first run, then cached).
-  def scalafixCheck: T[Unit] = Task {
-    compile()
-    val cp = runClasspath().map(_.path.toNIO).asJava
-    val sources = allSourceFiles().map(_.path.toNIO).asJava
-    val scalafix = Scalafix.fetchAndClassloadInstance(V.scala3)
-    val args = scalafix
-      .newArguments()
-      .withRules(
-        Seq(
-          "OrganizeImports",
-          "DisableSyntax",
-          "LeakingImplicitClassVal",
-          "NoValInForComprehension",
-          "RemoveUnused",
-          "RedundantSyntax"
-        ).asJava
-      )
-      .withToolClasspath(
-        java.util.List.of[java.net.URL](),
-        Seq("org.typelevel::typelevel-scalafix:0.5.0").asJava
-      )
-      .withClasspath(cp)
-      .withSourceroot(build.moduleDir.toNIO)
-      .withConfig(java.util.Optional.of((build.moduleDir / ".scalafix.conf").toNIO))
-      .withPaths(sources)
-      .withScalaVersion(V.scala3)
-      .withScalacOptions(scalacOptions().asJava)
-      .withMode(ScalafixMainMode.CHECK)
-    val errors = args.run()
-    if (errors.nonEmpty)
-      sys.error(s"scalafix check failed in ${moduleDir}: ${errors.toSeq.mkString(", ")}")
-  }
-
   // One-off rewrite to native Scala 3 style (no `then`/`do`, brace->indentation). NOT wired into
   // scalacOptions: -rewrite mutates source files in place, so it must be run manually, its diff
   // reviewed, and committed — never on every normal compile/CI run.
@@ -211,7 +181,11 @@ trait Common extends SbtModule {
     if (rc2 != 0) sys.error(s"rewriteToScala3Style (-indent) failed in ${moduleDir} (exit $rc2)")
   }
 
-  trait CommonTests extends SbtTests with TestModule.Munit {
+  trait CommonTests
+      extends SbtTests
+      with TestModule.Munit
+      with ScalafixConfigured
+      with mill.scalalib.scalafmt.ScalafmtModule {
     def mvnDeps = munitDeps
     // Dogfood suites call SemanticIndex.fromProject(".") and scan for *.semanticdb from cwd. Mill
     // forks tests in the module dir by default, but the emitted SemanticDB (and every module's) lives
@@ -458,10 +432,27 @@ object mcp extends Common with PublishModule with BuildInfo {
 }
 
 // ---------------------------------------------------------------------------------------------
+// doc-examples — fixture sources for real tool-examples documentation. Warts OFF, unpublished.
+// SemanticDB emitted for indexing, no runtime dependency.
+// ---------------------------------------------------------------------------------------------
+object docExamples extends Common {
+  def id = "doc-examples"
+  override def useWartremover = false
+  // Relax strict warnings to allow illustrative unused code in fixtures. -Wunused itself stays
+  // (as a warning) because the OrganizeImports/RemoveUnused scalafix rules require it; only the
+  // -Werror escalation and the unused->error -Wconf rule are dropped.
+  override def scalacOptions =
+    super.scalacOptions().filterNot(o => o == "-Werror" || o.startsWith("-Wconf:msg=.*unused"))
+}
+
 // compat-fixtures — cross-compiled 2.13.16 + 3.3.4, emits golden SemanticDB. Warts OFF, unpublished.
 // ---------------------------------------------------------------------------------------------
 object compatFixtures extends Cross[CompatModule](V.compatScala)
-trait CompatModule extends SbtModule with Cross.Module[String] {
+trait CompatModule
+    extends SbtModule
+    with Cross.Module[String]
+    with ScalafixConfigured
+    with mill.scalalib.scalafmt.ScalafmtModule {
   def scalaVersion = crossValue
   def moduleDir = build.moduleDir / "compat-fixtures"
 
@@ -485,8 +476,9 @@ trait CompatModule extends SbtModule with Cross.Module[String] {
        else Nil)
   def scalacOptions = super.scalacOptions() ++
     (if (crossValue.startsWith("2."))
-       Seq("-Yrangepos", s"-P:semanticdb:sourceroot:${build.moduleDir}")
-     else Seq("-Xsemanticdb", "-sourceroot", build.moduleDir.toString))
+       // -Wunused: required by the OrganizeImports/RemoveUnused scalafix rules (see ScalafixConfigured).
+       Seq("-Yrangepos", s"-P:semanticdb:sourceroot:${build.moduleDir}", "-Wunused")
+     else Seq("-Xsemanticdb", "-sourceroot", build.moduleDir.toString, "-Wunused:all"))
 
   // build.sbt `compatGolden` — compile then copy emitted *.semanticdb into versioned golden resources.
   def compatGolden() = Task.Command {
@@ -504,14 +496,36 @@ trait CompatModule extends SbtModule with Cross.Module[String] {
 }
 
 // ---------------------------------------------------------------------------------------------
-// docs — mdoc *library* (no sbt-mdoc for sbt 2.0). Standalone, Scala 3.3.4, forked run.
+// docs — mdoc *library* (no sbt-mdoc for sbt 2.0). Standalone, forked run, same Scala version as
+// the rest of the project (see the scala3-compiler override below — mdoc's own transitive
+// compiler dep would otherwise pin fences to Scala 3.3 LTS regardless of `scalaVersion` here).
+// ToolRunner still shells out to the ToolCli jar rather than linking `analysis`/`mcp` in-process
+// — that's a design choice (keeps fence output = real assembly-jar output), not a TASTy
+// limitation anymore.
 // ---------------------------------------------------------------------------------------------
-object docs extends SbtModule {
-  def scalaVersion = "3.3.4"
+object docs extends SbtModule with ScalafixConfigured with mill.scalalib.scalafmt.ScalafmtModule {
+  def scalaVersion = V.scala3
   def moduleDir = build.moduleDir / "mdoc-docs"
-  def mvnDeps = Seq(mvn"org.scalameta::mdoc:2.9.0")
+  // OrganizeImports/RemoveUnused (scalafix) require -Wunused enabled to have anything to check.
+  def scalacOptions = super.scalacOptions() ++ Seq("-Wunused:all")
+  def mvnDeps = Seq(
+    mvn"org.scalameta::mdoc:2.9.0",
+    mvn"com.lihaoyi::os-lib:0.11.3",
+    mvn"com.lihaoyi::upickle:4.4.3",
+    // mdoc:2.9.0 transitively pulls scala3-compiler_3:3.3.7 (its LTS build). Force it to match
+    // this module's own scalaVersion so mdoc's fence compiler and the module's own classpath
+    // agree — without this, coursier leaves both scala3-library versions on the classpath and
+    // dotc errors with "package scala contains object and package with same name: caps".
+    mvn"org.scala-lang::scala3-compiler:${V.scala3}"
+  )
   // build.sbt passes -Dscalasemantic.docs.version=<latestReleaseVersion> and forks from repo root.
-  def forkArgs = Seq(s"-Dscalasemantic.docs.version=${latestReleaseVersion()}")
+  def forkArgs = Task {
+    Seq(
+      s"-Dscalasemantic.docs.version=${latestReleaseVersion()}",
+      s"-Dscalasemantic.docs.toolCliJar=${mcp.assembly().path}",
+      s"-Dscalasemantic.docs.indexDir=${docExamples.compile().classes.path}"
+    )
+  }
   def forkWorkingDir = build.moduleDir
 }
 
@@ -562,21 +576,27 @@ def compatGoldenAll() = Task.Command {
   Task.traverse(V.compatScala.map(v => compatFixtures(v).compatGolden()))(identity)()
 }
 
-// build.sbt `prePush` alias = `clean; scalafmtCheckAll; scalafixAll --check; Test/testOnly *;
-// compatGoldenAll; stainlessVerify`. Formatting is APPLIED by the pre-commit hook, so this only
-// VERIFIES it. scalafix runs via scalafix-interfaces (see `Common.scalafixCheck`), NOT the
-// mill-scalafix plugin — that plugin has no Mill-1.x build and breaks build.mill entirely if
-// imported (see docs/MILL_MIGRATION.md §2).
-// Scoped to the first-party modules, NOT `__.sources` — `compat-fixtures` and `corpus` intentionally
-// hold vendored/cross-version fixture sources (e.g. Scala-2-only procedure syntax, corpus files with
-// embedded annotation comments) that aren't ours to reformat and aren't valid under the repo-wide
-// `scala3` dialect anyway. Also invoked directly from the CI `Check formatting` step.
+// Formatting is APPLIED by the pre-commit hook, so this only VERIFIES it. Both this and
+// `checkScalafixFirstParty` below discover every module reflectively (via
+// `build.moduleInternal.modules`) instead of hardcoding the list, so new modules (and their `test`
+// submodules, and compatFixtures' cross-Scala-version instances) are picked up automatically — no
+// exclusions. Also invoked directly from the CI `Check formatting` step.
 def checkFormatFirstParty() = Task.Command {
   mill.scalalib.scalafmt.ScalafmtModule.checkFormatAll(
     mill.util.Tasks(
-      Seq(core, core.test, pc, pc.test, analysis, analysis.test, mcp, mcp.test).map(m => m.sources)
+      build.moduleInternal.modules.collect { case m: mill.scalalib.scalafmt.ScalafmtModule =>
+        m.sources
+      }
     )
   )()
+}
+
+// scalafix via com.goyeau::mill-scalafix (see `ScalafixConfigured`), NOT scalafix-interfaces
+// directly — same reflective-discovery pattern as `checkFormatFirstParty` above.
+def checkScalafixFirstParty() = Task.Command {
+  Task.traverse(
+    build.moduleInternal.modules.collect { case m: ScalafixModule => m }
+  )(_.fix("--check"))()
 }
 
 def smokeTest() = Task.Command {
@@ -597,15 +617,11 @@ def smokeTest() = Task.Command {
 
 def prePush() = Task.Command {
   checkFormatFirstParty()()
-  core.scalafixCheck()
-  pc.scalafixCheck()
-  analysis.scalafixCheck()
-  mcp.scalafixCheck()
+  checkScalafixFirstParty()()
   compatGoldenAll()()
-  core.test.testForked()()
-  pc.test.testForked()()
-  analysis.test.testForked()()
-  mcp.test.testForked()()
+  Task.traverse(
+    build.moduleInternal.modules.collect { case m: TestModule => m }
+  )(_.testForked())()
   analysis.stainlessVerify()()
   smokeTest()()
 }
