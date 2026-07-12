@@ -1,8 +1,5 @@
 # Enriching Tools — Compiler View vs. Source Text
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
 These tools show the LLM what the compiler sees but the source text does not — inferred types, synthesized implicit arguments and conversions, resolved signatures. Every example below runs against the same source file, executed at docs build time by the real Scala 3.8.4 analyzer.
 
 ## Source under analysis
@@ -167,10 +164,12 @@ Below, the only change to `Enrich.scala` is a new `prefix: String` using-paramet
 +  prefix + sh.show(a)
 ```
 
-The three tabs run `method_signature` on the same `render` symbol: against the committed index, against the unmodified file through the presentation compiler (proving the two agree), and against the edited buffer — which reports the new parameter **without any recompile**.
+`method_signature` on the same `render` symbol, three ways side by side: against the committed index, against the unmodified file through the presentation compiler (proving the two agree), and against the edited buffer — which reports the new parameter **without any recompile**.
 
-<Tabs>
-<TabItem value="db" label="DB (committed)" default>
+<div className="row">
+<div className="col col--4">
+
+**DB (committed)**
 
 ```scala mdoc:passthrough
 println(scalasemantic.docs.ToolRunner.runPretty(
@@ -178,8 +177,10 @@ println(scalasemantic.docs.ToolRunner.runPretty(
   """{"symbol":"com/github/mercurievv/scalasemantic/docexamples/Enrich$package.render()."}"""))
 ```
 
-</TabItem>
-<TabItem value="pc-same" label="PC (same code)">
+</div>
+<div className="col col--4">
+
+**PC (same code)**
 
 ```scala mdoc:passthrough
 println(scalasemantic.docs.ToolRunner.runWithSourcePretty(
@@ -189,8 +190,10 @@ println(scalasemantic.docs.ToolRunner.runWithSourcePretty(
   "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"))
 ```
 
-</TabItem>
-<TabItem value="pc-mod" label="PC (modified)">
+</div>
+<div className="col col--4">
+
+**PC (modified)**
 
 ```scala mdoc:passthrough
 println(scalasemantic.docs.ToolRunner.runWithSourcePretty(
@@ -200,7 +203,7 @@ println(scalasemantic.docs.ToolRunner.runWithSourcePretty(
   "docExamples/edited/Enrich_modified.scala"))
 ```
 
-</TabItem>
-</Tabs>
+</div>
+</div>
 
 **Replaces:** Recompiling just to ask a question about half-finished code.

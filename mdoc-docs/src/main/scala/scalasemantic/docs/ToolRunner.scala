@@ -69,16 +69,25 @@ object ToolRunner:
   def runWithSourcePretty(tool: String, args: String, uri: String, sourcePath: String): String =
     prettyMarkdown(tool, args, runWithSource(tool, args, uri, sourcePath))
 
-  /** `**Request:**` block rendering the tool name and its (pretty-printed) input params, shown
-    * ahead of the output so the reader sees what was asked before what was answered.
+  /** `**Request:**` block listing the tool name and its input params as plain `name: value` bullets
+    * (not a JSON blob — params are data, not code, so a formatted list reads faster), shown ahead
+    * of the output so the reader sees what was asked before what was answered.
     */
   private def requestMarkdown(tool: String, args: String): String =
-    val prettyArgs = scala.util.Try(ujson.write(ujson.read(args), indent = 2)).getOrElse(args)
+    val argLines = scala.util.Try(ujson.read(args)) match
+      case scala.util.Success(obj: ujson.Obj) if obj.obj.nonEmpty =>
+        obj.obj.toSeq
+          .map { case (k, v) =>
+            val value = v match
+              case ujson.Str(s) => s
+              case other        => ujson.write(other)
+            s"- **`$k`**: `$value`"
+          }
+          .mkString("\n")
+      case _ => "*(no parameters)*"
     s"""**Request:** `$tool`
        |
-       |```json
-       |$prettyArgs
-       |```""".stripMargin
+       |$argLines""".stripMargin
 
   private def prettyMarkdown(tool: String, args: String, raw: String): String =
     requestMarkdown(tool, args) + "\n\n" + resultMarkdown(raw)
