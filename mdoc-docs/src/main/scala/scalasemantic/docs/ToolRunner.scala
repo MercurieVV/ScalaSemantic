@@ -63,12 +63,27 @@ object ToolRunner:
     * those fields elided, since they're already shown above) follows in a collapsed `<details>` so
     * the extracted code stays the visually primary content.
     */
-  def runPretty(tool: String, args: String): String = prettyMarkdown(run(tool, args))
+  def runPretty(tool: String, args: String): String =
+    prettyMarkdown(tool, args, run(tool, args))
 
   def runWithSourcePretty(tool: String, args: String, uri: String, sourcePath: String): String =
-    prettyMarkdown(runWithSource(tool, args, uri, sourcePath))
+    prettyMarkdown(tool, args, runWithSource(tool, args, uri, sourcePath))
 
-  private def prettyMarkdown(raw: String): String =
+  /** `**Request:**` block rendering the tool name and its (pretty-printed) input params, shown
+    * ahead of the output so the reader sees what was asked before what was answered.
+    */
+  private def requestMarkdown(tool: String, args: String): String =
+    val prettyArgs = scala.util.Try(ujson.write(ujson.read(args), indent = 2)).getOrElse(args)
+    s"""**Request:** `$tool`
+       |
+       |```json
+       |$prettyArgs
+       |```""".stripMargin
+
+  private def prettyMarkdown(tool: String, args: String, raw: String): String =
+    requestMarkdown(tool, args) + "\n\n" + resultMarkdown(raw)
+
+  private def resultMarkdown(raw: String): String =
     val parsed = ujson.read(raw)
     val multilineFields = parsed.obj.toSeq.collect {
       case (k, ujson.Str(v)) if v.contains("\n") =>
