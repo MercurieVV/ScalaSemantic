@@ -72,6 +72,11 @@ const sidebars = {
           id: 'usage/tool-examples',
           label: 'Tool Examples (Real Output)',
         },
+        {
+          type: 'doc',
+          id: 'usage/enriching-tools',
+          label: 'Enriching Tools (Diff View)',
+        },
       ],
     },
     {
