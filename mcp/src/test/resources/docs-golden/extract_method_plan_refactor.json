@@ -10,11 +10,11 @@
   "result": {
     "uri": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Refactor.scala",
     "enclosingMethod": "calculateTotal",
-    "signature": "def extracted($anon: ?, Nat_this: Zero.type): Unit",
-    "call": "extracted($anon, Nat_this)",
+    "signature": "def extracted(tax: Double, total: Double): Unit",
+    "call": "extracted(tax, total)",
     "parameters": [
-      "$anon: ?",
-      "Nat_this: Zero.type"
+      "tax: Double",
+      "total: Double"
     ],
     "returnType": "Unit"
   }

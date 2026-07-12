@@ -5,16 +5,11 @@
   },
   "result": {
     "query": "transform",
-    "count": 2,
+    "count": 1,
     "symbols": [
       {
         "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.transform().",
         "name": "transform",
-        "kind": "METHOD"
-      },
-      {
-        "symbol": "com/github/mercurievv/scalasemantic/mcp/DocsToolExamplesGoldenSuite#Transform.",
-        "name": "Transform",
         "kind": "METHOD"
       }
     ]

@@ -4,12 +4,16 @@ import com.github.mercurievv.scalasemantic.analysis.Analyzer
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 import upickle.default.write
 
-import java.nio.file.{Files, Paths}
+import java.nio.file.Files
+import java.nio.file.Paths
 
 /** LOCKED — this is the source of truth for every tool call shown in `docs/usage/tool-examples.md`.
-  * The docs page renders these same tool/args pairs at build time via `ToolRunner`; this suite pins
-  * their JSON output as a committed golden file so a change to tool output is caught here, in a
-  * reviewable diff, instead of silently drifting from what the docs claim to show.
+  * The docs page renders these same tool/args pairs at build time via `ToolRunner`, which indexes
+  * ONLY `docExamples`' compiled classes (see `docs.forkArgs`'s `scalasemantic.docs.indexDir` in
+  * build.mill) — not the whole repo. This suite mirrors that exact index construction so its golden
+  * output matches the doc page byte for byte, and so whole-repo-scan tools (`structure`,
+  * `smart_code_duplications`) stay stable instead of drifting whenever an unrelated module
+  * compiles.
   *
   * Changing a golden file must go hand in hand with updating the matching example in
   * `docs/usage/tool-examples.md` — do not "fix" a failing test here by only regenerating the golden
@@ -25,7 +29,8 @@ class DocsToolExamplesGoldenSuite extends munit.FunSuite:
     scala.concurrent.duration.Duration("120s")
 
   private val root = Paths.get(".").toAbsolutePath.nn
-  private val tools = McpTools.all(Analyzer(SemanticIndex.fromProject(".")), root)
+  private val docExamplesClasses = Paths.get("out/docExamples/compile.dest/classes")
+  private val tools = McpTools.all(Analyzer(SemanticIndex.fromRoots(Seq(docExamplesClasses))), root)
 
   private def toolByName(name: String): Tool =
     tools.find(_.name == name).getOrElse(fail(s"unknown tool: $name"))
@@ -123,20 +128,12 @@ class DocsToolExamplesGoldenSuite extends munit.FunSuite:
       )
     )
 
-  // `structure` and `smart_code_duplications` scan the WHOLE project index (every module, every
-  // compat-fixture cross-build), not just the docExamples fixture the other cases target — their
-  // exact JSON shifts whenever ANY module's SemanticDB changes, unrelated to this doc page. Golden-
-  // locking the full output would make this suite fail on every unrelated compile, not on a real
-  // docs regression, so these two only assert the shape the doc page actually relies on.
-  test("structure() returns the whole-project dependency shape"):
-    val result = toolByName("structure").run(ujson.Obj())
-    assert(result.obj.contains("modules"), result)
-    assert(result.obj.contains("symbols"), result)
-    assert(result.obj.contains("cycles"), result)
-    assert(result("modules").arr.nonEmpty, "expected at least one module in structure()")
+  test("structure()"):
+    assertGolden("structure_all", "structure", ujson.Obj())
 
-  test("smart_code_duplications(minSize=15) finds structural duplicates"):
-    val result = toolByName("smart_code_duplications").run(ujson.Obj("minSize" -> 15))
-    assert(result.obj.contains("groupsCount"), result)
-    assert(result.obj.contains("groups"), result)
-    assert(result("groupsCount").num.toInt > 0, "expected at least one duplicate group")
+  test("smart_code_duplications(minSize=15)"):
+    assertGolden(
+      "smart_code_duplications_min15",
+      "smart_code_duplications",
+      ujson.Obj("minSize" -> 15)
+    )

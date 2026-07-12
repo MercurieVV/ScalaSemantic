@@ -4,7 +4,8 @@ import com.github.mercurievv.scalasemantic.analysis.Analyzer
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 import upickle.default.write
 
-import java.nio.file.{Files, Paths}
+import java.nio.file.Files
+import java.nio.file.Paths
 
 /** LOCKED — source of truth for the index-only tool calls shown in `docs/usage/tool-examples.md`'s
   * "Enriching tools" section, against the `Enrich.scala` fixture. See
@@ -19,7 +20,8 @@ import java.nio.file.{Files, Paths}
 class DocsEnrichingExamplesGoldenSuite extends munit.FunSuite:
 
   private val root = Paths.get(".").toAbsolutePath.nn
-  private val tools = McpTools.all(Analyzer(SemanticIndex.fromProject(".")), root)
+  private val docExamplesClasses = Paths.get("out/docExamples/compile.dest/classes")
+  private val tools = McpTools.all(Analyzer(SemanticIndex.fromRoots(Seq(docExamplesClasses))), root)
 
   private def toolByName(name: String): Tool =
     tools.find(_.name == name).getOrElse(fail(s"unknown tool: $name"))

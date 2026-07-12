@@ -1,0 +1,23 @@
+{
+  "tool": "smart_code_duplications",
+  "args": {
+    "minSize": 15
+  },
+  "result": {
+    "groupsCount": 1,
+    "groups": [
+      {
+        "occurrencesCount": 2,
+        "astNodeCount": 41,
+        "occurrences": [
+          {
+            "location": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Duplication.scala:2:0"
+          },
+          {
+            "location": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Duplication.scala:9:0"
+          }
+        ]
+      }
+    ]
+  }
+}
