@@ -28,19 +28,29 @@ object ToolCli:
         .getOrElse(sys.error(s"unknown tool: $toolName (have: ${tools.map(_.name).mkString(",")})"))
       ujson.write(tool.run(args), indent = 2)
 
-    val output = m.get("source") match
-      case Some(sourcePath) =>
-        val uri = m("uri")
-        val sourceText = new String(Files.readAllBytes(Paths.get(sourcePath)))
-        argsJson("source") = sourceText
-        argsJson("uri") = uri
-        PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
-          runTool(Analyzer(index, Some(backend)), argsJson)
-        }
-      case None =>
-        runTool(Analyzer(index), argsJson)
+    // `--describe` short-circuits before running the tool: callers pull each tool's live
+    // `description` (the same string an MCP client sees via `tools/list`) instead of a
+    // hand-maintained blurb that can drift from what the server actually reports.
+    if m.contains("describe") then
+      val tools = McpTools.all(Analyzer(index), root)
+      val tool = tools
+        .find(_.name == toolName)
+        .getOrElse(sys.error(s"unknown tool: $toolName (have: ${tools.map(_.name).mkString(",")})"))
+      println(tool.description)
+    else
+      val output = m.get("source") match
+        case Some(sourcePath) =>
+          val uri = m("uri")
+          val sourceText = new String(Files.readAllBytes(Paths.get(sourcePath)))
+          argsJson("source") = sourceText
+          argsJson("uri") = uri
+          PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+            runTool(Analyzer(index, Some(backend)), argsJson)
+          }
+        case None =>
+          runTool(Analyzer(index), argsJson)
 
-    println(output)
+      println(output)
 
   private def parse(args: Array[String]): Map[String, String] =
     def loop(idx: Int, acc: Map[String, String]): Map[String, String] =

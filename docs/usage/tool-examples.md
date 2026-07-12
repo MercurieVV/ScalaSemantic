@@ -36,7 +36,9 @@ These tools return precise semantic answers — a symbol, a usage set, a hierarc
 
 ### find_symbol
 
-> **Answers:** The symbol (definition and fully qualified name) for a plain name in code.
+```scala mdoc:passthrough
+println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("find_symbol"))
+```
 
 Grep `transform` returns 5+ matches across comments and strings. `find_symbol` returns 1 definition.
 
@@ -52,7 +54,9 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 ### class_hierarchy
 
-> **Answers:** The supertypes and subtypes of a class or trait.
+```scala mdoc:passthrough
+println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("class_hierarchy"))
+```
 
 ```scala mdoc:passthrough
 val procSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"Processor"}""")
@@ -67,7 +71,9 @@ println(scalasemantic.docs.ToolRunner.runPretty("class_hierarchy", s"""{"symbol"
 
 ### find_overloads
 
-> **Answers:** All overloads of a method.
+```scala mdoc:passthrough
+println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("find_overloads"))
+```
 
 ```scala mdoc:passthrough
 val fmtSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"format"}""")
@@ -82,7 +88,9 @@ println(scalasemantic.docs.ToolRunner.runPretty("find_overloads", s"""{"symbol":
 
 ### find_usages
 
-> **Answers:** All references to a symbol (exact, no over-matching comments or strings).
+```scala mdoc:passthrough
+println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("find_usages"))
+```
 
 ```scala mdoc:passthrough
 val useSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"transform"}""")
@@ -97,7 +105,9 @@ println(scalasemantic.docs.ToolRunner.runPretty("find_usages", s"""{"symbol":"$u
 
 ### members
 
-> **Answers:** All declared and inherited members of a class or trait.
+```scala mdoc:passthrough
+println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("members"))
+```
 
 ```scala mdoc:passthrough
 val memSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"UpperProcessor"}""")
@@ -112,7 +122,9 @@ println(scalasemantic.docs.ToolRunner.runPretty("members", s"""{"symbol":"$memSy
 
 ### call_path
 
-> **Answers:** Whether method A reaches method B, and the exact call chain that connects them.
+```scala mdoc:passthrough
+println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("call_path"))
+```
 
 `pipeline` never calls `process` directly, but reaches it through `compose` and `transform`. The tool returns the shortest path and the call-site of every edge.
 
@@ -128,7 +140,9 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 ### method_call_hierarchy
 
-> **Answers:** The transitive callers (incoming) or callees (outgoing) of a method, as a tree.
+```scala mdoc:passthrough
+println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("method_call_hierarchy"))
+```
 
 Outgoing from `pipeline`: `compose`, then the two `transform` calls, then `process` — the whole fan-out in one call.
 
@@ -144,7 +158,9 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 ### value_flow
 
-> **Answers:** How a value propagates through the code — following it across method boundaries into renamed parameters, and classifying where it ends up.
+```scala mdoc:passthrough
+println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("value_flow"))
+```
 
 The `input` parameter of `pipeline` flows into `compose`'s `input`, then `transform`'s `input`, then `process`'s `x` — a rename at every hop that text search cannot follow.
 
@@ -160,7 +176,9 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 ### rename_plan
 
-> **Answers:** Exact character ranges to rewrite for a safe rename.
+```scala mdoc:passthrough
+println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("rename_plan"))
+```
 
 The tool returns exact line and character ranges for every reference. No over-matching strings or comments.
 
@@ -177,7 +195,9 @@ println(scalasemantic.docs.ToolRunner.runPretty("rename_plan", s"""{"symbol":"$r
 
 ### move_plan
 
-> **Answers:** Exact edits to move a top-level symbol to a different package.
+```scala mdoc:passthrough
+println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("move_plan"))
+```
 
 ```scala mdoc:passthrough
 val movSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"calculateTotal"}""")
@@ -192,7 +212,9 @@ println(scalasemantic.docs.ToolRunner.runPretty("move_plan", s"""{"symbol":"$mov
 
 ### extract_method_plan
 
-> **Answers:** Edits to extract a code range into a new method.
+```scala mdoc:passthrough
+println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("extract_method_plan"))
+```
 
 The tool analyzes the range, identifies local variables and scope, returns exact edits.
 
@@ -208,7 +230,9 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 ### structure
 
-> **Answers:** Project-wide dependency graph, metrics, and cycles.
+```scala mdoc:passthrough
+println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("structure"))
+```
 
 A snapshot of entire dependency structure in one call.
 
@@ -222,7 +246,9 @@ println(scalasemantic.docs.ToolRunner.runPretty("structure", "{}"))
 
 ### smart_code_duplications
 
-> **Answers:** Structurally identical code blocks (not text-matched).
+```scala mdoc:passthrough
+println("> **Answers:** " + scalasemantic.docs.ToolRunner.describe("smart_code_duplications"))
+```
 
 The tool finds structural duplicates (same pattern, different names), ignoring syntactic noise.
 
