@@ -7,6 +7,14 @@
     "type": "com/github/mercurievv/scalasemantic/docexamples/Show#",
     "candidates": [
       {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Instances.doubleShow.",
+        "type": "Show[Double]"
+      },
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Instances.floatShow.",
+        "type": "Show[Float]"
+      },
+      {
         "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show.intShow.",
         "type": "Show[Int]"
       },

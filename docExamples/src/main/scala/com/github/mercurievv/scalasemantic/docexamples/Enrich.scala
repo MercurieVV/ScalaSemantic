@@ -29,7 +29,20 @@ def render[A: Show](a: A): String = Show[A].show(a)
 
 extension (n: Int) def shown(using Show[Int]): String = render(n)
 
+object Instances:
+  given doubleShow: Show[Double] with
+    def show(a: Double) = a.toString
+  given floatShow: Show[Float] with
+    def show(a: Float) = a.toString
+
+// wildcard `given` import: the givens enter scope with NO written name at the summon site — only
+// the symbols legend can say which given `render(3.14)` picked, and format=compilable explodes this
+// line to the explicit `import Instances.{doubleShow, floatShow}` of just the givens actually used
+import Instances.given
+
 val nums = List(1, 2, 3)
+val pi = render(3.14)
+val flo = render(1.0f)
 val out = render(nums)
 val sorted = nums.sorted
 val ranked = List("b" -> 2, "a" -> 1).sortBy(_._1)

@@ -7,6 +7,14 @@
     "type": "com/github/mercurievv/scalasemantic/docexamples/Show#",
     "steps": [
       {
+        "given": "doubleShow",
+        "type": "Show[Double]"
+      },
+      {
+        "given": "floatShow",
+        "type": "Show[Float]"
+      },
+      {
         "given": "intShow",
         "type": "Show[Int]"
       },

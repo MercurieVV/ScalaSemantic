@@ -95,6 +95,22 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
   def insertedName(tree: s.Tree): Option[String] =
     insertedSymbol(tree).map(index.displayName)
 
+  /** Every global symbol referenced anywhere inside a synthetic tree — function AND arguments,
+    * recursively. Unlike [[insertedSymbol]] (which follows only the applied function) this reaches
+    * the summoned givens carried as arguments (`ApplyTree(render, [IdTree(doubleShow)])`), the very
+    * names an implicit summon inserts with no textual occurrence. Used by import-explosion to learn
+    * which members of an imported prefix are actually used.
+    */
+  def treeSymbols(tree: s.Tree): List[String] =
+    tree match
+      case t: s.IdTree        => List(t.symbol)
+      case t: s.SelectTree    => treeSymbols(t.qualifier) ++ t.id.toList.flatMap(treeSymbols)
+      case t: s.ApplyTree     => treeSymbols(t.function) ++ t.arguments.flatMap(treeSymbols)
+      case t: s.TypeApplyTree => treeSymbols(t.function)
+      case t: s.FunctionTree  => t.parameters.toList.flatMap(treeSymbols) ++ treeSymbols(t.body)
+      case t: s.MacroExpansionTree => treeSymbols(t.beforeExpansion)
+      case _                       => Nil
+
   /** How to name a summoned given: its identifier when informative, else its TYPE. A synthetic
     * evidence/`x$` parameter (`evidence$1`) or a type-like capitalised standard given (`Int`, the
     * `Ordering.Int` val) tells the reader nothing — render `Show[A]` / `Ordering[Int]` instead.
