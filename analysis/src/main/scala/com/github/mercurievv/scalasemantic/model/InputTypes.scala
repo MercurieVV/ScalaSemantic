@@ -289,12 +289,14 @@ object InputTypes:
     case Annotated extends SourceFormat("annotated")
     case Compilable extends SourceFormat("compilable")
     case Plain extends SourceFormat("plain")
+    case Diff extends SourceFormat("diff")
 
   object SourceFormat:
     def from(value: String): SourceFormat =
       value.trim match
         case "compilable" => Compilable
         case "plain"      => Plain
+        case "diff"       => Diff
         case _            => Annotated
 
   enum SourceDetail(val value: String):

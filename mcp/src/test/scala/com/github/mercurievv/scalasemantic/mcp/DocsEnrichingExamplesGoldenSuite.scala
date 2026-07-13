@@ -93,6 +93,18 @@ class DocsEnrichingExamplesGoldenSuite extends munit.FunSuite:
       )
     )
 
+  test("annotated_source(Enrich.scala, format=diff, symbols=on)"):
+    assertGolden(
+      "annotated_source_enrich_diff",
+      "annotated_source",
+      ujson.Obj(
+        "uri" -> EnrichPath,
+        "format" -> "diff",
+        "annotationsOnly" -> false,
+        "symbols" -> true
+      )
+    )
+
   test("annotated_source(Enrich.scala, docs=strip)"):
     assertGolden(
       "annotated_source_enrich_docs",
