@@ -168,42 +168,15 @@ private[mcp] object McpToolsSupport:
             val base = if gutter then f"${i + 1}%5d  $src" else src
             if notes.isEmpty || fmt == SourceFormat.Plain then Some(base)
             else
-              val joined = notes.map(n => noteText(src, n)).mkString("; ")
+              // Each note is self-anchored by the analysis layer (e.g. `a.map[String]`,
+              // `(using Show[A])`) — the renderer just joins them, no column arithmetic.
+              val joined = notes.map(_.text).mkString("; ")
               Some(
                 if fmt == SourceFormat.Compilable then s"$base  // ⟹ $joined"
                 else s"$base   ⟹ $joined"
               )
         }
         .mkString("\n")
-
-    /** Kinds whose `character` is a precise call site, so the note can be anchored to the token it
-      * applies to (vs. the using-arg note, whose range is only the enclosing point).
-      */
-    private val preciseColKinds = Set("inferred-type-args", "implicit-conversion")
-
-    /** The identifier at 0-based `col` in `src` (letters/digits/`_`/`$`), or "" if none. */
-    private def identifierAt(src: String, col: Int): String =
-      if col < 0 || col >= src.length then ""
-      else
-        def isIdChar(c: Char) = c.isLetterOrDigit || c == '_' || c == '$'
-        if !isIdChar(src.charAt(col)) then ""
-        else
-          @annotation.tailrec
-          def scan(end: Int): Int =
-            if end < src.length && isIdChar(src.charAt(end)) then scan(end + 1) else end
-          val end = scan(col)
-          src.substring(col, end)
-
-    /** An annotation's display text. Positional kinds are anchored to the identifier at their
-      * column (e.g. `render[List[Int]]`, `List.apply(…)`) instead of a `col N` prefix.
-      */
-    private def noteText(src: String, n: SourceAnnotation): String =
-      if !preciseColKinds.contains(n.kind) then n.text
-      else
-        val tok = identifierAt(src, n.character)
-        if tok.isEmpty then n.text
-        else if n.kind == "inferred-type-args" then s"$tok${n.text}"
-        else s"$tok.${n.text}"
 
     private def legend(fmt: SourceFormat): String =
       val markers =
@@ -1006,7 +979,8 @@ private[mcp] object McpToolsGroupC:
             "source with the compiler's invisible insertions made explicit inline: the implicit " +
             "arguments & conversions it synthesised, the type arguments it inferred, and the inferred " +
             "result/value type of every definition the source left unascribed. Each note is appended to " +
-            "its line after `⟹` (anchored to the identifier it applies to); lines are 1-based. " +
+            "its line after `⟹`, self-anchored to the call it applies to (e.g. `a.map[String]`, " +
+            "`(using Show[A])`); lines are 1-based. " +
             "A plain text read MISSES all of this — this shows what the compiler actually sees. Pass " +
             "`annotationsOnly` to get just the annotated lines. Pick the `format` for your need: " +
             "`annotated` (default, densest — gutter + `⟹` notes, NOT valid Scala), `compilable` (notes as " +

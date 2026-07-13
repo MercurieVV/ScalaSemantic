@@ -186,9 +186,21 @@ final class Analyzer(
       detail: SourceDetail = SourceDetail.Terse
   ): Option[List[SourceAnnotation]] =
     index.document(uri.value).map { doc =>
-      val synthetic = detail match
-        case SourceDetail.Terse => doc.synthetics.iterator.flatMap(h.syntheticAnnotation).toList
-        case SourceDetail.Full  => fullAnnotations(doc, sourceLines)
+      val synthetic0 = detail match
+        case SourceDetail.Terse =>
+          doc.synthetics.iterator.flatMap(h.syntheticAnnotation(_, sourceLines)).toList
+        case SourceDetail.Full => fullAnnotations(doc, sourceLines)
+      // Drop the redundant `(using …)` a given/def forwards into its OWN construction: the note
+      // lands on the definition's header (at or before its name), and that using-param is already
+      // written in the signature. A genuine call-site using in the body sits AFTER the name.
+      val defStarts = doc.occurrences.iterator
+        .filter(_.role == s.SymbolOccurrence.Role.DEFINITION)
+        .flatMap(_.range)
+        .map(r => (r.startLine, r.startCharacter))
+        .toList
+      val synthetic = synthetic0.filterNot(a =>
+        a.kind == "implicit" && defStarts.exists((dl, dc) => dl == a.line && dc >= a.character)
+      )
       val defTypes = doc.occurrences.iterator.flatMap(h.defTypeAnnotation(_, sourceLines)).toList
       (synthetic ++ defTypes).distinct.sortBy(a => (a.line, a.character, a.kind))
     }
