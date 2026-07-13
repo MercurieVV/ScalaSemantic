@@ -6,8 +6,6 @@
     "character": 6
   },
   "result": {
-    "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.out.",
-    "name": "out",
-    "type": "String"
+    "found": false
   }
 }

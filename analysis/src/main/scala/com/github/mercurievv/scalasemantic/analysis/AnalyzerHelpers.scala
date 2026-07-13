@@ -83,6 +83,70 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
       case t: s.ApplyTree     => insertedName(t.function)
       case _                  => None
 
+  /** Render one synthetic tree as a compact elaborated expression. */
+  def renderTree(
+      tree: s.Tree,
+      sourceLines: IndexedSeq[String],
+      typeApps: Map[(Int, Int, Int), String] = Map.empty
+  ): String =
+    tree match
+      case t: s.ApplyTree =>
+        val base = renderTree(t.function, sourceLines, typeApps)
+        val args = t.arguments.map(renderTree(_, sourceLines, typeApps)).filter(_.nonEmpty)
+        val originalFunction = t.function match
+          case _: s.OriginalTree => true
+          case _                 => false
+        if args.isEmpty then base
+        else if originalFunction || t.arguments.forall(insertedName(_).nonEmpty) then
+          s"$base${args.mkString("(using ", ", ", ")")}"
+        else
+          val renderedArgs = t.arguments match
+            case Seq(orig: s.OriginalTree) =>
+              originalText(orig.range, sourceLines, typeApps).dropWhile(_ != '(') match
+                case ""   => args.mkString("(", ", ", ")")
+                case call => call
+            case _ => args.mkString("(", ", ", ")")
+          s"$base$renderedArgs"
+      case t: s.TypeApplyTree =>
+        val base = renderTree(t.function, sourceLines, typeApps)
+        val args = t.typeArguments.map(renderType).filter(_.nonEmpty)
+        if args.isEmpty then base else args.mkString(s"$base[", ", ", "]")
+      case t: s.SelectTree =>
+        val base = renderTree(t.qualifier, sourceLines, typeApps)
+        val name = t.id.map(renderTree(_, sourceLines, typeApps)).getOrElse("")
+        if base.isEmpty then name else s"$base.$name"
+      case t: s.IdTree       => index.displayName(t.symbol)
+      case t: s.OriginalTree =>
+        originalText(t.range, sourceLines, typeApps)
+      case _ => ""
+
+  def typeApplyOriginalRange(tree: s.Tree): Option[s.Range] =
+    tree match
+      case t: s.OriginalTree => t.range
+      case t: s.SelectTree   => typeApplyOriginalRange(t.qualifier)
+      case _                 => None
+
+  def originalText(
+      range: Option[s.Range],
+      sourceLines: IndexedSeq[String],
+      typeApps: Map[(Int, Int, Int), String]
+  ): String =
+    range match
+      case Some(r) if r.startLine == r.endLine =>
+        val src = sourceLines.lift(r.startLine).getOrElse("")
+        val base = src.slice(r.startCharacter, r.endCharacter)
+        val contained = typeApps.toList
+          .collect {
+            case ((line, start, end), args)
+                if line == r.startLine && start >= r.startCharacter && end <= r.endCharacter =>
+              (start - r.startCharacter, end - r.startCharacter, args)
+          }
+          .sortBy(-_._1)
+        contained.foldLeft(base) { case (acc, (_, end, args)) =>
+          acc.take(end) + args + acc.drop(end)
+        }
+      case _ => ""
+
   val annotatedDefKinds: Set[s.SymbolInformation.Kind] =
     Set(s.SymbolInformation.Kind.METHOD, s.SymbolInformation.Kind.FIELD)
 
@@ -137,6 +201,79 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
   @pure
   def packageDotted(pkgSymbol: String): String =
     pkgSymbol.stripSuffix("/").replace('/', '.')
+
+  /** Dotted FQN of a type symbol: `scala/collection/immutable/List#` ->
+    * `scala.collection.immutable.List`.
+    */
+  @pure
+  def typeSymbolFqn(sym: String): String =
+    if sym == "scala/package.List#" then "scala.collection.immutable.List"
+    else sym.stripSuffix("#").replace('/', '.').replace('#', '.')
+
+  /** Blank out line and block comments while preserving line count and string literals. */
+  @SuppressWarnings(
+    Array(
+      "org.wartremover.warts.MutableDataStructures",
+      "org.wartremover.warts.Var",
+      "org.wartremover.warts.While"
+    )
+  )
+  def stripComments(lines: IndexedSeq[String]): IndexedSeq[String] =
+    val text = lines.mkString("\n")
+    val out = new StringBuilder(text.length)
+    // scalafix:off DisableSyntax.var
+    var i = 0
+    var inString = false
+    var inChar = false
+    var block = 0
+    while i < text.length do
+      val c = text.charAt(i)
+      val d = if i + 1 < text.length then text.charAt(i + 1) else '\u0000'
+      if block > 0 then
+        if c == '*' && d == '/' then
+          out.append("  ")
+          i += 2
+          block -= 1
+        else
+          out.append(if c == '\n' then '\n' else ' ')
+          i += 1
+      else if inString then
+        out.append(c)
+        if c == '\\' then
+          out.append(d)
+          i += 2
+        else
+          if c == '"' then inString = false
+          i += 1
+      else if inChar then
+        out.append(c)
+        if c == '\\' then
+          out.append(d)
+          i += 2
+        else
+          if c == '\'' then inChar = false
+          i += 1
+      else if c == '"' then
+        inString = true
+        out.append(c)
+        i += 1
+      else if c == '\'' then
+        inChar = true
+        out.append(c)
+        i += 1
+      else if c == '/' && d == '/' then
+        while i < text.length && text.charAt(i) != '\n' do
+          out.append(' ')
+          i += 1
+      else if c == '/' && d == '*' then
+        block += 1
+        out.append("  ")
+        i += 2
+      else
+        out.append(c)
+        i += 1
+    // scalafix:on DisableSyntax.var
+    out.toString.split("\n", -1).toIndexedSeq
 
   /** Joins a package prefix and a simple name with a `.` separator, or returns the name alone when
     * the package is empty (top-level declaration).

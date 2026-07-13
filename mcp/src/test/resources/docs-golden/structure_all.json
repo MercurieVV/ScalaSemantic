@@ -7,7 +7,7 @@
     "modules": [
       {
         "module": "docExamples",
-        "types": 5,
+        "types": 6,
         "layer": 0,
         "ca": 0,
         "ce": 0,
@@ -23,7 +23,17 @@
         "ca": 2,
         "ce": 0,
         "instability": 0,
-        "centrality": 0.081
+        "centrality": 0.068
+      },
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show#",
+        "name": "Show",
+        "module": "docExamples",
+        "layer": 0,
+        "ca": 1,
+        "ce": 0,
+        "instability": 0,
+        "centrality": 0.046
       },
       {
         "symbol": "com/github/mercurievv/scalasemantic/docexamples/Invoice#",
@@ -33,7 +43,7 @@
         "ca": 0,
         "ce": 0,
         "instability": 0,
-        "centrality": 0.03
+        "centrality": 0.025
       },
       {
         "symbol": "com/github/mercurievv/scalasemantic/docexamples/ReverseProcessor#",
@@ -43,17 +53,17 @@
         "ca": 0,
         "ce": 1,
         "instability": 1,
-        "centrality": 0.03
+        "centrality": 0.025
       },
       {
-        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show#",
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show.",
         "name": "Show",
         "module": "docExamples",
-        "layer": 0,
+        "layer": 1,
         "ca": 0,
-        "ce": 0,
-        "instability": 0,
-        "centrality": 0.03
+        "ce": 1,
+        "instability": 1,
+        "centrality": 0.025
       },
       {
         "symbol": "com/github/mercurievv/scalasemantic/docexamples/UpperProcessor#",
@@ -63,7 +73,7 @@
         "ca": 0,
         "ce": 1,
         "instability": 1,
-        "centrality": 0.03
+        "centrality": 0.025
       }
     ]
   }

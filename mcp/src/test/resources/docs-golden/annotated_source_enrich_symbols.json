@@ -3,7 +3,8 @@
   "args": {
     "uri": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
     "format": "compilable",
-    "annotationsOnly": false
+    "annotationsOnly": false,
+    "symbols": true
   },
   "result": {
     "uri": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",

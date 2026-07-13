@@ -296,3 +296,13 @@ object InputTypes:
         case "compilable" => Compilable
         case "plain"      => Plain
         case _            => Annotated
+
+  enum SourceDetail(val value: String):
+    case Terse extends SourceDetail("terse")
+    case Full extends SourceDetail("full")
+
+  object SourceDetail:
+    def from(value: String): SourceDetail =
+      value.trim match
+        case "full" => Full
+        case _      => Terse

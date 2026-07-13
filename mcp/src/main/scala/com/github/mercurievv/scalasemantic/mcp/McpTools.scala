@@ -90,8 +90,8 @@ private[mcp] object McpToolsSupport:
 
   /** Shared rendering for any tool that returns a WHOLE source file enriched with positioned
     * [[SourceAnnotation]]s. Tools differ only in how they COMPUTE the annotations; the
-    * format/gutter/legend/`col N` handling and the result envelope live here so they are written
-    * once. A new source-returning tool just appends [[params]] to its schema and calls [[result]].
+    * format/gutter/legend handling and the result envelope live here so they are written once. A
+    * new source-returning tool just appends [[params]] to its schema and calls [[result]].
     */
   private[mcp] object SourceView:
 
@@ -106,6 +106,21 @@ private[mcp] object McpToolsSupport:
         "annotationsOnly",
         "boolean",
         "return only the lines that carry an annotation, not the whole file (default false)"
+      ),
+      (
+        "symbols",
+        "boolean",
+        "append a legend mapping each type used to its full package path (default false)"
+      ),
+      (
+        "docs",
+        "string",
+        "keep (default) | strip — drop comments for a leaner token view"
+      ),
+      (
+        "detail",
+        "string",
+        "terse (default) | full — render a merged elaborated expression at each call site"
       )
     )
 
@@ -119,14 +134,19 @@ private[mcp] object McpToolsSupport:
         lines: IndexedSeq[String],
         anns: List[SourceAnnotation],
         format: SourceFormat,
-        annotationsOnly: Boolean
+        annotationsOnly: Boolean,
+        symbols: List[(String, String)] = Nil
     ): ujson.Value =
+      val rendered = render(lines, anns, format, annotationsOnly)
+      val legendBlock =
+        if symbols.isEmpty then ""
+        else symbols.map((n, fqn) => s"//   $n → $fqn").mkString("\n// symbols:\n", "\n", "")
       ujson.Obj(
         "uri" -> ujson.Str(uri),
         "format" -> ujson.Str(format.value),
         "annotationCount" -> ujson.Num(anns.size),
         "legend" -> ujson.Str(legend(format)),
-        "source" -> ujson.Str(render(lines, anns, format, annotationsOnly))
+        "source" -> ujson.Str(rendered + legendBlock)
       )
 
     /** Weave source lines and annotations into one string per the chosen format. */
@@ -148,7 +168,7 @@ private[mcp] object McpToolsSupport:
             val base = if gutter then f"${i + 1}%5d  $src" else src
             if notes.isEmpty || fmt == SourceFormat.Plain then Some(base)
             else
-              val joined = notes.map(noteText).mkString("; ")
+              val joined = notes.map(n => noteText(src, n)).mkString("; ")
               Some(
                 if fmt == SourceFormat.Compilable then s"$base  // ⟹ $joined"
                 else s"$base   ⟹ $joined"
@@ -156,23 +176,40 @@ private[mcp] object McpToolsSupport:
         }
         .mkString("\n")
 
-    /** Kinds whose `character` is a precise call site, so a `col N` prefix points the reader at the
-      * exact call the note applies to (vs. the using-arg note, whose range is only the enclosing
-      * point).
+    /** Kinds whose `character` is a precise call site, so the note can be anchored to the token it
+      * applies to (vs. the using-arg note, whose range is only the enclosing point).
       */
     private val preciseColKinds = Set("inferred-type-args", "implicit-conversion")
 
-    /** An annotation's display text, prefixed with a 1-based `col N` when its column is
-      * trustworthy.
+    /** The identifier at 0-based `col` in `src` (letters/digits/`_`/`$`), or "" if none. */
+    private def identifierAt(src: String, col: Int): String =
+      if col < 0 || col >= src.length then ""
+      else
+        def isIdChar(c: Char) = c.isLetterOrDigit || c == '_' || c == '$'
+        if !isIdChar(src.charAt(col)) then ""
+        else
+          @annotation.tailrec
+          def scan(end: Int): Int =
+            if end < src.length && isIdChar(src.charAt(end)) then scan(end + 1) else end
+          val end = scan(col)
+          src.substring(col, end)
+
+    /** An annotation's display text. Positional kinds are anchored to the identifier at their
+      * column (e.g. `render[List[Int]]`, `List.apply(…)`) instead of a `col N` prefix.
       */
-    private def noteText(n: SourceAnnotation): String =
-      if preciseColKinds.contains(n.kind) then s"col ${n.character + 1} ${n.text}" else n.text
+    private def noteText(src: String, n: SourceAnnotation): String =
+      if !preciseColKinds.contains(n.kind) then n.text
+      else
+        val tok = identifierAt(src, n.character)
+        if tok.isEmpty then n.text
+        else if n.kind == "inferred-type-args" then s"$tok${n.text}"
+        else s"$tok.${n.text}"
 
     private def legend(fmt: SourceFormat): String =
       val markers =
         "Notes show compiler insertions invisible in the source: `(using …)` implicit args, " +
-          "`name(…)` implicit conversion, `[…]` inferred type args, `: T` inferred type; `col N` " +
-          "(1-based) pins the call a note applies to."
+          "`name(…)` implicit conversion, `[…]` inferred type args, `: T` inferred type. " +
+          "symbols=on adds a type→package legend."
       fmt match
         case SourceFormat.Compilable =>
           s"Valid Scala: each note is a trailing `// ⟹` comment, no line-number gutter. $markers"
@@ -339,6 +376,8 @@ private[mcp] object McpToolsSupport:
 
   private[mcp] def argFormat(a: ujson.Value, k: String): SourceFormat =
     SourceFormat.from(argStr(a, k))
+  private[mcp] def argDetail(a: ujson.Value, k: String): SourceDetail =
+    SourceDetail.from(argStr(a, k))
 
   private[mcp] def error(message: String): Nothing =
     sys.error(message)
@@ -967,7 +1006,7 @@ private[mcp] object McpToolsGroupC:
             "source with the compiler's invisible insertions made explicit inline: the implicit " +
             "arguments & conversions it synthesised, the type arguments it inferred, and the inferred " +
             "result/value type of every definition the source left unascribed. Each note is appended to " +
-            "its line after `⟹` (with `col N`, 1-based, when it pins a precise spot); lines are 1-based. " +
+            "its line after `⟹` (anchored to the identifier it applies to); lines are 1-based. " +
             "A plain text read MISSES all of this — this shows what the compiler actually sees. Pass " +
             "`annotationsOnly` to get just the annotated lines. Pick the `format` for your need: " +
             "`annotated` (default, densest — gutter + `⟹` notes, NOT valid Scala), `compilable` (notes as " +
@@ -986,16 +1025,21 @@ private[mcp] object McpToolsGroupC:
           val file = root.resolve(uri.value)
           if !java.nio.file.Files.isRegularFile(file) then notFoundUri(uri.value)
           else
-            val lines = java.nio.file.Files.readString(file).split("\n", -1).toIndexedSeq
-            az.sourceAnnotations(uri, lines) match
+            val rawLines = java.nio.file.Files.readString(file).split("\n", -1).toIndexedSeq
+            val docs = argStr(a, "docs")
+            val lines = if docs == "strip" then az.stripComments(rawLines) else rawLines
+            val detail = argDetail(a, "detail")
+            az.sourceAnnotations(uri, lines, detail) match
               case None       => notFoundUri(uri.value)
               case Some(anns) =>
+                val symbols = if argBool(a, "symbols", false) then az.symbolLegend(uri) else Nil
                 SourceView.result(
                   uri.value,
                   lines,
                   anns,
                   argFormat(a, "format"),
-                  argBool(a, "annotationsOnly", false)
+                  argBool(a, "annotationsOnly", false),
+                  symbols
                 )
         }
       )

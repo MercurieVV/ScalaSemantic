@@ -9,74 +9,160 @@
       {
         "name": "Show",
         "kind": "TRAIT",
-        "line": 2,
+        "line": 8,
         "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show#",
         "children": [
           {
             "name": "show",
             "kind": "METHOD",
-            "line": 3,
+            "line": 9,
             "signature": "def show(a: A): String",
             "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show#show()."
           }
         ]
       },
       {
-        "name": "intShow",
+        "name": "Show",
         "kind": "OBJECT",
-        "line": 5,
-        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.intShow.",
+        "line": 11,
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show.",
         "children": [
           {
-            "name": "show",
+            "name": "apply",
             "kind": "METHOD",
-            "line": 6,
-            "signature": "def show(a: Int): String",
-            "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.intShow.show()."
+            "line": 13,
+            "signature": "def apply[A](implicit s: Show[A]): Show[A]",
+            "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show.apply()."
+          },
+          {
+            "name": "intShow",
+            "kind": "OBJECT",
+            "line": 15,
+            "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show.intShow.",
+            "children": [
+              {
+                "name": "show",
+                "kind": "METHOD",
+                "line": 16,
+                "signature": "def show(a: Int): String",
+                "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show.intShow.show()."
+              }
+            ]
+          },
+          {
+            "name": "stringShow",
+            "kind": "OBJECT",
+            "line": 18,
+            "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show.stringShow.",
+            "children": [
+              {
+                "name": "show",
+                "kind": "METHOD",
+                "line": 19,
+                "signature": "def show(a: String): String",
+                "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show.stringShow.show()."
+              }
+            ]
+          },
+          {
+            "name": "listShow",
+            "kind": "METHOD",
+            "line": 22,
+            "signature": "def listShow[A](implicit evidence$1: Show[A]): listShow[A]",
+            "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show.listShow()."
           }
         ]
       },
       {
-        "name": "sh",
+        "name": "evidence$1",
         "kind": "METHOD",
-        "line": 8,
+        "line": 22,
         "signature": ": Show[A]",
-        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.listShow#sh."
-      },
-      {
-        "name": "listShow",
-        "kind": "METHOD",
-        "line": 8,
-        "signature": "def listShow[A](implicit sh: Show[A]): listShow[A]",
-        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.listShow()."
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show.listShow#evidence$1."
       },
       {
         "name": "show",
         "kind": "METHOD",
-        "line": 9,
+        "line": 23,
         "signature": "def show(a: List[A]): String",
-        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.listShow#show()."
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show.listShow#show()."
       },
       {
         "name": "render",
         "kind": "METHOD",
-        "line": 11,
-        "signature": "def render[A](a: A)(implicit sh: Show[A]): String",
+        "line": 27,
+        "signature": "def render[A](a: A)(implicit evidence$1: Show[A]): String",
         "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.render()."
+      },
+      {
+        "name": "shown",
+        "kind": "METHOD",
+        "line": 29,
+        "signature": "def shown(n: Int)(implicit x$2: Show[Int]): String",
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.shown()."
+      },
+      {
+        "name": "nums",
+        "kind": "METHOD",
+        "line": 31,
+        "signature": ": List[Int]",
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.nums."
       },
       {
         "name": "out",
         "kind": "METHOD",
-        "line": 14,
+        "line": 32,
         "signature": ": String",
         "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.out."
       },
       {
-        "name": "num",
+        "name": "sorted",
         "kind": "METHOD",
-        "line": 15,
+        "line": 33,
+        "signature": ": List[Int]",
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.sorted."
+      },
+      {
+        "name": "ranked",
+        "kind": "METHOD",
+        "line": 34,
+        "signature": ": List[Tuple2[String, Int]]",
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.ranked."
+      },
+      {
+        "name": "labeled",
+        "kind": "METHOD",
+        "line": 35,
+        "signature": ": List[Tuple2[Int, String]]",
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.labeled."
+      },
+      {
+        "name": "total",
+        "kind": "METHOD",
+        "line": 36,
+        "signature": ": Int",
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.total."
+      },
+      {
+        "name": "ratio",
+        "kind": "METHOD",
+        "line": 37,
+        "signature": ": Double",
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.ratio."
+      },
+      {
+        "name": "shownFive",
+        "kind": "METHOD",
+        "line": 38,
         "signature": ": String",
-        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.num."
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.shownFive."
+      },
+      {
+        "name": "firstTwo",
+        "kind": "METHOD",
+        "line": 39,
+        "signature": ": Option[String]",
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.firstTwo."
       }
     ]
   }
