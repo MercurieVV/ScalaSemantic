@@ -20,19 +20,19 @@ object Show:
     def show(a: String) = a  // ⟹ : String
 
   // context bound `A: Show` desugars to a `(using Show[A])` parameter the source never writes
-  given listShow[A: Show]: Show[List[A]] with  // ⟹ (using evidence$1); : Show[A]
+  given listShow[A: Show]: Show[List[A]] with  // ⟹ : Show[A]
     def show(a: List[A]) =  // ⟹ : String
-      a.map(Show[A].show).mkString("[", ", ", "]")  // ⟹ Show[A](using evidence$1)
+      a.map(Show[A].show).mkString("[", ", ", "]")  // ⟹ Show[A](using Show[A])
 
 // `[A: Show]` again — the using-param and the `Show[A]` summon are both invisible in the text
-def render[A: Show](a: A): String = Show[A].show(a)  // ⟹ Show[A](using evidence$1)
+def render[A: Show](a: A): String = Show[A].show(a)  // ⟹ Show[A](using Show[A])
 
-extension (n: Int) def shown(using Show[Int]): String = render(n)  // ⟹ render[Int](n)(using x$2)
+extension (n: Int) def shown(using Show[Int]): String = render(n)  // ⟹ render[Int](n)(using Show[Int])
 
 val nums = List(1, 2, 3)  // ⟹ : List[Int]; List.apply[Int](1, 2, 3)
 val out = render(nums)  // ⟹ : String; render[List[Int]](nums)(using listShow(using intShow))
-val sorted = nums.sorted  // ⟹ : List[Int]; nums.sorted[Int](using Int)
-val ranked = List("b" -> 2, "a" -> 1).sortBy(_._1)  // ⟹ : List[Tuple2[String, Int]]; List.apply[Tuple2[String, Int]][String]("b" ->[Int] 2, "a" ->[Int] 1).sortBy(_._1)(using String)
+val sorted = nums.sorted  // ⟹ : List[Int]; nums.sorted[Int](using Ordering[Int])
+val ranked = List("b" -> 2, "a" -> 1).sortBy(_._1)  // ⟹ : List[Tuple2[String, Int]]; List.apply[Tuple2[String, Int]][String]("b" ->[Int] 2, "a" ->[Int] 1).sortBy(_._1)(using Ordering[String])
 val labeled = nums.map(n => n -> render(n))  // ⟹ : List[Tuple2[Int, String]]; ArrowAssoc[Int](n); render[Int](n)(using intShow)
 val total = nums.foldLeft(0)(_ + _)  // ⟹ : Int
 val ratio: Double = nums.size  // ⟹ int2double(nums.size)

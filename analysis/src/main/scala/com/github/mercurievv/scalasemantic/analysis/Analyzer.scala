@@ -199,7 +199,8 @@ final class Analyzer(
         .map(r => (r.startLine, r.startCharacter))
         .toList
       val synthetic = synthetic0.filterNot(a =>
-        a.kind == "implicit" && defStarts.exists((dl, dc) => dl == a.line && dc >= a.character)
+        (a.kind == "implicit" || a.kind == "full") &&
+          defStarts.exists((dl, dc) => dl == a.line && dc >= a.character)
       )
       val defTypes = doc.occurrences.iterator.flatMap(h.defTypeAnnotation(_, sourceLines)).toList
       (synthetic ++ defTypes).distinct.sortBy(a => (a.line, a.character, a.kind))
