@@ -22,6 +22,7 @@ Every tool example on this page is **executed at docs build time** by the real S
 | `smart_code_duplications` | Structurally identical blocks |
 | **Enriching tools** | |
 | `annotated_source` | Compiler-visible facts and inferred types |
+| `annotated_source` (`symbols=on`) | Name→package legend + explicit imports |
 | `method_signature` | Full signature with implicit/using params |
 | `document_outline` | File structure with compiler-rendered names |
 | `resolve_implicits` | Which givens/implicits apply |
@@ -240,7 +241,7 @@ These tools show the LLM what the compiler sees but the source text does not —
 
 ### Source under analysis
 
-`Enrich.scala` — a small typeclass (`Show`), two `given` instances, and two calls to a generic `render` method that hides its resolved implicit argument. Read straight from the fixture file the tool calls below actually analyze, so this block can never drift from what's shown as "Original" further down.
+`Enrich.scala` — a `Show` typeclass with several `given` instances (for `Int`, `String`, `List`, and two more brought in by a wildcard `given` import), a context-bound `render`, an extension method, and a spread of call sites (`map`, `sortBy`, `foldLeft`, a `for`-comprehension, numeric widening) that each hide a different compiler insertion: summoned implicits, inferred type arguments, inferred result/value types, and implicit conversions. Read straight from the fixture file the tool calls below actually analyze, so this block can never drift from what's shown as "Original" further down.
 
 ```scala mdoc:passthrough
 val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
@@ -253,7 +254,7 @@ None of the `(using ...)` arguments or inferred return types above are written i
 
 **Answers:** compiler-visible facts and inferred types.
 
-The compiler injects `(using intShow)` and `(using listShow(...))` into the `render` calls, and infers the return type `: String` on the `out` and `num` bindings — none visible in source text.
+The compiler injects `(using intShow)` and `(using listShow(...))` into the `render` calls, infers the return type `: String` on the `out` binding and `: List[Int]` on `nums`, and adds the inferred type arguments (`List.apply[Int]`, `render[List[Int]]`) — none visible in source text.
 
 ```scala mdoc:passthrough
 val annotatedArgs =
@@ -287,7 +288,34 @@ println(s"```scala\n${scalasemantic.docs.ToolRunner.extractField(annotatedRaw, "
 println(scalasemantic.docs.ToolRunner.detailsMarkdown(annotatedRaw, annotatedArgs))
 ```
 
-**Replaces:** Reading 15 lines of source → 10 lines with compiler-visible facts.
+**Replaces:** Reading the source and hand-tracing every implicit/inferred insertion → one compiler-visible view.
+
+---
+
+### annotated_source with `symbols=on` — name origins & explicit imports
+
+**Answers:** which package each mid-code type belongs to, and which given a wildcard import actually brought into scope.
+
+`symbols=on` appends a `type → package` legend at the end. Under `format=compilable` it additionally **explodes** wildcard / `given` imports into the exact names used: `import Instances.given` becomes `import Instances.{doubleShow, floatShow}` — naming just the givens the compiler summoned at the `render(3.14)` / `render(1.0f)` call sites, none of which is written at the summon site. Names that need no import (same-package, inherited, `export`ed) stay in the legend; only imported names are exploded.
+
+```scala mdoc:passthrough
+val symbolsArgs =
+  s"""{"uri":"$enrichPath","format":"compilable","annotationsOnly":false,"symbols":true}"""
+val symbolsRaw = scalasemantic.docs.ToolRunner.run("annotated_source", symbolsArgs)
+println(scalasemantic.docs.ToolRunner.requestMarkdown("annotated_source", symbolsArgs))
+```
+
+**Enriched (compiler view, `symbols=on`)**
+
+```scala mdoc:passthrough
+println(s"```scala\n${scalasemantic.docs.ToolRunner.extractField(symbolsRaw, "source")}\n```")
+```
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.detailsMarkdown(symbolsRaw, symbolsArgs))
+```
+
+**Replaces:** guessing where a mid-code `Show` / `List` comes from, and hand-resolving which given a wildcard import supplies → a legend plus explicit imports.
 
 ---
 

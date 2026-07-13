@@ -98,6 +98,15 @@ Why a legend and not inline FQN or exploded imports:
   `format=compilable` rendering of `symbols=on`**, restricted to imported entities, with its limits
   documented — never the default.
 
+  *Implemented* (`Analyzer.explodeImports`): with `format=compilable` + `symbols=on`, each
+  `import X.*` / `import X.given` line is rewritten to an explicit `import X.member` (or braced
+  `import X.{a, b}` for several) naming just the members of `X` the file actually uses. Used members
+  are collected from **both** occurrences and synthetics — an implicitly-summoned given
+  (`render(3.14)` → `doubleShow`) has no textual occurrence, only a synthetic `IdTree`, so
+  occurrences alone would miss it. The braced form stays on one physical line, preserving annotation
+  offsets. A line is left untouched when its prefix or used members cannot be resolved. See the
+  `annotated_source_enrich_symbols.scala` golden for the worked example.
+
 | Name origin | exploded imports resolve? | occurrence legend resolves? |
 |-------------|:-:|:-:|
 | imported type/def | ✅ | ✅ |

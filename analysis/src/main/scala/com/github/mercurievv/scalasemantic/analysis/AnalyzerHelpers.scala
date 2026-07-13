@@ -34,11 +34,9 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
 
   // --- annotated source -----------------------------------------------------
 
-  /** An implicit-insertion or inferred-type-argument annotation for one synthetic, anchored at the
-    * synthetic's source range. The `kind` distinguishes notes whose range is a precise call site
-    * (`inferred-type-args`, `implicit-conversion`) from the using-argument note, whose range is the
-    * zero-width enclosing point and so carries no trustworthy column. `None` for synthetics we do
-    * not surface.
+  /** An implicit-insertion or inferred-type-argument annotation for one synthetic. Each note's text
+    * is self-anchored to the call it applies to (`a.map[String]`, `(using Show[A])`) rather than a
+    * column, so the renderer prints it verbatim. `None` for synthetics we do not surface.
     */
   def syntheticAnnotation(
       syn: s.Synthetic,
@@ -96,6 +94,22 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
     */
   def insertedName(tree: s.Tree): Option[String] =
     insertedSymbol(tree).map(index.displayName)
+
+  /** Every global symbol referenced anywhere inside a synthetic tree — function AND arguments,
+    * recursively. Unlike [[insertedSymbol]] (which follows only the applied function) this reaches
+    * the summoned givens carried as arguments (`ApplyTree(render, [IdTree(doubleShow)])`), the very
+    * names an implicit summon inserts with no textual occurrence. Used by import-explosion to learn
+    * which members of an imported prefix are actually used.
+    */
+  def treeSymbols(tree: s.Tree): List[String] =
+    tree match
+      case t: s.IdTree        => List(t.symbol)
+      case t: s.SelectTree    => treeSymbols(t.qualifier) ++ t.id.toList.flatMap(treeSymbols)
+      case t: s.ApplyTree     => treeSymbols(t.function) ++ t.arguments.flatMap(treeSymbols)
+      case t: s.TypeApplyTree => treeSymbols(t.function)
+      case t: s.FunctionTree  => t.parameters.toList.flatMap(treeSymbols) ++ treeSymbols(t.body)
+      case t: s.MacroExpansionTree => treeSymbols(t.beforeExpansion)
+      case _                       => Nil
 
   /** How to name a summoned given: its identifier when informative, else its TYPE. A synthetic
     * evidence/`x$` parameter (`evidence$1`) or a type-like capitalised standard given (`Int`, the
@@ -156,7 +170,11 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
           case _                 => false
         if args.isEmpty then base
         else if originalFunction || t.arguments.forall(insertedName(_).nonEmpty) then
-          s"$base${args.mkString("(using ", ", ", ")")}"
+          // using-args: name each summoned given by identifier-or-type (so `evidence$1` -> `Show[A]`,
+          // `Ordering.Int` -> `Ordering[Int]`), same rule the terse path uses.
+          val usingArgs =
+            t.arguments.map(renderUsingArg(_, sourceLines, typeApps)).filter(_.nonEmpty)
+          s"$base${usingArgs.mkString("(using ", ", ", ")")}"
         else
           val renderedArgs = t.arguments match
             case Seq(orig: s.OriginalTree) =>
@@ -177,6 +195,28 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
       case t: s.OriginalTree =>
         originalText(t.range, sourceLines, typeApps)
       case _ => ""
+
+  /** Render a summoned given in using-argument position: a bare given by [[givenDisplay]] (so an
+    * evidence/`Ordering.Int` name becomes its type), a nested given-application recursively (so
+    * `listShow(using intShow)` keeps its shape), otherwise defer to [[renderTree]].
+    */
+  private def renderUsingArg(
+      tree: s.Tree,
+      sourceLines: IndexedSeq[String],
+      typeApps: Map[(Int, Int, Int), String]
+  ): String =
+    tree match
+      case t: s.IdTree     => givenDisplay(t.symbol)
+      case t: s.SelectTree => t.id.flatMap(insertedSymbol).map(givenDisplay).getOrElse("")
+      case t: s.ApplyTree  =>
+        val base = renderUsingArg(t.function, sourceLines, typeApps)
+        val nested = t.arguments.map(renderUsingArg(_, sourceLines, typeApps)).filter(_.nonEmpty)
+        if nested.isEmpty then base else s"$base${nested.mkString("(using ", ", ", ")")}"
+      case t: s.TypeApplyTree =>
+        val base = renderUsingArg(t.function, sourceLines, typeApps)
+        val targs = t.typeArguments.map(renderType).filter(_.nonEmpty)
+        if targs.isEmpty then base else targs.mkString(s"$base[", ", ", "]")
+      case other => renderTree(other, sourceLines, typeApps)
 
   def typeApplyOriginalRange(tree: s.Tree): Option[s.Range] =
     tree match

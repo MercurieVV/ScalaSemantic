@@ -110,7 +110,8 @@ private[mcp] object McpToolsSupport:
       (
         "symbols",
         "boolean",
-        "append a legend mapping each type used to its full package path (default false)"
+        "append a legend mapping each type used to its full package path (default false); with " +
+          "format=compilable it also explodes wildcard/`given` imports into the explicit names used"
       ),
       (
         "docs",
@@ -1006,12 +1007,19 @@ private[mcp] object McpToolsGroupC:
             az.sourceAnnotations(uri, lines, detail) match
               case None       => notFoundUri(uri.value)
               case Some(anns) =>
-                val symbols = if argBool(a, "symbols", false) then az.symbolLegend(uri) else Nil
+                val symbolsOn = argBool(a, "symbols", false)
+                val symbols = if symbolsOn then az.symbolLegend(uri) else Nil
+                val fmt = argFormat(a, "format")
+                // import-explosion is the compilable rendering of symbols=on: desugar wildcard /
+                // `given` imports into explicit ones so no name enters scope invisibly.
+                val displayLines =
+                  if symbolsOn && fmt == SourceFormat.Compilable then az.explodeImports(uri, lines)
+                  else lines
                 SourceView.result(
                   uri.value,
-                  lines,
+                  displayLines,
                   anns,
-                  argFormat(a, "format"),
+                  fmt,
                   argBool(a, "annotationsOnly", false),
                   symbols
                 )

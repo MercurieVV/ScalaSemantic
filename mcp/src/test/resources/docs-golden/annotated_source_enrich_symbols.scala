@@ -29,7 +29,20 @@ def render[A: Show](a: A): String = Show[A].show(a)  // ⟹ (using Show[A])
 
 extension (n: Int) def shown(using Show[Int]): String = render(n)  // ⟹ (using Show[Int]); render[Int]
 
+object Instances:
+  given doubleShow: Show[Double] with
+    def show(a: Double) = a.toString  // ⟹ : String
+  given floatShow: Show[Float] with
+    def show(a: Float) = a.toString  // ⟹ : String
+
+// wildcard `given` import: the givens enter scope with NO written name at the summon site — only
+// the symbols legend can say which given `render(3.14)` picked, and format=compilable explodes this
+// line to the explicit `import Instances.{doubleShow, floatShow}` of just the givens actually used
+import Instances.{doubleShow, floatShow}
+
 val nums = List(1, 2, 3)  // ⟹ : List[Int]; List.apply[Int]
+val pi = render(3.14)  // ⟹ : String; (using doubleShow); render[Double]
+val flo = render(1.0f)  // ⟹ : String; (using floatShow); render[Float]
 val out = render(nums)  // ⟹ : String; (using listShow); render[List[Int]]; (using intShow)
 val sorted = nums.sorted  // ⟹ : List[Int]; (using Ordering[Int]); nums.sorted[Int]
 val ranked = List("b" -> 2, "a" -> 1).sortBy(_._1)  // ⟹ : List[Tuple2[String, Int]]; (using Ordering[String]); .sortBy[String]; List.apply[Tuple2[String, Int]]; ArrowAssoc("b"); "b" ->[Int]; ArrowAssoc("a"); "a" ->[Int]

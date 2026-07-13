@@ -199,7 +199,8 @@ final class Analyzer(
         .map(r => (r.startLine, r.startCharacter))
         .toList
       val synthetic = synthetic0.filterNot(a =>
-        a.kind == "implicit" && defStarts.exists((dl, dc) => dl == a.line && dc >= a.character)
+        (a.kind == "implicit" || a.kind == "full") &&
+          defStarts.exists((dl, dc) => dl == a.line && dc >= a.character)
       )
       val defTypes = doc.occurrences.iterator.flatMap(h.defTypeAnnotation(_, sourceLines)).toList
       (synthetic ++ defTypes).distinct.sortBy(a => (a.line, a.character, a.kind))
@@ -233,6 +234,74 @@ final class Analyzer(
         .distinct
         .sortBy(_._1)
     }
+
+  /** Desugar wildcard / `given` imports into explicit ones — the `format=compilable` rendering of
+    * `symbols=on`. Each `import X.*` / `import X.given` line is replaced by a single-line
+    * `import X.member` (or braced `import X.{a, b}` for several) naming exactly the members of `X`
+    * the file actually uses, so no name enters scope invisibly. The braced form stays on ONE
+    * physical line, so annotation line offsets are preserved.
+    *
+    * "Used" is drawn from BOTH occurrences and synthetics: an implicitly-summoned given
+    * (`render(3.14)` picking `doubleShow`) has no textual occurrence — only a synthetic `IdTree` —
+    * so occurrences alone would miss it. A line is left untouched when its prefix or its used
+    * members cannot be resolved. Limits (per the design doc): only names that entered scope THROUGH
+    * the import are covered — same-package, inherited, and `export`ed names need no import and are
+    * left to the `symbols` legend.
+    */
+  def explodeImports(uri: DocumentUri, lines: IndexedSeq[String]): IndexedSeq[String] =
+    index
+      .document(uri.value)
+      .map { doc =>
+        val used: Set[String] =
+          (doc.occurrences.iterator
+            .filter(_.role == s.SymbolOccurrence.Role.REFERENCE)
+            .map(_.symbol) ++
+            doc.synthetics.iterator.flatMap(syn => h.treeSymbols(syn.tree)))
+            .filter(index.isGlobal)
+            .toSet
+        val membersByOwner: Map[String, List[String]] =
+          used
+            .groupBy(index.owner)
+            .map((owner, syms) =>
+              owner -> syms.iterator
+                .map(index.displayName)
+                .filter(_.nonEmpty)
+                .toList
+                .distinct
+                .sorted
+            )
+        val importRe = """^(\s*)import\s+(.+)\.(?:\*|given)\s*$""".r
+        // Resolve the import prefix TEXT to its symbol: prefer an occurrence on the import line
+        // (SemanticDB records the prefix reference), else match an owner by its last name segment.
+        def prefixSymbol(lineIdx: Int, prefixText: String): Option[String] =
+          doc.occurrences.iterator
+            .filter(o => o.role == s.SymbolOccurrence.Role.REFERENCE)
+            .filter(o => o.range.exists(_.startLine == lineIdx))
+            .map(_.symbol)
+            .filter(sym => index.isGlobal(sym) && (sym.endsWith(".") || sym.endsWith("/")))
+            .toList
+            .sortBy(sym => -sym.length)
+            .headOption
+            .orElse:
+              val last = prefixText.split('.').last
+              membersByOwner.keys.find(o => index.displayName(o) == last)
+        lines.iterator.zipWithIndex.map { (line, i) =>
+          line match
+            case importRe(indent, prefixText) =>
+              val exploded =
+                for
+                  pfx <- prefixSymbol(i, prefixText)
+                  members <- membersByOwner.get(pfx).filter(_.nonEmpty)
+                yield
+                  val sel = members match
+                    case single :: Nil => single
+                    case many          => many.mkString("{", ", ", "}")
+                  s"${indent}import $prefixText.$sel"
+              exploded.getOrElse(line)
+            case _ => line
+        }.toIndexedSeq
+      }
+      .getOrElse(lines)
 
   def stripComments(lines: IndexedSeq[String]): IndexedSeq[String] =
     h.stripComments(lines)
