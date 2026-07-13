@@ -221,6 +221,7 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
   def stripComments(lines: IndexedSeq[String]): IndexedSeq[String] =
     val text = lines.mkString("\n")
     val out = new StringBuilder(text.length)
+    // scalafix:off DisableSyntax.var
     var i = 0
     var inString = false
     var inChar = false
@@ -271,6 +272,7 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
       else
         out.append(c)
         i += 1
+    // scalafix:on DisableSyntax.var
     out.toString.split("\n", -1).toIndexedSeq
 
   /** Joins a package prefix and a simple name with a `.` separator, or returns the name alone when
