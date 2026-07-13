@@ -125,12 +125,20 @@ Why a legend and not inline FQN or exploded imports:
 
 ```
 annotated_source(uri,
-  format         = annotated | compilable | plain   // default annotated
-  detail         = terse | full                      // default terse
-  symbols        = off | on                          // default off
-  docs           = keep | strip                      // default keep
-  annotationsOnly = false)                            // default false
+  format         = annotated | compilable | plain | diff   // default annotated
+  detail         = terse | full                            // default terse
+  symbols        = off | on                                // default off
+  docs           = keep | strip                            // default keep
+  annotationsOnly = false)                                  // default false
 ```
+
+`format=diff` emits a unified diff from the source as written (`-`) to the enriched compilable view
+(`+`): the inline `// ⟹` notes and (with `symbols=on`) the exploded imports appear as added lines,
+so any diff viewer colours the compiler's insertions green and the shadowed originals red. The two
+sides are line-for-line aligned by construction (each enriched line derives from one raw line;
+import-explosion preserves the line count), so it hunks with 3 lines of context and needs no diff
+algorithm. Modified lines are emitted as paired `-`/`+` — a legal, appliable patch, chosen for
+line-by-line green/red rendering.
 
 Defaults reproduce today's behavior minus `col N` (which `terse` replaces token-anchored). Tool
 description must guide the agent to escalate terse→full and flip `symbols=on` before an edit or

@@ -23,6 +23,7 @@ Every tool example on this page is **executed at docs build time** by the real S
 | **Enriching tools** | |
 | `annotated_source` | Compiler-visible facts and inferred types |
 | `annotated_source` (`symbols=on`) | Name→package legend + explicit imports |
+| `annotated_source` (`format=diff`) | Unified diff of the compiler's insertions |
 | `method_signature` | Full signature with implicit/using params |
 | `document_outline` | File structure with compiler-rendered names |
 | `resolve_implicits` | Which givens/implicits apply |
@@ -316,6 +317,27 @@ println(scalasemantic.docs.ToolRunner.detailsMarkdown(symbolsRaw, symbolsArgs))
 ```
 
 **Replaces:** guessing where a mid-code `Show` / `List` comes from, and hand-resolving which given a wildcard import supplies → a legend plus explicit imports.
+
+---
+
+### annotated_source with `format=diff` — see exactly what the compiler added
+
+**Answers:** which parts of a file are the compiler's, not yours.
+
+`format=diff` returns a unified diff from the source as written to the enriched view: `-` lines are the original, `+` lines carry the inline `// ⟹` insertions and (with `symbols=on`) the exploded imports. Any diff viewer renders it green/red, so the compiler's contribution is visible at a glance — no side-by-side reading.
+
+```scala mdoc:passthrough
+val diffArgs =
+  s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"symbols":true}"""
+val diffRaw = scalasemantic.docs.ToolRunner.run("annotated_source", diffArgs)
+println(scalasemantic.docs.ToolRunner.requestMarkdown("annotated_source", diffArgs))
+```
+
+```scala mdoc:passthrough
+println(s"```diff\n${scalasemantic.docs.ToolRunner.extractField(diffRaw, "source")}\n```")
+```
+
+**Replaces:** eyeballing two source blocks to spot the difference → one colourised diff.
 
 ---
 

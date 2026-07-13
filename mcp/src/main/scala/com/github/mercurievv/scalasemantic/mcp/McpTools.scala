@@ -100,7 +100,8 @@ private[mcp] object McpToolsSupport:
       (
         "format",
         "string",
-        "annotated (default, gutter + ⟹ notes) | compilable (// ⟹ comments, valid Scala) | plain"
+        "annotated (default, gutter + ⟹ notes) | compilable (// ⟹ comments, valid Scala) | plain " +
+          "| diff (unified diff, source → enriched, for green/red rendering)"
       ),
       (
         "annotationsOnly",
@@ -132,23 +133,91 @@ private[mcp] object McpToolsSupport:
       */
     def result(
         uri: String,
-        lines: IndexedSeq[String],
+        rawLines: IndexedSeq[String],
+        displayLines: IndexedSeq[String],
         anns: List[SourceAnnotation],
         format: SourceFormat,
         annotationsOnly: Boolean,
         symbols: List[(String, String)] = Nil
     ): ujson.Value =
-      val rendered = render(lines, anns, format, annotationsOnly)
       val legendBlock =
         if symbols.isEmpty then ""
         else symbols.map((n, fqn) => s"//   $n → $fqn").mkString("\n// symbols:\n", "\n", "")
+      val rendered = format match
+        case SourceFormat.Diff => renderDiff(uri, rawLines, displayLines, anns, symbols)
+        case _                 => render(displayLines, anns, format, annotationsOnly) + legendBlock
       ujson.Obj(
         "uri" -> ujson.Str(uri),
         "format" -> ujson.Str(format.value),
         "annotationCount" -> ujson.Num(anns.size),
         "legend" -> ujson.Str(legend(format)),
-        "source" -> ujson.Str(rendered + legendBlock)
+        "source" -> ujson.Str(rendered)
       )
+
+    /** A unified diff from the source as written (`-`) to the enriched compilable view (`+`): every
+      * inline `// ⟹` note and every exploded wildcard/`given` import appears as an added line, so
+      * any diff viewer colours the compiler's insertions green and the shadowed originals red. The
+      * two sides are line-for-line aligned by construction (each enriched line derives from one raw
+      * line; import-explosion keeps the line count), with the `symbols` legend appended as further
+      * additions — so no diff algorithm is needed, only hunking with 3 lines of context.
+      */
+    private def renderDiff(
+        uri: String,
+        rawLines: IndexedSeq[String],
+        displayLines: IndexedSeq[String],
+        anns: List[SourceAnnotation],
+        symbols: List[(String, String)]
+    ): String =
+      val byLine = anns.groupBy(_.line)
+      val legendLines: List[String] =
+        if symbols.isEmpty then Nil
+        else "" :: "// symbols:" :: symbols.map((n, fqn) => s"//   $n → $fqn")
+      // Op = (oldLine?, newLine?): a context line has old == new; a modified line differs; a legend
+      // line is a pure addition (None, Some). Zip raw with display so no positional indexing is
+      // needed (wartremover forbids Seq.apply).
+      val body: List[(Option[String], Option[String])] =
+        rawLines
+          .zip(displayLines)
+          .zipWithIndex
+          .map { case ((raw, disp), i) =>
+            val notes = byLine.getOrElse(i, Nil)
+            val enriched =
+              if notes.isEmpty then disp else s"$disp  // ⟹ ${notes.map(_.text).mkString("; ")}"
+            (Some(raw), Some(enriched))
+          }
+          .toList
+      val ops = body ++ legendLines.map(l => (Option.empty[String], Some(l)))
+      val changed = ops.zipWithIndex.collect { case (op, i) if op._1 != op._2 => i }
+      if changed.isEmpty then ""
+      else
+        val context = 3
+        val n = ops.size
+        val merged = changed
+          .map(i => (math.max(0, i - context), math.min(n - 1, i + context)))
+          .foldLeft(List.empty[(Int, Int)]) { (acc, r) =>
+            acc match
+              case (s0, e0) :: tail if r._1 <= e0 + 1 => (s0, math.max(e0, r._2)) :: tail
+              case _                                  => r :: acc
+          }
+          .reverse
+        val header = s"--- $uri (original)\n+++ $uri (enriched)"
+        val hunks = merged.map { (s, e) =>
+          val before = ops.take(s)
+          val slice = ops.slice(s, e + 1)
+          val oldBefore = before.count(_._1.isDefined)
+          val newBefore = before.count(_._2.isDefined)
+          val oldCount = slice.count(_._1.isDefined)
+          val newCount = slice.count(_._2.isDefined)
+          val oldStart = if oldCount == 0 then oldBefore else oldBefore + 1
+          val newStart = if newCount == 0 then newBefore else newBefore + 1
+          val hunkHeader = s"@@ -$oldStart,$oldCount +$newStart,$newCount @@"
+          val lines = slice.flatMap { (o, nw) =>
+            if o == nw then o.toList.map(l => s" $l")
+            else o.toList.map(l => s"-$l") ++ nw.toList.map(l => s"+$l")
+          }
+          (hunkHeader :: lines).mkString("\n")
+        }
+        (header :: hunks).mkString("\n")
 
     /** Weave source lines and annotations into one string per the chosen format. */
     private def render(
@@ -193,6 +262,10 @@ private[mcp] object McpToolsSupport:
         case SourceFormat.Annotated =>
           "READ-ONLY view, NOT valid Scala — do NOT paste into code; edit the real file at uri " +
             s"(gutter line numbers map 1:1). ⟹ marks each note. $markers"
+        case SourceFormat.Diff =>
+          "Unified diff, source-as-written → enriched: `-` lines are the original, `+` lines add " +
+            "the compiler's inline `// ⟹` insertions and explode wildcard/`given` imports (with " +
+            s"symbols=on). Render in any diff viewer for green/red. $markers"
 
   private[mcp] def round2(d: Double): Double = math.round(d * 100.0) / 100.0
   private[mcp] def round3(d: Double): Double = math.round(d * 1000.0) / 1000.0
@@ -985,7 +1058,9 @@ private[mcp] object McpToolsGroupC:
             "A plain text read MISSES all of this — this shows what the compiler actually sees. Pass " +
             "`annotationsOnly` to get just the annotated lines. Pick the `format` for your need: " +
             "`annotated` (default, densest — gutter + `⟹` notes, NOT valid Scala), `compilable` (notes as " +
-            "`// ⟹` comments, no gutter — valid pasteable Scala), or `plain` (the raw file, no notes). In " +
+            "`// ⟹` comments, no gutter — valid pasteable Scala), `plain` (the raw file, no notes), or " +
+            "`diff` (a unified diff from the source as written to the enriched view — `+` lines are the " +
+            "compiler's insertions, render green/red in any diff viewer). In " +
             "`annotated`/`plain` the gutter is a READ-ONLY view: never paste it into code; edit the real " +
             "file at `uri` (gutter numbers map 1:1).",
           (
@@ -1010,13 +1085,14 @@ private[mcp] object McpToolsGroupC:
                 val symbolsOn = argBool(a, "symbols", false)
                 val symbols = if symbolsOn then az.symbolLegend(uri) else Nil
                 val fmt = argFormat(a, "format")
-                // import-explosion is the compilable rendering of symbols=on: desugar wildcard /
-                // `given` imports into explicit ones so no name enters scope invisibly.
-                val displayLines =
-                  if symbolsOn && fmt == SourceFormat.Compilable then az.explodeImports(uri, lines)
-                  else lines
+                // import-explosion is the compilable rendering of symbols=on (and its diff): desugar
+                // wildcard / `given` imports into explicit ones so no name enters scope invisibly.
+                val explode =
+                  symbolsOn && (fmt == SourceFormat.Compilable || fmt == SourceFormat.Diff)
+                val displayLines = if explode then az.explodeImports(uri, lines) else lines
                 SourceView.result(
                   uri.value,
+                  lines,
                   displayLines,
                   anns,
                   fmt,
