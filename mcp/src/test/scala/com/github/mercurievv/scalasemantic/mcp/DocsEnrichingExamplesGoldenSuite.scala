@@ -28,10 +28,40 @@ class DocsEnrichingExamplesGoldenSuite extends munit.FunSuite:
 
   private val goldenDir = Paths.get("mcp/src/test/resources/docs-golden")
 
+  /** Placeholder swapped into the JSON golden in place of an embedded `"source"` field — the real
+    * text lives in a sibling `$exampleName.scala` file instead, so it stays diffable/editable as
+    * plain Scala rather than an escaped JSON string.
+    */
+  private val sourcePlaceholder = "<<see companion .scala golden file>>"
+
   private def assertGolden(exampleName: String, tool: String, args: ujson.Value): Unit =
     val result = toolByName(tool).run(args)
-    val actual = write(ujson.Obj("tool" -> tool, "args" -> args, "result" -> result), indent = 2)
+    val sourceOpt = result.objOpt.flatMap(_.get("source")).collect { case ujson.Str(s) => s }
+    val jsonResult = sourceOpt match
+      case Some(_) =>
+        val entries = result.obj.toSeq.map {
+          case (k, _) if k == "source" => k -> (ujson.Str(sourcePlaceholder): ujson.Value)
+          case kv                      => kv
+        }
+        ujson.Obj(entries.head, entries.tail*)
+      case None => result
+    val actual =
+      write(ujson.Obj("tool" -> tool, "args" -> args, "result" -> jsonResult), indent = 2)
     val goldenPath = goldenDir.resolve(s"$exampleName.json")
+
+    sourceOpt.foreach { src =>
+      val scalaGoldenPath = goldenDir.resolve(s"$exampleName.scala")
+      if Files.exists(scalaGoldenPath) then
+        val expectedSrc = Files.readString(scalaGoldenPath)
+        assertEquals(
+          src,
+          expectedSrc,
+          s"doc example '$exampleName' source drifted from its golden .scala file"
+        )
+      else
+        val _ = Files.writeString(scalaGoldenPath, src)
+    }
+
     if Files.exists(goldenPath) then
       val expected = Files.readString(goldenPath)
       assertEquals(actual, expected, s"doc example '$exampleName' drifted from its golden file")

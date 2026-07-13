@@ -10,6 +10,6 @@
     "format": "compilable",
     "annotationCount": 13,
     "legend": "Valid Scala: each note is a trailing `// ⟹` comment, no line-number gutter. Notes show compiler insertions invisible in the source: `(using …)` implicit args, `name(…)` implicit conversion, `[…]` inferred type args, `: T` inferred type; `col N` (1-based) pins the call a note applies to.",
-    "source": "package com.github.mercurievv.scalasemantic.docexamples\n\ntrait Show[A]:\n  def show(a: A): String\n\ngiven intShow: Show[Int] with\n  def show(a: Int) = a.toString  // ⟹ : String\n\ngiven listShow[A](using sh: Show[A]): Show[List[A]] with  // ⟹ (using sh)\n  def show(a: List[A]) = a.map(sh.show).mkString(\"[\", \", \", \"]\")  // ⟹ : String; col 26 [String]\n\ndef render[A](a: A)(using sh: Show[A]): String =\n  sh.show(a)\n\nval out = render(List(1, 2, 3))  // ⟹ : String; (using listShow); col 11 [List[Int]]; col 18 apply(…); col 18 [Int]; (using intShow)\nval num = render(42)  // ⟹ : String; (using intShow); col 11 [Int]\n"
+    "source": "<<see companion .scala golden file>>"
   }
 }
