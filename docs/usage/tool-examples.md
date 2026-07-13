@@ -1,3 +1,7 @@
+---
+format: mdx
+---
+
 # Tool Examples — Real Output, Self-Verifying
 
 Every tool example on this page is **executed at docs build time** by the real Scala 3.8.4 analyzer — no hand-written JSON. If a tool call fails, the docs build fails, so this page cannot rot. Each example's exact tool/args/result triple is also pinned as a golden-file test in the `mcp` module (`DocsToolExamplesGoldenSuite` / `DocsEnrichingExamplesGoldenSuite`), so a change to tool output shows up as a reviewable diff there too, not just a silent docs rebuild.
@@ -21,9 +25,7 @@ Every tool example on this page is **executed at docs build time** by the real S
 | `structure` | Dependency graph and cycles |
 | `smart_code_duplications` | Structurally identical blocks |
 | **Enriching tools** | |
-| `annotated_source` | Compiler-visible facts and inferred types |
-| `annotated_source` (`symbols=on`) | Name→package legend + explicit imports |
-| `annotated_source` (`format=diff`) | Unified diff of the compiler's insertions |
+| `annotated_source` | Compiler view — inferred types, implicits, exploded imports, diff (tabbed) |
 | `method_signature` | Full signature with implicit/using params |
 | `document_outline` | File structure with compiler-rendered names |
 | `resolve_implicits` | Which givens/implicits apply |
@@ -240,96 +242,71 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 These tools show the LLM what the compiler sees but the source text does not — inferred types, synthesized implicit arguments and conversions, resolved signatures. Every example below runs against the same source file, executed at docs build time by the real Scala 3.8.4 analyzer.
 
-### Source under analysis
+### annotated_source
 
-`Enrich.scala` — a `Show` typeclass with several `given` instances (for `Int`, `String`, `List`, and two more brought in by a wildcard `given` import), a context-bound `render`, an extension method, and a spread of call sites (`map`, `sortBy`, `foldLeft`, a `for`-comprehension, numeric widening) that each hide a different compiler insertion: summoned implicits, inferred type arguments, inferred result/value types, and implicit conversions. Read straight from the fixture file the tool calls below actually analyze, so this block can never drift from what's shown as "Original" further down.
+**Answers:** compiler-visible facts and inferred types — everything the compiler sees that the source text does not.
+
+`Enrich.scala` — a `Show` typeclass with several `given` instances (for `Int`, `String`, `List`, and two more brought in by a wildcard `given` import), a context-bound `render`, an extension method, and a spread of call sites (`map`, `sortBy`, `foldLeft`, a `for`-comprehension, numeric widening) that each hide a different compiler insertion. The tabs run the real analyzer against it at build time: **Original** is the raw file; **compilable** and **symbols=on** show the compiler's view with the inserted `// ⟹` notes tinted green **in place** (only what the compiler added is highlighted — no whole-line diff); **diff** is the literal `format=diff` patch.
 
 ```scala mdoc:passthrough
 val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+val annotatedArgs = s"""{"uri":"$enrichPath","format":"compilable","annotationsOnly":false}"""
+val symbolsArgs = s"""{"uri":"$enrichPath","format":"compilable","annotationsOnly":false,"symbols":true}"""
+val diffArgs = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"symbols":true}"""
+val annotatedRaw = scalasemantic.docs.ToolRunner.run("annotated_source", annotatedArgs)
+val symbolsRaw = scalasemantic.docs.ToolRunner.run("annotated_source", symbolsArgs)
+val diffRaw = scalasemantic.docs.ToolRunner.run("annotated_source", diffArgs)
+```
+
+<Tabs groupId="annotated-source">
+<TabItem value="original" label="Original">
+
+The source exactly as written — none of the `(using …)` arguments or inferred types below are visible here.
+
+```scala mdoc:passthrough
 println(s"```scala\n${scalasemantic.docs.ToolRunner.readSource(enrichPath)}\n```")
 ```
 
-None of the `(using ...)` arguments or inferred return types above are written in the source — the tools below make them visible.
+</TabItem>
+<TabItem value="compilable" label="compilable" default>
 
-### annotated_source
-
-**Answers:** compiler-visible facts and inferred types.
-
-The compiler injects `(using intShow)` and `(using listShow(...))` into the `render` calls, infers the return type `: String` on the `out` binding and `: List[Int]` on `nums`, and adds the inferred type arguments (`List.apply[Int]`, `render[List[Int]]`) — none visible in source text.
+The compiler injects `(using intShow)` / `(using listShow(...))` into the `render` calls, infers `: String` on `out` and `: List[Int]` on `nums`, and adds the inferred type arguments — each tinted green inline.
 
 ```scala mdoc:passthrough
-val annotatedArgs =
-  s"""{"uri":"$enrichPath","format":"compilable","annotationsOnly":false}"""
-val annotatedRaw = scalasemantic.docs.ToolRunner.run("annotated_source", annotatedArgs)
 println(scalasemantic.docs.ToolRunner.requestMarkdown("annotated_source", annotatedArgs))
 ```
 
-<div className="row">
-<div className="col col--6">
-
-**Original**
-
 ```scala mdoc:passthrough
-println(s"```scala\n${scalasemantic.docs.ToolRunner.readSource(enrichPath)}\n```")
+println(scalasemantic.docs.ToolRunner.enrichedComponent(annotatedRaw))
 ```
 
-</div>
-<div className="col col--6">
-
-**Enriched (compiler view)**
-
 ```scala mdoc:passthrough
-println(s"```scala\n${scalasemantic.docs.ToolRunner.extractField(annotatedRaw, "source")}\n```")
+println(scalasemantic.docs.ToolRunner.detailsMarkdown(annotatedArgs, annotatedRaw))
 ```
 
-</div>
-</div>
+</TabItem>
+<TabItem value="symbols" label="symbols=on">
+
+Appends a `type → package` legend and, under `compilable`, **explodes** the wildcard `import Instances.given` into `import Instances.{doubleShow, floatShow}` — the exact givens summoned at `render(3.14)` / `render(1.0f)`. Names that need no import (same-package, inherited, `export`ed) stay in the legend.
 
 ```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.detailsMarkdown(annotatedRaw, annotatedArgs))
-```
-
-**Replaces:** Reading the source and hand-tracing every implicit/inferred insertion → one compiler-visible view.
-
----
-
-### annotated_source with `symbols=on` — name origins & explicit imports
-
-**Answers:** which package each mid-code type belongs to, and which given a wildcard import actually brought into scope.
-
-`symbols=on` appends a `type → package` legend at the end. Under `format=compilable` it additionally **explodes** wildcard / `given` imports into the exact names used: `import Instances.given` becomes `import Instances.{doubleShow, floatShow}` — naming just the givens the compiler summoned at the `render(3.14)` / `render(1.0f)` call sites, none of which is written at the summon site. Names that need no import (same-package, inherited, `export`ed) stay in the legend; only imported names are exploded.
-
-```scala mdoc:passthrough
-val symbolsArgs =
-  s"""{"uri":"$enrichPath","format":"compilable","annotationsOnly":false,"symbols":true}"""
-val symbolsRaw = scalasemantic.docs.ToolRunner.run("annotated_source", symbolsArgs)
 println(scalasemantic.docs.ToolRunner.requestMarkdown("annotated_source", symbolsArgs))
 ```
 
-**Enriched (compiler view, `symbols=on`)**
-
 ```scala mdoc:passthrough
-println(s"```scala\n${scalasemantic.docs.ToolRunner.extractField(symbolsRaw, "source")}\n```")
+println(scalasemantic.docs.ToolRunner.enrichedComponent(symbolsRaw))
 ```
 
 ```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.detailsMarkdown(symbolsRaw, symbolsArgs))
+println(scalasemantic.docs.ToolRunner.detailsMarkdown(symbolsArgs, symbolsRaw))
 ```
 
-**Replaces:** guessing where a mid-code `Show` / `List` comes from, and hand-resolving which given a wildcard import supplies → a legend plus explicit imports.
+</TabItem>
+<TabItem value="diff" label="diff (patch)">
 
----
-
-### annotated_source with `format=diff` — see exactly what the compiler added
-
-**Answers:** which parts of a file are the compiler's, not yours.
-
-`format=diff` returns a unified diff from the source as written to the enriched view: `-` lines are the original, `+` lines carry the inline `// ⟹` insertions and (with `symbols=on`) the exploded imports. Any diff viewer renders it green/red, so the compiler's contribution is visible at a glance — no side-by-side reading.
+`format=diff` returns a unified diff from source → enriched: `-` lines are the original, `+` lines carry the insertions and exploded imports. A literal, appliable patch — coloured whole-line green/red by any diff viewer.
 
 ```scala mdoc:passthrough
-val diffArgs =
-  s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"symbols":true}"""
-val diffRaw = scalasemantic.docs.ToolRunner.run("annotated_source", diffArgs)
 println(scalasemantic.docs.ToolRunner.requestMarkdown("annotated_source", diffArgs))
 ```
 
@@ -337,7 +314,10 @@ println(scalasemantic.docs.ToolRunner.requestMarkdown("annotated_source", diffAr
 println(s"```diff\n${scalasemantic.docs.ToolRunner.extractField(diffRaw, "source")}\n```")
 ```
 
-**Replaces:** eyeballing two source blocks to spot the difference → one colourised diff.
+</TabItem>
+</Tabs>
+
+**Replaces:** reading the source and hand-tracing every implicit/inferred insertion → one compiler-visible view where green marks exactly what the compiler added.
 
 ---
 
