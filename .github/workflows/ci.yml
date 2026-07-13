@@ -84,6 +84,13 @@ jobs:
         run: ./mill __.test.compile
       - name: Test
         run: ./mill __.test.testForked
+      - name: Run E2E Smoke Test
+        run: ./mill smokeTest
+      - name: Verify Regression Files Consistency (Unit & E2E)
+        run: python3 scripts/generate-regressions.py --check --categories unit e2e
+      - name: Check for Regressions against Base (Unit & E2E)
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/generate-regressions.py --check-regression --base "origin/${{ github.base_ref }}" --categories unit e2e
 
   verify:
     name: Stainless verification
