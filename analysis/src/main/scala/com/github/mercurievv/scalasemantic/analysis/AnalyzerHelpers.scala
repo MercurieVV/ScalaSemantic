@@ -40,24 +40,30 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
     * zero-width enclosing point and so carries no trustworthy column. `None` for synthetics we do
     * not surface.
     */
-  def syntheticAnnotation(syn: s.Synthetic): Option[SourceAnnotation] =
+  def syntheticAnnotation(
+      syn: s.Synthetic,
+      sourceLines: IndexedSeq[String]
+  ): Option[SourceAnnotation] =
     val r = syn.range.getOrElse(s.Range.defaultInstance)
     syn.tree match
       case t: s.TypeApplyTree if t.typeArguments.nonEmpty =>
+        // Anchor the inferred type-args to the CALL they apply to (`a.map[String]`), not the token
+        // at the range start — which is the receiver (`a`), reading as `a[String]`.
+        val targs = t.typeArguments.map(renderType).mkString("[", ", ", "]")
+        val anchor = functionAnchor(t.function, sourceLines)
         Some(
           SourceAnnotation(
             r.startLine,
             r.startCharacter,
             "inferred-type-args",
-            t.typeArguments.map(renderType).mkString("[", ", ", "]")
+            if anchor.isEmpty then targs else s"$anchor$targs"
           )
         )
       case app: s.ApplyTree =>
         app.function match
-          // using-args appended to a visible call: the function IS the original expression, so the
-          // range is the enclosing point, not where the args belong — no reliable column.
+          // using-args appended to a visible call: the function IS the original expression.
           case _: s.OriginalTree =>
-            val args = app.arguments.iterator.flatMap(insertedName).toList
+            val args = app.arguments.iterator.flatMap(insertedSymbol).map(givenDisplay).toList
             Option.when(args.nonEmpty)(
               SourceAnnotation(
                 r.startLine,
@@ -66,22 +72,74 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
                 args.mkString("(using ", ", ", ")")
               )
             )
-          // an implicit conversion wraps the original expression: the range pins the converted
-          // expression, so the column is meaningful.
+          // an implicit conversion wraps the original expression: show `conv(convertedExpr)`.
+          // `apply` is the compiler's `.apply` insertion, not a real conversion — the type-args
+          // note already covers that call, so drop it here.
           case fn =>
-            insertedName(fn).map(c =>
-              SourceAnnotation(r.startLine, r.startCharacter, "implicit-conversion", s"$c(…)")
-            )
+            insertedName(fn).filter(_ != "apply").map { c =>
+              val arg =
+                app.arguments.headOption.flatMap(convertedText(_, sourceLines)).getOrElse("…")
+              SourceAnnotation(r.startLine, r.startCharacter, "implicit-conversion", s"$c($arg)")
+            }
       case _ => None
 
-  /** Best-effort display name of an inserted implicit tree (a given/implicit reference). */
-  def insertedName(tree: s.Tree): Option[String] =
+  /** The symbol an inserted implicit tree (a given/implicit/conversion reference) resolves to. */
+  def insertedSymbol(tree: s.Tree): Option[String] =
     tree match
-      case t: s.IdTree        => Some(index.displayName(t.symbol))
-      case t: s.SelectTree    => t.id.flatMap(insertedName)
-      case t: s.TypeApplyTree => insertedName(t.function)
-      case t: s.ApplyTree     => insertedName(t.function)
+      case t: s.IdTree        => Some(t.symbol)
+      case t: s.SelectTree    => t.id.flatMap(insertedSymbol)
+      case t: s.TypeApplyTree => insertedSymbol(t.function)
+      case t: s.ApplyTree     => insertedSymbol(t.function)
       case _                  => None
+
+  /** Plain display name of an inserted implicit tree (used for conversion names — NOT type-ified).
+    */
+  def insertedName(tree: s.Tree): Option[String] =
+    insertedSymbol(tree).map(index.displayName)
+
+  /** How to name a summoned given: its identifier when informative, else its TYPE. A synthetic
+    * evidence/`x$` parameter (`evidence$1`) or a type-like capitalised standard given (`Int`, the
+    * `Ordering.Int` val) tells the reader nothing — render `Show[A]` / `Ordering[Int]` instead.
+    */
+  private def givenDisplay(symbol: String): String =
+    val name = index.displayName(symbol)
+    val uninformative = name.isEmpty || name.contains('$') || name.headOption.exists(_.isUpper)
+    if !uninformative then name
+    else
+      val tpe = renderType(index.info(symbol).map(valueType).getOrElse(s.Type.Empty))
+      if tpe.nonEmpty then tpe
+      else
+        // stdlib givens (`Ordering.Int`) carry no indexed signature — synthesize `Owner[Name]`.
+        val owner = index.displayName(index.owner(symbol))
+        if owner.nonEmpty && name.nonEmpty then s"$owner[$name]" else name
+
+  /** The call a synthetic's function applies to, for anchoring a type-args note: `render`, `a.map`,
+    * `List.apply`. Reuses [[renderTree]] to render the function expression, then collapses a
+    * complex receiver (one containing a nested call) to just its trailing `.method`, so the note
+    * never re-inlines a whole sub-expression.
+    */
+  def functionAnchor(tree: s.Tree, sourceLines: IndexedSeq[String]): String =
+    val full = renderTree(tree, sourceLines)
+    if full.nonEmpty && !full.contains('(') && full.length <= 24 then full
+    else
+      tree match
+        case t: s.TypeApplyTree => functionAnchor(t.function, sourceLines)
+        case t: s.SelectTree    => t.id.map(id => s".${renderTree(id, sourceLines)}").getOrElse("…")
+        case _ if full.isEmpty  => ""
+        case _                  =>
+          // complex `OriginalTree` (e.g. `List(...).sortBy`): keep only the trailing `.member`.
+          val dot = full.lastIndexOf('.')
+          if dot >= 0 && dot < full.length - 1 && !full.substring(dot + 1).exists("([".contains(_))
+          then s".${full.substring(dot + 1)}"
+          else "…"
+
+  /** Source text of the expression an implicit conversion wrapped, if recoverable. */
+  private def convertedText(tree: s.Tree, sourceLines: IndexedSeq[String]): Option[String] =
+    tree match
+      case o: s.OriginalTree =>
+        val src = originalText(o.range, sourceLines, Map.empty)
+        Option.when(src.nonEmpty)(src)
+      case _ => None
 
   /** Render one synthetic tree as a compact elaborated expression. */
   def renderTree(
