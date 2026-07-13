@@ -16,6 +16,10 @@
         "dependsOn": [
           "com/github/mercurievv/scalasemantic/docexamples/Show#"
         ]
+      },
+      {
+        "given": "stringShow",
+        "type": "Show[String]"
       }
     ]
   }

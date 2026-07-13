@@ -7,12 +7,16 @@
     "type": "com/github/mercurievv/scalasemantic/docexamples/Show#",
     "candidates": [
       {
-        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.intShow.",
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show.intShow.",
         "type": "Show[Int]"
       },
       {
-        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.listShow().",
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show.listShow().",
         "type": "Show[List[A]]"
+      },
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show.stringShow.",
+        "type": "Show[String]"
       }
     ]
   }
