@@ -101,6 +101,14 @@ object ToolRunner:
   def extractField(raw: String, field: String): String =
     ujson.read(raw).obj(field).str
 
+  /** A `<EnrichedCode>` MDX element wrapping a tool result's `source` field — the intra-line
+    * insert-tinting component (see `website/src/components/EnrichedCode.js`), which highlights only
+    * the compiler's `// ⟹` insertions rather than diffing whole lines. The source is passed as a
+    * JSON-encoded string prop so backticks, braces, and the `⟹` glyph survive MDX parsing intact.
+    */
+  def enrichedComponent(raw: String): String =
+    s"<EnrichedCode code={${ujson.write(extractField(raw, "source"))}} />"
+
   /** Collapsed `<details>` block with the raw JSON, eliding fields already shown elsewhere (e.g. as
     * an extracted code block via [[extractField]]) so nothing is printed twice.
     */

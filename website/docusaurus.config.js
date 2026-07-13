@@ -76,7 +76,9 @@ const config = {
           priority: 0.5,
           filename: 'sitemap.xml',
         },
-        theme: {},
+        theme: {
+          customCss: require.resolve('./src/css/custom.css'),
+        },
       }),
     ],
   ],

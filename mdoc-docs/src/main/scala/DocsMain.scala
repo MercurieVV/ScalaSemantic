@@ -21,3 +21,27 @@ object DocsMain:
       .withArgs(args.toList)
     val exitCode = mdoc.Main.process(settings)
     if exitCode != 0 then sys.exit(exitCode)
+
+    // Opt-in MDX: mdoc only EXECUTES `*.md` (it copies `*.mdx` verbatim, unrendered), while
+    // Docusaurus's `detect` only PARSES `*.mdx` as MDX (our `*.md` pages are CommonMark on purpose —
+    // they contain `<root>`, `List[A]`, `{...}` MDX would choke on). A page that needs MDX (JSX
+    // components like <Tabs>/<EnrichedCode>) therefore declares `format: mdx` in its front matter;
+    // here — after rendering — we rename those generated outputs to `*.mdx` so Docusaurus treats
+    // them as MDX. Bridges the two tools' opposite extension conventions.
+    val outDir = java.nio.file.Paths.get("website", "docs")
+    val generated = java.nio.file.Files.walk(outDir)
+    try
+      generated
+        .filter((p: java.nio.file.Path) => p.toString.endsWith(".md"))
+        .filter((p: java.nio.file.Path) =>
+          java.nio.file.Files.readString(p).linesIterator.take(6).contains("format: mdx")
+        )
+        .forEach { (p: java.nio.file.Path) =>
+          val target = java.nio.file.Paths.get(p.toString.stripSuffix(".md") + ".mdx")
+          val _ = java.nio.file.Files.move(
+            p,
+            target,
+            java.nio.file.StandardCopyOption.REPLACE_EXISTING
+          )
+        }
+    finally generated.close()
