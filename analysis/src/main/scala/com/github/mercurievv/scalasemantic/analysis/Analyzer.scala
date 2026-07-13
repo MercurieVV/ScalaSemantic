@@ -182,13 +182,110 @@ final class Analyzer(
     */
   def sourceAnnotations(
       uri: DocumentUri,
-      sourceLines: IndexedSeq[String]
+      sourceLines: IndexedSeq[String],
+      detail: SourceDetail = SourceDetail.Terse
   ): Option[List[SourceAnnotation]] =
     index.document(uri.value).map { doc =>
-      val synthetic = doc.synthetics.iterator.flatMap(h.syntheticAnnotation).toList
+      val synthetic = detail match
+        case SourceDetail.Terse => doc.synthetics.iterator.flatMap(h.syntheticAnnotation).toList
+        case SourceDetail.Full  => fullAnnotations(doc, sourceLines)
       val defTypes = doc.occurrences.iterator.flatMap(h.defTypeAnnotation(_, sourceLines)).toList
       (synthetic ++ defTypes).distinct.sortBy(a => (a.line, a.character, a.kind))
     }
+
+  /** Distinct type symbols referenced in `uri`, as (simpleName -> dotted FQN), sorted, skipping
+    * `scala.*` / `java.lang.*` (universally known). Empty if `uri` is not indexed.
+    */
+  def symbolLegend(uri: DocumentUri): List[(String, String)] =
+    val skipped = Set(
+      "scala/Boolean#",
+      "scala/Byte#",
+      "scala/Char#",
+      "scala/Double#",
+      "scala/Float#",
+      "scala/Int#",
+      "scala/Long#",
+      "scala/Short#",
+      "scala/Unit#",
+      "java/lang/String#"
+    )
+    index.document(uri.value).toList.flatMap { doc =>
+      doc.occurrences.iterator
+        .map(_.symbol)
+        .filter(_.endsWith("#"))
+        .filterNot(s => skipped.contains(s) || s.startsWith("java/lang/"))
+        .toList
+        .distinct
+        .map(s => index.displayName(s) -> h.typeSymbolFqn(s))
+        .filter((name, _) => name.nonEmpty && name != "Int" && name != "String")
+        .distinct
+        .sortBy(_._1)
+    }
+
+  def stripComments(lines: IndexedSeq[String]): IndexedSeq[String] =
+    h.stripComments(lines)
+
+  private def fullAnnotations(
+      doc: s.TextDocument,
+      sourceLines: IndexedSeq[String]
+  ): List[SourceAnnotation] =
+    def rangeKey(r: s.Range): (Int, Int, Int) = (r.startLine, r.startCharacter, r.endCharacter)
+    def contains(outer: s.Range, inner: s.Range): Boolean =
+      outer.startLine <= inner.startLine && outer.endLine >= inner.endLine &&
+        (outer.startLine < inner.startLine || outer.startCharacter <= inner.startCharacter) &&
+        (outer.endLine > inner.endLine || outer.endCharacter >= inner.endCharacter)
+    val typeApps = doc.synthetics.iterator.flatMap { syn =>
+      syn.tree match
+        case t: s.TypeApplyTree =>
+          val args = t.typeArguments.map(h.renderType).mkString("[", ", ", "]")
+          t.function match
+            case s.SelectTree(q, Some(id)) =>
+              h.typeApplyOriginalRange(q).map { r =>
+                rangeKey(r) -> s".${h.renderTree(id, sourceLines)}$args"
+              }
+            case _ =>
+              h.typeApplyOriginalRange(t.function).map { r =>
+                rangeKey(r) -> args
+              }
+        case _ => None
+    }.toMap
+    val enclosingRanges = doc.synthetics.iterator.flatMap { syn =>
+      syn.tree match
+        case app: s.ApplyTree =>
+          app.function match
+            case _: s.OriginalTree => syn.range
+            case _                 => None
+        case _ => None
+    }.toList
+    val usingCalls = doc.synthetics.iterator.flatMap { syn =>
+      syn.tree match
+        case app: s.ApplyTree =>
+          app.function match
+            case _: s.OriginalTree =>
+              val r = syn.range.getOrElse(s.Range.defaultInstance)
+              val enclosed = enclosingRanges.exists(parent => parent != r && contains(parent, r))
+              val text = h.renderTree(app, sourceLines, typeApps)
+              Option.when(!enclosed && text.nonEmpty)(
+                SourceAnnotation(r.startLine, r.startCharacter, "full", text)
+              )
+            case _ => None
+        case _ => None
+    }.toList
+    val standaloneCalls = doc.synthetics.iterator.flatMap { syn =>
+      syn.tree match
+        case app: s.ApplyTree =>
+          app.function match
+            case _: s.OriginalTree => None
+            case _                 =>
+              val r = syn.range.getOrElse(s.Range.defaultInstance)
+              val enclosed = enclosingRanges.exists(parent => parent != r && contains(parent, r))
+              val text = h.renderTree(app, sourceLines, typeApps)
+              Option.when(!enclosed && text.nonEmpty)(
+                SourceAnnotation(r.startLine, r.startCharacter, "full", text)
+              )
+        case _ => None
+    }.toList
+    (usingCalls ++ standaloneCalls).distinct
 
   // --- rename plan ----------------------------------------------------------
 

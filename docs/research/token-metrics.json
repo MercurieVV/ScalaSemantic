@@ -4,8 +4,8 @@
   "summary": {
     "queryCount": 5,
     "toolTokens": 415,
-    "baselineTokens": 3497,
-    "tokenDelta": 3082,
+    "baselineTokens": 3498,
+    "tokenDelta": 3083,
     "savingsPercent": 88.1
   },
   "queries": [
@@ -15,10 +15,10 @@
       "tool": "find_usages",
       "baseline": "Text grep for Animal across fixture and vendored corpus source trees.",
       "toolChars": 399,
-      "baselineChars": 7924,
+      "baselineChars": 7926,
       "toolTokens": 100,
-      "baselineTokens": 1981,
-      "tokenDelta": 1881,
+      "baselineTokens": 1982,
+      "tokenDelta": 1882,
       "savingsPercent": 95
     },
     {

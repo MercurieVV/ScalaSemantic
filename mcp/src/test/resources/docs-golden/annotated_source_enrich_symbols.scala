@@ -14,3 +14,7 @@ def render[A](a: A)(using sh: Show[A]): String =
 
 val out = render(List(1, 2, 3))  // ⟹ : String; (using listShow); render[List[Int]]; List.apply(…); List[Int]; (using intShow)
 val num = render(42)  // ⟹ : String; (using intShow); render[Int]
+
+// symbols:
+//   List → scala.collection.immutable.List
+//   Show → com.github.mercurievv.scalasemantic.docexamples.Show

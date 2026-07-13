@@ -50,11 +50,33 @@ class AnalyzerHelpersSuite extends munit.FunSuite:
     assert(!h.alreadyAscribed("val x = 1", -1), "negative start")
     assert(!h.alreadyAscribed("val x = 1", 99), "start past end")
 
-  test("packageDotted and joinFqn"):
-    assertEquals(h.packageDotted("com/foo/bar/"), "com.foo.bar")
-    assertEquals(h.packageDotted(""), "")
-    assertEquals(h.joinFqn("", "X"), "X")
-    assertEquals(h.joinFqn("com.foo", "X"), "com.foo.X")
+    test("packageDotted and joinFqn"):
+      assertEquals(h.packageDotted("com/foo/bar/"), "com.foo.bar")
+      assertEquals(h.packageDotted(""), "")
+      assertEquals(
+        h.typeSymbolFqn("scala/collection/immutable/List#"),
+        "scala.collection.immutable.List"
+      )
+      assertEquals(h.joinFqn("", "X"), "X")
+      assertEquals(h.joinFqn("com.foo", "X"), "com.foo.X")
+
+    test("stripComments blanks line and block comments but preserves strings"):
+      val stripped = h.stripComments(
+        IndexedSeq(
+          "/** docs */",
+          "val x = 1 // trailing",
+          """val url = "http://example.test/a//b"""",
+          "val y = 'x'",
+          "/* block",
+          " still block */ val z = 2"
+        )
+      )
+      assertEquals(stripped(0), "           ")
+      assertEquals(stripped(1), "val x = 1            ")
+      assertEquals(stripped(2), """val url = "http://example.test/a//b"""")
+      assertEquals(stripped(3), "val y = 'x'")
+      assertEquals(stripped(4), "        ")
+      assertEquals(stripped(5), "              val z = 2")
 
   test("globMatcher: None keeps all; literal is substring; * is wildcard"):
     assert(h.globMatcher(None)("anything"))
