@@ -213,6 +213,53 @@ final class Analyzer(
             case found @ Some(_)         => found
             case None                    => outlineSpan(rest, sym)
 
+  /** The innermost outline entry (searched recursively through children) whose span — from its own
+    * `line` to the line of its next SIBLING at the same nesting level (or end-of-file) — contains
+    * `line`. Used by [[enclosingDefinitionRange]] to find "what definition is this position inside"
+    * when the position is not itself sitting exactly on a definition's own line.
+    */
+  private def innermostContaining(entries: List[OutlineEntry], line: Int): Option[OutlineEntry] =
+    entries.zipWithIndex
+      .find { (e, i) =>
+        val nextStart = entries.lift(i + 1).map(_.line).getOrElse(Int.MaxValue)
+        e.line <= line && line < nextStart
+      }
+      .map(_._1)
+      .flatMap(e => innermostContaining(e.children, line).orElse(Some(e)))
+
+  /** The enclosing definition around a source position: the innermost method/class/val whose body
+    * spans `position` — for `source_around_position`. Two paths, tried in order:
+    *   1. the symbol directly under the cursor (`typeAtPosition`), when ITS OWN definition range
+    *      (from `symbolDefinitionRange`) actually contains `position` — i.e. the cursor sits inside
+    *      that symbol's own body/signature, not merely referencing it from elsewhere (a reference
+    *      to a method defined elsewhere never satisfies this, so callee/argument references
+    *      correctly fall through to the walk below rather than jumping to the callee's unrelated
+    *      definition).
+    *   2. otherwise, the innermost [[outline]] entry (searched via [[innermostContaining]]) whose
+    *      span contains `position`'s line — covers references, literals, and any position that is
+    *      not itself a resolvable occurrence.
+    *
+    * `None` when `uri` is not indexed or has no enclosing definition (e.g. a blank line before any
+    * declaration) — callers fall back to a fixed window around the position.
+    */
+  def enclosingDefinitionRange(
+      uri: DocumentUri,
+      position: SourcePosition
+  ): Option[(String, SourceRange)] =
+    val atCursor =
+      for
+        hit <- typeAtPosition(uri, position)
+        (defUri, range) <- symbolDefinitionRange(hit.symbol)
+        if defUri.value == uri.value && range.startLine <= position.lineValue &&
+          position.lineValue < range.endLine
+      yield (hit.symbol, range)
+    atCursor.orElse:
+      for
+        entries <- outline(uri)
+        entry <- innermostContaining(entries, position.lineValue)
+        (_, range) <- symbolDefinitionRange(entry.symbol)
+      yield (entry.symbol, range)
+
   // --- annotated source -----------------------------------------------------
 
   /** The compiler insertions invisible in the source of `uri`, as positioned annotations: the

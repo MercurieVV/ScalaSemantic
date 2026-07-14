@@ -232,6 +232,53 @@ class AnalyzerToolsSuite extends munit.FunSuite:
     assertEquals(at.symbol, "t/T#m().", "the tighter range wins")
     assertEquals(at.displayName, "m")
 
+  // ===================== enclosing-definition-range ============================
+
+  private val enclosingIdx = index(
+    doc(
+      "o.scala",
+      Seq(
+        si("o/O#", s.SymbolInformation.Kind.OBJECT, "O"),
+        si("o/O#m1().", s.SymbolInformation.Kind.METHOD, "m1", s.MethodSignature(None, Nil, IntT)),
+        si("o/O#m2().", s.SymbolInformation.Kind.METHOD, "m2", s.MethodSignature(None, Nil, IntT))
+      ),
+      Seq(
+        occ("o/O#", DEF, 0, 0, 0, 1),
+        occ("o/O#m1().", DEF, 1, 2, 1, 4), // def m1 at line 1
+        occ("o/O#m2().", REF, 2, 4, 2, 6), // m1's body calls m2 at line 2
+        occ("o/O#m2().", DEF, 3, 2, 3, 4) // def m2 at line 3
+      )
+    )
+  )
+
+  test(
+    "enclosingDefinitionRange anchors to the enclosing def, not the callee referenced at the position"
+  ):
+    val az = Analyzer(enclosingIdx)
+    // position sits on the `m2` REFERENCE inside m1's body, not on m2's own definition
+    val pos = SourcePosition.from(2, 5).fold(fail(_), identity)
+    val (sym, range) =
+      az.enclosingDefinitionRange(docUri("o.scala"), pos).getOrElse(fail("no enclosing def"))
+    assertEquals(sym, "o/O#m1().", "anchors to the enclosing m1, not the referenced m2")
+    assertEquals(range.startLine, 1)
+    assertEquals(range.endLine, 3, "span runs up to the next sibling (m2)")
+
+  test("enclosingDefinitionRange resolves directly when the position IS a definition"):
+    val az = Analyzer(enclosingIdx)
+    val pos = SourcePosition.from(3, 2).fold(fail(_), identity)
+    val (sym, _) =
+      az.enclosingDefinitionRange(docUri("o.scala"), pos).getOrElse(fail("no enclosing def"))
+    assertEquals(sym, "o/O#m2().")
+
+  test("enclosingDefinitionRange returns None before any declaration (no enclosing def)"):
+    val az = Analyzer(enclosingIdx)
+    val pos = SourcePosition.from(0, 0).fold(fail(_), identity)
+    // line 0 is O's own opening line, which DOES enclose position 0 — use a document with no
+    // occurrences at all to hit the genuine "nothing encloses this" case.
+    val empty = Analyzer(index(doc("empty.scala", Nil, Nil)))
+    assertEquals(empty.enclosingDefinitionRange(docUri("empty.scala"), pos), None)
+    assert(az.enclosingDefinitionRange(docUri("o.scala"), pos).isDefined, "line 0 is inside O")
+
   // ===================== find-symbol: ranking & exclusions ====================
 
   test("findSymbol ranks exact > prefix > substring, excludes empty-named and <init>"):

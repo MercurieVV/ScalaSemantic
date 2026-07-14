@@ -303,6 +303,53 @@ private[mcp] object McpToolsSupport:
   private[mcp] def loc(l: Location): String =
     s"${l.uri}:${l.range.start.line}:${l.range.start.character}"
 
+  /** Enriched source for exactly `range` of `uri` — the shared slice+render path behind
+    * `symbol_source` and `source_around_position`: read the file, compute the WHOLE document's
+    * `sourceAnnotations`/`symbolLegend`/import-explosion (all of which need file-wide context),
+    * then slice lines and annotations down to `range` before handing off to [[SourceView.result]].
+    * The gutter is kept at the file's real (absolute) 1-based line numbers via `lineOffset` —
+    * callers jump straight to the real file, never a re-based one. `None` when the file is missing
+    * or `uri` is not indexed (callers render `notFoundUri`).
+    */
+  private[mcp] def renderRange(
+      az: Analyzer,
+      root: java.nio.file.Path,
+      uri: DocumentUri,
+      range: SourceRange,
+      a: ujson.Value
+  ): Option[ujson.Value] =
+    val file = root.resolve(uri.value)
+    if !java.nio.file.Files.isRegularFile(file) then None
+    else
+      val rawLines0 = java.nio.file.Files.readString(file).split("\n", -1).toIndexedSeq
+      val docs = argStr(a, "docs")
+      val lines = if docs == "strip" then az.stripComments(rawLines0) else rawLines0
+      val detail = argDetail(a, "detail")
+      az.sourceAnnotations(uri, lines, detail).map { allAnns =>
+        val symbolsOn = argBool(a, "symbols", false)
+        val legendSymbols = if symbolsOn then az.symbolLegend(uri) else Nil
+        val fmt = argFormat(a, "format")
+        val explode = symbolsOn && (fmt == SourceFormat.Compilable || fmt == SourceFormat.Diff)
+        val displayLines = if explode then az.explodeImports(uri, lines) else lines
+        val start = range.startLine
+        val endExclusive = math.min(range.endLine, rawLines0.length)
+        val slicedRaw = lines.slice(start, endExclusive)
+        val slicedDisplay = displayLines.slice(start, endExclusive)
+        val slicedAnns = allAnns
+          .filter(ann => ann.line >= start && ann.line < endExclusive)
+          .map(ann => ann.copy(line = ann.line - start))
+        SourceView.result(
+          uri.value,
+          slicedRaw,
+          slicedDisplay,
+          slicedAnns,
+          fmt,
+          argBool(a, "annotationsOnly", false),
+          legendSymbols,
+          lineOffset = start
+        )
+      }
+
   /** The source lines a [[Location]] spans, gutter-numbered exactly like `annotated_source`'s
     * `plain` format (1-based, absolute file line numbers) — reuses [[SourceView.result]] on the
     * whole file so the gutter logic is never duplicated, then slices the rendered lines down to the
@@ -1340,42 +1387,62 @@ private[mcp] object McpToolsGroupC:
               az.symbolDefinitionRange(sym) match
                 case None               => notFound(raw)
                 case Some((uri, range)) =>
-                  val file = root.resolve(uri.value)
-                  if !java.nio.file.Files.isRegularFile(file) then notFoundUri(uri.value)
-                  else
-                    val rawLines = java.nio.file.Files.readString(file).split("\n", -1).toIndexedSeq
-                    val docs = argStr(a, "docs")
-                    val lines = if docs == "strip" then az.stripComments(rawLines) else rawLines
-                    val detail = argDetail(a, "detail")
-                    az.sourceAnnotations(uri, lines, detail) match
-                      case None          => notFoundUri(uri.value)
-                      case Some(allAnns) =>
-                        val symbolsOn = argBool(a, "symbols", false)
-                        val legendSymbols = if symbolsOn then az.symbolLegend(uri) else Nil
-                        val fmt = argFormat(a, "format")
-                        val explode =
-                          symbolsOn && (fmt == SourceFormat.Compilable || fmt == SourceFormat.Diff)
-                        val displayLines = if explode then az.explodeImports(uri, lines) else lines
-                        val start = range.startLine
-                        val endExclusive = math.min(range.endLine, rawLines.length)
-                        val slicedRaw = lines.slice(start, endExclusive)
-                        val slicedDisplay = displayLines.slice(start, endExclusive)
-                        val slicedAnns = allAnns
-                          .filter(ann => ann.line >= start && ann.line < endExclusive)
-                          .map(ann => ann.copy(line = ann.line - start))
-                        val res = SourceView.result(
-                          uri.value,
-                          slicedRaw,
-                          slicedDisplay,
-                          slicedAnns,
-                          fmt,
-                          argBool(a, "annotationsOnly", false),
-                          legendSymbols,
-                          lineOffset = start
-                        )
-                        note.fold(res)(n =>
-                          ujson.Obj.from(res.obj.toSeq :+ ("note" -> ujson.Str(n)))
-                        )
+                  renderRange(az, root, uri, range, a) match
+                    case None      => notFoundUri(uri.value)
+                    case Some(res) =>
+                      note.fold(res)(n => ujson.Obj.from(res.obj.toSeq :+ ("note" -> ujson.Str(n))))
+        }
+      ),
+      toolDef(
+        tool(
+          "source_around_position",
+          "The enriched source of the definition ENCLOSING a source position — like `symbol_source` " +
+            "but keyed by `file`+`line`+`column` (0-based) instead of a symbol, for when you have a " +
+            "cursor position (e.g. from `type_at_position` or a stack trace) rather than a resolved " +
+            "symbol. Resolves the innermost method/class/val body the position sits inside — a " +
+            "reference at that position (a call, an argument) does NOT jump to the callee's own " +
+            "definition, it stays anchored to whatever encloses the cursor. Falls back to a fixed " +
+            "±15-line window (noted in `legend`) when no enclosing definition is found. Enriched " +
+            "identically to `annotated_source` — same `format`/`annotationsOnly`/`symbols`/`docs`/" +
+            "`detail` args and output shape — with the gutter kept at the file's real (absolute) " +
+            "1-based line numbers.",
+          List(
+            ("file", "string", "document uri (path relative to project root)"),
+            ("line", "integer", "0-based line of the position"),
+            ("column", "integer", "0-based column of the position")
+          ) ++ SourceView.params,
+          List("file", "line", "column")
+        ) { a =>
+          val uri = argUri(a, "file")
+          val position = argPosition(a, "line", "column")
+          az.enclosingDefinitionRange(uri, position) match
+            case Some((_, range)) =>
+              renderRange(az, root, uri, range, a) match
+                case None      => notFoundUri(uri.value)
+                case Some(res) => res
+            case None =>
+              val file = root.resolve(uri.value)
+              if !java.nio.file.Files.isRegularFile(file) then notFoundUri(uri.value)
+              else
+                val totalLines =
+                  java.nio.file.Files.readString(file).split("\n", -1).length
+                val startLine = math.max(0, position.lineValue - 15)
+                val endLine = math.min(totalLines, position.lineValue + 16)
+                SourceRange.from(startLine, 0, math.max(endLine, startLine + 1), 0).toOption match
+                  case None        => notFoundUri(uri.value)
+                  case Some(range) =>
+                    renderRange(az, root, uri, range, a) match
+                      case None      => notFoundUri(uri.value)
+                      case Some(res) =>
+                        val fallbackNote =
+                          " Fallback: no enclosing definition found at this position — showing a " +
+                            "fixed ±15-line window around it instead."
+                        val obj = res.obj
+                        ujson.Obj.from(obj.toSeq.map {
+                          case (k, ujson.Str(v)) if k == "legend" =>
+                            k -> ujson.Str(v + fallbackNote)
+                          case kv => kv
+                        })
         }
       )
     )
