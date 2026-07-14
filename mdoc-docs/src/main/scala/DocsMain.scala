@@ -29,6 +29,7 @@ object DocsMain:
     // here — after rendering — we rename those generated outputs to `*.mdx` so Docusaurus treats
     // them as MDX. Bridges the two tools' opposite extension conventions.
     val outDir = java.nio.file.Paths.get("website", "docs")
+    val mdxPages = scala.collection.mutable.ListBuffer.empty[java.nio.file.Path]
     val generated = java.nio.file.Files.walk(outDir)
     try
       generated
@@ -36,12 +37,14 @@ object DocsMain:
         .filter((p: java.nio.file.Path) =>
           java.nio.file.Files.readString(p).linesIterator.take(6).contains("format: mdx")
         )
-        .forEach { (p: java.nio.file.Path) =>
-          val target = java.nio.file.Paths.get(p.toString.stripSuffix(".md") + ".mdx")
-          val _ = java.nio.file.Files.move(
-            p,
-            target,
-            java.nio.file.StandardCopyOption.REPLACE_EXISTING
-          )
-        }
+        .forEach((p: java.nio.file.Path) => mdxPages += p)
     finally generated.close()
+
+    mdxPages.foreach { (p: java.nio.file.Path) =>
+      val target = java.nio.file.Paths.get(p.toString.stripSuffix(".md") + ".mdx")
+      val _ = java.nio.file.Files.move(
+        p,
+        target,
+        java.nio.file.StandardCopyOption.REPLACE_EXISTING
+      )
+    }
