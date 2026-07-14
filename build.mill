@@ -635,7 +635,7 @@ def smokeTest() = Task.Command {
 
   val millScript = build.moduleDir / "scripts" / "smoke-test-mill.sc"
   val millRes = os
-    .proc("scala-cli", "run", millScript.toString)
+    .proc("scala-cli", "run", "--server=false", millScript.toString)
     .call(
       cwd = build.moduleDir,
       stdout = os.Inherit,
@@ -644,6 +644,21 @@ def smokeTest() = Task.Command {
     )
   if (millRes.exitCode != 0) {
     sys.error(s"E2E Smoke Test (Mill project) failed with exit status ${millRes.exitCode}")
+  }
+
+  val scriptsScript = build.moduleDir / "scripts" / "smoke-test-scripts.sc"
+  val scriptsRes = os
+    .proc("scala-cli", "run", "--server=false", scriptsScript.toString)
+    .call(
+      cwd = build.moduleDir,
+      stdout = os.Inherit,
+      stderr = os.Inherit,
+      check = false
+    )
+  if (scriptsRes.exitCode != 0) {
+    sys.error(
+      s"E2E Smoke Test (standalone scripts/ scala-cli scripts) failed with exit status ${scriptsRes.exitCode}"
+    )
   }
 }
 
@@ -659,7 +674,16 @@ def prePush() = Task.Command {
 
   Task.log.info("Checking unit and E2E regression consistency...")
   val res = os
-    .proc("scala-cli", "scripts/generate-regressions.scala", "--", "--check", "--categories", "unit", "e2e")
+    .proc(
+      "scala-cli",
+      "--server=false",
+      "scripts/generate-regressions.scala",
+      "--",
+      "--check",
+      "--categories",
+      "unit",
+      "e2e"
+    )
     .call(cwd = build.moduleDir, stdout = os.Inherit, stderr = os.Inherit, check = false)
   if (res.exitCode != 0) {
     sys.error(s"Regression check failed with exit status ${res.exitCode}")
