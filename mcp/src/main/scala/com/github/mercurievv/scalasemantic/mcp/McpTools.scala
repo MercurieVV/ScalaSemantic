@@ -526,6 +526,87 @@ private[mcp] object McpToolsSupport:
             case (None, Nil) => None
         }
 
+  /** Whether an arg VALUE looks like a file path rather than a SemanticDB symbol: contains a `/`,
+    * ends in a recognized source-file extension, or actually exists as a regular file under `root`.
+    * Used by [[resolveTypeArg]]/[[resolveMethodArg]] to decide the file-path branch — tried only
+    * AFTER the value already failed to parse as the symbol type the caller wants.
+    */
+  private[mcp] def looksLikeFilePath(value: String, root: java.nio.file.Path): Boolean =
+    value.contains("/") || value.endsWith(".scala") || value.endsWith(".sc") ||
+      value.endsWith(".mill") || java.nio.file.Files.isRegularFile(root.resolve(value))
+
+  /** Every [[OutlineEntry]] in `entries`, flattened depth-first (parents before children) — turns
+    * `outline`'s nested tree into a flat list so callers can filter by `kind` regardless of nesting
+    * depth (e.g. every method anywhere in a file, not just top-level ones).
+    */
+  private[mcp] def flattenOutline(entries: List[OutlineEntry]): List[OutlineEntry] =
+    entries.flatMap(e => e :: flattenOutline(e.children))
+
+  private[mcp] val TypeOutlineKinds: Set[SymbolKind] =
+    Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Type)
+
+  /** Resolve a tool's `symbol` argument that ALSO accepts a FILE PATH, for tools whose primary
+    * input is a type symbol (`class_hierarchy`, `members`). If the value parses as a [[TypeSymbol]]
+    * it is returned as a single-item list unchanged (existing behavior). Otherwise, if it
+    * [[looksLikeFilePath]], the file's TOP-LEVEL `CLASS`/`TRAIT`/`OBJECT`/`TYPE` outline entries
+    * are returned instead — letting a caller who only knows the file operate without first calling
+    * `find_symbol`. Errors (`error`, surfaced as an MCP tool error) when the value is neither a
+    * valid type symbol nor an existing file.
+    */
+  private[mcp] def resolveTypeArg(
+      az: Analyzer,
+      root: java.nio.file.Path,
+      a: ujson.Value,
+      key: String
+  ): List[TypeSymbol] =
+    val raw = argStr(a, key)
+    TypeSymbol.from(raw) match
+      case Right(sym) => List(sym)
+      case Left(_)    =>
+        if looksLikeFilePath(raw, root) then
+          val uri = argUri(a, key)
+          az.outline(uri) match
+            case None          => error(s"file not indexed: $raw")
+            case Some(entries) =>
+              entries
+                .filter(e => TypeOutlineKinds.contains(e.kind))
+                .flatMap(e => TypeSymbol.from(e.symbol).toOption)
+        else error(s"not a symbol or an existing file: $raw")
+
+  /** Same as [[resolveTypeArg]] but for tools whose primary input is a METHOD symbol
+    * (`method_signature`, `find_overloads`). A file's methods are not top-level outline entries
+    * (they nest under their owning type), so the file-path branch flattens the WHOLE outline and
+    * keeps every `METHOD`-kind entry, anywhere in the file.
+    */
+  private[mcp] def resolveMethodArg(
+      az: Analyzer,
+      root: java.nio.file.Path,
+      a: ujson.Value,
+      key: String
+  ): List[MethodSymbol] =
+    val raw = argStr(a, key)
+    MethodSymbol.from(raw) match
+      case Right(sym) => List(sym)
+      case Left(_)    =>
+        if looksLikeFilePath(raw, root) then
+          val uri = argUri(a, key)
+          az.outline(uri) match
+            case None          => error(s"file not indexed: $raw")
+            case Some(entries) =>
+              flattenOutline(entries)
+                .filter(_.kind == SymbolKind.Method)
+                .flatMap(e => MethodSymbol.from(e.symbol).toOption)
+        else error(s"not a symbol or an existing file: $raw")
+
+  /** The `{ candidates, note }` disambiguation object [[resolveTypeArg]]/[[resolveMethodArg]]
+    * callers return in place of running the tool when a file path resolved to MORE than one symbol.
+    */
+  private[mcp] def candidatesJson(symbols: List[String]): ujson.Value =
+    jobj(
+      Some("candidates" -> strs(symbols)),
+      Some("note" -> ujson.Str("file defines multiple symbols; re-call with one symbol"))
+    )
+
   /** Build an object from optional fields, dropping the absent ones (token discipline). */
   private[mcp] def jobj(fields: Option[(String, ujson.Value)]*): ujson.Value =
     ujson.Obj.from(fields.flatten)
@@ -779,7 +860,12 @@ private[mcp] object McpToolsGroupA:
             "error-tolerant, and overlays it on the index so types referenced from other files still " +
             "resolve. (The server must have been started with a classpath for `source` to take effect.)",
           List(
-            ("symbol", "string", "method symbol"),
+            (
+              "symbol",
+              "string",
+              "method symbol, OR a file path — a file with exactly one method returns its signature; " +
+                "several methods return `{ candidates }` to re-call with one"
+            ),
             ("detailed", "boolean", "include structured parameter breakdown (default false)"),
             (
               "uri",
@@ -794,46 +880,49 @@ private[mcp] object McpToolsGroupA:
           ),
           List("symbol")
         ) { a =>
-          val symbol = argMethodSymbol(a, "symbol")
-          // overlay category: a referenced return/param type may be defined in another file, so the
-          // buffer is overlaid ONTO the whole index rather than queried in isolation.
-          val engine = (a.obj.get("uri").map(_.str), a.obj.get("source").map(_.str)) match
-            case (Some(_), Some(src)) =>
-              val uri = argUri(a, "uri")
-              az.withBuffer(root.resolve(uri.value).toUri, src, uri.value)
-            case _ => az
-          engine.methodSignature(symbol) match
-            case None    => notFound(symbol.value)
-            case Some(m) =>
-              if !argBool(a, "detailed", false) then
-                jobj(
-                  Some("symbol" -> ujson.Str(symbol.value)),
-                  Some("signature" -> ujson.Str(m.rendered))
-                )
-              else
-                val lists = m.parameterLists.map { pl =>
-                  jobj(
-                    Some("implicit" -> ujson.Bool(pl.isImplicit)),
-                    Some(
-                      "params" -> ujson.Arr.from(
-                        pl.parameters.map(p =>
-                          jobj(
-                            Some("name" -> ujson.Str(p.name)),
-                            Some("type" -> ujson.Str(p.tpe)),
-                            opt(p.isImplicit, "implicit" -> ujson.Bool(true))
+          resolveMethodArg(az, root, a, "symbol") match
+            case Nil           => notFound(argStr(a, "symbol"))
+            case symbol :: Nil =>
+              // overlay category: a referenced return/param type may be defined in another file, so
+              // the buffer is overlaid ONTO the whole index rather than queried in isolation.
+              val engine = (a.obj.get("uri").map(_.str), a.obj.get("source").map(_.str)) match
+                case (Some(_), Some(src)) =>
+                  val uri = argUri(a, "uri")
+                  az.withBuffer(root.resolve(uri.value).toUri, src, uri.value)
+                case _ => az
+              engine.methodSignature(symbol) match
+                case None    => notFound(symbol.value)
+                case Some(m) =>
+                  if !argBool(a, "detailed", false) then
+                    jobj(
+                      Some("symbol" -> ujson.Str(symbol.value)),
+                      Some("signature" -> ujson.Str(m.rendered))
+                    )
+                  else
+                    val lists = m.parameterLists.map { pl =>
+                      jobj(
+                        Some("implicit" -> ujson.Bool(pl.isImplicit)),
+                        Some(
+                          "params" -> ujson.Arr.from(
+                            pl.parameters.map(p =>
+                              jobj(
+                                Some("name" -> ujson.Str(p.name)),
+                                Some("type" -> ujson.Str(p.tpe)),
+                                opt(p.isImplicit, "implicit" -> ujson.Bool(true))
+                              )
+                            )
                           )
                         )
                       )
+                    }
+                    jobj(
+                      Some("symbol" -> ujson.Str(symbol.value)),
+                      Some("signature" -> ujson.Str(m.rendered)),
+                      opt(m.typeParameters.nonEmpty, "typeParameters" -> strs(m.typeParameters)),
+                      opt(lists.nonEmpty, "parameterLists" -> ujson.Arr.from(lists)),
+                      Some("returnType" -> ujson.Str(m.returnType))
                     )
-                  )
-                }
-                jobj(
-                  Some("symbol" -> ujson.Str(symbol.value)),
-                  Some("signature" -> ujson.Str(m.rendered)),
-                  opt(m.typeParameters.nonEmpty, "typeParameters" -> strs(m.typeParameters)),
-                  opt(lists.nonEmpty, "parameterLists" -> ujson.Arr.from(lists)),
-                  Some("returnType" -> ujson.Str(m.returnType))
-                )
+            case candidates => candidatesJson(candidates.map(_.value))
         }
       ),
       toolDef(
@@ -842,9 +931,11 @@ private[mcp] object McpToolsGroupA:
           "Parents, transitive linearization, and known subtypes/implementers of a class or trait — " +
             "including subtypes anywhere in the project, which a single LSP lookup cannot give. Scope " +
             "related types with `pathFilter` (glob on a related type's definition uri); trim with " +
-            "`include` (subset of [\"parents\",\"linearization\",\"knownSubtypes\"]).",
+            "`include` (subset of [\"parents\",\"linearization\",\"knownSubtypes\"]). Accepts a symbol " +
+            "OR a file path; a file defining several types returns `{ candidates }` to re-call with " +
+            "one.",
           List(
-            ("symbol", "string", "class or trait symbol"),
+            ("symbol", "string", "class or trait symbol, or a file path"),
             ("detailed", "boolean", "expand related types to {symbol,name,kind} (default false)"),
             (
               "pathFilter",
@@ -864,31 +955,34 @@ private[mcp] object McpToolsGroupA:
           ),
           List("symbol")
         ) { a =>
-          val symbol = argTypeSymbol(a, "symbol")
-          val detailed = argBool(a, "detailed", false)
-          val want = includeWant(a)
-          az.classHierarchy(symbol, a.obj.get("pathFilter").map(_.str)) match
-            case None    => notFound(symbol.value)
-            case Some(h) =>
-              jobj(
-                (List(
-                  Some("symbol" -> ujson.Str(symbol.value)),
-                  Some("name" -> ujson.Str(h.displayName))
-                ) ++ metricFields(az, symbol.value, argBool(a, "metrics", false)) ++ List(
-                  opt(
-                    want("parents") && h.parents.nonEmpty,
-                    "parents" -> refs(h.parents, detailed)
-                  ),
-                  opt(
-                    want("linearization") && h.linearization.nonEmpty,
-                    "linearization" -> refs(h.linearization, detailed)
-                  ),
-                  opt(
-                    want("knownSubtypes") && h.knownSubtypes.nonEmpty,
-                    "knownSubtypes" -> refs(h.knownSubtypes, detailed)
+          resolveTypeArg(az, root, a, "symbol") match
+            case Nil           => notFound(argStr(a, "symbol"))
+            case symbol :: Nil =>
+              val detailed = argBool(a, "detailed", false)
+              val want = includeWant(a)
+              az.classHierarchy(symbol, a.obj.get("pathFilter").map(_.str)) match
+                case None    => notFound(symbol.value)
+                case Some(h) =>
+                  jobj(
+                    (List(
+                      Some("symbol" -> ujson.Str(symbol.value)),
+                      Some("name" -> ujson.Str(h.displayName))
+                    ) ++ metricFields(az, symbol.value, argBool(a, "metrics", false)) ++ List(
+                      opt(
+                        want("parents") && h.parents.nonEmpty,
+                        "parents" -> refs(h.parents, detailed)
+                      ),
+                      opt(
+                        want("linearization") && h.linearization.nonEmpty,
+                        "linearization" -> refs(h.linearization, detailed)
+                      ),
+                      opt(
+                        want("knownSubtypes") && h.knownSubtypes.nonEmpty,
+                        "knownSubtypes" -> refs(h.knownSubtypes, detailed)
+                      )
+                    ))*
                   )
-                ))*
-              )
+            case candidates => candidatesJson(candidates.map(_.value))
         }
       ),
       toolDef(
@@ -896,19 +990,25 @@ private[mcp] object McpToolsGroupA:
           "find_overloads",
           "All overloads sharing a name and owner with the given method (they differ only by the `(+N)` " +
             "disambiguator in the symbol), plus same-named methods inherited from parent types " +
-            "(`inheritedOverloads`, each suffixed `(from <Parent>)`). Pass any one overload's symbol.",
-          List(("symbol", "string", "any one overload's symbol")),
+            "(`inheritedOverloads`, each suffixed `(from <Parent>)`). Pass any one overload's symbol, " +
+            "or a file path — a file defining exactly one method returns its overloads; several " +
+            "methods return `{ candidates }` to re-call with one.",
+          List(("symbol", "string", "any one overload's symbol, or a file path")),
           List("symbol")
         ) { a =>
-          val o = az.findOverloads(argMethodSymbol(a, "symbol"))
-          jobj(
-            Some("name" -> ujson.Str(o.name)),
-            Some("overloads" -> strs(o.overloads.map(_.rendered))),
-            opt(
-              o.inheritedOverloads.nonEmpty,
-              "inheritedOverloads" -> strs(o.inheritedOverloads.map(_.rendered))
-            )
-          )
+          resolveMethodArg(az, root, a, "symbol") match
+            case Nil           => notFound(argStr(a, "symbol"))
+            case symbol :: Nil =>
+              val o = az.findOverloads(symbol)
+              jobj(
+                Some("name" -> ujson.Str(o.name)),
+                Some("overloads" -> strs(o.overloads.map(_.rendered))),
+                opt(
+                  o.inheritedOverloads.nonEmpty,
+                  "inheritedOverloads" -> strs(o.inheritedOverloads.map(_.rendered))
+                )
+              )
+            case candidates => candidatesJson(candidates.map(_.value))
         }
       )
     )
@@ -923,9 +1023,11 @@ private[mcp] object McpToolsGroupB:
           "members",
           "Members a type declares versus those it inherits through its linearization (a member " +
             "re-declared locally counts as declared). Scope with `pathFilter` (glob on a member's " +
-            "definition uri); trim with `include` (subset of [\"declared\",\"inherited\"]).",
+            "definition uri); trim with `include` (subset of [\"declared\",\"inherited\"]). Accepts a " +
+            "symbol OR a file path; a file defining several types returns `{ candidates }` to re-call " +
+            "with one.",
           List(
-            ("symbol", "string", "class or trait symbol"),
+            ("symbol", "string", "class or trait symbol, or a file path"),
             ("detailed", "boolean", "include kinds and declaring symbols (default false)"),
             ("pathFilter", "string", "glob on a member's definition uri; `*` matches any chars"),
             (
@@ -936,29 +1038,32 @@ private[mcp] object McpToolsGroupB:
           ),
           List("symbol")
         ) { a =>
-          val symbol = argTypeSymbol(a, "symbol")
-          val detailed = argBool(a, "detailed", false)
-          val want = includeWant(a)
-          az.members(symbol, a.obj.get("pathFilter").map(_.str)) match
-            case None    => notFound(symbol.value)
-            case Some(m) =>
-              val declared =
-                if detailed then ujson.Arr.from(m.declared.map(memberJson))
-                else strs(m.declared.map(_.displayName))
-              val inherited = ujson.Arr.from(m.inherited.map { mi =>
-                if detailed then memberJson(mi)
-                else
+          resolveTypeArg(az, root, a, "symbol") match
+            case Nil           => notFound(argStr(a, "symbol"))
+            case symbol :: Nil =>
+              val detailed = argBool(a, "detailed", false)
+              val want = includeWant(a)
+              az.members(symbol, a.obj.get("pathFilter").map(_.str)) match
+                case None    => notFound(symbol.value)
+                case Some(m) =>
+                  val declared =
+                    if detailed then ujson.Arr.from(m.declared.map(memberJson))
+                    else strs(m.declared.map(_.displayName))
+                  val inherited = ujson.Arr.from(m.inherited.map { mi =>
+                    if detailed then memberJson(mi)
+                    else
+                      jobj(
+                        Some("name" -> ujson.Str(mi.displayName)),
+                        Some("from" -> ujson.Str(mi.declaredIn.displayName))
+                      )
+                  })
                   jobj(
-                    Some("name" -> ujson.Str(mi.displayName)),
-                    Some("from" -> ujson.Str(mi.declaredIn.displayName))
+                    Some("symbol" -> ujson.Str(symbol.value)),
+                    Some("name" -> ujson.Str(m.displayName)),
+                    opt(want("declared") && m.declared.nonEmpty, "declared" -> declared),
+                    opt(want("inherited") && m.inherited.nonEmpty, "inherited" -> inherited)
                   )
-              })
-              jobj(
-                Some("symbol" -> ujson.Str(symbol.value)),
-                Some("name" -> ujson.Str(m.displayName)),
-                opt(want("declared") && m.declared.nonEmpty, "declared" -> declared),
-                opt(want("inherited") && m.inherited.nonEmpty, "inherited" -> inherited)
-              )
+            case candidates => candidatesJson(candidates.map(_.value))
         }
       ),
       toolDef(
