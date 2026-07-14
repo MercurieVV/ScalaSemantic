@@ -399,6 +399,24 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 ---
 
+### source_around_position
+
+**Answers:** the source of the definition ENCLOSING a source position — like `symbol_source`, but keyed by `file`+`line`+`column` (0-based) instead of a resolved symbol, for when you only have a cursor position (e.g. from `type_at_position` or a stack trace).
+
+Position `line=27,column=40` sits inside `Show[A].show(a)` — a REFERENCE, not a definition — on `render`'s single-line body. The tool anchors to `render`'s enclosing definition rather than jumping to `Show`'s own (unrelated) definition:
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "source_around_position",
+  s"""{"file":"$enrichPath","line":27,"column":40,"format":"plain"}"""))
+```
+
+When no enclosing definition exists at the position (e.g. a blank line before any declaration), the tool falls back to a fixed ±15-line window and notes the fallback in `legend`.
+
+**Replaces:** manually re-deriving "what method/class am I inside" from a line/column → the enclosing definition's source, resolved and enriched, in one call.
+
+---
+
 ### method_signature
 
 **What it tells you:** full signature with implicit/using params.

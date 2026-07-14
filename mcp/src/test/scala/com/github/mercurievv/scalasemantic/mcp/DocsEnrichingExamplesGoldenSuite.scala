@@ -175,6 +175,23 @@ class DocsEnrichingExamplesGoldenSuite extends munit.FunSuite:
     assert(src.contains("def render[A: Show](a: A): String = Show[A].show(a)"), src)
     assertGolden("symbol_source_render_fqn", "symbol_source", args)
 
+  test("source_around_position(Enrich.scala render body) resolves the enclosing def, not the file"):
+    // column 40 lands inside `Show[A].show(a)`, the RHS of `render`'s single-line def — a reference,
+    // not a definition, proving the tool anchors to the ENCLOSING def rather than jumping to the
+    // referenced symbol's own (unrelated) definition.
+    val args =
+      ujson.Obj("file" -> EnrichPath, "line" -> 27, "column" -> 40, "format" -> "plain")
+    val src = toolByName("source_around_position").run(args)("source").str
+    assert(src.contains("def render[A: Show](a: A): String = Show[A].show(a)"), src)
+    assert(!src.contains("trait Show"), src)
+    assert(!src.contains("given intShow"), src)
+    assertGolden("source_around_position_render", "source_around_position", args)
+
+  test("source_around_position falls back to a fixed window when nothing encloses the position"):
+    val args = ujson.Obj("file" -> EnrichPath, "line" -> 0, "column" -> 0, "format" -> "plain")
+    val r = toolByName("source_around_position").run(args)
+    assert(r("legend").str.toLowerCase.contains("fallback"), r("legend").str)
+
   test("document_outline(Enrich.scala)"):
     assertGolden("document_outline_enrich", "document_outline", ujson.Obj("uri" -> EnrichPath))
 

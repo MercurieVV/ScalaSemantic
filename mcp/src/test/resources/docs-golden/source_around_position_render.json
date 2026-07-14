@@ -1,0 +1,16 @@
+{
+  "tool": "source_around_position",
+  "args": {
+    "file": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+    "line": 27,
+    "column": 40,
+    "format": "plain"
+  },
+  "result": {
+    "uri": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+    "format": "plain",
+    "annotationCount": 1,
+    "legend": "The raw file with a 1-based line-number gutter (a READ-ONLY view — edit the real file at uri, not this). No annotations in this format.",
+    "source": "<<see companion .scala golden file>>"
+  }
+}
