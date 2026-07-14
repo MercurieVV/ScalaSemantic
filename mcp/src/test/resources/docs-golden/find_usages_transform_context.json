@@ -1,0 +1,47 @@
+{
+  "tool": "find_usages",
+  "args": {
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.transform().",
+    "contextLines": 1
+  },
+  "result": {
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.transform().",
+    "name": "transform",
+    "definitions": [
+      "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:13:4"
+    ],
+    "referenceCount": 2,
+    "references": [
+      "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:17:2",
+      "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:17:16"
+    ],
+    "definitionsWithContext": [
+      {
+        "location": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:13:4",
+        "context": [
+          "",
+          "def transform(p: Processor, input: String): String =",
+          "  p.process(input)"
+        ]
+      }
+    ],
+    "referencesWithContext": [
+      {
+        "location": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:17:2",
+        "context": [
+          "def compose(p1: Processor, p2: Processor, input: String): String =",
+          "  transform(p2, transform(p1, input))",
+          ""
+        ]
+      },
+      {
+        "location": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:17:16",
+        "context": [
+          "def compose(p1: Processor, p2: Processor, input: String): String =",
+          "  transform(p2, transform(p1, input))",
+          ""
+        ]
+      }
+    ]
+  }
+}

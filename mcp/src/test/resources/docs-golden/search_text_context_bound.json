@@ -1,0 +1,53 @@
+{
+  "tool": "search_text",
+  "args": {
+    "query": "context bound",
+    "pathFilter": "*docexamples/Enrich.scala*"
+  },
+  "result": {
+    "query": "context bound",
+    "count": 8,
+    "hits": [
+      {
+        "uri": ".worktrees/feat/duplications-show-source/docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+        "line": 21,
+        "text": "  // context bound `A: Show` desugars to a `(using Show[A])` parameter the source never writes"
+      },
+      {
+        "uri": ".worktrees/feat/find-overloads-parents/docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+        "line": 21,
+        "text": "  // context bound `A: Show` desugars to a `(using Show[A])` parameter the source never writes"
+      },
+      {
+        "uri": ".worktrees/feat/source-around-position-tool/docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+        "line": 21,
+        "text": "  // context bound `A: Show` desugars to a `(using Show[A])` parameter the source never writes"
+      },
+      {
+        "uri": ".worktrees/feat/structure-graph/docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+        "line": 21,
+        "text": "  // context bound `A: Show` desugars to a `(using Show[A])` parameter the source never writes"
+      },
+      {
+        "uri": ".worktrees/feat/symbol-source-tool/docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+        "line": 21,
+        "text": "  // context bound `A: Show` desugars to a `(using Show[A])` parameter the source never writes"
+      },
+      {
+        "uri": ".worktrees/feat/type-arg-accepts-file-path/docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+        "line": 21,
+        "text": "  // context bound `A: Show` desugars to a `(using Show[A])` parameter the source never writes"
+      },
+      {
+        "uri": ".worktrees/feat/value-flow-implicits/docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+        "line": 21,
+        "text": "  // context bound `A: Show` desugars to a `(using Show[A])` parameter the source never writes"
+      },
+      {
+        "uri": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+        "line": 21,
+        "text": "  // context bound `A: Show` desugars to a `(using Show[A])` parameter the source never writes"
+      }
+    ]
+  }
+}
