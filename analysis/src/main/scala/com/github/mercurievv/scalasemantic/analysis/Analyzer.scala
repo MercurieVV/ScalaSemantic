@@ -715,7 +715,9 @@ final class Analyzer(
   // --- find-overloads -------------------------------------------------------
 
   /** All methods sharing the owner and simple name of `symbol` (overloads differ only by the `(+N)`
-    * disambiguator in their symbol string). Works given any one of the overloads.
+    * disambiguator in their symbol string), plus same-named methods declared in the owner's
+    * ancestor types (walked via [[AnalyzerHelpers.linearize]]) so the caller also sees inherited
+    * overloads. Works given any one of the overloads.
     */
   def findOverloads(symbol: MethodSymbol): OverloadsResult =
     val sym = symbol.value
@@ -730,7 +732,16 @@ final class Analyzer(
       .toList
       .sorted
       .flatMap(methodSignatureOf)
-    OverloadsResult(name, overloads)
+    val inheritedOverloads = h
+      .linearize(own)
+      .flatMap { ancestor =>
+        h.declarationSymbols(ancestor)
+          .filter(m => index.isMethod(m) && index.displayName(m) == name)
+          .sorted
+          .flatMap(methodSignatureOf)
+          .map(ms => ms.copy(rendered = s"${ms.rendered}  (from ${index.displayName(ancestor)})"))
+      }
+    OverloadsResult(name, overloads, inheritedOverloads)
 
   // --- trait-vs-local members -----------------------------------------------
 

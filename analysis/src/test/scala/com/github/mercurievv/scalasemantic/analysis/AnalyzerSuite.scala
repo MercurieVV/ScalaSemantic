@@ -27,6 +27,7 @@ class AnalyzerSuite extends munit.FunSuite:
   private val IntShow = "com/github/mercurievv/scalasemantic/fixtures/Sample.intShow."
   private val ListShow = "com/github/mercurievv/scalasemantic/fixtures/Sample.listShow()."
   private val IntEq = "com/github/mercurievv/scalasemantic/fixtures/Sample.intEq."
+  private val OverloadChildFoo = "com/github/mercurievv/scalasemantic/fixtures/OverloadChild#foo()."
   private def calls(m: String) = s"com/github/mercurievv/scalasemantic/fixtures/Calls.$m()."
 
   private def sym(value: String): SemanticDbSymbol =
@@ -175,6 +176,19 @@ class AnalyzerSuite extends munit.FunSuite:
     assertEquals(
       o.overloads.map(_.rendered).toSet,
       Set("def over(x: Int): Int", "def over(x: String): String")
+    )
+  }
+
+  test("findOverloads also lists same-named methods inherited from a parent type") {
+    val o = az.findOverloads(meth(OverloadChildFoo))
+    assertEquals(o.name, "foo")
+    assertEquals(
+      o.overloads.map(_.rendered).toSet,
+      Set("def foo(x: Int): Int", "def foo(x: String): String")
+    )
+    assertEquals(
+      o.inheritedOverloads.map(_.rendered),
+      List("def foo(x: Long): Long  (from OverloadParent)")
     )
   }
 

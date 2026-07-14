@@ -748,14 +748,19 @@ private[mcp] object McpToolsGroupA:
         tool(
           "find_overloads",
           "All overloads sharing a name and owner with the given method (they differ only by the `(+N)` " +
-            "disambiguator in the symbol). Pass any one overload's symbol.",
+            "disambiguator in the symbol), plus same-named methods inherited from parent types " +
+            "(`inheritedOverloads`, each suffixed `(from <Parent>)`). Pass any one overload's symbol.",
           List(("symbol", "string", "any one overload's symbol")),
           List("symbol")
         ) { a =>
           val o = az.findOverloads(argMethodSymbol(a, "symbol"))
           jobj(
             Some("name" -> ujson.Str(o.name)),
-            Some("overloads" -> strs(o.overloads.map(_.rendered)))
+            Some("overloads" -> strs(o.overloads.map(_.rendered))),
+            opt(
+              o.inheritedOverloads.nonEmpty,
+              "inheritedOverloads" -> strs(o.inheritedOverloads.map(_.rendered))
+            )
           )
         }
       )
