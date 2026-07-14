@@ -29,6 +29,17 @@ trait Show[A]:
 trait Eq[A]:
   def eqv(a: A, b: A): Boolean
 
+/** A parent declaring one overload of `foo` and a subclass adding two more — exercises
+  * `find_overloads` picking up same-named methods inherited from an ancestor type, distinct from
+  * the same-owner overloads it already reported.
+  */
+trait OverloadParent:
+  def foo(x: Long): Long = x
+
+class OverloadChild extends OverloadParent:
+  def foo(x: Int): Int = x
+  def foo(x: String): String = x
+
 object Sample:
   given intShow: Show[Int] with
     def show(a: Int): String = a.toString

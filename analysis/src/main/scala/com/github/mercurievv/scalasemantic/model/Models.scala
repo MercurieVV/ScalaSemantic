@@ -74,7 +74,16 @@ case class MethodSignature(
     rendered: String
 ) derives ReadWriter
 
-case class OverloadsResult(name: String, overloads: List[MethodSignature]) derives ReadWriter
+/** All methods sharing a name and owner (`overloads`), plus same-named methods declared in the
+  * owner's ancestor types (`inheritedOverloads`) — the full overload set visible on the type. An
+  * inherited entry's `rendered` string carries a `(from <ParentDisplayName>)` suffix so the origin
+  * is visible without a separate lookup; `overloads` stays same-owner-only for back-compat.
+  */
+case class OverloadsResult(
+    name: String,
+    overloads: List[MethodSignature],
+    inheritedOverloads: List[MethodSignature] = Nil
+) derives ReadWriter
 
 // --- class-hierarchy --------------------------------------------------------
 

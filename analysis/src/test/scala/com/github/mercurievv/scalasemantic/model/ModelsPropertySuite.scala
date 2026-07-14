@@ -91,7 +91,8 @@ class ModelsPropertySuite extends munit.ScalaCheckSuite:
     for
       name <- nonEmptyStr
       overloads <- Gen.listOf(genMethodSignature)
-    yield OverloadsResult(name, overloads)
+      inheritedOverloads <- Gen.listOf(genMethodSignature)
+    yield OverloadsResult(name, overloads, inheritedOverloads)
 
   private val genMemberInfo: Gen[MemberInfo] =
     for

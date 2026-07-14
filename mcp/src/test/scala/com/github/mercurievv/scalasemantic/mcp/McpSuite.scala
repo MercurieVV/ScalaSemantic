@@ -93,6 +93,28 @@ class McpSuite extends munit.FunSuite:
     assert(r.obj.contains("groups"))
   }
 
+  test("find_overloads reports inherited overloads separately from same-owner overloads") {
+    val r = call(
+      "find_overloads",
+      ujson.Obj(
+        "symbol" -> "com/github/mercurievv/scalasemantic/fixtures/OverloadChild#foo()."
+      )
+    )
+    assertEquals(r("name").str, "foo")
+    val overloads = jsonArray(r("overloads")).map(_.str).toSet
+    assertEquals(overloads, Set("def foo(x: Int): Int", "def foo(x: String): String"))
+    val inherited = jsonArray(r("inheritedOverloads")).map(_.str)
+    assertEquals(inherited, Vector("def foo(x: Long): Long  (from OverloadParent)"))
+  }
+
+  test("find_overloads omits inheritedOverloads when the owner has no ancestor overloads") {
+    val r = call(
+      "find_overloads",
+      ujson.Obj("symbol" -> "com/github/mercurievv/scalasemantic/fixtures/Sample.over().")
+    )
+    assert(!r.obj.contains("inheritedOverloads"), r.render())
+  }
+
   test("find_symbol resolves a plain name to ranked SemanticDB symbols") {
     val r = call("find_symbol", ujson.Obj("query" -> "Animal"))
     assert(r("count").num > 0)

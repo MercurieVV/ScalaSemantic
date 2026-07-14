@@ -69,7 +69,9 @@ println(scalasemantic.docs.ToolRunner.runPretty("class_hierarchy", s"""{"symbol"
 
 ### find_overloads
 
-**What it tells you:** all overloads of a method.
+**What it tells you:** all overloads of a method sharing its owner, plus same-named methods
+inherited from parent types (`inheritedOverloads`, each suffixed `(from <Parent>)`) — the full
+overload set visible on the type, not just the ones declared locally.
 
 ```scala mdoc:passthrough
 val fmtSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"format"}""")
@@ -78,7 +80,7 @@ val fmtSymbol = if fmtData("count").num.toInt > 0 then fmtData("symbols")(0)("sy
 println(scalasemantic.docs.ToolRunner.runPretty("find_overloads", s"""{"symbol":"$fmtSymbol"}"""))
 ```
 
-**Replaces:** Reading code for all overloads.
+**Replaces:** Reading code for all overloads, including a manual walk up the class hierarchy.
 
 ---
 
