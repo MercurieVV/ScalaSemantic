@@ -1,0 +1,93 @@
+{
+  "tool": "structure",
+  "args": {
+    "graph": true
+  },
+  "result": {
+    "dimension": "combined",
+    "sort": "afferent",
+    "modules": [
+      {
+        "module": "docExamples",
+        "types": 7,
+        "layer": 0,
+        "ca": 0,
+        "ce": 0,
+        "instability": 0
+      }
+    ],
+    "symbols": [
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Processor#",
+        "name": "Processor",
+        "module": "docExamples",
+        "layer": 0,
+        "ca": 2,
+        "ce": 0,
+        "instability": 0,
+        "centrality": 0.058
+      },
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show#",
+        "name": "Show",
+        "module": "docExamples",
+        "layer": 0,
+        "ca": 1,
+        "ce": 0,
+        "instability": 0,
+        "centrality": 0.04
+      },
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Instances.",
+        "name": "Instances",
+        "module": "docExamples",
+        "layer": 0,
+        "ca": 0,
+        "ce": 0,
+        "instability": 0,
+        "centrality": 0.021
+      },
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Invoice#",
+        "name": "Invoice",
+        "module": "docExamples",
+        "layer": 0,
+        "ca": 0,
+        "ce": 0,
+        "instability": 0,
+        "centrality": 0.021
+      },
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/ReverseProcessor#",
+        "name": "ReverseProcessor",
+        "module": "docExamples",
+        "layer": 1,
+        "ca": 0,
+        "ce": 1,
+        "instability": 1,
+        "centrality": 0.021
+      },
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show.",
+        "name": "Show",
+        "module": "docExamples",
+        "layer": 1,
+        "ca": 0,
+        "ce": 1,
+        "instability": 1,
+        "centrality": 0.021
+      },
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/UpperProcessor#",
+        "name": "UpperProcessor",
+        "module": "docExamples",
+        "layer": 1,
+        "ca": 0,
+        "ce": 1,
+        "instability": 1,
+        "centrality": 0.021
+      }
+    ],
+    "mermaid": "graph TD"
+  }
+}
