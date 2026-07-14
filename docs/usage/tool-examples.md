@@ -373,6 +373,30 @@ println(s"```scala\n${scalasemantic.docs.ToolRunner.readSource(enrichPath)}\n```
 
 ---
 
+### symbol_source
+
+**Answers:** the source of ONE symbol's definition — enriched like `annotated_source`, but scoped to just that method/class/val instead of the whole file.
+
+Same `render` symbol as below, but this time only its own signature+body come back — not `Show`, not the `given`s, not anything else in `Enrich.scala`. The gutter keeps the file's real (absolute) line numbers, so the result still tells you exactly where in the file to look.
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "symbol_source",
+  """{"symbol":"com/github/mercurievv/scalasemantic/docexamples/Enrich$package.render()."}"""))
+```
+
+A dotted FQN works too, so callers who only know the name (not the SemanticDB symbol grammar) can still use the tool:
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "symbol_source",
+  """{"symbol":"com.github.mercurievv.scalasemantic.docexamples.render()"}"""))
+```
+
+**Replaces:** `annotated_source` on the whole file plus manually scrolling to the one definition you actually wanted → the definition alone, absolute line numbers intact.
+
+---
+
 ### method_signature
 
 **What it tells you:** full signature with implicit/using params.

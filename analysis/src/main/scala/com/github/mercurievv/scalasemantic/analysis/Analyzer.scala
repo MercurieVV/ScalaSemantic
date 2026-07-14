@@ -170,6 +170,49 @@ final class Analyzer(
       case Some(v: s.ValueSignature) => s": ${h.renderType(v.tpe)}"
       case _                         => ""
 
+  /** Dotted fully-qualified name built from `symbol`'s owner chain's display names (every enclosing
+    * package and type plus the symbol itself), e.g. `com/ollo/SuperClass#method().` ->
+    * `com.ollo.SuperClass.method`. Used to disambiguate a friendlier FQN-form tool input (see
+    * `symbol_source`) against same-named candidates.
+    */
+  def dottedFqn(symbol: String): String =
+    index.ownerChain(symbol).map(index.displayName).mkString(".")
+
+  /** The file and line-span of `sym`'s definition — a method's signature through the end of its
+    * body, a class's full body, a val's initializer — derived from the outline entry span (the
+    * SemanticDB definition occurrence only marks the symbol's NAME, not its full extent). The span
+    * runs from the entry's line to the line of the next SIBLING outline entry (exclusive); if there
+    * is no next sibling at any enclosing level, `range.endLine` is `Int.MaxValue` as a "to end of
+    * file" sentinel — callers slicing lines must clamp it with `math.min(range.endLine,
+    * lines.length)`. `None` if `sym` has no definition in the index or isn't in any outline (e.g. a
+    * parameter).
+    */
+  def symbolDefinitionRange(sym: String): Option[(DocumentUri, SourceRange)] =
+    for
+      uriStr <- h.definitionUri(sym)
+      uri <- DocumentUri.from(uriStr).toOption
+      entries <- outline(uri)
+      (startLine, endLineExclusive) <- outlineSpan(entries, sym)
+      endLine = math.max(startLine + 1, endLineExclusive.getOrElse(Int.MaxValue))
+      range <- SourceRange.from(startLine, 0, endLine, 0).toOption
+    yield (uri, range)
+
+  /** The `(startLine, nextSiblingLine)` span of `sym`'s outline entry within `entries` (searched
+    * recursively through children), where `nextSiblingLine` is `None` when `sym` is the last entry
+    * at every enclosing level (i.e. its span runs to the end of the file). Pure tree search, no
+    * index access — kept next to `symbolDefinitionRange`, its only caller.
+    */
+  private def outlineSpan(entries: List[OutlineEntry], sym: String): Option[(Int, Option[Int])] =
+    entries match
+      case Nil           => None
+      case entry :: rest =>
+        if entry.symbol == sym then Some((entry.line, rest.headOption.map(_.line)))
+        else
+          outlineSpan(entry.children, sym) match
+            case Some((startLine, None)) => Some((startLine, rest.headOption.map(_.line)))
+            case found @ Some(_)         => found
+            case None                    => outlineSpan(rest, sym)
+
   // --- annotated source -----------------------------------------------------
 
   /** The compiler insertions invisible in the source of `uri`, as positioned annotations: the

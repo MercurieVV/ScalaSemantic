@@ -53,10 +53,10 @@ class McpSuite extends munit.FunSuite:
     assert(instr.contains("find_symbol"), instr)
   }
 
-  test("tools/list exposes all sixteen tools with schemas") {
+  test("tools/list exposes all seventeen tools with schemas") {
     val r = Mcp.handle(req("tools/list", ujson.Obj()), tools).get
     val names = r("result")("tools").arr.map(_("name").str).toSet
-    assertEquals(names.size, 21)
+    assertEquals(names.size, 22)
     assert(names.contains("value_flow"), names.toString)
     assert(names.contains("find_symbol"), names.toString)
     assert(names.contains("find_usages"), names.toString)
@@ -65,6 +65,7 @@ class McpSuite extends munit.FunSuite:
     assert(names.contains("structure"), names.toString)
     assert(names.contains("document_outline"), names.toString)
     assert(names.contains("annotated_source"), names.toString)
+    assert(names.contains("symbol_source"), names.toString)
     assert(names.contains("rename_plan"), names.toString)
     assert(names.contains("move_plan"), names.toString)
     assert(names.contains("extract_method_plan"), names.toString)
@@ -911,5 +912,5 @@ class McpSuite extends munit.FunSuite:
     // 4 lines in (one blank, one notification) → 2 responses out, with matching ids
     assertEquals(out.size, 2)
     assertEquals(ujson.read(out(0))("id").num, 1.0)
-    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 21)
+    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 22)
   }

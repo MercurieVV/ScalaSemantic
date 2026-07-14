@@ -21,7 +21,8 @@ class DocsEnrichingExamplesGoldenSuite extends munit.FunSuite:
 
   private val root = Paths.get(".").toAbsolutePath.nn
   private val docExamplesClasses = Paths.get("out/docExamples/compile.dest/classes")
-  private val tools = McpTools.all(Analyzer(SemanticIndex.fromRoots(Seq(docExamplesClasses))), root)
+  private val az = Analyzer(SemanticIndex.fromRoots(Seq(docExamplesClasses)))
+  private val tools = McpTools.all(az, root)
 
   private def toolByName(name: String): Tool =
     tools.find(_.name == name).getOrElse(fail(s"unknown tool: $name"))
@@ -157,6 +158,22 @@ class DocsEnrichingExamplesGoldenSuite extends munit.FunSuite:
 
   test("method_signature(render)"):
     assertGolden("method_signature_render", "method_signature", ujson.Obj("symbol" -> Render))
+
+  test("symbol_source(render) returns just that def, not Show/the givens/anything else"):
+    val args = ujson.Obj("symbol" -> Render, "format" -> "plain")
+    val src = toolByName("symbol_source").run(args)("source").str
+    assert(src.contains("def render[A: Show](a: A): String = Show[A].show(a)"), src)
+    assert(!src.contains("trait Show"), src)
+    assert(!src.contains("given intShow"), src)
+    assert(!src.contains("extension (n: Int)"), src)
+    assertGolden("symbol_source_render", "symbol_source", args)
+
+  test("symbol_source accepts a dotted FQN form of the same symbol"):
+    val fqn = "com.github.mercurievv.scalasemantic.docexamples.render()"
+    val args = ujson.Obj("symbol" -> fqn, "format" -> "plain")
+    val src = toolByName("symbol_source").run(args)("source").str
+    assert(src.contains("def render[A: Show](a: A): String = Show[A].show(a)"), src)
+    assertGolden("symbol_source_render_fqn", "symbol_source", args)
 
   test("document_outline(Enrich.scala)"):
     assertGolden("document_outline_enrich", "document_outline", ujson.Obj("uri" -> EnrichPath))

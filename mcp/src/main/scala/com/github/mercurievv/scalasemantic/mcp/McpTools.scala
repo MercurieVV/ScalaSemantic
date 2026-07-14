@@ -138,14 +138,15 @@ private[mcp] object McpToolsSupport:
         anns: List[SourceAnnotation],
         format: SourceFormat,
         annotationsOnly: Boolean,
-        symbols: List[(String, String)] = Nil
+        symbols: List[(String, String)] = Nil,
+        lineOffset: Int = 0
     ): ujson.Value =
       val legendBlock =
         if symbols.isEmpty then ""
         else symbols.map((n, fqn) => s"//   $n → $fqn").mkString("\n// symbols:\n", "\n", "")
       val rendered = format match
-        case SourceFormat.Diff => renderDiff(uri, rawLines, displayLines, anns, symbols)
-        case _                 => render(displayLines, anns, format, annotationsOnly) + legendBlock
+        case SourceFormat.Diff => renderDiff(uri, rawLines, displayLines, anns, symbols, lineOffset)
+        case _ => render(displayLines, anns, format, annotationsOnly, lineOffset) + legendBlock
       ujson.Obj(
         "uri" -> ujson.Str(uri),
         "format" -> ujson.Str(format.value),
@@ -166,7 +167,8 @@ private[mcp] object McpToolsSupport:
         rawLines: IndexedSeq[String],
         displayLines: IndexedSeq[String],
         anns: List[SourceAnnotation],
-        symbols: List[(String, String)]
+        symbols: List[(String, String)],
+        lineOffset: Int
     ): String =
       val byLine = anns.groupBy(_.line)
       val legendLines: List[String] =
@@ -208,8 +210,8 @@ private[mcp] object McpToolsSupport:
           val newBefore = before.count(_._2.isDefined)
           val oldCount = slice.count(_._1.isDefined)
           val newCount = slice.count(_._2.isDefined)
-          val oldStart = if oldCount == 0 then oldBefore else oldBefore + 1
-          val newStart = if newCount == 0 then newBefore else newBefore + 1
+          val oldStart = (if oldCount == 0 then oldBefore else oldBefore + 1) + lineOffset
+          val newStart = (if newCount == 0 then newBefore else newBefore + 1) + lineOffset
           val hunkHeader = s"@@ -$oldStart,$oldCount +$newStart,$newCount @@"
           val lines = slice.flatMap { (o, nw) =>
             if o == nw then o.toList.map(l => s" $l")
@@ -224,7 +226,8 @@ private[mcp] object McpToolsSupport:
         lines: IndexedSeq[String],
         anns: List[SourceAnnotation],
         fmt: SourceFormat,
-        annotationsOnly: Boolean
+        annotationsOnly: Boolean,
+        lineOffset: Int
     ): String =
       val byLine = anns.groupBy(_.line)
       // `plain` shows no notes, so `annotationsOnly` would be empty — ignore it there.
@@ -235,7 +238,7 @@ private[mcp] object McpToolsSupport:
           val notes = byLine.getOrElse(i, Nil)
           if onlyAnnotated && notes.isEmpty then None
           else
-            val base = if gutter then f"${i + 1}%5d  $src" else src
+            val base = if gutter then f"${i + 1 + lineOffset}%5d  $src" else src
             if notes.isEmpty || fmt == SourceFormat.Plain then Some(base)
             else
               // Each note is self-anchored by the analysis layer (e.g. `a.map[String]`,
@@ -362,6 +365,40 @@ private[mcp] object McpToolsSupport:
 
   private[mcp] def notFoundUri(uri: String): ujson.Value =
     jobj(Some("uri" -> ujson.Str(uri)), Some("found" -> ujson.Bool(false)))
+
+  /** Resolve a tool's `symbol` argument that accepts EITHER a raw SemanticDB symbol (e.g.
+    * `com/ollo/SuperClass#method().`) OR a friendlier dotted FQN (e.g.
+    * `com.ollo.SuperClass.method()` — a trailing `()` is stripped). Tried as a raw symbol FIRST,
+    * but only accepted if it actually resolves to a definition in the index — scalameta's symbol
+    * grammar happens to also accept a plain dotted FQN as a (bogus, non-existent) chain of term
+    * symbols, so syntactic validity alone is not enough to tell the two forms apart. Otherwise
+    * treated as an FQN: its leaf name is fed to `findSymbol(_, exact = true)`, preferring the
+    * candidate whose own dotted FQN (`az.dottedFqn`) matches; on ambiguity (several same-named
+    * candidates, none matching the given owner path) the first candidate is returned together with
+    * a `note` explaining the fallback. `None` if the raw string resolves neither as a symbol nor to
+    * any known name — shared by `symbol_source` and `source_around_position`.
+    */
+  private[mcp] def resolveSymbolOrFqn(az: Analyzer, raw: String): Option[(String, Option[String])] =
+    val direct =
+      SemanticDbSymbol.from(raw).toOption.filter(v => az.symbolDefinitionRange(v.value).isDefined)
+    direct match
+      case Some(v) => Some((v.value, None))
+      case None    =>
+        val segments = raw.stripSuffix("()").split("[.#]").filter(_.nonEmpty).toList
+        segments.lastOption.flatMap { leaf =>
+          val candidates = az.findSymbol(leaf, exact = true)
+          val ownerMatch = candidates.find(c =>
+            az.dottedFqn(c.symbol).split("\\.").toList.takeRight(segments.size) == segments
+          )
+          (ownerMatch, candidates) match
+            case (Some(exact), _)      => Some((exact.symbol, None))
+            case (None, single :: Nil) => Some((single.symbol, None))
+            case (None, first :: _)    =>
+              Some(
+                (first.symbol, Some(s"ambiguous FQN '$raw'; using first candidate ${first.symbol}"))
+              )
+            case (None, Nil) => None
+        }
 
   /** Build an object from optional fields, dropping the absent ones (token discipline). */
   private[mcp] def jobj(fields: Option[(String, ujson.Value)]*): ujson.Value =
@@ -1174,6 +1211,66 @@ private[mcp] object McpToolsGroupC:
                   argBool(a, "annotationsOnly", false),
                   symbols
                 )
+        }
+      ),
+      toolDef(
+        tool(
+          "symbol_source",
+          "The source of ONE symbol's definition (a method's signature+body, a class's full body, a " +
+            "val's initializer) — not the whole file. Accepts a SemanticDB symbol OR a friendlier " +
+            "dotted FQN (`com.ollo.SuperClass.method()`, trailing `()` optional; an ambiguous FQN " +
+            "resolves to the first same-named match and the result carries a `note`). Enriched " +
+            "identically to `annotated_source` — same `format`/`annotationsOnly`/`symbols`/`docs`/" +
+            "`detail` args and output shape — but the `source` is sliced to just the definition's " +
+            "lines, with the gutter kept at the file's real (absolute) 1-based line numbers so callers " +
+            "can jump straight to the real file.",
+          ("symbol", "string", "SemanticDB symbol OR dotted FQN of the definition")
+            :: SourceView.params,
+          List("symbol")
+        ) { a =>
+          val raw = argStr(a, "symbol")
+          resolveSymbolOrFqn(az, raw) match
+            case None              => notFound(raw)
+            case Some((sym, note)) =>
+              az.symbolDefinitionRange(sym) match
+                case None               => notFound(raw)
+                case Some((uri, range)) =>
+                  val file = root.resolve(uri.value)
+                  if !java.nio.file.Files.isRegularFile(file) then notFoundUri(uri.value)
+                  else
+                    val rawLines = java.nio.file.Files.readString(file).split("\n", -1).toIndexedSeq
+                    val docs = argStr(a, "docs")
+                    val lines = if docs == "strip" then az.stripComments(rawLines) else rawLines
+                    val detail = argDetail(a, "detail")
+                    az.sourceAnnotations(uri, lines, detail) match
+                      case None          => notFoundUri(uri.value)
+                      case Some(allAnns) =>
+                        val symbolsOn = argBool(a, "symbols", false)
+                        val legendSymbols = if symbolsOn then az.symbolLegend(uri) else Nil
+                        val fmt = argFormat(a, "format")
+                        val explode =
+                          symbolsOn && (fmt == SourceFormat.Compilable || fmt == SourceFormat.Diff)
+                        val displayLines = if explode then az.explodeImports(uri, lines) else lines
+                        val start = range.startLine
+                        val endExclusive = math.min(range.endLine, rawLines.length)
+                        val slicedRaw = lines.slice(start, endExclusive)
+                        val slicedDisplay = displayLines.slice(start, endExclusive)
+                        val slicedAnns = allAnns
+                          .filter(ann => ann.line >= start && ann.line < endExclusive)
+                          .map(ann => ann.copy(line = ann.line - start))
+                        val res = SourceView.result(
+                          uri.value,
+                          slicedRaw,
+                          slicedDisplay,
+                          slicedAnns,
+                          fmt,
+                          argBool(a, "annotationsOnly", false),
+                          legendSymbols,
+                          lineOffset = start
+                        )
+                        note.fold(res)(n =>
+                          ujson.Obj.from(res.obj.toSeq :+ ("note" -> ujson.Str(n)))
+                        )
         }
       )
     )
