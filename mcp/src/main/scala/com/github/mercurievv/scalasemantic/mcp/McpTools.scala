@@ -446,7 +446,7 @@ private[mcp] object McpToolsSupport:
     * metadata are never source we want matched, and skipping them keeps the walk fast.
     */
   private[mcp] val SearchTextExcludedDirs: Set[String] =
-    Set(".git", "out", "target", "node_modules", ".bloop", ".metals")
+    Set(".git", ".worktrees", "out", "target", "node_modules", ".bloop", ".metals")
 
   /** Every `.scala` file under `root`, as project-relative uri strings, sorted for deterministic
     * output. Skips [[SearchTextExcludedDirs]] entirely rather than filtering after the fact.
