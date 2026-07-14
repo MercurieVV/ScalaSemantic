@@ -89,10 +89,10 @@ jobs:
       - name: Run E2E Smoke Test
         run: ./mill smokeTest
       - name: Verify Regression Files Consistency (Unit & E2E)
-        run: scala-cli scripts/generate-regressions.scala -- --check --categories unit e2e
+        run: scala-cli --server=false scripts/generate-regressions.scala -- --check --categories unit e2e
       - name: Check for Regressions against Base (Unit & E2E)
         if: github.event_name == 'pull_request'
-        run: scala-cli scripts/generate-regressions.scala -- --check-regression --base "origin/${{ github.base_ref }}" --categories unit e2e
+        run: scala-cli --server=false scripts/generate-regressions.scala -- --check-regression --base "origin/${{ github.base_ref }}" --categories unit e2e
 
   verify:
     name: Stainless verification

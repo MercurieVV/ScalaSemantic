@@ -188,11 +188,11 @@ jobs:
 
       - name: Verify Stryker Regression Files Consistency
         if: steps.scope.outputs.modules != ''
-        run: scala-cli scripts/generate-regressions.scala -- --check --categories stryker
+        run: scala-cli --server=false scripts/generate-regressions.scala -- --check --categories stryker
 
       - name: Check for Stryker Regressions against Base
         if: steps.scope.outputs.modules != '' && github.event_name == 'pull_request'
-        run: scala-cli scripts/generate-regressions.scala -- --check-regression --base "origin/${{ github.base_ref }}" --categories stryker
+        run: scala-cli --server=false scripts/generate-regressions.scala -- --check-regression --base "origin/${{ github.base_ref }}" --categories stryker
 
       - name: Commit mutation report
         if: steps.scope.outputs.modules != '' && github.event_name != 'pull_request'
