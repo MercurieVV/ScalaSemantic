@@ -97,6 +97,9 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Install scala-cli
+        uses: VirtusLab/scala-cli-setup@v1.3.0
+
       - name: Cache coursier + Mill
         uses: actions/cache@v4
         with:
@@ -182,6 +185,14 @@ jobs:
             done
             echo "HTML and JSON reports are attached to the workflow run as the stryker4s-report artifact."
           } > reports/mutation/comment.md
+
+      - name: Verify Stryker Regression Files Consistency
+        if: steps.scope.outputs.modules != ''
+        run: scala-cli scripts/generate-regressions.scala -- --check --categories stryker
+
+      - name: Check for Stryker Regressions against Base
+        if: steps.scope.outputs.modules != '' && github.event_name == 'pull_request'
+        run: scala-cli scripts/generate-regressions.scala -- --check-regression --base "origin/${{ github.base_ref }}" --categories stryker
 
       - name: Commit mutation report
         if: steps.scope.outputs.modules != '' && github.event_name != 'pull_request'

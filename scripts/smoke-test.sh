@@ -151,4 +151,14 @@ if ! grep -q 'found' "$STDOUT_INVALID"; then
   exit 1
 fi
 
+# Write E2E test results for regression tracking
+mkdir -p "$REPO_ROOT/out"
+cat > "$REPO_ROOT/out/e2e-report.json" <<'EOF'
+[
+  "E2E: Verifying E2E server launch with valid classpath (PC enabled)",
+  "E2E: Verifying E2E server launch with missing classpath (PC disabled)"
+]
+EOF
+
 echo "=== E2E Smoke Test Passed Successfully ==="
+
