@@ -635,7 +635,7 @@ def smokeTest() = Task.Command {
 
   val millScript = build.moduleDir / "scripts" / "smoke-test-mill.sc"
   val millRes = os
-    .proc("scala-cli", "--server=false", "run", millScript.toString)
+    .proc("scala-cli", "run", "--server=false", millScript.toString)
     .call(
       cwd = build.moduleDir,
       stdout = os.Inherit,
@@ -648,7 +648,7 @@ def smokeTest() = Task.Command {
 
   val scriptsScript = build.moduleDir / "scripts" / "smoke-test-scripts.sc"
   val scriptsRes = os
-    .proc("scala-cli", "--server=false", "run", scriptsScript.toString)
+    .proc("scala-cli", "run", "--server=false", scriptsScript.toString)
     .call(
       cwd = build.moduleDir,
       stdout = os.Inherit,
