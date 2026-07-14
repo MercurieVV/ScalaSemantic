@@ -1,7 +1,6 @@
-#!/usr/bin/env scala-cli
-
-//> using scala 3.8.4
-//> using dep com.lihaoyi::upickle::4.2.1
+#!/usr/bin/env -S scala-cli shebang
+//> using scala "3.8.4"
+//> using dep "com.lihaoyi::upickle:4.2.1"
 
 // End-to-end launcher smoke test for ScalaSemantic MCP server against a real Mill project.
 // Unlike scripts/smoke-test.sh (synthetic scala-cli fixture, PC-backed type_at_position), this
