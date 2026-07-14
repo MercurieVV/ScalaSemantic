@@ -234,6 +234,10 @@ println(scalasemantic.docs.ToolRunner.runPretty(
   """{"minSize":15}"""))
 ```
 
+Pass `showSource: true` to also get a `groupsSource` field with the duplicated lines for every
+occurrence, gutter-numbered like `annotated_source`'s `plain` format — handy for eyeballing what a
+clone group actually looks like without a second `annotated_source` round trip.
+
 **Replaces:** Manual code review for duplication.
 
 ---

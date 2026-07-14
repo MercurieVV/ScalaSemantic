@@ -200,6 +200,7 @@
   "com.github.mercurievv.scalasemantic.mcp.DocsToolExamplesGoldenSuite.move_plan(calculateTotal -> com/example/math/)",
   "com.github.mercurievv.scalasemantic.mcp.DocsToolExamplesGoldenSuite.rename_plan(transform -> apply)",
   "com.github.mercurievv.scalasemantic.mcp.DocsToolExamplesGoldenSuite.smart_code_duplications(minSize=15)",
+  "com.github.mercurievv.scalasemantic.mcp.DocsToolExamplesGoldenSuite.smart_code_duplications(minSize=15, showSource=true)",
   "com.github.mercurievv.scalasemantic.mcp.DocsToolExamplesGoldenSuite.structure()",
   "com.github.mercurievv.scalasemantic.mcp.DocsToolExamplesGoldenSuite.structure(graph=true)",
   "com.github.mercurievv.scalasemantic.mcp.DocsToolExamplesGoldenSuite.value_flow(Navigate.scala:19:13)",
