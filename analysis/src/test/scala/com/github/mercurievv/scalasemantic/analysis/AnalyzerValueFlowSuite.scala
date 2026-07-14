@@ -9,6 +9,9 @@ import scala.meta.internal.semanticdb as s
   * small flow: `val a = source(); val b = a; sink(b)` with `def sink(n: Int): Int = n`. The layout
   * exercises the three core relations — assigned_to (a -> b), passed_as_arg into a renamed
   * parameter (b -> n), and a returned value (n -> function_result terminal) — plus depth limiting.
+  * A second fixture covers the `passed_as_implicit` relation and `implicit_boundary` terminal for a
+  * value flowing into an implicit/`using` parameter, via a context-bound method and a
+  * `using`-clause method that desugar to the identical SemanticDB shape.
   */
 class AnalyzerValueFlowSuite extends munit.FunSuite:
 
@@ -111,4 +114,116 @@ class AnalyzerValueFlowSuite extends munit.FunSuite:
     assertEquals(
       r.truncatedAt.map(t => (t.symbol, t.classification)).toSet,
       Set((bSym, "depth_limit"))
+    )
+
+  // --- implicit-argument flow -------------------------------------------------------------
+  //
+  // A context bound (`def p[A: Show](a: A)`) and a `using` clause (`def q(a: A)(using
+  // Show[A])`) desugar to the SAME SemanticDB shape — a trailing parameter list holding a
+  // PARAMETER flagged IMPLICIT — so one fixture with both methods proves value_flow follows
+  // either surface identically into `passed_as_implicit` / `implicit_boundary`.
+
+  private val ShowIntT = s.TypeRef(s.Type.Empty, "com/x/Show#", List(IntT))
+  private val UnitT = s.TypeRef(s.Type.Empty, "scala/Unit#", Nil)
+
+  private val evSym = "local2"
+  private val xSym = "local3"
+  private val pSym = s"${P}Run2.p()."
+  private val aParamPSym = s"${P}Run2.p().(a)"
+  private val evParamPSym = s"${P}Run2.p().(ev)"
+  private val qSym = s"${P}Run2.q()."
+  private val aParamQSym = s"${P}Run2.q().(a)"
+  private val evParamQSym = s"${P}Run2.q().(ev)"
+
+  private def implicitParam(
+      symbol: String,
+      display: String,
+      tpe: s.Type
+  ): s.SymbolInformation =
+    s.SymbolInformation(
+      symbol = symbol,
+      kind = s.SymbolInformation.Kind.PARAMETER,
+      displayName = display,
+      signature = s.ValueSignature(tpe),
+      properties = s.SymbolInformation.Property.IMPLICIT.value
+    )
+
+  private val implicitSymbols = Vector(
+    info(evSym, s.SymbolInformation.Kind.LOCAL, "ev", s.ValueSignature(ShowIntT)),
+    info(xSym, s.SymbolInformation.Kind.LOCAL, "x", s.ValueSignature(IntT)),
+    info(
+      pSym,
+      s.SymbolInformation.Kind.METHOD,
+      "p",
+      s.MethodSignature(
+        None,
+        List(s.Scope(symlinks = List(aParamPSym)), s.Scope(symlinks = List(evParamPSym))),
+        UnitT
+      )
+    ),
+    info(aParamPSym, s.SymbolInformation.Kind.PARAMETER, "a", s.ValueSignature(IntT)),
+    implicitParam(evParamPSym, "ev", ShowIntT),
+    info(
+      qSym,
+      s.SymbolInformation.Kind.METHOD,
+      "q",
+      s.MethodSignature(
+        None,
+        List(s.Scope(symlinks = List(aParamQSym)), s.Scope(symlinks = List(evParamQSym))),
+        UnitT
+      )
+    ),
+    info(aParamQSym, s.SymbolInformation.Kind.PARAMETER, "a", s.ValueSignature(IntT)),
+    implicitParam(evParamQSym, "ev", ShowIntT)
+  )
+
+  // Source layout the occurrence columns encode:
+  //   1:   val ev = ...
+  //   2:   val x = 1
+  //   3:   p(x)(using ev)   // `def p[A: Show](a: A): Unit` — context bound desugars to this
+  //   4:   q(x)(using ev)   // `def q(a: A)(using Show[A]): Unit` — the identical shape
+  private val implicitOccurrences = Vector(
+    occ(evSym, DEFINITION, 1, 6, 8),
+    occ(xSym, DEFINITION, 2, 6, 7),
+    occ(pSym, REFERENCE, 3, 2, 3),
+    occ(xSym, REFERENCE, 3, 4, 5),
+    occ(evSym, REFERENCE, 3, 13, 15),
+    occ(qSym, REFERENCE, 4, 2, 3),
+    occ(xSym, REFERENCE, 4, 4, 5),
+    occ(evSym, REFERENCE, 4, 13, 15)
+  )
+
+  private val azImplicit = Analyzer(
+    SemanticIndex(
+      Vector(
+        s.TextDocument(
+          uri = "run2.scala",
+          symbols = implicitSymbols,
+          occurrences = implicitOccurrences
+        )
+      )
+    )
+  )
+
+  test("follows a value passed as an implicit/using arg — context bound and using-clause alike"):
+    val r = azImplicit.valueFlow(sym(evSym), depth(5), stopOnTypeWidening = true)
+
+    val edges = r.edges.map(e => (e.from, e.to, e.relation)).toSet
+    assert(
+      edges.contains((evSym, evParamPSym, "passed_as_implicit")),
+      s"missing passed_as_implicit edge into context-bound param: $edges"
+    )
+    assert(
+      edges.contains((evSym, evParamQSym, "passed_as_implicit")),
+      s"missing passed_as_implicit edge into using param: $edges"
+    )
+
+    val terminals = r.stoppedAt.map(t => (t.symbol, t.classification)).toSet
+    assert(
+      terminals.contains((evParamPSym, "implicit_boundary")),
+      s"expected context-bound evidence param to terminate as implicit_boundary: $terminals"
+    )
+    assert(
+      terminals.contains((evParamQSym, "implicit_boundary")),
+      s"expected using-clause evidence param to terminate as implicit_boundary: $terminals"
     )

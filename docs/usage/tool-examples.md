@@ -148,7 +148,7 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 **What it tells you:** trace a value through the call graph.
 
-The `input` parameter of `pipeline` flows into `compose`'s `input`, then `transform`'s `input`, then `process`'s `x` — a rename at every hop that text search cannot follow.
+The `input` parameter of `pipeline` flows into `compose`'s `input`, then `transform`'s `input`, then `process`'s `x` — a rename at every hop that text search cannot follow. The BFS also follows a value into an implicit/`using` parameter (`relation: "passed_as_implicit"`, whether the call site writes an explicit `given`/`using` arg, a `using` clause, or a context bound `[A: TC]` — all three desugar to the same implicit-parameter occurrence), terminating at `"implicit_boundary"` when that implicit has no further in-project references.
 
 ```scala mdoc:passthrough
 println(scalasemantic.docs.ToolRunner.runPretty(

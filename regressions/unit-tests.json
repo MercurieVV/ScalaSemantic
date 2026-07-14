@@ -125,6 +125,7 @@
   "com.github.mercurievv.scalasemantic.analysis.AnalyzerToolsSuite.traceImplicitChain walks given dependencies transitively",
   "com.github.mercurievv.scalasemantic.analysis.AnalyzerToolsSuite.typeAtPosition picks the smallest occurrence covering the point",
   "com.github.mercurievv.scalasemantic.analysis.AnalyzerValueFlowSuite.depth limit truncates expansion and reports the cut node",
+  "com.github.mercurievv.scalasemantic.analysis.AnalyzerValueFlowSuite.follows a value passed as an implicit/using arg — context bound and using-clause alike",
   "com.github.mercurievv.scalasemantic.analysis.AnalyzerValueFlowSuite.traces value across assignment and into a renamed parameter, ending in a return",
   "com.github.mercurievv.scalasemantic.analysis.CompatSuite.[scala-2.13] implicit/extension call path: triggerShout reaches extension method",
   "com.github.mercurievv.scalasemantic.analysis.CompatSuite.[scala-2.13] no method signature renders an empty type",
