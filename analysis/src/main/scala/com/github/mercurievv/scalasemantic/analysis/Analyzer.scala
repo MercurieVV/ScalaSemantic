@@ -987,7 +987,15 @@ final class Analyzer(
                 case Some(p) =>
                   val pName = index.displayName(p)
                   val coPars = allParams.filterNot(_ == p).map(index.displayName)
-                  Flow("passed_as_arg", Some(p), at, Some(pName), coPars)
+                  // A parameter marked IMPLICIT in its SymbolInformation covers all three shapes
+                  // the caller may have written: an explicit `implicit`/`using` arg at the call
+                  // site, a `using` parameter clause, and a context bound (`[A: TC]`, which
+                  // desugars to an implicit `(using TC[A])` parameter) — all surface here as the
+                  // same underlying mechanism, an implicit parameter occurrence.
+                  val relation =
+                    if index.info(p).exists(h.isImplicit) then "passed_as_implicit"
+                    else "passed_as_arg"
+                  Flow(relation, Some(p), at, Some(pName), coPars)
                 case None => Flow("passed_as_arg", None, at)
       }
 
@@ -1011,7 +1019,7 @@ final class Analyzer(
 
     @annotation.tailrec
     def loop(
-        queue: List[(String, Int)],
+        queue: List[(String, Int, Option[String])],
         visited: Set[String],
         nodes: List[ValueFlowNode],
         edges: List[ValueFlowEdge],
@@ -1025,9 +1033,9 @@ final class Analyzer(
     ) =
       queue match
         case Nil => (nodes.reverse, edges.reverse, stopped.reverse, truncated.reverse)
-        case (sym, _) :: rest if visited(sym) =>
+        case (sym, _, _) :: rest if visited(sym) =>
           loop(rest, visited, nodes, edges, stopped, truncated)
-        case (sym, depth) :: rest =>
+        case (sym, depth, inRelation) :: rest =>
           val visited2 = visited + sym
           val n = node(sym, depth)
           val nodes2 = n :: nodes
@@ -1052,15 +1060,23 @@ final class Analyzer(
                 )
                 .distinct
             val targets = edgeFlows.flatMap(_.to).distinct
+            val relationByTarget = edgeFlows.flatMap(f => f.to.map(_ -> f.relation)).toMap
             val (widenTargets, flowTargets) =
               if stopOnTypeWidening then targets.partition(widened(sym, _)) else (Nil, targets)
             val widenNodes = widenTargets.map(node(_, depth + 1))
             val widenTerms =
               widenTargets.map(t => ValueFlowTerminal(t, "type_widened", definitionLocation(t)))
+            // A value consumed as an implicit argument that has no further in-project references
+            // terminates at that implicit boundary, distinct from a plain discarded/external value.
             val symTerminal =
               if edgeFlows.nonEmpty then Nil
+              else if inRelation.contains("passed_as_implicit") then
+                List(ValueFlowTerminal(sym, "implicit_boundary", n.location))
               else List(ValueFlowTerminal(sym, terminalClass(flows), n.location))
-            val enqueue = flowTargets.filterNot(visited2).map((_, depth + 1))
+            val enqueue =
+              flowTargets
+                .filterNot(visited2)
+                .map(t => (t, depth + 1, relationByTarget.get(t)))
             loop(
               rest ++ enqueue,
               visited2,
@@ -1071,7 +1087,7 @@ final class Analyzer(
             )
 
     val (nodes, edges, stopped, truncated) =
-      loop(List(start -> 0), Set.empty, Nil, Nil, Nil, Nil)
+      loop(List((start, 0, None)), Set.empty, Nil, Nil, Nil, Nil)
     ValueFlowResult(
       node(start, 0),
       nodes.distinctBy(_.symbol),

@@ -1239,11 +1239,16 @@ private[mcp] object McpToolsGroupD:
           "Trace how the value held by a val/binding/parameter propagates through the codebase — a BFS " +
             "over the value's references that follows it across method boundaries (into a RENAMED " +
             "parameter when passed as an argument, into a fresh local when re-bound) and classifies how " +
-            "it leaves each node. Returns a graph: `nodes` (positions where the value lives, with " +
-            "`depth`), `edges` (`relation` = assigned_to | passed_as_arg | returned_from | " +
-            "method_receiver), `stoppedAt` (terminals: function_result | method_receiver | type_widened " +
-            "| discarded | external_boundary) and `truncatedAt` (nodes cut by `maxDepth`). Identify the " +
-            "start binding by `symbol`, or by `file` + `line` + `column` (0-based) for a source position.",
+            "it leaves each node. Also follows a value into an implicit/`using` parameter — covering an " +
+            "explicit `implicit`/`using` arg at the call site, a `using` parameter clause, and a context " +
+            "bound (`[A: TC]`, which desugars to an implicit parameter) alike, since all three are the " +
+            "same underlying mechanism. Returns a graph: `nodes` (positions where the value lives, with " +
+            "`depth`), `edges` (`relation` = assigned_to | passed_as_arg | passed_as_implicit | " +
+            "returned_from | method_receiver), `stoppedAt` (terminals: function_result | method_receiver " +
+            "| type_widened | discarded | external_boundary | implicit_boundary — the last when a value " +
+            "consumed as an implicit argument has no further in-project references) and `truncatedAt` " +
+            "(nodes cut by `maxDepth`). Identify the start binding by `symbol`, or by `file` + `line` + " +
+            "`column` (0-based) for a source position.",
           List(
             ("symbol", "string", "SemanticDB symbol of the val/binding/parameter to trace"),
             (
