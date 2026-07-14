@@ -195,6 +195,7 @@
   "com.github.mercurievv.scalasemantic.mcp.DocsToolExamplesGoldenSuite.rename_plan(transform -> apply)",
   "com.github.mercurievv.scalasemantic.mcp.DocsToolExamplesGoldenSuite.smart_code_duplications(minSize=15)",
   "com.github.mercurievv.scalasemantic.mcp.DocsToolExamplesGoldenSuite.structure()",
+  "com.github.mercurievv.scalasemantic.mcp.DocsToolExamplesGoldenSuite.structure(graph=true)",
   "com.github.mercurievv.scalasemantic.mcp.DocsToolExamplesGoldenSuite.value_flow(Navigate.scala:19:13)",
   "com.github.mercurievv.scalasemantic.mcp.McpPcSuite.PC-backed tools answer on an uncompiled buffer: type_at_position (PC-only) + method_signature (overlay)",
   "com.github.mercurievv.scalasemantic.mcp.McpPcSuite.extract_method_plan renders the new signature and the replacing call",
