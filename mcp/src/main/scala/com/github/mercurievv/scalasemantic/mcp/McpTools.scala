@@ -170,6 +170,26 @@ private[mcp] object McpToolsSupport:
       * line; import-explosion keeps the line count), with the `symbols` legend appended as further
       * additions — so no diff algorithm is needed, only hunking with 3 lines of context.
       */
+    /** Intraline diff of two versions of the same source line: common prefix/suffix are printed
+      * once, only the differing middle span is marked (`[-old-]` / `{+new+}`), git word-diff style.
+      * Avoids duplicating the whole line for a change as small as one appended annotation.
+      */
+    private def wordDiff(oldLine: String, newLine: String): String =
+      val prefixLen = oldLine.zip(newLine).takeWhile { case (a, b) => a == b }.length
+      val oldRest = oldLine.drop(prefixLen)
+      val newRest = newLine.drop(prefixLen)
+      val suffixLen =
+        oldRest.reverse.zip(newRest.reverse).takeWhile { case (a, b) => a == b }.length
+      val prefix = oldLine.take(prefixLen)
+      val suffix = if suffixLen == 0 then "" else oldRest.takeRight(suffixLen)
+      val oldMid = oldRest.dropRight(suffixLen)
+      val newMid = newRest.dropRight(suffixLen)
+      val oldPart = if oldMid.isEmpty then "" else s"[-$oldMid-]"
+      val newPart =
+        if newMid.isEmpty || (oldMid.nonEmpty && newMid.forall(_.isWhitespace)) then ""
+        else s"{+$newMid+}"
+      s"$prefix$oldPart$newPart$suffix"
+
     private def renderDiff(
         uri: String,
         rawLines: IndexedSeq[String],
@@ -222,8 +242,14 @@ private[mcp] object McpToolsSupport:
           val newStart = (if newCount == 0 then newBefore else newBefore + 1) + lineOffset
           val hunkHeader = s"@@ -$oldStart,$oldCount +$newStart,$newCount @@"
           val lines = slice.flatMap { (o, nw) =>
-            if o == nw then o.toList.map(l => s" $l")
-            else o.toList.map(l => s"-$l") ++ nw.toList.map(l => s"+$l")
+            (o, nw) match
+              case (Some(a), Some(b)) if a == b                            => List(s" $a")
+              case (Some(a), Some(b)) if b.trim.isEmpty && a.trim.nonEmpty =>
+                List(s"-$a")
+              case (Some(a), Some(b)) => List(s" ${wordDiff(a, b)}")
+              case (Some(a), None)    => List(s"-$a")
+              case (None, Some(b))    => List(s"+$b")
+              case (None, None)       => Nil
           }
           (hunkHeader :: lines).mkString("\n")
         }
@@ -1278,9 +1304,11 @@ private[mcp] object McpToolsGroupC:
             "efferent Ce (fan-out), instability Ce/(Ca+Ce) (0 = stable foundation, 1 = unstable leaf), " +
             "`layer` (longest dependency-chain depth: 0 = foundation, higher = built on deeper chains), " +
             "`centrality` (PageRank — importance weighted by who depends on it), and cycle membership. " +
-            "Over four edge dimensions (extends, memberType, call, implicit) + a combined overlay, with a " +
-            "module rollup and `moduleEdges` (the module coupling surface; edges marked CYCLE are " +
-            "mutual-dependency violations). High centrality / Ca, low instability / layer = core to " +
+            "Over five edge dimensions (extends, typeRef, memberType, call, implicit) + a combined overlay, with a " +
+            "module rollup, `dependencies` (symbol-level edges among returned symbols with dimensions and " +
+            "weight = number of semantic dependency observations collapsed into the edge), " +
+            "and `moduleEdges` (the module coupling surface; edges marked CYCLE are mutual-dependency " +
+            "violations). High centrality / Ca, low instability / layer = core to " +
             "understand first. A cyclic node shares its cycle's layer (intra-cycle order undefined) and " +
             "is marked `inCycle` — never given a faked layer.",
           List(
@@ -1292,7 +1320,7 @@ private[mcp] object McpToolsGroupC:
             (
               "dimension",
               "string",
-              "which graph's metrics per symbol: combined | extends | memberType | call | implicit (default combined)"
+              "which graph's metrics per symbol: combined | extends | typeRef | memberType | call | implicit (default combined)"
             ),
             (
               "pathFilter",
@@ -1322,6 +1350,10 @@ private[mcp] object McpToolsGroupC:
             argPositiveInt(a, "limit", 30),
             a.obj.get("pathFilter").map(_.str)
           )
+          val rankedSymbols = ranked.map(_._1.symbol).toSet
+          val dependencies = res.dependencies.filter(e =>
+            rankedSymbols.contains(e.from) && rankedSymbols.contains(e.to)
+          )
           jobj(
             Some("dimension" -> ujson.Str(dim.value)),
             Some("sort" -> ujson.Str(sortKey.value)),
@@ -1335,6 +1367,16 @@ private[mcp] object McpToolsGroupC:
                   Some("ce" -> ujson.Num(m.efferent)),
                   Some("instability" -> ujson.Num(round2(m.instability))),
                   opt(m.inCycle, "inCycle" -> ujson.Bool(true))
+                )
+              })
+            ),
+            Some(
+              "dependencies" -> ujson.Arr.from(dependencies.map { e =>
+                jobj(
+                  Some("from" -> ujson.Str(e.from)),
+                  Some("to" -> ujson.Str(e.to)),
+                  Some("dimensions" -> ujson.Arr.from(e.dimensions.map(ujson.Str(_)))),
+                  Some("weight" -> ujson.Num(e.weight))
                 )
               })
             ),
@@ -1461,7 +1503,7 @@ private[mcp] object McpToolsGroupC:
                 val displayLines = if explode then az.explodeImports(uri, lines) else lines
                 SourceView.result(
                   uri.value,
-                  lines,
+                  rawLines,
                   displayLines,
                   anns,
                   fmt,

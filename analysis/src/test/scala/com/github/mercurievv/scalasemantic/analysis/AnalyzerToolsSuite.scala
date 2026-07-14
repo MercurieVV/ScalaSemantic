@@ -560,3 +560,48 @@ class AnalyzerToolsSuite extends munit.FunSuite:
     assert(resolved.ambiguous)
     assertEquals(resolved.chosen, None)
     assertEquals(resolved.candidates.map(_.target.displayName).toSet, Set("intShow1", "intShow2"))
+
+  test("traceImplicitChain guards cycles in concrete applied type dependencies"):
+    def tapp(sym: String, args: s.Type*) = s.TypeRef(s.Type.Empty, sym, args)
+    def givenDef(sym: String, display: String, produces: s.Type, dependsOn: s.Type) =
+      si(
+        sym,
+        s.SymbolInformation.Kind.METHOD,
+        display,
+        s.MethodSignature(
+          None,
+          Seq(
+            s.Scope(hardlinks =
+              Vector(
+                si(
+                  s"$sym(p)",
+                  s.SymbolInformation.Kind.PARAMETER,
+                  "p",
+                  s.ValueSignature(dependsOn),
+                  IMPL
+                )
+              )
+            )
+          ),
+          produces
+        ),
+        IMPL
+      )
+    val showInt = tapp("cy/Show#", tref("scala/Int#"))
+    val eqInt = tapp("cy/Eq#", tref("scala/Int#"))
+    val symbols = Seq(
+      si("cy/Show#", s.SymbolInformation.Kind.CLASS, "Show"),
+      si("cy/Eq#", s.SymbolInformation.Kind.CLASS, "Eq"),
+      si("scala/Int#", s.SymbolInformation.Kind.CLASS, "Int"),
+      givenDef("cy/showFromEq().", "showFromEq", showInt, eqInt),
+      givenDef("cy/eqFromShow().", "eqFromShow", eqInt, showInt)
+    )
+    val az = Analyzer(index(doc("cycle.scala", symbols, Nil)))
+    val sym = TypeSymbol.from("cy/Show#").fold(fail(_), identity)
+    val resolved = az.traceImplicitChain(sym, Some("Show[Int]")).resolved.getOrElse(fail("no tree"))
+    assertEquals(resolved.chosen.map(_.displayName), Some("showFromEq"))
+    val eqNode = resolved.children.headOption.getOrElse(fail("missing Eq dependency"))
+    assertEquals(eqNode.chosen.map(_.displayName), Some("eqFromShow"))
+    val cycleNode = eqNode.children.headOption.getOrElse(fail("missing cycle marker"))
+    assertEquals(cycleNode.targetType, "Show[Int]")
+    assert(cycleNode.cycle)

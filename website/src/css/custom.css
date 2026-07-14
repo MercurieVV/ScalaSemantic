@@ -9,3 +9,337 @@
 [data-theme='dark'] .ss-enriched .ss-ins {
   background-color: rgba(63, 185, 80, 0.25);
 }
+
+.ss-syntax-code,
+.ss-word-diff,
+.ss-semantic-json {
+  overflow-x: auto;
+  border-radius: 6px;
+}
+
+.ss-semantic-json {
+  background: var(--ifm-code-background);
+  color: var(--ifm-font-color-base);
+  padding: 1rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.ss-word-diff {
+  background: var(--ifm-code-background);
+  color: var(--ifm-font-color-base);
+  padding: 1rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.ss-word-diff .ss-diff-line {
+  display: block;
+  min-height: 1.45em;
+  white-space: pre;
+}
+
+.ss-word-diff .ss-meta {
+  color: var(--ifm-color-emphasis-700);
+  font-weight: 600;
+}
+
+.ss-word-diff .ss-ins-line {
+  background: rgba(46, 160, 67, 0.1);
+}
+
+.ss-word-diff .ss-del-line {
+  background: rgba(207, 34, 46, 0.1);
+}
+
+.ss-word-diff .ss-ins {
+  background: rgba(46, 160, 67, 0.28);
+  color: #116329;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.ss-word-diff .ss-del {
+  background: rgba(207, 34, 46, 0.22);
+  color: #82071e;
+  border-radius: 3px;
+  padding: 0 2px;
+  text-decoration: line-through;
+}
+
+[data-theme='dark'] .ss-word-diff .ss-ins {
+  background: rgba(63, 185, 80, 0.3);
+  color: #aff5b4;
+}
+
+[data-theme='dark'] .ss-word-diff .ss-del {
+  background: rgba(248, 81, 73, 0.28);
+  color: #ffdcd7;
+}
+
+[data-theme='dark'] .ss-word-diff .ss-ins-line {
+  background: rgba(63, 185, 80, 0.12);
+}
+
+[data-theme='dark'] .ss-word-diff .ss-del-line {
+  background: rgba(248, 81, 73, 0.12);
+}
+
+.theme-mermaid,
+.ss-mermaid-diagram {
+  overflow-x: auto;
+  margin: 1rem 0 1.5rem;
+}
+
+.ss-mermaid-diagram .docusaurus-mermaid-container {
+  overflow: visible;
+}
+
+.ss-mermaid-outline .docusaurus-mermaid-container > svg {
+  min-width: 1120px;
+  width: 1120px;
+  height: auto;
+}
+
+.ss-mermaid-outline .docusaurus-mermaid-container > svg .nodeLabel,
+.ss-mermaid-outline .docusaurus-mermaid-container > svg .edgeLabel {
+  font-size: 16px !important;
+}
+
+.ss-mermaid-implicit .docusaurus-mermaid-container > svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.ss-outline-tree {
+  overflow-x: auto;
+  margin: 1rem 0 1.5rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 6px;
+  background: var(--ifm-code-background);
+}
+
+.ss-outline-roots,
+.ss-outline-children {
+  list-style: none;
+  margin: 0;
+  padding-left: 0;
+}
+
+.ss-outline-children {
+  margin-left: 1rem;
+  padding-left: 1rem;
+  border-left: 1px solid var(--ifm-color-emphasis-300);
+}
+
+.ss-outline-node {
+  margin: 0;
+  padding: 0.18rem 0;
+}
+
+.ss-outline-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: max-content;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.ss-outline-name {
+  color: var(--ifm-color-primary-dark);
+  font-weight: 700;
+}
+
+.ss-outline-kind {
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: lowercase;
+}
+
+.ss-outline-signature {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: inherit;
+}
+
+[data-theme='dark'] .ss-outline-name {
+  color: var(--ifm-color-primary-light);
+}
+
+.ss-structure-graph {
+  margin: 1rem 0 1.5rem;
+}
+
+.ss-structure-svg {
+  width: 100%;
+  min-width: 760px;
+  height: auto;
+  overflow: visible;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 6px;
+  background: var(--ifm-code-background);
+}
+
+.ss-structure-svg marker path {
+  fill: var(--ifm-color-emphasis-600);
+}
+
+.ss-structure-module-area {
+  opacity: 0.72;
+  stroke-width: 2;
+}
+
+.ss-structure-module-title {
+  font-size: 19px;
+  font-weight: 800;
+  text-anchor: middle;
+}
+
+.ss-structure-module-note {
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 12px;
+  text-anchor: middle;
+}
+
+.ss-structure-edge {
+  fill: none;
+  stroke: var(--ifm-color-emphasis-600);
+  stroke-width: 1.6;
+  stroke-opacity: 0.56;
+}
+
+.ss-structure-edge-label {
+  fill: var(--ifm-color-emphasis-700);
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 11px;
+  text-anchor: middle;
+}
+
+.ss-structure-node-box {
+  fill: var(--ifm-background-surface-color);
+  stroke: var(--ifm-color-emphasis-400);
+  stroke-width: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.12));
+}
+
+.ss-structure-node-box.prominent {
+  stroke: var(--ifm-color-primary);
+  stroke-width: 2.5;
+}
+
+.ss-structure-node-name {
+  fill: var(--ifm-color-primary-dark);
+  font-size: 12px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.ss-structure-node-layer {
+  fill: var(--ifm-color-emphasis-700);
+  font-family: var(--ifm-font-family-monospace);
+  text-anchor: middle;
+  font-size: 10px;
+}
+
+.ss-structure-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 0.5rem;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.8rem;
+}
+
+[data-theme='dark'] .ss-structure-node-name {
+  color: var(--ifm-color-primary-light);
+  fill: var(--ifm-color-primary-light);
+}
+
+[data-theme='dark'] .ss-structure-module-area {
+  opacity: 0.22;
+}
+
+@media (max-width: 760px) {
+  .ss-structure-graph {
+    overflow-x: auto;
+  }
+}
+
+.ss-semantic-symbol {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0.35rem 0.45rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.ss-semantic-symbol-inline {
+  display: inline;
+  overflow: visible;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: inherit;
+}
+
+.ss-semantic-symbol .ss-symbol-name {
+  color: var(--ifm-color-primary-dark);
+}
+
+.ss-semantic-symbol .ss-symbol-punct {
+  color: var(--ifm-color-emphasis-600);
+  font-weight: 700;
+}
+
+[data-theme='dark'] .ss-semantic-symbol .ss-symbol-name {
+  color: var(--ifm-color-primary-light);
+}
+
+.ss-semantic-json .ss-json-key {
+  color: #0550ae;
+  font-weight: 600;
+}
+
+.ss-semantic-json .ss-json-string {
+  color: #0a3069;
+}
+
+.ss-semantic-json .ss-json-number {
+  color: #953800;
+}
+
+.ss-semantic-json .ss-json-boolean,
+.ss-semantic-json .ss-json-null {
+  color: #8250df;
+}
+
+.ss-semantic-json .ss-inline-syntax {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+
+[data-theme='dark'] .ss-semantic-json .ss-json-key {
+  color: #79c0ff;
+}
+
+[data-theme='dark'] .ss-semantic-json .ss-json-string {
+  color: #a5d6ff;
+}
+
+[data-theme='dark'] .ss-semantic-json .ss-json-number {
+  color: #ffa657;
+}
+
+[data-theme='dark'] .ss-semantic-json .ss-json-boolean,
+[data-theme='dark'] .ss-semantic-json .ss-json-null {
+  color: #d2a8ff;
+}

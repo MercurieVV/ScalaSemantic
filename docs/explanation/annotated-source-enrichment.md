@@ -75,7 +75,7 @@ full     // ⟹ render[List[Int]](List.apply[Int](1, 2, 3))(using listShow[Int](
 
 ### 3.3 `symbols` — name resolution (new)
 
-Answers "which package does this `Foo` mid-code belong to" without bloating the body. When `on`,
+Shows "which package does this `Foo` mid-code belong to" without bloating the body. When `on`,
 append a compact **symbol legend**: each distinct type/term *used* in the file → its dotted FQN,
 deduped, **skipping the file's own package and `scala.*` / `java.lang.*`** (universally known — pure
 noise). Keyed on the compiler's resolved symbol for each occurrence, so it covers names that need no

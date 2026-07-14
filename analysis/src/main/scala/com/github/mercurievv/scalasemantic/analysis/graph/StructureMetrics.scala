@@ -14,7 +14,7 @@ final class StructureMetrics(index: SemanticIndex):
 
   private val graphs = new DependencyGraphs(index)
   private val nodes = graphs.nodes
-  private val dimensionNames = List("extends", "memberType", "call", "implicit")
+  private val dimensionNames = List("extends", "typeRef", "memberType", "call", "implicit")
 
   def result(): StructureResult =
     val perDim = graphs.dimensions.view.mapValues(metricsFor).toMap
@@ -41,7 +41,7 @@ final class StructureMetrics(index: SemanticIndex):
             .map(c => DependencyCycle(name, c.toList.sorted))
         }
 
-    StructureResult(symbols, moduleRollup, moduleEdges, cycles)
+    StructureResult(symbols, moduleRollup, dependencies, moduleEdges, cycles)
 
   /** Per-node `DimensionMetrics` for one graph: coupling + layer + centrality + SCC size. */
   private def metricsFor(graph: Graph): Map[String, DimensionMetrics] =
@@ -114,6 +114,28 @@ final class StructureMetrics(index: SemanticIndex):
       val cyclic =
         componentOf.get(from) == componentOf.get(to) && componentSize.getOrElse(from, 1) > 1
       ModuleEdge(from, to, weight, cyclic)
+    }
+
+  /** Symbol-level dependency edges grouped across dimensions. A single from->to pair can be
+    * produced by more than one semantic relationship, so `dimensions` keeps that provenance visible
+    * for callers and docs renderers.
+    */
+  private def dependencies: List[SymbolDependency] =
+    val byPair = graphs.dimensions.toList
+      .flatMap { case (dimension, graph) =>
+        graph.toList.flatMap { case (from, tos) =>
+          tos.toList.map(to => (from, to) -> dimension)
+        }
+      }
+      .groupMap(_._1)(_._2)
+    byPair.toList.sortBy { case ((from, to), _) => (from, to) }.map {
+      case ((from, to), dimensions) =>
+        SymbolDependency(
+          from = from,
+          to = to,
+          dimensions = dimensions.distinct.sorted,
+          weight = graphs.observationCounts.getOrElse(from -> to, dimensions.size)
+        )
     }
 
   private def sccSizes(nodeSet: Set[String], graph: Graph): Map[String, Int] =

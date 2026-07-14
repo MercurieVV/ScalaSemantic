@@ -4,9 +4,9 @@
   "summary": {
     "queryCount": 5,
     "toolTokens": 415,
-    "baselineTokens": 3498,
-    "tokenDelta": 3083,
-    "savingsPercent": 88.1
+    "baselineTokens": 3898,
+    "tokenDelta": 3483,
+    "savingsPercent": 89.4
   },
   "queries": [
     {
@@ -27,11 +27,11 @@
       "tool": "class_hierarchy",
       "baseline": "Read the fixture source containing Animal, Dog, and Fish inheritance.",
       "toolChars": 441,
-      "baselineChars": 1519,
+      "baselineChars": 1917,
       "toolTokens": 111,
-      "baselineTokens": 380,
-      "tokenDelta": 269,
-      "savingsPercent": 70.8
+      "baselineTokens": 480,
+      "tokenDelta": 369,
+      "savingsPercent": 76.9
     },
     {
       "id": "method-signature-render",
@@ -39,11 +39,11 @@
       "tool": "method_signature",
       "baseline": "Read the fixture source and infer the complete signature from text.",
       "toolChars": 332,
-      "baselineChars": 1515,
+      "baselineChars": 1913,
       "toolTokens": 83,
-      "baselineTokens": 379,
-      "tokenDelta": 296,
-      "savingsPercent": 78.1
+      "baselineTokens": 479,
+      "tokenDelta": 396,
+      "savingsPercent": 82.7
     },
     {
       "id": "trace-implicit-show",
@@ -51,11 +51,11 @@
       "tool": "trace_implicit_chain",
       "baseline": "Read the fixture source and follow given definitions manually.",
       "toolChars": 221,
-      "baselineChars": 1515,
+      "baselineChars": 1913,
       "toolTokens": 56,
-      "baselineTokens": 379,
-      "tokenDelta": 323,
-      "savingsPercent": 85.2
+      "baselineTokens": 479,
+      "tokenDelta": 423,
+      "savingsPercent": 88.3
     },
     {
       "id": "call-path-a-to-c",
@@ -63,11 +63,11 @@
       "tool": "call_path",
       "baseline": "Read the fixture source and follow method bodies manually.",
       "toolChars": 259,
-      "baselineChars": 1511,
+      "baselineChars": 1909,
       "toolTokens": 65,
-      "baselineTokens": 378,
-      "tokenDelta": 313,
-      "savingsPercent": 82.8
+      "baselineTokens": 478,
+      "tokenDelta": 413,
+      "savingsPercent": 86.4
     }
   ]
 }

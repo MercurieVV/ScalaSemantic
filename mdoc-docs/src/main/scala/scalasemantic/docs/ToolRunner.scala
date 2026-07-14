@@ -9,6 +9,7 @@ import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.Base64
 
 /** Runs a real ScalaSemantic tool in the same JVM as the mdoc fence (no subprocess) and returns its
   * exact JSON. Paths come from system properties set by DocsMain (see build.mill forkArgs). The mcp
@@ -18,24 +19,38 @@ import java.nio.file.Paths
   */
 object ToolRunner:
   private def indexDir = sys.props("scalasemantic.docs.indexDir")
+  private def structureIndexDirs =
+    sys.props
+      .get("scalasemantic.docs.structureIndexDirs")
+      .orElse(sys.props.get("scalasemantic.docs.structureIndexDir"))
+      .getOrElse(indexDir)
+      .split(java.io.File.pathSeparator)
+      .filter(_.nonEmpty)
+      .map(Paths.get(_))
+      .toSeq
   private def root: Path = Paths.get(sys.props.getOrElse("scalasemantic.docs.root", "."))
 
   private lazy val index = SemanticIndex.fromRoots(Seq(Paths.get(indexDir)))
   private lazy val baseTools: List[Tool] = McpTools.all(Analyzer(index), root)
+  private lazy val structureIndex = SemanticIndex.fromRoots(structureIndexDirs)
+  private lazy val structureTools: List[Tool] = McpTools.all(Analyzer(structureIndex), root)
 
   private def toolByName(tools: List[Tool], name: String): Tool =
     tools
       .find(_.name == name)
       .getOrElse(sys.error(s"unknown tool: $name (have: ${tools.map(_.name).mkString(",")})"))
 
-  /** Field names whose value is source-code-shaped even on a single line (no embedded `\n`), so
-    * they're always pulled into their own fenced `scala` block by [[resultMarkdown]] instead of
-    * being left to plain (unhighlighted) JSON.
+  /** Large source payload fields are lifted out into their own highlighted block by
+    * [[resultMarkdown]]. Smaller semantic strings such as `symbol`, `type`, and `signature` stay in
+    * SemanticJson, where they are highlighted inline without duplicating the JSON shape.
     */
-  private val codeFields = Set("source", "signature")
+  private val extractedSourceFields = Set("source")
 
   def run(tool: String, args: String): String =
     ujson.write(toolByName(baseTools, tool).run(ujson.read(args)), indent = 2)
+
+  def runStructure(args: String): String =
+    ujson.write(toolByName(structureTools, "structure").run(ujson.read(args)), indent = 2)
 
   /** Modified-buffer variant: passes the edited file text + its uri through the presentation
     * compiler, exactly as ToolCli's `--source` branch does.
@@ -130,34 +145,106 @@ object ToolRunner:
   def enrichedComponent(raw: String): String =
     s"<EnrichedCode code={${ujson.write(extractField(raw, "source"))}} />"
 
+  def syntaxComponent(code: String, language: String = "scala"): String =
+    s"<SyntaxCode language=\"$language\" code={${ujson.write(code)}} />"
+
+  def semanticSymbolComponent(symbol: String): String =
+    s"<SemanticSymbol value={${ujson.write(symbol)}} />"
+
+  def semanticJsonComponent(json: String): String =
+    val encoded =
+      Base64.getEncoder.encodeToString(json.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    s"<SemanticJson base64=\"$encoded\" />"
+
+  def mermaidComponent(kind: String, chart: String): String =
+    val encoded =
+      Base64.getEncoder.encodeToString(chart.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    s"<MermaidDiagram kind=\"$kind\" base64=\"$encoded\" />"
+
+  def outlineTreeComponent(raw: String): String =
+    val encoded =
+      Base64.getEncoder.encodeToString(raw.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    s"<OutlineTree base64=\"$encoded\" />"
+
+  def structureGraphComponent(raw: String): String =
+    val encoded =
+      Base64.getEncoder.encodeToString(raw.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    s"<StructureGraph base64=\"$encoded\" />"
+
+  def wordDiffComponent(diff: String): String =
+    val encoded =
+      Base64.getEncoder.encodeToString(diff.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    s"<WordDiffCode base64=\"$encoded\" />"
+
   /** Render a `document_outline` result's nested `outline` array as a Mermaid `graph TD` tree: one
     * node per member (label = name + kind; signature shown when present), edges parent->child. Node
     * ids are sequential (`n0`, `n1`, ...) to stay valid regardless of symbol characters.
     */
   def outlineMermaid(raw: String): String =
+    outlineTreeComponent(raw)
+
+  def callHierarchyMermaid(raw: String): String =
     val root = ujson.read(raw)
     def esc(s: String): String =
-      s.replace("\"", "&quot;").replace("[", "&#91;").replace("]", "&#93;")
+      s.replace("\"", "&quot;")
+    def shortLocation(at: String): String =
+      at.split('/').lastOption.getOrElse(at)
     def label(node: ujson.Value): String =
       val name = node.obj.get("name").map(_.str).getOrElse("?")
-      val kind = node.obj.get("kind").map(_.str).getOrElse("")
-      val sig = node.obj.get("signature").map(_.str).filter(_.nonEmpty)
-      val head = s"$name : $kind"
-      esc(sig.fold(head)(s => s"$head\\n$s"))
+      val at = node.obj.get("at").map(v => s"\\n${shortLocation(v.str)}").getOrElse("")
+      esc(s"$name$at")
     def walk(parentId: Option[String], node: ujson.Value, next: Int): (List[String], Int) =
       val id = s"n$next"
-      val own = List(s"""  $id["${label(node)}"]""") ++ parentId.map(p => s"  $p --> $id").toList
+      val own =
+        List(s"""  $id["${label(node)}"]""") ++ parentId.map(p => s"  $p --> $id").toList
       val children = node.obj.get("children").map(_.arr.toList).getOrElse(Nil)
       children.foldLeft((own, next + 1)) { case ((lines, counter), child) =>
         val (childLines, childNext) = walk(Some(id), child, counter)
         (lines ++ childLines, childNext)
       }
-    val (lines, _) = root.obj("outline").arr.toList.foldLeft((List.empty[String], 0)) {
-      case ((acc, counter), node) =>
-        val (nodeLines, next) = walk(None, node, counter)
-        (acc ++ nodeLines, next)
-    }
-    s"```mermaid\ngraph TD\n${lines.mkString("\n")}\n```"
+    val hierarchy = root.obj("hierarchy")
+    val (lines, _) = walk(None, hierarchy, 0)
+    mermaidComponent("call-hierarchy", s"graph TD\n${lines.mkString("\n")}")
+
+  /** Render a concrete `trace_implicit_chain` result's nested `resolved` tree as Mermaid. The raw
+    * JSON keeps the full candidate set; the graph makes the chosen dependency path visible at a
+    * glance.
+    */
+  def implicitTreeMermaid(raw: String): String =
+    val root = ujson.read(raw)
+    root.obj.get("resolved") match
+      case None => mermaidComponent("implicit", "graph TD\n  n0[\"No concrete resolution\"]")
+      case Some(resolved) =>
+        def esc(s: String): String =
+          s.replace("\"", "&quot;")
+        def shortSymbol(symbol: String): String =
+          symbol
+            .stripSuffix(".")
+            .stripSuffix("()")
+            .stripSuffix("#")
+            .split("[/#.]")
+            .filter(_.nonEmpty)
+            .lastOption
+            .getOrElse(symbol)
+        def label(node: ujson.Value): String =
+          val targetType = node.obj.get("type").map(_.str).getOrElse("?")
+          val chosen = node.obj.get("chosen").map(v => shortSymbol(v.str))
+          val suffix =
+            if node.obj.get("cycle").exists(_.bool) then "\\ncycle"
+            else if node.obj.get("ambiguous").exists(_.bool) then "\\nambiguous"
+            else chosen.fold("\\nno match")(c => s"\\n$c")
+          esc(s"$targetType$suffix")
+        def walk(parentId: Option[String], node: ujson.Value, next: Int): (List[String], Int) =
+          val id = s"n$next"
+          val own =
+            List(s"""  $id["${label(node)}"]""") ++ parentId.map(p => s"  $p --> $id").toList
+          val children = node.obj.get("children").map(_.arr.toList).getOrElse(Nil)
+          children.foldLeft((own, next + 1)) { case ((lines, counter), child) =>
+            val (childLines, childNext) = walk(Some(id), child, counter)
+            (lines ++ childLines, childNext)
+          }
+        val (lines, _) = walk(None, resolved, 0)
+        mermaidComponent("implicit", s"graph TD\n${lines.mkString("\n")}")
 
   /** Collapsed `<details>` block with the raw JSON, eliding fields already shown elsewhere (e.g. as
     * an extracted code block via [[extractField]]) so nothing is printed twice.
@@ -170,26 +257,22 @@ object ToolRunner:
        |<summary>Raw JSON</summary>
        |
        |Arguments:
-       |```json
-       |$inputJson
-       |```
+       |${semanticJsonComponent(inputJson)}
        |
        |Result:
-       |```json
-       |$outputJson
-       |```
+       |${semanticJsonComponent(outputJson)}
        |
        |</details>""".stripMargin
 
   private def resultMarkdown(args: String, raw: String): String =
     val parsed = ujson.read(raw)
-    val codeLikeFields = parsed.obj.toSeq.collect {
-      case (k, ujson.Str(v)) if v.contains("\n") || codeFields.contains(k) =>
+    val extractedFields = parsed.obj.toSeq.collect {
+      case (k, ujson.Str(v)) if v.contains("\n") && extractedSourceFields.contains(k) =>
         k -> v
     }
-    if codeLikeFields.isEmpty then s"```json\n$raw\n```"
+    if extractedFields.isEmpty then semanticJsonComponent(raw)
     else
-      val codeBlocks = codeLikeFields
-        .map { case (k, v) => s"**`$k`:**\n\n```scala\n$v\n```" }
+      val codeBlocks = extractedFields
+        .map { case (k, v) => s"**`$k`:**\n\n${syntaxComponent(v)}" }
         .mkString("\n\n")
-      s"$codeBlocks\n\n${detailsMarkdown(args, raw)}"
+      List(codeBlocks, detailsMarkdown(args, raw)).filter(_.nonEmpty).mkString("\n\n")

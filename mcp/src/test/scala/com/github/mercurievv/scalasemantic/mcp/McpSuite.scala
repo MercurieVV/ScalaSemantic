@@ -168,10 +168,10 @@ class McpSuite extends munit.FunSuite:
     val cents = jsonArray(byCent("symbols")).map(_("centrality").num)
     assertEquals(cents.toList, cents.toList.sortBy(-_), "symbols ranked by centrality desc")
 
-    // detailed adds the per-dimension breakdown with all four dimensions
+    // detailed adds the per-dimension breakdown with all dimensions
     val d = call("structure", ujson.Obj("limit" -> 1, "detailed" -> true))
     val dims = d("symbols")(0)("perDimension").obj.keys.toSet
-    assertEquals(dims, Set("extends", "memberType", "call", "implicit"), dims.toString)
+    assertEquals(dims, Set("extends", "typeRef", "memberType", "call", "implicit"), dims.toString)
 
     // graph is off by default — no mermaid field, output otherwise unchanged
     assert(!r.obj.contains("mermaid"), "mermaid must be absent when graph is omitted")
