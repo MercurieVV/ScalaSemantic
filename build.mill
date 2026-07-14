@@ -644,7 +644,8 @@ def prePush() = Task.Command {
   smokeTest()()
 
   Task.log.info("Checking unit and E2E regression consistency...")
-  val res = os.proc("python3", "scripts/generate-regressions.py", "--check", "--categories", "unit", "e2e")
+  val res = os
+    .proc("python3", "scripts/generate-regressions.py", "--check", "--categories", "unit", "e2e")
     .call(cwd = build.moduleDir, stdout = os.Inherit, stderr = os.Inherit, check = false)
   if (res.exitCode != 0) {
     sys.error(s"Regression check failed with exit status ${res.exitCode}")
