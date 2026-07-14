@@ -56,8 +56,15 @@ case class UsagesResult(
     symbol: String,
     displayName: String,
     definitions: List[Location],
-    references: List[Location]
+    references: List[Location],
+    definitionsWithContext: List[UsageHit] = Nil,
+    referencesWithContext: List[UsageHit] = Nil
 ) derives ReadWriter
+
+/** One usage location plus a few surrounding source lines (populated only when the caller requests
+  * `contextLines > 0`; empty otherwise).
+  */
+case class UsageHit(location: Location, context: List[String] = Nil) derives ReadWriter
 
 // --- method-signature / find-overloads --------------------------------------
 
@@ -261,6 +268,29 @@ case class RenamePlan(
     toName: String,
     editCount: Int,
     edits: List[RenameEdit]
+) derives ReadWriter
+
+// --- batch rename plan -------------------------------------------------------
+
+/** One requested rename: `symbol` to `newName`. */
+case class RenameRequest(symbol: String, newName: String) derives ReadWriter
+
+/** Two edits from different rename requests whose ranges literally overlap in the same file. Only
+  * literal edit-range overlaps are detected here — two different symbols renamed to the same
+  * `newName` (a semantic collision at a shared call site) is out of scope.
+  */
+case class RenameConflict(uriA: String, uriB: String, rangeA: Range, rangeB: Range, reason: String)
+    derives ReadWriter
+
+/** The combined plan for renaming multiple symbols in one request: `perSymbol` is each individual
+  * [[RenamePlan]] (as `rename_plan` would produce it alone); `combinedEdits` is every edit from
+  * every plan EXCEPT those found in a `conflicts` pair, sorted by `(uri, range.start.line,
+  * range.start.character)`; `conflicts` lists the literal edit-range overlaps found across plans.
+  */
+case class BatchRenamePlan(
+    perSymbol: List[RenamePlan],
+    combinedEdits: List[RenameEdit],
+    conflicts: List[RenameConflict]
 ) derives ReadWriter
 
 // --- move plan --------------------------------------------------------------
