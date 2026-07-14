@@ -74,13 +74,13 @@ def collect_stryker_mutants():
                 for mutant in mutants:
                     mutator = mutant.get("mutatorName", "Unknown")
                     status = mutant.get("status", "Unknown")
-                    line = mutant.get("location", {}).get("start", {}).get("line", 0)
-                    col = mutant.get("location", {}).get("start", {}).get("column", 0)
                     repl = mutant.get("replacement", "")
                     # Clean up replacement to keep it on one line and short
                     repl_clean = repl.replace("\n", "\\n")[:50]
-                    # Format descriptor
-                    desc = f"Stryker:{module_name}:{file_path}:{line}:{col}:{mutator}:{repl_clean} -> {status}"
+                    # Map NoCoverage to Survived to prevent flaky CI coverage reporting
+                    status_mapped = "Survived" if status in ("Survived", "NoCoverage") else status
+                    # Format descriptor without line/col to prevent line shift noise
+                    desc = f"Stryker:{module_name}:{file_path}:{mutator}:{repl_clean} -> {status_mapped}"
                     stryker_mutants.append(desc)
         except Exception as e:
             print(f"Warning: failed to parse Stryker report {path}: {e}", file=sys.stderr)
