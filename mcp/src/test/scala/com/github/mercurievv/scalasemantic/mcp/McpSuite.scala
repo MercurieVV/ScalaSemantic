@@ -994,6 +994,58 @@ class McpSuite extends munit.FunSuite:
     assert(!scoped.obj.contains("declared") && !scoped.obj.contains("inherited"), scoped.render())
   }
 
+  // --- Task M: class-accepting tools also accept a file path -----------------
+
+  private val SemanticIndexFile =
+    "core/src/main/scala/com/github/mercurievv/scalasemantic/semanticdb/SemanticIndex.scala"
+  private val SemanticIndexClass =
+    "com/github/mercurievv/scalasemantic/semanticdb/SemanticIndex#"
+  private val SampleFile =
+    "analysis/src/test/scala/com/github/mercurievv/scalasemantic/fixtures/Sample.scala"
+
+  test("members accepts a file path: a single-type file resolves to that type's members") {
+    val bySymbol = call("members", ujson.Obj("symbol" -> SemanticIndexClass))
+    val byFile = call("members", ujson.Obj("symbol" -> SemanticIndexFile))
+    assertEquals(byFile("symbol").str, bySymbol("symbol").str)
+    assertEquals(byFile("name").str, bySymbol("name").str)
+    assertEquals(byFile("declared").arr.map(_.str).toSet, bySymbol("declared").arr.map(_.str).toSet)
+  }
+
+  test(
+    "class_hierarchy accepts a file path: a single-type file resolves to that type's hierarchy"
+  ) {
+    val bySymbol = call("class_hierarchy", ujson.Obj("symbol" -> SemanticIndexClass))
+    val byFile = call("class_hierarchy", ujson.Obj("symbol" -> SemanticIndexFile))
+    assertEquals(byFile("symbol").str, bySymbol("symbol").str)
+    assertEquals(byFile("name").str, bySymbol("name").str)
+  }
+
+  test("members/class_hierarchy on a multi-type file path return disambiguation candidates") {
+    val members = call("members", ujson.Obj("symbol" -> SampleFile))
+    assert(members.obj.contains("candidates"), members.render())
+    assert(members("candidates").arr.map(_.str).contains(Animal), members.render())
+    assert(members.obj.contains("note"), members.render())
+
+    val hierarchy = call("class_hierarchy", ujson.Obj("symbol" -> SampleFile))
+    assert(hierarchy.obj.contains("candidates"), hierarchy.render())
+    assert(hierarchy("candidates").arr.map(_.str).contains(Animal), hierarchy.render())
+  }
+
+  test(
+    "method_signature/find_overloads accept a file path; a multi-method file returns candidates"
+  ) {
+    val sig = call("method_signature", ujson.Obj("symbol" -> SampleFile))
+    assert(sig.obj.contains("candidates"), sig.render())
+
+    val overloads = call("find_overloads", ujson.Obj("symbol" -> SampleFile))
+    assert(overloads.obj.contains("candidates"), overloads.render())
+  }
+
+  test("class_hierarchy/members error clearly on a value that is neither a symbol nor a file") {
+    intercept[Exception](call("members", ujson.Obj("symbol" -> "not/a/real/path.scala")))
+    intercept[Exception](call("class_hierarchy", ujson.Obj("symbol" -> "totally bogus input")))
+  }
+
   test("resolve_implicits lists candidate givens for a type") {
     val r = call("resolve_implicits", ujson.Obj("type" -> Show))
     val types = r("candidates").arr.map(_("type").str).toSet
