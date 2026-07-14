@@ -645,6 +645,19 @@ def smokeTest() = Task.Command {
   if (millRes.exitCode != 0) {
     sys.error(s"E2E Smoke Test (Mill project) failed with exit status ${millRes.exitCode}")
   }
+
+  val scriptsScript = build.moduleDir / "scripts" / "smoke-test-scripts.sc"
+  val scriptsRes = os
+    .proc("scala-cli", "run", scriptsScript.toString)
+    .call(
+      cwd = build.moduleDir,
+      stdout = os.Inherit,
+      stderr = os.Inherit,
+      check = false
+    )
+  if (scriptsRes.exitCode != 0) {
+    sys.error(s"E2E Smoke Test (standalone scripts/ scala-cli scripts) failed with exit status ${scriptsRes.exitCode}")
+  }
 }
 
 def prePush() = Task.Command {
