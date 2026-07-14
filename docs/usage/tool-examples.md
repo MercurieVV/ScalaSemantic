@@ -246,7 +246,12 @@ These tools show the LLM what the compiler sees but the source text does not —
 
 **Answers:** compiler-visible facts and inferred types — everything the compiler sees that the source text does not.
 
-`Enrich.scala` — a `Show` typeclass with several `given` instances (for `Int`, `String`, `List`, and two more brought in by a wildcard `given` import), a context-bound `render`, an extension method, and a spread of call sites (`map`, `sortBy`, `foldLeft`, a `for`-comprehension, numeric widening) that each hide a different compiler insertion. The tabs run the real analyzer against it at build time: **Original** is the raw file; **compilable** and **symbols=on** show the compiler's view with the inserted `// ⟹` notes tinted green **in place** (only what the compiler added is highlighted — no whole-line diff); **diff** is the literal `format=diff` patch.
+`Enrich.scala` is a small file with a `Show` typeclass, several `given` instances, a context-bound `render`, an extension method, collection calls, a `for`-comprehension, and numeric widening. The tabs run the real analyzer against it at build time:
+
+- **Original** is the raw source.
+- **compilable** shows inserted compiler facts inline.
+- **symbols=on** adds symbol/package details and expands relevant wildcard `given` imports.
+- **diff** shows the same enrichment as a literal patch.
 
 ```scala mdoc:passthrough
 val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
@@ -261,7 +266,7 @@ val diffRaw = scalasemantic.docs.ToolRunner.run("annotated_source", diffArgs)
 <Tabs groupId="annotated-source">
 <TabItem value="original" label="Original">
 
-The source exactly as written — none of the `(using …)` arguments or inferred types below are visible here.
+The source exactly as written.
 
 ```scala mdoc:passthrough
 println(s"```scala\n${scalasemantic.docs.ToolRunner.readSource(enrichPath)}\n```")
@@ -270,7 +275,7 @@ println(s"```scala\n${scalasemantic.docs.ToolRunner.readSource(enrichPath)}\n```
 </TabItem>
 <TabItem value="compilable" label="compilable" default>
 
-The compiler injects `(using intShow)` / `(using listShow(...))` into the `render` calls, infers `: String` on `out` and `: List[Int]` on `nums`, and adds the inferred type arguments — each tinted green inline.
+Compiler insertions, highlighted inline.
 
 ```scala mdoc:passthrough
 println(scalasemantic.docs.ToolRunner.requestMarkdown("annotated_source", annotatedArgs))
@@ -287,7 +292,7 @@ println(scalasemantic.docs.ToolRunner.detailsMarkdown(annotatedArgs, annotatedRa
 </TabItem>
 <TabItem value="symbols" label="symbols=on">
 
-Appends a `type → package` legend and, under `compilable`, **explodes** the wildcard `import Instances.given` into `import Instances.{doubleShow, floatShow}` — the exact givens summoned at `render(3.14)` / `render(1.0f)`. Names that need no import (same-package, inherited, `export`ed) stay in the legend.
+Inline enrichment plus symbol details.
 
 ```scala mdoc:passthrough
 println(scalasemantic.docs.ToolRunner.requestMarkdown("annotated_source", symbolsArgs))
@@ -304,7 +309,7 @@ println(scalasemantic.docs.ToolRunner.detailsMarkdown(symbolsArgs, symbolsRaw))
 </TabItem>
 <TabItem value="diff" label="diff (patch)">
 
-`format=diff` returns a unified diff from source → enriched: `-` lines are the original, `+` lines carry the insertions and exploded imports. A literal, appliable patch — coloured whole-line green/red by any diff viewer.
+Unified diff from source to enriched source.
 
 ```scala mdoc:passthrough
 println(scalasemantic.docs.ToolRunner.requestMarkdown("annotated_source", diffArgs))
