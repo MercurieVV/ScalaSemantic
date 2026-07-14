@@ -1,0 +1,58 @@
+{
+  "tool": "trace_implicit_chain",
+  "args": {
+    "type": "com/github/mercurievv/scalasemantic/docexamples/Show#",
+    "appliedType": "Show[List[Int]]"
+  },
+  "result": {
+    "type": "com/github/mercurievv/scalasemantic/docexamples/Show#",
+    "appliedType": "Show[List[Int]]",
+    "steps": [
+      {
+        "given": "doubleShow",
+        "type": "Show[Double]"
+      },
+      {
+        "given": "floatShow",
+        "type": "Show[Float]"
+      },
+      {
+        "given": "intShow",
+        "type": "Show[Int]"
+      },
+      {
+        "given": "listShow",
+        "type": "Show[List[A]]",
+        "dependsOn": [
+          "com/github/mercurievv/scalasemantic/docexamples/Show#"
+        ]
+      },
+      {
+        "given": "stringShow",
+        "type": "Show[String]"
+      }
+    ],
+    "resolved": {
+      "type": "Show[List[Int]]",
+      "chosen": "com/github/mercurievv/scalasemantic/docexamples/Show.listShow().",
+      "candidates": [
+        {
+          "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show.listShow().",
+          "type": "Show[List[A]]"
+        }
+      ],
+      "children": [
+        {
+          "type": "Show[Int]",
+          "chosen": "com/github/mercurievv/scalasemantic/docexamples/Show.intShow.",
+          "candidates": [
+            {
+              "symbol": "com/github/mercurievv/scalasemantic/docexamples/Show.intShow.",
+              "type": "Show[Int]"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

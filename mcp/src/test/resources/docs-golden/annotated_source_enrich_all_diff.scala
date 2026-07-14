@@ -1,0 +1,74 @@
+--- docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala (original)
++++ docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala (enriched)
+@@ -14,45 +14,49 @@
+   def apply[A](using s: Show[A]): Show[A] = s
+ 
+   given intShow: Show[Int] with
+-    def show(a: Int) = a.toString
++    def show(a: Int) = a.toString  // ⟹ : String
+ 
+   given stringShow: Show[String] with
+-    def show(a: String) = a
++    def show(a: String) = a  // ⟹ : String
+ 
+   // context bound `A: Show` desugars to a `(using Show[A])` parameter the source never writes
+-  given listShow[A: Show]: Show[List[A]] with
++  given listShow[A: Show]: Show[List[A]] with  // ⟹ : Show[A]
+-    def show(a: List[A]) =
++    def show(a: List[A]) =  // ⟹ : String
+-      a.map(Show[A].show).mkString("[", ", ", "]")
++      a.map(Show[A].show).mkString("[", ", ", "]")  // ⟹ Show[A](using Show[A])
+ 
+ // `[A: Show]` again — the using-param and the `Show[A]` summon are both invisible in the text
+-def render[A: Show](a: A): String = Show[A].show(a)
++def render[A: Show](a: A): String = Show[A].show(a)  // ⟹ Show[A](using Show[A])
+ 
+-extension (n: Int) def shown(using Show[Int]): String = render(n)
++extension (n: Int) def shown(using Show[Int]): String = render(n)  // ⟹ render[Int](n)(using Show[Int])
+ 
+ object Instances:
+   given doubleShow: Show[Double] with
+-    def show(a: Double) = a.toString
++    def show(a: Double) = a.toString  // ⟹ : String
+   given floatShow: Show[Float] with
+-    def show(a: Float) = a.toString
++    def show(a: Float) = a.toString  // ⟹ : String
+ 
+ // wildcard `given` import: the givens enter scope with NO written name at the summon site — only
+ // the symbols legend can say which given `render(3.14)` picked, and format=compilable explodes this
+ // line to the explicit `import Instances.{doubleShow, floatShow}` of just the givens actually used
+-import Instances.given
++import Instances.{doubleShow, floatShow}
+ 
+-val nums = List(1, 2, 3)
++val nums = List(1, 2, 3)  // ⟹ : List[Int]; List.apply[Int](1, 2, 3)
+-val pi = render(3.14)
++val pi = render(3.14)  // ⟹ : String; render[Double](3.14)(using doubleShow)
+-val flo = render(1.0f)
++val flo = render(1.0f)  // ⟹ : String; render[Float](1.0f)(using floatShow)
+-val out = render(nums)
++val out = render(nums)  // ⟹ : String; render[List[Int]](nums)(using listShow(using intShow))
+-val sorted = nums.sorted
++val sorted = nums.sorted  // ⟹ : List[Int]; nums.sorted[Int](using Ordering[Int])
+-val ranked = List("b" -> 2, "a" -> 1).sortBy(_._1)
++val ranked = List("b" -> 2, "a" -> 1).sortBy(_._1)  // ⟹ : List[Tuple2[String, Int]]; List.apply[Tuple2[String, Int]]("b" ->[Int] 2, "a" ->[Int][String] 1).sortBy(_._1)(using Ordering[String])
+-val labeled = nums.map(n => n -> render(n))
++val labeled = nums.map(n => n -> render(n))  // ⟹ : List[Tuple2[Int, String]]; ArrowAssoc[Int](n); render[Int](n)(using intShow)
+-val total = nums.foldLeft(0)(_ + _)
++val total = nums.foldLeft(0)(_ + _)  // ⟹ : Int
+-val ratio: Double = nums.size
++val ratio: Double = nums.size  // ⟹ int2double(nums.size)
+-val shownFive = 5.shown
++val shownFive = 5.shown  // ⟹ : String; 5.shown(using intShow)
+-val firstTwo =
++val firstTwo =  // ⟹ : Option[String]
+   for
+     a <- nums.headOption
+     b <- sorted.headOption
+-  yield render(a) + render(b)
++  yield render(a) + render(b)  // ⟹ render[Int](a)(using intShow); render[Int](b)(using intShow)
+ 
++
++// symbols:
++//   List → scala.collection.immutable.List
++//   Show → com.github.mercurievv.scalasemantic.docexamples.Show

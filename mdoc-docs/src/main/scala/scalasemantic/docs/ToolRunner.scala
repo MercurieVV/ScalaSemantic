@@ -95,6 +95,27 @@ object ToolRunner:
        |
        |$argLines""".stripMargin
 
+  /** Request header shown ONCE above a group of tabs: the tool name and the args that are constant
+    * across every tab. Pass only the fixed args as a ujson object string.
+    */
+  def commonRequestMarkdown(tool: String, fixedArgs: String): String =
+    requestMarkdown(tool, fixedArgs)
+
+  /** One-line note of just the arg(s) that make THIS tab differ from the common request. */
+  def variantLine(label: String, changedArgs: String): String =
+    val changed = ujson.read(changedArgs) match
+      case obj: ujson.Obj =>
+        obj.obj.toSeq
+          .map { case (k, v) =>
+            val value = v match
+              case ujson.Str(s) => s
+              case other        => ujson.write(other)
+            s"`$k` = `$value`"
+          }
+          .mkString(", ")
+      case _ => "(defaults)"
+    s"**$label** — $changed"
+
   /** Pulls a single field's value out of a tool's raw JSON, unwrapped (no markdown fencing) so the
     * caller can place it inside a custom layout (e.g. a diff panel).
     */
@@ -108,6 +129,35 @@ object ToolRunner:
     */
   def enrichedComponent(raw: String): String =
     s"<EnrichedCode code={${ujson.write(extractField(raw, "source"))}} />"
+
+  /** Render a `document_outline` result's nested `outline` array as a Mermaid `graph TD` tree: one
+    * node per member (label = name + kind; signature shown when present), edges parent->child. Node
+    * ids are sequential (`n0`, `n1`, ...) to stay valid regardless of symbol characters.
+    */
+  def outlineMermaid(raw: String): String =
+    val root = ujson.read(raw)
+    def esc(s: String): String =
+      s.replace("\"", "&quot;").replace("[", "&#91;").replace("]", "&#93;")
+    def label(node: ujson.Value): String =
+      val name = node.obj.get("name").map(_.str).getOrElse("?")
+      val kind = node.obj.get("kind").map(_.str).getOrElse("")
+      val sig = node.obj.get("signature").map(_.str).filter(_.nonEmpty)
+      val head = s"$name : $kind"
+      esc(sig.fold(head)(s => s"$head\\n$s"))
+    def walk(parentId: Option[String], node: ujson.Value, next: Int): (List[String], Int) =
+      val id = s"n$next"
+      val own = List(s"""  $id["${label(node)}"]""") ++ parentId.map(p => s"  $p --> $id").toList
+      val children = node.obj.get("children").map(_.arr.toList).getOrElse(Nil)
+      children.foldLeft((own, next + 1)) { case ((lines, counter), child) =>
+        val (childLines, childNext) = walk(Some(id), child, counter)
+        (lines ++ childLines, childNext)
+      }
+    val (lines, _) = root.obj("outline").arr.toList.foldLeft((List.empty[String], 0)) {
+      case ((acc, counter), node) =>
+        val (nodeLines, next) = walk(None, node, counter)
+        (acc ++ nodeLines, next)
+    }
+    s"```mermaid\ngraph TD\n${lines.mkString("\n")}\n```"
 
   /** Collapsed `<details>` block with the raw JSON, eliding fields already shown elsewhere (e.g. as
     * an extracted code block via [[extractField]]) so nothing is printed twice.
