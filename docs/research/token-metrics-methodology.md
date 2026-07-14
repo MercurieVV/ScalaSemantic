@@ -156,7 +156,7 @@ another full file).
 ## Results
 
 The auto-generated table below is kept in sync with
-[`docs/research/token-metrics.json`](token-metrics.json) by the test suite (see
+`docs/research/token-metrics.json` by the test suite (see
 [How to reproduce](#how-to-reproduce)). Do not edit it by hand.
 
 <!-- BEGIN AUTO-GENERATED -->
@@ -173,7 +173,7 @@ The auto-generated table below is kept in sync with
 <!-- END AUTO-GENERATED -->
 
 The canonical source of truth for these numbers is
-[`docs/research/token-metrics.json`](token-metrics.json).
+`docs/research/token-metrics.json`.
 
 ---
 
@@ -214,7 +214,7 @@ After regeneration, commit both updated files together.
 The full test implementation (query definitions, baseline generators, token
 counter, JSON and Markdown renderers) is at:
 
-[`mcp/src/test/scala/com/github/mercurievv/scalasemantic/mcp/TokenMetricsSuite.scala`](../../mcp/src/test/scala/com/github/mercurievv/scalasemantic/mcp/TokenMetricsSuite.scala)
+[`mcp/src/test/scala/com/github/mercurievv/scalasemantic/mcp/TokenMetricsSuite.scala`](https://github.com/MercurieVV/ScalaSemantic/blob/master/mcp/src/test/scala/com/github/mercurievv/scalasemantic/mcp/TokenMetricsSuite.scala)
 
 ---
 
@@ -276,13 +276,13 @@ far is one task on one engine; most of the plan below remains open.
 The aggregation harness is now implemented:
 
 - raw run input format:
-  [`docs/research/token-metrics-live-runs.sample.json`](token-metrics-live-runs.sample.json)
+  `docs/research/token-metrics-live-runs.sample.json`
 - sample aggregate output:
-  [`docs/research/token-metrics-live.sample.json`](token-metrics-live.sample.json)
+  `docs/research/token-metrics-live.sample.json`
 - verification / regeneration suite:
-  [`mcp/src/test/scala/com/github/mercurievv/scalasemantic/mcp/TokenLiveMetricsSuite.scala`](../../mcp/src/test/scala/com/github/mercurievv/scalasemantic/mcp/TokenLiveMetricsSuite.scala)
+  [`mcp/src/test/scala/com/github/mercurievv/scalasemantic/mcp/TokenLiveMetricsSuite.scala`](https://github.com/MercurieVV/ScalaSemantic/blob/master/mcp/src/test/scala/com/github/mercurievv/scalasemantic/mcp/TokenLiveMetricsSuite.scala)
 - driver script:
-  [`scripts/token-live-metrics.sh`](../../scripts/token-live-metrics.sh)
+  [`scripts/token-live-metrics.sh`](https://github.com/MercurieVV/ScalaSemantic/blob/master/scripts/token-live-metrics.sh)
 
 The sample files use synthetic fixture numbers only; they validate the harness
 shape and must not be interpreted as research results. The later live-run

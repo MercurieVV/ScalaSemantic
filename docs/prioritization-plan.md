@@ -18,7 +18,7 @@ Each topic/file is scored from 1 (lowest) to 5 (highest) for the primary use cas
 | [getting-started/faq.md](getting-started/faq.md) | 4 | 4 | 2 | 3 | **Condense** | 35 | 20 |
 | [explanation/scala-semantic-vs-grep.md](explanation/scala-semantic-vs-grep.md) | 3 | 5 | 2 | 5 | **Keep** | 72 | 50 |
 | [reference/tools.md](reference/tools.md) | 5 | 3 | 4 | 3 | **Keep & Consolidate** | 71 | 60 |
-| [usage/examples.md](usage/examples.md) | 5 | 3 | 3 | 4 | **Keep** (worked examples) | 188 | 150 |
+| <a href="../usage/tool-examples">usage/tool-examples.md</a> | 5 | 3 | 3 | 4 | **Keep** (worked examples) | 188 | 150 |
 | [project/design.md](project/design.md) | 1 | 5 | 5 | 2 | **Keep & Merge** | 39 | 45 |
 | [project/development.md](project/development.md) | 1 | 3 | 5 | 1 | **Keep & Consolidate** | 55 | 50 |
 | [project/releasing.md](project/releasing.md) | 1 | 1 | 5 | 1 | **Keep** | 60 | 40 |
@@ -29,8 +29,8 @@ Each topic/file is scored from 1 (lowest) to 5 (highest) for the primary use cas
 | [research/claude-interaction-study.md](research/claude-interaction-study.md) | 2 | 4 | 3 | 3 | **Keep** | 76 | 60 |
 | `research/llm-steering-investigation.md` | 2 | 4 | 3 | 2 | **Condense & Merge** | 29 | 0 (Delete) |
 | [articles/it-hurts-to-watch-ai-grep-my-scala.md](articles/it-hurts-to-watch-ai-grep-my-scala.md) | 2 | 5 | 2 | 5 | **Keep** | 77 | 70 |
-| [README.md](../README.md) | 5 | 4 | 3 | 5 | **Keep & Condense** | 74 | 50 |
-| [AGENTS.md](../AGENTS.md) | 1 | 2 | 5 | 1 | **Keep & Condense** | 34 | 25 |
+| [README.md](https://github.com/MercurieVV/ScalaSemantic/blob/master/README.md) | 5 | 4 | 3 | 5 | **Keep & Condense** | 74 | 50 |
+| [AGENTS.md](https://github.com/MercurieVV/ScalaSemantic/blob/master/AGENTS.md) | 1 | 2 | 5 | 1 | **Keep & Condense** | 34 | 25 |
 | **Total** | | | | | | **~1243** | **~795** |
 
 ---
@@ -41,14 +41,14 @@ Each topic/file is scored from 1 (lowest) to 5 (highest) for the primary use cas
 - **Canonical Home**: [getting-started/integration.md](getting-started/integration.md) (specifically `### Option A — sbt plugin`).
 - **Resolution**:
   - Keep the full sbt block in `integration.md`.
-  - In [getting-started/quickstart.md](getting-started/quickstart.md) and [README.md](../README.md), replace the redundant multi-line explanations/links with a minimal snippet + a direct link to `integration.md` for advanced options or issues.
+  - In [getting-started/quickstart.md](getting-started/quickstart.md) and [README.md](https://github.com/MercurieVV/ScalaSemantic/blob/master/README.md), replace the redundant multi-line explanations/links with a minimal snippet + a direct link to `integration.md` for advanced options or issues.
   - In [articles/it-hurts-to-watch-ai-grep-my-scala.md](articles/it-hurts-to-watch-ai-grep-my-scala.md), use a reference pointer/link to `integration.md` rather than maintaining its own static setup code block.
 
 ### b) Tool descriptions
 - **Canonical Home**: [reference/tools.md](reference/tools.md) (names, purposes, schema rules).
 - **Resolution**:
   - Keep the concise tools table in `tools.md`. 
-  - Remove the generic redundant JSON-RPC request example from `tools.md` and link directly to [usage/examples.md](usage/examples.md) for full worked JSON payloads.
+  - Remove the generic redundant JSON-RPC request example from `tools.md` and link directly to <a href="../usage/tool-examples">usage/tool-examples.md</a> for full worked JSON payloads.
 
 ### c) Token metrics split
 - **Canonical Home**: [research/token-metrics-methodology.md](research/token-metrics-methodology.md).

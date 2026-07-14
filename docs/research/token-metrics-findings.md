@@ -99,8 +99,8 @@ this repository's fixture sources."*
 
 **Delta (mean): 6 341 tokens, 4.0% reduction.**
 
-Full run data: [`token-metrics-live-runs.json`](token-metrics-live-runs.json)
-(raw per-run input) and [`token-metrics-live.json`](token-metrics-live.json)
+Full run data is in `docs/research/token-metrics-live-runs.json`
+(raw per-run input) and `docs/research/token-metrics-live.json`
 (computed aggregate). Narrative version of this same result:
 [`token-metrics-live-run.md`](token-metrics-live-run.md).
 
@@ -235,7 +235,7 @@ codex result was not.
 An earlier attempt, at commit `00a10cf4e267ce7c6eb5783856e797c5ed6edb7b`,
 produced no valid comparison and its numbers are **not** part of the result
 above. Raw attempt data:
-[`token-metrics-live-attempts.json`](token-metrics-live-attempts.json).
+`docs/research/token-metrics-live-attempts.json`.
 
 | Engine | Intended arm | Task | Outcome |
 | --- | --- | --- | --- |
