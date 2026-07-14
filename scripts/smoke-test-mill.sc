@@ -5,11 +5,10 @@
 
 // End-to-end launcher smoke test for ScalaSemantic MCP server against a real Mill project.
 // Unlike scripts/smoke-test.sh (synthetic scala-cli fixture, PC-backed type_at_position), this
-// dogfoods the launcher directly against THIS repo's own Mill-emitted SemanticDB, run from the
-// project root, proving index-based tools work with `*.semanticdb` produced by `./mill __.compile`
-// (no classpath metadata / presentation-compiler involved) — covering both regular module source
-// (core/analysis/mcp) AND Mill's own build config/scripts (build.mill, compiled by Mill's
-// meta-build into out/mill-build/.../wrapped/build_/build.mill.semanticdb).
+// dogfoods the launcher directly against THIS repo's own build.mill — Mill's own DSL/config code,
+// compiled by Mill's meta-build into out/mill-build/.../wrapped/build_/build.mill.semanticdb — run
+// from the project root, proving index-based tools work against real Mill build-script code (not
+// synthetic fixtures, and not regular application source under core/analysis/mcp).
 
 import java.io.{BufferedReader, InputStreamReader, OutputStreamWriter}
 import java.nio.file.*
@@ -147,9 +146,9 @@ object SmokeTestMill {
           ujson.read(text)
       }
 
-    val methodSigSymbol = "com/github/mercurievv/scalasemantic/semanticdb/SemanticIndex.fromProject()."
+    val methodSigSymbol = smokeTestSymbol
     val methodSigResult = toolResult(2)
-    val expectedSignature = "def fromProject(projectRoot: String): SemanticIndex"
+    val expectedSignature = "def smokeTest(): Command[Unit]"
     if (methodSigResult("symbol").str != methodSigSymbol)
       fail(s"method_signature echoed wrong symbol: ${methodSigResult("symbol")}", stdout, stderr)
     if (methodSigResult("signature").str != expectedSignature)
@@ -160,13 +159,27 @@ object SmokeTestMill {
       )
     println(s"method_signature OK: ${methodSigResult("signature").str}")
 
-    if (!stdout.contains("\"id\":3")) fail("did not receive response for find_usages tools/call", stdout, stderr)
-    if (!stdout.contains("referenceCount"))
-      fail("expected find_usages to return at least one usage reference", stdout, stderr)
+    // find_usages on the same build.mill symbol: prePush() calls smokeTest(), so exactly one
+    // real call site should turn up in build.mill.
+    val findUsagesResult = toolResult(3)
+    if (findUsagesResult("symbol").str != smokeTestSymbol)
+      fail(s"find_usages echoed wrong symbol: ${findUsagesResult("symbol")}", stdout, stderr)
+    val referenceCount = findUsagesResult("referenceCount").num.toInt
+    if (referenceCount < 1)
+      fail(s"expected find_usages($smokeTestSymbol) to find at least 1 usage, got $referenceCount", stdout, stderr)
+    val references = findUsagesResult("references").arr.map(_.str)
+    if (!references.exists(_.contains("build.mill")))
+      fail(s"expected a find_usages reference inside build.mill, got: $references", stdout, stderr)
+    println(s"find_usages OK: $referenceCount reference(s), including ${references.find(_.contains("build.mill")).get}")
 
-    if (!stdout.contains("\"id\":4")) fail("did not receive response for build.mill find_usages tools/call", stdout, stderr)
-    if (!stdout.contains("build.mill"))
-      fail("expected find_usages on build_/package_#mcp.mainClass(). to resolve into build.mill", stdout, stderr)
+    // call_path: prePush() → smokeTest() is a real one-hop call edge in build.mill.
+    val callPathResult = toolResult(4)
+    if (!callPathResult("reachable").bool)
+      fail(s"expected call_path($prePushSymbol -> $smokeTestSymbol) to be reachable, got: $callPathResult", stdout, stderr)
+    val path = callPathResult("path").arr.map(_.str)
+    if (path != Seq("prePush", "smokeTest"))
+      fail(s"expected call_path to resolve exactly [prePush, smokeTest], got: $path", stdout, stderr)
+    println(s"call_path OK: ${path.mkString(" -> ")}")
 
     println("=== Mill E2E Smoke Test Passed Successfully ===")
   }
