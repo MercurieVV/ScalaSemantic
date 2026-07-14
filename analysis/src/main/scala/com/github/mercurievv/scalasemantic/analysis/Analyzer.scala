@@ -276,10 +276,17 @@ final class Analyzer(
       detail: SourceDetail = SourceDetail.Terse
   ): Option[List[SourceAnnotation]] =
     index.document(uri.value).map { doc =>
-      val synthetic0 = detail match
+      val synthetic0: List[SourceAnnotation] = detail match {
         case SourceDetail.Terse =>
-          doc.synthetics.iterator.flatMap(h.syntheticAnnotation(_, sourceLines)).toList
-        case SourceDetail.Full => fullAnnotations(doc, sourceLines)
+          val terse = doc.synthetics.iterator.flatMap(h.syntheticAnnotation(_, sourceLines)).toList
+          val nestedElaborated = fullAnnotations(doc, sourceLines)
+            .filter(a => a.text.indexOf("(using ") != a.text.lastIndexOf("(using "))
+            .map(a => a.copy(kind = "elaborated", text = s"elaborated: ${a.text}"))
+          val elaboratedLines = nestedElaborated.map(_.line).toSet
+          terse.filterNot(a => elaboratedLines.contains(a.line)) ++ nestedElaborated
+        case SourceDetail.Full =>
+          fullAnnotations(doc, sourceLines)
+      }
       // Drop the redundant `(using …)` a given/def forwards into its OWN construction: the note
       // lands on the definition's header (at or before its name), and that using-param is already
       // written in the signature. A genuine call-site using in the body sits AFTER the name.
@@ -292,7 +299,15 @@ final class Analyzer(
         (a.kind == "implicit" || a.kind == "full") &&
           defStarts.exists((dl, dc) => dl == a.line && dc >= a.character)
       )
-      val defTypes = doc.occurrences.iterator.flatMap(h.defTypeAnnotation(_, sourceLines)).toList
+      val elaboratedLines = synthetic.collect { case a if a.kind == "elaborated" => a.line }.toSet
+      val defTypes: List[SourceAnnotation] = doc.occurrences.iterator
+        .flatMap(h.defTypeAnnotation(_, sourceLines))
+        .map { a =>
+          if elaboratedLines.contains(a.line) && a.text.startsWith(": ") then
+            a.copy(text = s"type: ${a.text.drop(2)}")
+          else a
+        }
+        .toList
       (synthetic ++ defTypes).distinct.sortBy(a => (a.line, a.character, a.kind))
     }
 
