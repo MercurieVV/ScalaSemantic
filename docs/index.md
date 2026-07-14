@@ -12,7 +12,7 @@ It reads compiler-emitted **SemanticDB**, so answers reflect what the compiler r
 ## Reference
 
 - [Tool reference](reference/tools.md) — all MCP tools and SemanticDB symbol grammar
-- [Tool Examples](usage/tool-examples.md) — real tool calls and responses, executed at docs build time
+- <a href="usage/tool-examples">Tool Examples</a> — real tool calls and responses, executed at docs build time
 
 ## Understanding the trade-offs
 
