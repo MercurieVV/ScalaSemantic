@@ -1,0 +1,39 @@
+{
+  "tool": "smart_code_duplications",
+  "args": {
+    "minSize": 15,
+    "showSource": true
+  },
+  "result": {
+    "groupsCount": 1,
+    "groups": [
+      {
+        "occurrencesCount": 2,
+        "astNodeCount": 41,
+        "occurrences": [
+          {
+            "location": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Duplication.scala:2:0"
+          },
+          {
+            "location": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Duplication.scala:9:0"
+          }
+        ]
+      }
+    ],
+    "groupsSource": [
+      {
+        "astNodeCount": 41,
+        "occurrences": [
+          {
+            "location": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Duplication.scala:2:0",
+            "snippet": "    3  def processUserData(name: String, email: String): String =\n    4    val trimmedName = name.trim\n    5    val lowercaseName = trimmedName.toLowerCase\n    6    val upperName = lowercaseName.toUpperCase\n    7    val finalName = upperName + email\n    8    finalName"
+          },
+          {
+            "location": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Duplication.scala:9:0",
+            "snippet": "   10  def processProductData(title: String, category: String): String =\n   11    val trimmedTitle = title.trim\n   12    val lowercaseTitle = trimmedTitle.toLowerCase\n   13    val upperTitle = lowercaseTitle.toUpperCase\n   14    val finalTitle = upperTitle + category\n   15    finalTitle"
+          }
+        ]
+      }
+    ]
+  }
+}

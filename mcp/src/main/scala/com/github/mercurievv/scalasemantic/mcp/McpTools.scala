@@ -292,6 +292,23 @@ private[mcp] object McpToolsSupport:
   private[mcp] def loc(l: Location): String =
     s"${l.uri}:${l.range.start.line}:${l.range.start.character}"
 
+  /** The source lines a [[Location]] spans, gutter-numbered exactly like `annotated_source`'s
+    * `plain` format (1-based, absolute file line numbers) — reuses [[SourceView.result]] on the
+    * whole file so the gutter logic is never duplicated, then slices the rendered lines down to the
+    * location's range. `None` when the file cannot be read.
+    */
+  private[mcp] def sourceSnippet(root: java.nio.file.Path, l: Location): Option[String] =
+    val file = root.resolve(l.uri)
+    if !java.nio.file.Files.isRegularFile(file) then None
+    else
+      val rawLines = java.nio.file.Files.readString(file).split("\n", -1).toIndexedSeq
+      val rendered =
+        SourceView.result(l.uri, rawLines, rawLines, Nil, SourceFormat.Plain, false, Nil)
+      val renderedLines = rendered.obj("source").str.split("\n", -1).toIndexedSeq
+      val start = math.max(0, l.range.start.line)
+      val end = math.min(renderedLines.size - 1, l.range.end.line)
+      if start > end then None else Some(renderedLines.slice(start, end + 1).mkString("\n"))
+
   private[mcp] def memberJson(mi: MemberInfo): ujson.Value =
     jobj(
       Some("name" -> ujson.Str(mi.displayName)),
@@ -1325,15 +1342,24 @@ private[mcp] object McpToolsGroupD:
           "smart_code_duplications",
           "Analyze code duplications (clones) across the project or scoped by path. Normalizes ASTs " +
             "by abstracting over variable/internal names, literal values, and types, reporting identical " +
-            "structures. Excludes nested blocks that are already reported as part of a larger clone group.",
+            "structures. Excludes nested blocks that are already reported as part of a larger clone group. " +
+            "Pass `showSource: true` to also get the duplicated source lines for every occurrence " +
+            "(as a `groupsSource` field), gutter-numbered like `annotated_source`'s `plain` format.",
           List(
             ("minSize", "integer", "minimum number of AST nodes to consider (default 15)"),
-            ("pathFilter", "string", "glob on the document uri; `*` matches any chars")
+            ("pathFilter", "string", "glob on the document uri; `*` matches any chars"),
+            (
+              "showSource",
+              "boolean",
+              "when true, also return `groupsSource`: each group's occurrences with their duplicated " +
+                "source lines as a gutter-numbered `snippet` (default false)"
+            )
           ),
           List()
         ) { a =>
           val minSize = argPositiveInt(a, "minSize", 15)
           val pathFilter = a.obj.get("pathFilter").map(_.str)
+          val showSource = argBool(a, "showSource", false)
           val res = az.analyzeDuplications(root, minSize, pathFilter)
           jobj(
             Some("groupsCount" -> ujson.Num(res.groups.size)),
@@ -1349,6 +1375,30 @@ private[mcp] object McpToolsGroupD:
                           jobj(
                             Some("location" -> ujson.Str(loc(occ.location))),
                             occ.enclosingMethod.map(m => "enclosingMethod" -> ujson.Str(m))
+                          )
+                        }
+                      )
+                    )
+                  )
+                }
+              )
+            ),
+            opt(
+              showSource,
+              "groupsSource" -> ujson.Arr.from(
+                res.groups.map { g =>
+                  jobj(
+                    Some("astNodeCount" -> ujson.Num(g.astNodeCount)),
+                    Some(
+                      "occurrences" -> ujson.Arr.from(
+                        g.occurrences.map { occ =>
+                          jobj(
+                            Some("location" -> ujson.Str(loc(occ.location))),
+                            Some(
+                              "snippet" -> ujson.Str(
+                                sourceSnippet(root, occ.location).getOrElse("")
+                              )
+                            )
                           )
                         }
                       )

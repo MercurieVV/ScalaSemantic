@@ -137,3 +137,10 @@ class DocsToolExamplesGoldenSuite extends munit.FunSuite:
       "smart_code_duplications",
       ujson.Obj("minSize" -> 15)
     )
+
+  test("smart_code_duplications(minSize=15, showSource=true)"):
+    assertGolden(
+      "smart_code_duplications_min15_show_source",
+      "smart_code_duplications",
+      ujson.Obj("minSize" -> 15, "showSource" -> true)
+    )
