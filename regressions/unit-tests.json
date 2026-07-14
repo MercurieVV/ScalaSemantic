@@ -187,6 +187,7 @@
   "com.github.mercurievv.scalasemantic.mcp.DocsEnrichingExamplesGoldenSuite.resolve_implicits(Show)",
   "com.github.mercurievv.scalasemantic.mcp.DocsEnrichingExamplesGoldenSuite.trace_implicit_chain(Show)",
   "com.github.mercurievv.scalasemantic.mcp.DocsEnrichingExamplesGoldenSuite.trace_implicit_chain(Show[List[Int]])",
+  "com.github.mercurievv.scalasemantic.mcp.DocsEnrichingExamplesGoldenSuite.type_at_position(Enrich.scala:14:6)",
   "com.github.mercurievv.scalasemantic.mcp.DocsEnrichingExamplesGoldenSuite.type_at_position(Enrich.scala:47:4)",
   "com.github.mercurievv.scalasemantic.mcp.DocsToolExamplesGoldenSuite.call_path(pipeline -> process)",
   "com.github.mercurievv.scalasemantic.mcp.DocsToolExamplesGoldenSuite.class_hierarchy(Processor)",

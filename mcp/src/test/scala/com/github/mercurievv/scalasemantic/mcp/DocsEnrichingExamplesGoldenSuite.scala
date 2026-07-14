@@ -168,6 +168,13 @@ class DocsEnrichingExamplesGoldenSuite extends munit.FunSuite:
       ujson.Obj("uri" -> EnrichPath, "line" -> 47, "character" -> 4)
     )
 
+  test("type_at_position(Enrich.scala:14:6)"):
+    assertGolden(
+      "type_at_position_enrich_apply",
+      "type_at_position",
+      ujson.Obj("uri" -> EnrichPath, "line" -> 14, "character" -> 6)
+    )
+
   test("resolve_implicits(Show)"):
     assertGolden("resolve_implicits_show", "resolve_implicits", ujson.Obj("type" -> ShowType))
 

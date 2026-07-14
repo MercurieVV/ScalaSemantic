@@ -1,0 +1,11 @@
+{
+  "tool": "type_at_position",
+  "args": {
+    "uri": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+    "line": 14,
+    "character": 6
+  },
+  "result": {
+    "found": false
+  }
+}
