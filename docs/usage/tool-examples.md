@@ -137,9 +137,15 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 Outgoing from `pipeline`: `compose`, then the two `transform` calls, then `process` — the whole fan-out in one call.
 
 ```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.runPretty(
-  "method_call_hierarchy",
-  """{"symbol":"com/github/mercurievv/scalasemantic/docexamples/Navigate$package.pipeline().","direction":"callees"}"""))
+val callHierarchyArgs =
+  """{"symbol":"com/github/mercurievv/scalasemantic/docexamples/Navigate$package.pipeline().","direction":"callees"}"""
+val callHierarchyRaw =
+  scalasemantic.docs.ToolRunner.run("method_call_hierarchy", callHierarchyArgs)
+println(scalasemantic.docs.ToolRunner.requestMarkdown("method_call_hierarchy", callHierarchyArgs))
+println()
+println(scalasemantic.docs.ToolRunner.callHierarchyMermaid(callHierarchyRaw))
+println()
+println(scalasemantic.docs.ToolRunner.detailsMarkdown(callHierarchyArgs, callHierarchyRaw))
 ```
 
 **Replaces:** Opening each callee in turn to build the tree by hand.
@@ -214,10 +220,27 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 **What it tells you:** dependency graph and cycles.
 
-A snapshot of entire dependency structure in one call.
+A snapshot of the product modules' dependency structure in one call.
+
+Metric values:
+
+- `types`: number of in-project types in a module.
+- `layer`: longest dependency-chain depth after cycles are condensed; `0` means a foundation type/module, larger numbers sit above deeper dependencies.
+- `ca`: afferent coupling, the number of incoming dependencies; higher values mean more project symbols depend on this symbol/module.
+- `ce`: efferent coupling, the number of outgoing dependencies; higher values mean this symbol/module depends on more project symbols.
+- `instability`: `ce / (ca + ce)`, from `0` to `1`; `0` is stable/foundation-like, `1` is leaf/consumer-like.
+- `centrality`: PageRank-style importance; higher values mean the symbol is more structurally central because important symbols depend on it.
+- `dependencies` weight: number of semantic dependency observations collapsed into one symbol-to-symbol edge; thicker graph edges mean higher weight.
+- `moduleEdges` weight: number of symbol-level dependency edges crossing from one module to another.
 
 ```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.runPretty("structure", "{}"))
+val structureArgs = """{"limit":20}"""
+val structureRaw = scalasemantic.docs.ToolRunner.runStructure(structureArgs)
+println(scalasemantic.docs.ToolRunner.requestMarkdown("structure", structureArgs))
+println()
+println(scalasemantic.docs.ToolRunner.structureGraphComponent(structureRaw))
+println()
+println(scalasemantic.docs.ToolRunner.detailsMarkdown(structureArgs, structureRaw))
 ```
 
 **Replaces:** Manual dependency graph construction.
@@ -254,25 +277,22 @@ These tools show the LLM what the compiler sees but the source text does not —
 
 `Enrich.scala` is a small file with a `Show` typeclass, several `given` instances, a context-bound `render`, an extension method, collection calls, a `for`-comprehension, and numeric widening. The tabs run the real analyzer against it at build time:
 
-- **compilable** shows compiler insertions inline as comments.
-- **symbols=on** adds symbol/package details and expands relevant wildcard `given` imports.
-- **docs=strip** keeps the same compiler facts but drops source comments for a leaner view.
-- **docs diff** shows exactly what comment stripping removes.
+- **compilable** shows compiler insertions as a patch against the original source.
+- **symbols=on** adds symbol/package details and expands relevant wildcard `given` imports as a patch.
+- **docs=strip** shows comment stripping and compiler insertions as a patch.
 - **All (diff)** shows every enrichment against the original as a literal patch.
 - **Original** is the raw source.
 
 ```scala mdoc:passthrough
 val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
 val fixedArgs      = s"""{"uri":"$enrichPath","annotationsOnly":false}"""
-val compilableArgs = s"""{"uri":"$enrichPath","format":"compilable","annotationsOnly":false}"""
-val symbolsArgs    = s"""{"uri":"$enrichPath","format":"compilable","annotationsOnly":false,"symbols":true}"""
-val docsStripArgs  = s"""{"uri":"$enrichPath","format":"compilable","annotationsOnly":false,"docs":"strip"}"""
-val docsDiffArgs   = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"docs":"strip"}"""
+val compilableArgs = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false}"""
+val symbolsArgs    = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"symbols":true}"""
+val docsStripArgs  = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"docs":"strip"}"""
 val allDiffArgs    = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"symbols":true,"detail":"full","docs":"keep"}"""
 val compilableRaw = scalasemantic.docs.ToolRunner.run("annotated_source", compilableArgs)
 val symbolsRaw    = scalasemantic.docs.ToolRunner.run("annotated_source", symbolsArgs)
 val docsStripRaw  = scalasemantic.docs.ToolRunner.run("annotated_source", docsStripArgs)
-val docsDiffRaw   = scalasemantic.docs.ToolRunner.run("annotated_source", docsDiffArgs)
 val allDiffRaw    = scalasemantic.docs.ToolRunner.run("annotated_source", allDiffArgs)
 ```
 
@@ -285,14 +305,15 @@ println(scalasemantic.docs.ToolRunner.commonRequestMarkdown("annotated_source", 
 <Tabs groupId="annotated-source">
 <TabItem value="compilable" label="compilable" default>
 
-Compiler insertions, highlighted inline.
+Compiler insertions as a patch.
 
 ```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.variantLine("compilable", """{"format":"compilable"}"""))
+println(scalasemantic.docs.ToolRunner.variantLine("compilable", """{"format":"diff"}"""))
 ```
 
 ```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.enrichedComponent(compilableRaw))
+println(scalasemantic.docs.ToolRunner.wordDiffComponent(
+  scalasemantic.docs.ToolRunner.extractField(compilableRaw, "source")))
 ```
 
 ```scala mdoc:passthrough
@@ -302,14 +323,15 @@ println(scalasemantic.docs.ToolRunner.detailsMarkdown(compilableArgs, compilable
 </TabItem>
 <TabItem value="symbols" label="symbols=on">
 
-Inline enrichment plus symbol details.
+Inline enrichment plus symbol details as a patch.
 
 ```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.variantLine("symbols=on", """{"symbols":true}"""))
+println(scalasemantic.docs.ToolRunner.variantLine("symbols=on", """{"format":"diff","symbols":true}"""))
 ```
 
 ```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.enrichedComponent(symbolsRaw))
+println(scalasemantic.docs.ToolRunner.wordDiffComponent(
+  scalasemantic.docs.ToolRunner.extractField(symbolsRaw, "source")))
 ```
 
 ```scala mdoc:passthrough
@@ -319,31 +341,19 @@ println(scalasemantic.docs.ToolRunner.detailsMarkdown(symbolsArgs, symbolsRaw))
 </TabItem>
 <TabItem value="docs-strip" label="docs=strip">
 
-Compiler insertions with comments removed.
+Compiler insertions with comments removed, shown as a patch.
 
 ```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.variantLine("docs=strip", """{"docs":"strip"}"""))
+println(scalasemantic.docs.ToolRunner.variantLine("docs=strip", """{"format":"diff","docs":"strip"}"""))
 ```
 
 ```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.enrichedComponent(docsStripRaw))
+println(scalasemantic.docs.ToolRunner.wordDiffComponent(
+  scalasemantic.docs.ToolRunner.extractField(docsStripRaw, "source")))
 ```
 
 ```scala mdoc:passthrough
 println(scalasemantic.docs.ToolRunner.detailsMarkdown(docsStripArgs, docsStripRaw))
-```
-
-</TabItem>
-<TabItem value="docs-diff" label="docs diff">
-
-Comment stripping as a patch.
-
-```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.variantLine("docs diff", """{"format":"diff","docs":"strip"}"""))
-```
-
-```scala mdoc:passthrough
-println(s"```diff\n${scalasemantic.docs.ToolRunner.extractField(docsDiffRaw, "source")}\n```")
 ```
 
 </TabItem>
@@ -356,7 +366,8 @@ println(scalasemantic.docs.ToolRunner.variantLine("All (diff)", """{"format":"di
 ```
 
 ```scala mdoc:passthrough
-println(s"```diff\n${scalasemantic.docs.ToolRunner.extractField(allDiffRaw, "source")}\n```")
+println(scalasemantic.docs.ToolRunner.wordDiffComponent(
+  scalasemantic.docs.ToolRunner.extractField(allDiffRaw, "source")))
 ```
 
 </TabItem>
@@ -505,9 +516,19 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 For a concrete wanted type, pass `appliedType`. Here `Show[List[Int]]` resolves to `listShow`, whose nested dependency resolves to `intShow`.
 
 ```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.runPretty(
-  "trace_implicit_chain",
-  """{"type":"com/github/mercurievv/scalasemantic/docexamples/Show#","appliedType":"Show[List[Int]]"}"""))
+val concreteImplicitArgs =
+  """{"type":"com/github/mercurievv/scalasemantic/docexamples/Show#","appliedType":"Show[List[Int]]"}"""
+println(scalasemantic.docs.ToolRunner.requestMarkdown("trace_implicit_chain", concreteImplicitArgs))
+```
+
+```scala mdoc:passthrough
+val concreteImplicitRaw =
+  scalasemantic.docs.ToolRunner.run("trace_implicit_chain", concreteImplicitArgs)
+println(scalasemantic.docs.ToolRunner.implicitTreeMermaid(concreteImplicitRaw))
+```
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.detailsMarkdown(concreteImplicitArgs, concreteImplicitRaw))
 ```
 
 **Replaces:** Manually following each given's own implicit needs → the whole chain.
@@ -520,11 +541,12 @@ The tools above read the last compiled SemanticDB. But ScalaSemantic can also an
 
 Below, the only change to `Enrich.scala` is a new `prefix: String` using-parameter on `render`:
 
-```diff
--def render[A](a: A)(using sh: Show[A]): String =
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.wordDiffComponent(
+  """-def render[A](a: A)(using sh: Show[A]): String =
 -  sh.show(a)
 +def render[A](a: A)(using sh: Show[A], prefix: String): String =
-+  prefix + sh.show(a)
++  prefix + sh.show(a)"""))
 ```
 
 `method_signature` runs on the same `render` symbol, with the same arguments, three ways: against the committed index, against the unmodified file through the presentation compiler (proving the two agree), and against the edited buffer — which reports the new parameter **without any recompile**.
@@ -539,7 +561,8 @@ println(scalasemantic.docs.ToolRunner.requestMarkdown("method_signature", modSig
 
 ```scala mdoc:passthrough
 val dbRaw = scalasemantic.docs.ToolRunner.run("method_signature", modSigArgs)
-println(s"```scala\n${scalasemantic.docs.ToolRunner.extractField(dbRaw, "signature")}\n```")
+println(scalasemantic.docs.ToolRunner.syntaxComponent(
+  scalasemantic.docs.ToolRunner.extractField(dbRaw, "signature")))
 ```
 
 **PC (same code)**
@@ -547,7 +570,8 @@ println(s"```scala\n${scalasemantic.docs.ToolRunner.extractField(dbRaw, "signatu
 ```scala mdoc:passthrough
 val pcSameRaw = scalasemantic.docs.ToolRunner.runWithSource(
   "method_signature", modSigArgs, enrichPath, enrichPath)
-println(s"```scala\n${scalasemantic.docs.ToolRunner.extractField(pcSameRaw, "signature")}\n```")
+println(scalasemantic.docs.ToolRunner.syntaxComponent(
+  scalasemantic.docs.ToolRunner.extractField(pcSameRaw, "signature")))
 ```
 
 **PC (modified)**
@@ -557,7 +581,7 @@ val pcModRaw = scalasemantic.docs.ToolRunner.runWithSource(
   "method_signature", modSigArgs, enrichPath, "docExamples/edited/Enrich_modified.scala")
 val before = scalasemantic.docs.ToolRunner.extractField(dbRaw, "signature")
 val after  = scalasemantic.docs.ToolRunner.extractField(pcModRaw, "signature")
-println(s"```diff\n-$before\n+$after\n```")
+println(scalasemantic.docs.ToolRunner.wordDiffComponent(s"-$before\n+$after"))
 ```
 
 **Replaces:** Recompiling just to ask a question about half-finished code.

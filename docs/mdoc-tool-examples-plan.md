@@ -255,7 +255,7 @@ the fixed template below so the "enrich / cut" story is explicit, scannable, and
 ````markdown
 ### `tool_name`
 
-> **Answers:** one line — "who calls X", "the resolved signature of Y", … (from `docs/reference/tools.md`).
+> **What it tells you:** one line — "who calls X", "the resolved signature of Y", … (from `docs/reference/tools.md`).
 
 **Input** (`Fixture.scala`):
 
@@ -322,7 +322,7 @@ scannable; 2-of-3 tab variants stay hidden until clicked. Put the Docusaurus `Ta
 Theme line for the section intro: *"These tools show the LLM what the compiler sees but the source text
 does not — inferred types, synthesized implicit arguments and conversions, resolved signatures."*
 
-**Every example in this section follows the T4.5 template** (Answers → Input → plain-vs-enriched
+**Every example in this section follows the T4.5 template** (What it tells you → Input → plain-vs-enriched
 contrast → :::tip takeaway → Replaces → `<details>` JSON). Use the **enrich contrast** (plain vs
 annotated, both from `ToolRunner`). The illustration below shows the moving part — the live output
 fence — but wrap it in the full template:

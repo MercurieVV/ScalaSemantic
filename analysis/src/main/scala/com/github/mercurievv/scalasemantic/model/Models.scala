@@ -217,9 +217,21 @@ case class ModuleStructure(
   */
 case class ModuleEdge(from: String, to: String, weight: Int, inCycle: Boolean) derives ReadWriter
 
+/** A directed dependency edge between two in-project symbols. `dimensions` records which graph
+  * dimensions contributed the edge, e.g. `extends`, `memberType`, `call`, or `implicit`. `weight`
+  * is the number of semantic dependency observations collapsed into this edge.
+  */
+case class SymbolDependency(
+    from: String,
+    to: String,
+    dimensions: List[String],
+    weight: Int
+) derives ReadWriter
+
 case class StructureResult(
     symbols: List[SymbolStructure],
     modules: List[ModuleStructure],
+    dependencies: List[SymbolDependency],
     moduleEdges: List[ModuleEdge],
     cycles: List[DependencyCycle]
 ) derives ReadWriter

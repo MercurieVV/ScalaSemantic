@@ -250,6 +250,7 @@ object InputTypes:
   enum StructureDimension(val value: String):
     case Combined extends StructureDimension("combined")
     case Extends extends StructureDimension("extends")
+    case TypeRef extends StructureDimension("typeRef")
     case MemberType extends StructureDimension("memberType")
     case Call extends StructureDimension("call")
     case Implicit extends StructureDimension("implicit")
@@ -260,6 +261,7 @@ object InputTypes:
         case ""           => Right(Combined)
         case "combined"   => Right(Combined)
         case "extends"    => Right(Extends)
+        case "typeRef"    => Right(TypeRef)
         case "memberType" => Right(MemberType)
         case "call"       => Right(Call)
         case "implicit"   => Right(Implicit)

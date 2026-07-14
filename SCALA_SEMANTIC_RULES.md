@@ -12,3 +12,17 @@ If sources are not indexed - need to launch project compilation
 3. **Exceptions**: You may use generic tools on non-Scala files (such as `.sbt`, `.json`, `.md`), or if the `scala-semantic` MCP tools are completely
 failing/unavailable.
 4. **ALWAYS** call `set_workspace_root` with the new absolute path before any other `scala-semantic` tool call after changing working directories (worktree switch, `cd`, subproject entry, or subagent cwd change). If unsure, call `get_workspace_root` first. This is a discipline rule, not a harness-enforced guarantee.
+
+## Scala CLI SemanticDB
+
+Enable with Scala CLI directives: `--semanticdb`
+
+Not raw scalac flags:
+```scala
+//> using semanticdb
+//> using semanticdbSourceroot .
+```
+Avoid `//> using options -Ysemanticdb and //> using options -sourceroot:..`
+
+If SemanticDB tools report an empty index, verify generation with:
+   `find .scala-build -name '*.semanticdb'`

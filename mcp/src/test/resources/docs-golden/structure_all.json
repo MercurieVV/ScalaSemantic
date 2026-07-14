@@ -14,6 +14,33 @@
         "instability": 0
       }
     ],
+    "dependencies": [
+      {
+        "from": "com/github/mercurievv/scalasemantic/docexamples/ReverseProcessor#",
+        "to": "com/github/mercurievv/scalasemantic/docexamples/Processor#",
+        "dimensions": [
+          "extends"
+        ],
+        "weight": 1
+      },
+      {
+        "from": "com/github/mercurievv/scalasemantic/docexamples/Show.",
+        "to": "com/github/mercurievv/scalasemantic/docexamples/Show#",
+        "dimensions": [
+          "implicit",
+          "memberType"
+        ],
+        "weight": 3
+      },
+      {
+        "from": "com/github/mercurievv/scalasemantic/docexamples/UpperProcessor#",
+        "to": "com/github/mercurievv/scalasemantic/docexamples/Processor#",
+        "dimensions": [
+          "extends"
+        ],
+        "weight": 1
+      }
+    ],
     "symbols": [
       {
         "symbol": "com/github/mercurievv/scalasemantic/docexamples/Processor#",

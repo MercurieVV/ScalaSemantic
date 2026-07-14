@@ -65,6 +65,14 @@ class StructureMetricsSuite extends munit.FunSuite:
       properties = props
     )
 
+  private def typeAlias(sym: String, lower: s.Type, upper: s.Type) =
+    s.SymbolInformation(
+      symbol = sym,
+      kind = s.SymbolInformation.Kind.TYPE,
+      displayName = sym.stripPrefix(sym.takeWhile(_ != '/') + "/").stripSuffix("#"),
+      signature = s.TypeSignature(None, lower, upper)
+    )
+
   private def param(sym: String, tpe: s.Type, props: Int) =
     s.SymbolInformation(
       symbol = sym,
@@ -88,8 +96,10 @@ class StructureMetricsSuite extends munit.FunSuite:
     symbols = Vector(
       cls("core/A#", List(ObjectT), List("core/A#m().")),
       method("core/A#m().", methodSig(IntT)),
-      cls("core/B#", List(ObjectT), List("core/B#f().")),
+      cls("core/B#", List(ObjectT), List("core/B#f().", "core/B#g().")),
       method("core/B#f().", methodSig(tref("core/A#"))), // memberType: B -> A
+      method("core/B#g().", methodSig(tref("core/A#"))), // memberType: B -> A, second observation
+      typeAlias("core/Alias#", tref("scala/Nothing#"), tref("core/A#")), // typeRef: Alias -> A
       cls("core/X#", List(tref("core/Y#"))), // extends cycle
       cls("core/Y#", List(tref("core/X#")))
     ),
@@ -98,6 +108,8 @@ class StructureMetricsSuite extends munit.FunSuite:
       defn("core/A#m().", 1),
       defn("core/B#", 2),
       defn("core/B#f().", 3),
+      defn("core/B#g().", 3),
+      defn("core/Alias#", 4),
       defn("core/X#", 4),
       defn("core/Y#", 5)
     )
@@ -129,12 +141,16 @@ class StructureMetricsSuite extends munit.FunSuite:
   private val index = SemanticIndex(Vector(core, app))
   private val graphs = new DependencyGraphs(index)
 
-  test("DependencyGraphs.nodes are the in-project classes only"):
-    assertEquals(graphs.nodes, Set("core/A#", "core/B#", "core/X#", "core/Y#", "app/C#"))
+  test("DependencyGraphs.nodes are in-project classes and type definitions"):
+    assertEquals(
+      graphs.nodes,
+      Set("core/A#", "core/Alias#", "core/B#", "core/X#", "core/Y#", "app/C#")
+    )
 
   test("DependencyGraphs: one graph per dimension"):
     assertEquals(graphs.dimensions("extends")("app/C#"), Set("core/A#"))
     assertEquals(graphs.dimensions("extends")("core/X#"), Set("core/Y#"))
+    assertEquals(graphs.dimensions("typeRef")("core/Alias#"), Set("core/A#"))
     assertEquals(graphs.dimensions("memberType")("core/B#"), Set("core/A#"))
     assertEquals(graphs.dimensions("call")("app/C#"), Set("core/A#"))
     assertEquals(
@@ -142,20 +158,31 @@ class StructureMetricsSuite extends munit.FunSuite:
       Map("app/C#" -> Set("core/B#")),
       "only the given's dep"
     )
-    assertEquals(graphs.dimensions("extends")("core/A#"), Set.empty[String], "no in-project parent")
+    assertEquals(
+      graphs.dimensions("extends").getOrElse("core/A#", Set.empty[String]),
+      Set.empty[String],
+      "no in-project parent"
+    )
 
   test("DependencyGraphs.combined unions the dimensions; moduleOf reads the uri segment"):
     assertEquals(graphs.combined("app/C#"), Set("core/A#", "core/B#"))
+    assertEquals(graphs.combined("core/Alias#"), Set("core/A#"))
     assertEquals(graphs.combined("core/B#"), Set("core/A#"))
     assertEquals(graphs.moduleOf("core/A#"), "core")
     assertEquals(graphs.moduleOf("app/C#"), "app")
     assertEquals(graphs.moduleOf("nope/Z#"), "<unknown>", "no definition occurrence")
 
+  test("StructureMetrics: dependency weight counts collapsed semantic observations"):
+    val r = new StructureMetrics(index).result()
+    val bToA = r.dependencies.find(e => e.from == "core/B#" && e.to == "core/A#").get
+    assertEquals(bToA.dimensions, List("memberType"))
+    assertEquals(bToA.weight, 2, "B has two member signatures that reference A")
+
   test("StructureMetrics: per-type coupling, instability, and cycle membership"):
     val r = new StructureMetrics(index).result()
     val bySym = r.symbols.map(s => s.symbol -> s).toMap
     val a = bySym("core/A#").combined
-    assertEquals(a.afferent, 2, "A is depended on by B and C")
+    assertEquals(a.afferent, 3, "A is depended on by B, Alias, and C")
     assertEquals(a.efferent, 0)
     assertEquals(a.instability, 0.0)
     assertEquals(a.layer, 0, "A is a foundation")
@@ -174,7 +201,7 @@ class StructureMetricsSuite extends munit.FunSuite:
       r.cycles.toString
     )
     val byMod = r.modules.map(m => m.module -> m).toMap
-    assertEquals(byMod("core").typeCount, 4, "A, B, X, Y")
+    assertEquals(byMod("core").typeCount, 5, "A, Alias, B, X, Y")
     assertEquals(byMod("app").typeCount, 1)
     assertEquals(byMod("app").efferent, 1, "app depends on core")
     assertEquals(byMod("app").instability, 1.0)
@@ -324,3 +351,19 @@ class StructureMetricsSuite extends munit.FunSuite:
     )
     val g = new DependencyGraphs(SemanticIndex(Vector(doc)))
     assert(!g.dimensions("implicit").getOrElse("i8/O#", Set.empty).contains("i8/O#"))
+
+  test("typeRefGraph: type definition RHS occurrence creates an edge even when bounds are empty"):
+    val doc = s.TextDocument(
+      uri = "ta/lib.scala",
+      symbols = Vector(
+        typeAlias("ta/Alias#", s.Type.Empty, s.Type.Empty),
+        cls("ta/Target#", List(ObjectT))
+      ),
+      occurrences = Vector(
+        defn("ta/Alias#", 0),
+        ref("ta/Target#", 0),
+        defn("ta/Target#", 1)
+      )
+    )
+    val g = new DependencyGraphs(SemanticIndex(Vector(doc)))
+    assertEquals(g.dimensions("typeRef")("ta/Alias#"), Set("ta/Target#"))

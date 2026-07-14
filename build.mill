@@ -541,7 +541,12 @@ object docs extends SbtModule with ScalafixConfigured with mill.scalalib.scalafm
   def forkArgs = Task {
     Seq(
       s"-Dscalasemantic.docs.version=${latestReleaseVersion()}",
-      s"-Dscalasemantic.docs.indexDir=${docExamples.compile().classes.path}"
+      s"-Dscalasemantic.docs.indexDir=${docExamples.compile().classes.path}",
+      s"-Dscalasemantic.docs.structureIndexDirs=${Seq(
+          core.compile().classes.path,
+          analysis.compile().classes.path,
+          mcp.compile().classes.path
+        ).mkString(java.io.File.pathSeparator)}"
     )
   }
   def forkWorkingDir = build.moduleDir

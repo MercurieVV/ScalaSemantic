@@ -69,11 +69,11 @@ class AnalyzerStructureSuite extends munit.FunSuite:
     )
   }
 
-  test("per-symbol metrics carry all four dimensions plus the combined overlay") {
+  test("per-symbol metrics carry all dimensions plus the combined overlay") {
     val s = structure.symbols.head
     assertEquals(
       s.perDimension.keySet,
-      Set("extends", "memberType", "call", "implicit"),
+      Set("extends", "typeRef", "memberType", "call", "implicit"),
       s.perDimension.keySet.toString
     )
     // instability is a proper ratio
