@@ -53,10 +53,10 @@ class McpSuite extends munit.FunSuite:
     assert(instr.contains("find_symbol"), instr)
   }
 
-  test("tools/list exposes all seventeen tools with schemas") {
+  test("tools/list exposes all tools with schemas") {
     val r = Mcp.handle(req("tools/list", ujson.Obj()), tools).get
     val names = r("result")("tools").arr.map(_("name").str).toSet
-    assertEquals(names.size, 22)
+    assertEquals(names.size, 24)
     assert(names.contains("value_flow"), names.toString)
     assert(names.contains("find_symbol"), names.toString)
     assert(names.contains("find_usages"), names.toString)
@@ -67,9 +67,11 @@ class McpSuite extends munit.FunSuite:
     assert(names.contains("annotated_source"), names.toString)
     assert(names.contains("symbol_source"), names.toString)
     assert(names.contains("rename_plan"), names.toString)
+    assert(names.contains("batch_rename_plan"), names.toString)
     assert(names.contains("move_plan"), names.toString)
     assert(names.contains("extract_method_plan"), names.toString)
     assert(names.contains("smart_code_duplications"), names.toString)
+    assert(names.contains("search_text"), names.toString)
     // every tool carries an object input schema
     assert(r("result")("tools").arr.forall(_("inputSchema")("type").str == "object"))
   }
@@ -843,6 +845,88 @@ class McpSuite extends munit.FunSuite:
     assert(scoped("references").arr.forall(_.str.contains("scala-3")), scoped.render())
   }
 
+  test("find_usages contextLines omitted keeps *WithContext fields empty (back-compat)") {
+    val r = call("find_usages", ujson.Obj("symbol" -> Animal))
+    assert(!r.obj.contains("definitionsWithContext"), r.render())
+    assert(!r.obj.contains("referencesWithContext"), r.render())
+  }
+
+  test("find_usages contextLines returns surrounding source lines per hit") {
+    val r = call("find_usages", ujson.Obj("symbol" -> Animal, "contextLines" -> 2))
+    assert(r("referencesWithContext").arr.nonEmpty, r.render())
+    val hit = r("referencesWithContext").arr.head
+    assert(hit.obj.contains("location"), hit.render())
+    assert(hit("context").arr.size > 1, hit.render())
+  }
+
+  test("search_text finds a known literal string in this repo's own sources") {
+    val r = call("search_text", ujson.Obj("query" -> "Phase 4: MCP protocol"))
+    assert(r("count").num > 0, r.render())
+    val hits = jsonArray(r("hits"))
+    assert(hits.exists(h => h("uri").str.endsWith("McpSuite.scala")), r.render())
+    assert(
+      hits.forall(h => h.obj.contains("uri") && h.obj.contains("line") && h.obj.contains("text"))
+    )
+  }
+
+  test("search_text respects limit, pathFilter, and rejects an invalid regex") {
+    val limited = call("search_text", ujson.Obj("query" -> "def ", "limit" -> 3))
+    assert(limited("hits").arr.size <= 3, limited.render())
+
+    val scoped = call("search_text", ujson.Obj("query" -> "McpSuite", "pathFilter" -> "*McpSuite*"))
+    assert(scoped("hits").arr.forall(_("uri").str.contains("McpSuite")), scoped.render())
+
+    val badRegex =
+      callResponse("search_text", ujson.Obj("query" -> "(unclosed", "regex" -> true))
+        .getOrElse(fail("no response"))
+    assertEquals(badRegex("result")("isError").bool, true)
+  }
+
+  test("batch_rename_plan combines edits from unrelated symbols with no conflicts") {
+    val a = "com/github/mercurievv/scalasemantic/fixtures/Show#"
+    val b = "com/github/mercurievv/scalasemantic/fixtures/Robot#"
+    val singleA = call("rename_plan", ujson.Obj("symbol" -> a, "newName" -> "Displayable"))
+    val singleB = call("rename_plan", ujson.Obj("symbol" -> b, "newName" -> "Automaton"))
+    val batch = call(
+      "batch_rename_plan",
+      ujson.Obj(
+        "renames" -> ujson.Arr(
+          ujson.Obj("symbol" -> a, "newName" -> "Displayable"),
+          ujson.Obj("symbol" -> b, "newName" -> "Automaton")
+        )
+      )
+    )
+    assertEquals(
+      batch("combinedEditCount").num,
+      singleA("editCount").num + singleB("editCount").num
+    )
+    assertEquals(batch("conflictCount").num, 0.0)
+    assert(!batch.obj.contains("conflicts"), batch.render())
+  }
+
+  test(
+    "batch_rename_plan reports conflicts for overlapping edits and excludes them from combinedEdits"
+  ) {
+    val batch = call(
+      "batch_rename_plan",
+      ujson.Obj(
+        "renames" -> ujson.Arr(
+          ujson.Obj("symbol" -> Animal, "newName" -> "Creature"),
+          ujson.Obj("symbol" -> Animal, "newName" -> "Beast")
+        )
+      )
+    )
+    assert(batch("conflictCount").num > 0, batch.render())
+    assert(batch("conflicts").arr.nonEmpty, batch.render())
+    val single = call("rename_plan", ujson.Obj("symbol" -> Animal, "newName" -> "Creature"))
+    val singleEdits = single("edits").arr.map(_.str).toSet
+    val combinedEdits = batch("combinedEdits").arr.map(_.str).toSet
+    assert(
+      singleEdits.intersect(combinedEdits).isEmpty,
+      "edits involved in a conflict must not appear in combinedEdits"
+    )
+  }
+
   test("method_signature is lean by default and structured only when detailed") {
     val lean = call("method_signature", ujson.Obj("symbol" -> Render))
     assertEquals(lean("signature").str, "def render[A](a: A)(implicit sh: Show[A]): String")
@@ -912,5 +996,5 @@ class McpSuite extends munit.FunSuite:
     // 4 lines in (one blank, one notification) → 2 responses out, with matching ids
     assertEquals(out.size, 2)
     assertEquals(ujson.read(out(0))("id").num, 1.0)
-    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 22)
+    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 24)
   }

@@ -86,9 +86,13 @@ object Mcp:
       |type-inferred uses and implicits, and OVER-MATCHES comments, strings, and unrelated same-named
       |identifiers. Reach for text search only for non-symbol content (comments, string literals, build
       |files, non-Scala files), or when these tools genuinely do not fit.
+      |search_text — scoped text/regex search over .scala files (string literals/comments; not
+      |symbol-aware — use find_symbol/find_usages for identifiers) — is the sanctioned in-MCP
+      |replacement for that grep escape hatch.
       |
       |Pick the tool by what you want to know:
-      |  who calls / references a symbol, where it is used    → find_usages
+      |  who calls / references a symbol, where it is used    → find_usages (optional
+      |    contextLines param returns surrounding source lines)
       |  subtypes / supertypes / implementers of a type       → class_hierarchy
       |  a method's signature / parameters / return           → method_signature
       |  the overloads of a method                            → find_overloads
@@ -101,6 +105,8 @@ object Mcp:
       |  a file's structure / where to edit (don't read it)   → document_outline
       |  the full text of a .scala file (read it THIS way)    → annotated_source
         |  the exact edits to rename a symbol safely            → rename_plan
+        |  rename multiple symbols in one request, reporting edit-range
+        |    conflicts instead of silently merging them → batch_rename_plan
         |  the edits to move a symbol to another package        → move_plan
         |  the edits to extract a code range into a new method  → extract_method_plan
         |  where a val/binding flows across method boundaries   → value_flow

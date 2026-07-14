@@ -3,6 +3,14 @@ package com.github.mercurievv.scalasemantic.mcp
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
 import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
+import upickle.default.ReadWriter
+
+import scala.jdk.CollectionConverters.*
+
+/** One `search_text` hit: a plain (not symbol-resolved) match of the query on `line` (0-based) of
+  * `uri`, with the full matching line's text.
+  */
+private[mcp] case class SearchTextHit(uri: String, line: Int, text: String) derives ReadWriter
 
 /** The analysis tools exposed over MCP, with token-lean JSON rendering.
   *
@@ -312,6 +320,77 @@ private[mcp] object McpToolsSupport:
       val end = math.min(renderedLines.size - 1, l.range.end.line)
       if start > end then None else Some(renderedLines.slice(start, end + 1).mkString("\n"))
 
+  /** `radius` lines around `line` (0-based), clamped to `rawLines`'s bounds — used to build
+    * `find_usages`'s optional `contextLines` output.
+    */
+  private[mcp] def linesAround(rawLines: IndexedSeq[String], line: Int, radius: Int): List[String] =
+    rawLines.slice(math.max(0, line - radius), math.min(rawLines.length, line + radius + 1)).toList
+
+  /** Reads each distinct `uri` among `locations` at most once and pairs every [[Location]] with the
+    * `contextLines`-line window around it, wrapped in a [[UsageHit]]. A file that fails to read
+    * yields an empty `context` for every hit in that uri rather than failing the whole request.
+    */
+  private[mcp] def withContext(
+      root: java.nio.file.Path,
+      locations: List[Location],
+      contextLines: Int
+  ): List[UsageHit] =
+    val rawLinesByUri = locations
+      .map(_.uri)
+      .distinct
+      .map { uri =>
+        val text =
+          try Some(java.nio.file.Files.readString(root.resolve(uri)).split("\n", -1).toIndexedSeq)
+          catch case _: java.io.IOException => None
+        uri -> text
+      }
+      .toMap
+    locations.map { location =>
+      val context = rawLinesByUri.get(location.uri).flatten match
+        case Some(rawLines) => linesAround(rawLines, location.range.start.line, contextLines)
+        case None           => Nil
+      UsageHit(location, context)
+    }
+
+  private[mcp] def usageHitJson(hit: UsageHit): ujson.Value =
+    jobj(
+      Some("location" -> ujson.Str(loc(hit.location))),
+      opt(hit.context.nonEmpty, "context" -> strs(hit.context))
+    )
+
+  /** A predicate from an optional glob: `*` matches any run of chars, the rest is literal, matched
+    * unanchored (substring). `None` keeps everything. Mirrors `AnalyzerHelpers.globMatcher`'s
+    * semantics locally, since `search_text` is mcp-module-only and does not depend on `analysis`.
+    */
+  private[mcp] def mcpGlobMatcher(pattern: Option[String]): String => Boolean =
+    pattern match
+      case None       => _ => true
+      case Some(glob) =>
+        val regex = glob.split("\\*", -1).map(java.util.regex.Pattern.quote).mkString(".*").r
+        uri => regex.findFirstIn(uri).isDefined
+
+  /** Directory name segments to skip while walking `root` for `search_text` — build output and VCS
+    * metadata are never source we want matched, and skipping them keeps the walk fast.
+    */
+  private[mcp] val SearchTextExcludedDirs: Set[String] =
+    Set(".git", "out", "target", "node_modules", ".bloop", ".metals")
+
+  /** Every `.scala` file under `root`, as project-relative uri strings, sorted for deterministic
+    * output. Skips [[SearchTextExcludedDirs]] entirely rather than filtering after the fact.
+    */
+  private[mcp] def scalaFilesUnder(root: java.nio.file.Path): List[String] =
+    val stream = java.nio.file.Files.walk(root)
+    try
+      stream
+        .iterator()
+        .asScala
+        .filterNot(p => p.iterator().asScala.exists(seg => SearchTextExcludedDirs(seg.toString)))
+        .filter(p => java.nio.file.Files.isRegularFile(p) && p.toString.endsWith(".scala"))
+        .map(p => root.relativize(p).toString)
+        .toList
+        .sorted
+    finally stream.close()
+
   private[mcp] def memberJson(mi: MemberInfo): ujson.Value =
     jobj(
       Some("name" -> ujson.Str(mi.displayName)),
@@ -583,7 +662,10 @@ private[mcp] object McpToolsGroupA:
           "Every resolved reference to a symbol across the codebase, split into definitions and " +
             "references (paged) — including renames, re-exports, and inferred/implicit uses that text " +
             "search misses. Scope with `pathFilter` (glob, e.g. `core/*` or `*compat*`); drop sections " +
-            "with `include` (subset of [\"definitions\",\"references\"]). `referenceCount` is always returned.",
+            "with `include` (subset of [\"definitions\",\"references\"]). `referenceCount` is always " +
+            "returned. Set `contextLines` > 0 to also return `definitionsWithContext`/" +
+            "`referencesWithContext` — each hit paired with its surrounding source lines, so you don't " +
+            "have to pipe results to `rg -A`/`sed` for context.",
           List(
             ("symbol", "string", "SemanticDB symbol to search for"),
             ("limit", "integer", "max references to return (default 100)"),
@@ -597,6 +679,11 @@ private[mcp] object McpToolsGroupA:
               "include",
               "array",
               "sections to return: any of \"definitions\", \"references\" (default both)"
+            ),
+            (
+              "contextLines",
+              "integer",
+              "lines of surrounding source per hit (default 0 = no context, no extra file I/O)"
             )
           ),
           List("symbol")
@@ -605,8 +692,13 @@ private[mcp] object McpToolsGroupA:
           val limit = argPositiveInt(a, "limit", 100)
           val offset = argNonNegativeInt(a, "offset", 0)
           val want = includeWant(a)
+          val contextLines = argNonNegativeInt(a, "contextLines", 0).value
           val u = az.findUsages(symbol, a.obj.get("pathFilter").map(_.str))
           val page = u.references.slice(offset.value, offset.value + limit.value)
+          val definitionsWithContext =
+            if contextLines > 0 then withContext(root, u.definitions, contextLines) else Nil
+          val referencesWithContext =
+            if contextLines > 0 then withContext(root, page, contextLines) else Nil
           jobj(
             Some("symbol" -> ujson.Str(symbol.value)),
             Some("name" -> ujson.Str(u.displayName)),
@@ -619,6 +711,14 @@ private[mcp] object McpToolsGroupA:
             opt(
               want("references") && offset.value + limit.value < u.references.size,
               "nextOffset" -> ujson.Num(offset.value + limit.value)
+            ),
+            opt(
+              want("definitions") && definitionsWithContext.nonEmpty,
+              "definitionsWithContext" -> ujson.Arr.from(definitionsWithContext.map(usageHitJson))
+            ),
+            opt(
+              want("references") && referencesWithContext.nonEmpty,
+              "referencesWithContext" -> ujson.Arr.from(referencesWithContext.map(usageHitJson))
             )
           )
         }
@@ -1302,6 +1402,146 @@ private[mcp] object McpToolsGroupD:
               "edits" -> strs(
                 p.edits.map(e =>
                   s"${e.uri}:${e.range.start.line}:${e.range.start.character}-${e.range.end.character}"
+                )
+              )
+            )
+          )
+        }
+      ),
+      toolDef(
+        tool(
+          "batch_rename_plan",
+          "Renames multiple symbols in one request by running `rename_plan` once per entry, then " +
+            "detecting conflicts across the results. IMPORTANT LIMITATION: conflict detection only " +
+            "catches literal edit-range overlaps (two requested renames touching the same source span) " +
+            "— it does NOT detect two different symbols being renamed to the same `newName` (a semantic " +
+            "collision at a shared call site), which remains the caller's responsibility. The server is " +
+            "read-only: apply the returned edits yourself.",
+          List(
+            (
+              "renames",
+              "array",
+              "list of {symbol: string, newName: string} entries to rename in one batch"
+            )
+          ),
+          List("renames")
+        ) { a =>
+          val requests = a.obj
+            .get("renames")
+            .map(_.arr.toList)
+            .getOrElse(Nil)
+            .map(r => RenameRequest(r.obj("symbol").str, r.obj("newName").str))
+          val plan = az.batchRenamePlan(requests)
+          def editStr(e: RenameEdit): String =
+            s"${e.uri}:${e.range.start.line}:${e.range.start.character}-${e.range.end.character}"
+          jobj(
+            Some(
+              "perSymbol" -> ujson.Arr.from(
+                plan.perSymbol.map(p =>
+                  jobj(
+                    Some("symbol" -> ujson.Str(p.symbol)),
+                    Some("rename" -> ujson.Str(s"${p.fromName} -> ${p.toName}")),
+                    Some("editCount" -> ujson.Num(p.editCount))
+                  )
+                )
+              )
+            ),
+            Some("combinedEditCount" -> ujson.Num(plan.combinedEdits.size)),
+            Some("combinedEdits" -> strs(plan.combinedEdits.map(editStr))),
+            Some("conflictCount" -> ujson.Num(plan.conflicts.size)),
+            opt(
+              plan.conflicts.nonEmpty,
+              "conflicts" -> ujson.Arr.from(
+                plan.conflicts.map(c =>
+                  jobj(
+                    Some(
+                      "rangeA" -> ujson.Str(
+                        s"${c.uriA}:${c.rangeA.start.line}:${c.rangeA.start.character}-${c.rangeA.end.character}"
+                      )
+                    ),
+                    Some(
+                      "rangeB" -> ujson.Str(
+                        s"${c.uriB}:${c.rangeB.start.line}:${c.rangeB.start.character}-${c.rangeB.end.character}"
+                      )
+                    ),
+                    Some("reason" -> ujson.Str(c.reason))
+                  )
+                )
+              )
+            )
+          )
+        }
+      ),
+      toolDef(
+        tool(
+          "search_text",
+          "Scoped plain-text/regex search over `.scala` files under the project root — the sanctioned " +
+            "in-MCP replacement for shelling out to grep/rg. SemanticDB carries no comment/trivia model, " +
+            "so this is NOT symbol-aware: it does not resolve renames, re-exports, or inferred/implicit " +
+            "uses, and can over-match comments/strings/unrelated identifiers, same as grep. Use " +
+            "find_symbol/find_usages for identifiers; reach for this only for string literals, " +
+            "comments, or other non-symbol text.",
+          List(
+            ("query", "string", "text (or regex, with `regex: true`) to search for"),
+            (
+              "regex",
+              "boolean",
+              "treat `query` as a regex instead of a literal string (default false)"
+            ),
+            ("caseSensitive", "boolean", "match case-sensitively (default false)"),
+            (
+              "pathFilter",
+              "string",
+              "glob on document uri; `*` matches any chars (substring match)"
+            ),
+            ("limit", "integer", "max hits to return across all files (default 200)")
+          ),
+          List("query")
+        ) { a =>
+          val query = argStr(a, "query")
+          val useRegex = argBool(a, "regex", false)
+          val caseSensitive = argBool(a, "caseSensitive", false)
+          val keep = mcpGlobMatcher(a.obj.get("pathFilter").map(_.str))
+          val limit = argPositiveInt(a, "limit", 200).value
+          val patternText = if useRegex then query else java.util.regex.Pattern.quote(query)
+          val flags = if caseSensitive then 0 else java.util.regex.Pattern.CASE_INSENSITIVE
+          val pattern =
+            try java.util.regex.Pattern.compile(patternText, flags)
+            catch
+              case e: java.util.regex.PatternSyntaxException =>
+                error(s"invalid regex '$query': ${e.getMessage}")
+          val hits = scalaFilesUnder(root)
+            .filter(keep)
+            .iterator
+            .flatMap { uri =>
+              val text =
+                try Some(java.nio.file.Files.readString(root.resolve(uri)))
+                catch case _: java.io.IOException => None
+              text.toList.flatMap { content =>
+                content
+                  .split("\n", -1)
+                  .iterator
+                  .zipWithIndex
+                  .collect {
+                    case (lineText, idx) if pattern.matcher(lineText).find() =>
+                      SearchTextHit(uri, idx, lineText)
+                  }
+                  .toList
+              }
+            }
+            .take(limit)
+            .toList
+          jobj(
+            Some("query" -> ujson.Str(query)),
+            Some("count" -> ujson.Num(hits.size)),
+            Some(
+              "hits" -> ujson.Arr.from(
+                hits.map(h =>
+                  jobj(
+                    Some("uri" -> ujson.Str(h.uri)),
+                    Some("line" -> ujson.Num(h.line)),
+                    Some("text" -> ujson.Str(h.text))
+                  )
                 )
               )
             )

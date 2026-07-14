@@ -441,6 +441,62 @@ final class Analyzer(
     RenamePlan(sym, oldName, name, edits.size, edits)
       .ensuring(res => res.editCount == res.edits.size)
 
+  // --- batch rename plan ------------------------------------------------------
+
+  /** Renames several symbols in one request by calling [[renamePlan]] once per entry, then
+    * detecting literal edit-range overlaps between the resulting plans. Two edits conflict when
+    * they share a `uri` and their `[start, end)` ranges overlap; every edit involved in a conflict
+    * is excluded from `combinedEdits` (conflicting edits are reported, never silently merged).
+    * Duplicate `symbol` entries in `renames` are not deduplicated — each produces its own plan and
+    * (since its own edits trivially overlap with themselves) surfaces as a conflict, which is the
+    * correct signal for the caller.
+    *
+    * Detecting two different symbols renamed to the same `newName` (a semantic collision at a
+    * shared call site, not a range overlap) is out of scope — only literal edit-range overlaps are
+    * checked.
+    */
+  def batchRenamePlan(renames: List[RenameRequest]): BatchRenamePlan =
+    def unsafe[A](result: Either[String, A]): A = result.fold(sys.error, identity)
+    val plans = renames.map(r =>
+      renamePlan(unsafe(SemanticDbSymbol.from(r.symbol)), unsafe(ScalaIdentifier.from(r.newName)))
+    )
+
+    def overlaps(a: RenameEdit, b: RenameEdit): Boolean =
+      a.uri == b.uri &&
+        a.range.start.line <= b.range.end.line && b.range.start.line <= a.range.end.line &&
+        (a.range.start.line != b.range.end.line || a.range.start.character < b.range.end.character) &&
+        (b.range.start.line != a.range.end.line || b.range.start.character < a.range.end.character)
+
+    val indexedEdits: List[(Int, RenameEdit)] =
+      plans.zipWithIndex.flatMap((plan, idx) => plan.edits.map(idx -> _))
+
+    val conflictPairs: List[(RenameEdit, RenameEdit)] =
+      for
+        List((idxA, editA), (idxB, editB)) <- indexedEdits.combinations(2).toList
+        if idxA != idxB && overlaps(editA, editB)
+      yield editA -> editB
+
+    val conflicts = conflictPairs.map { case (editA, editB) =>
+      RenameConflict(
+        editA.uri,
+        editB.uri,
+        editA.range,
+        editB.range,
+        s"overlapping rename edits: '${editA.oldText}' -> '${editA.newText}' vs '${editB.oldText}' -> '${editB.newText}'"
+      )
+    }
+
+    val conflictingEdits: Set[RenameEdit] =
+      conflictPairs.flatMap((a, b) => List(a, b)).toSet
+
+    val combinedEdits = plans
+      .flatMap(_.edits)
+      .distinct
+      .filterNot(conflictingEdits.contains)
+      .sortBy(e => (e.uri, e.range.start.line, e.range.start.character))
+
+    BatchRenamePlan(plans, combinedEdits, conflicts)
+
   // --- move plan ------------------------------------------------------------
 
   /** The edits to move `symbol` to the package `newOwner`, keeping every call/usage resolving.
