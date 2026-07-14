@@ -656,7 +656,9 @@ def smokeTest() = Task.Command {
       check = false
     )
   if (scriptsRes.exitCode != 0) {
-    sys.error(s"E2E Smoke Test (standalone scripts/ scala-cli scripts) failed with exit status ${scriptsRes.exitCode}")
+    sys.error(
+      s"E2E Smoke Test (standalone scripts/ scala-cli scripts) failed with exit status ${scriptsRes.exitCode}"
+    )
   }
 }
 
