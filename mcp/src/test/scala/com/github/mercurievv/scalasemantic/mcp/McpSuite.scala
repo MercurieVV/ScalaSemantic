@@ -146,6 +146,18 @@ class McpSuite extends munit.FunSuite:
     val d = call("structure", ujson.Obj("limit" -> 1, "detailed" -> true))
     val dims = d("symbols")(0)("perDimension").obj.keys.toSet
     assertEquals(dims, Set("extends", "memberType", "call", "implicit"), dims.toString)
+
+    // graph is off by default — no mermaid field, output otherwise unchanged
+    assert(!r.obj.contains("mermaid"), "mermaid must be absent when graph is omitted")
+
+    // graph=true adds a mermaid graph TD diagram, one line per moduleEdge
+    val withGraph = call("structure", ujson.Obj("limit" -> 5, "graph" -> true))
+    val mermaid = withGraph("mermaid").str
+    assert(mermaid.startsWith("graph TD"), mermaid)
+    val edgeCount = withGraph("moduleEdges").arr.size
+    val edgeLines = mermaid.linesIterator.toList.tail
+    assertEquals(edgeLines.size, edgeCount, mermaid)
+    assert(edgeLines.forall(_.contains("-->")), mermaid)
   }
 
   test("metrics badge: find_symbol and class_hierarchy carry structural metrics on request") {

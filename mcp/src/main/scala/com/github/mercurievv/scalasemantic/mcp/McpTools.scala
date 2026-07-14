@@ -315,6 +315,24 @@ private[mcp] object McpToolsSupport:
 
   private[mcp] def strs(xs: Iterable[String]): ujson.Value = ujson.Arr.from(xs.map(ujson.Str(_)))
 
+  /** Sanitize a module name into a mermaid-safe node id (alphanumerics, `_`, `-` only). */
+  private[mcp] def mermaidNodeId(module: String): String =
+    module.replaceAll("[^A-Za-z0-9_-]", "_")
+
+  /** Render `structure`'s `moduleEdges` as a `graph TD` mermaid diagram: one line per edge,
+    * labelled with the weight when > 1 and `CYCLE` when the edge is part of a module-level
+    * dependency cycle.
+    */
+  private[mcp] def structureMermaid(edges: List[ModuleEdge]): String =
+    val lines = edges.map { e =>
+      val from = mermaidNodeId(e.from)
+      val to = mermaidNodeId(e.to)
+      if e.inCycle then s"  $from -->|CYCLE| $to"
+      else if e.weight > 1 then s"  $from -->|${e.weight}| $to"
+      else s"  $from --> $to"
+    }
+    ("graph TD" :: lines).mkString("\n")
+
   /** A section predicate from an optional `include` array: absent → keep all sections; present →
     * keep only the named ones.
     */
@@ -944,6 +962,11 @@ private[mcp] object McpToolsGroupC:
               "detailed",
               "boolean",
               "include the per-dimension Ca/Ce/instability breakdown (default false)"
+            ),
+            (
+              "graph",
+              "boolean",
+              "include a `mermaid` string field rendering `moduleEdges` as a `graph TD` diagram (default false)"
             )
           ),
           Nil
@@ -1015,6 +1038,10 @@ private[mcp] object McpToolsGroupC:
                   Some("members" -> strs(c.members))
                 )
               })
+            ),
+            opt(
+              argBool(a, "graph", false),
+              "mermaid" -> ujson.Str(structureMermaid(res.moduleEdges))
             )
           )
         }

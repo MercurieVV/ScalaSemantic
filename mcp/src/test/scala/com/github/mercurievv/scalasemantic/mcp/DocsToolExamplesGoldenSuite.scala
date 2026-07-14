@@ -131,6 +131,9 @@ class DocsToolExamplesGoldenSuite extends munit.FunSuite:
   test("structure()"):
     assertGolden("structure_all", "structure", ujson.Obj())
 
+  test("structure(graph=true)"):
+    assertGolden("structure_graph", "structure", ujson.Obj("graph" -> true))
+
   test("smart_code_duplications(minSize=15)"):
     assertGolden(
       "smart_code_duplications_min15",
