@@ -1,0 +1,132 @@
+#!/usr/bin/env scala-cli
+
+//> using scala 3.8.4
+//> using dep com.lihaoyi::upickle::3.1.0
+
+// End-to-end launcher smoke test for ScalaSemantic MCP server against a real Mill project.
+// Unlike scripts/smoke-test.sh (synthetic scala-cli fixture, PC-backed type_at_position), this
+// dogfoods the launcher directly against THIS repo's own Mill-emitted SemanticDB, run from the
+// project root, proving index-based tools work with `*.semanticdb` produced by `./mill __.compile`
+// (no classpath metadata / presentation-compiler involved) — covering both regular module source
+// (core/analysis/mcp) AND Mill's own build config/scripts (build.mill, compiled by Mill's
+// meta-build into out/mill-build/.../wrapped/build_/build.mill.semanticdb).
+
+import java.io.{BufferedReader, InputStreamReader, OutputStreamWriter}
+import java.nio.file.*
+import scala.jdk.CollectionConverters.*
+import scala.sys.process.*
+
+object SmokeTestMill {
+
+  def fail(msg: String, stdout: String, stderr: String): Nothing = {
+    System.err.println(s"Error: $msg")
+    System.err.println("--- stdout ---")
+    System.err.println(stdout)
+    System.err.println("--- stderr ---")
+    System.err.println(stderr)
+    sys.exit(1)
+  }
+
+  def findFiles(root: Path, matches: Path => Boolean): Vector[Path] = {
+    if (!Files.exists(root)) Vector.empty
+    else {
+      val stream = Files.walk(root)
+      try stream.iterator().asScala.filter(p => Files.isRegularFile(p) && matches(p)).toVector
+      finally stream.close()
+    }
+  }
+
+  def main(args: Array[String]): Unit = {
+    // Must be run from the repo root (this project's ./mill build lives there).
+    val repoRoot = Paths.get(".").toAbsolutePath.normalize()
+    if (!Files.exists(repoRoot.resolve("build.mill"))) {
+      System.err.println(s"Error: $repoRoot has no build.mill — run this script from the repo root.")
+      sys.exit(1)
+    }
+    val assemblyJar = repoRoot.resolve("out/mcp/assembly.dest/out.jar")
+
+    if (!Files.exists(assemblyJar)) {
+      System.err.println(s"Error: $assemblyJar missing. Run './mill mcp.assembly' first.")
+      sys.exit(1)
+    }
+
+    val semanticdbCount = findFiles(repoRoot.resolve("out"), _.getFileName.toString.endsWith(".semanticdb")).size
+    if (semanticdbCount == 0) {
+      System.err.println(s"Error: no *.semanticdb files under ${repoRoot.resolve("out")}. Run './mill __.compile' first.")
+      sys.exit(1)
+    }
+    println(s"Found $semanticdbCount emitted SemanticDB files (Mill-generated).")
+
+    val buildMillSemanticdb =
+      findFiles(repoRoot.resolve("out/mill-build"), _.getFileName.toString == "build.mill.semanticdb").headOption
+    buildMillSemanticdb match {
+      case None =>
+        System.err.println(
+          s"Error: no build.mill.semanticdb under ${repoRoot.resolve("out/mill-build")}. " +
+            "Run './mill __.compile' (or any mill command) first to trigger the meta-build compile."
+        )
+        sys.exit(1)
+      case Some(p) => println(s"Found Mill meta-build SemanticDB for build.mill: $p")
+    }
+
+    val cacheDir = Paths.get(sys.env.getOrElse("XDG_CACHE_HOME", sys.env("HOME") + "/.cache"), "scalasemantic-mcp")
+    Files.createDirectories(cacheDir)
+    println("Copying local assembly jar to cache...")
+    Files.copy(assemblyJar, cacheDir.resolve("scalasemantic-mcp-local.jar"), StandardCopyOption.REPLACE_EXISTING)
+
+    val requests = Seq(
+      """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}""",
+      """{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}""",
+      // A real symbol from this repo's own build: SemanticIndex.fromProject(projectRoot: String): SemanticIndex
+      """{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"method_signature","arguments":{"symbol":"com/github/mercurievv/scalasemantic/semanticdb/SemanticIndex.fromProject()."}}}""",
+      """{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"find_usages","arguments":{"symbol":"com/github/mercurievv/scalasemantic/semanticdb/SemanticIndex.fromProject()."}}}""",
+      // A real symbol from build.mill itself: `def mainClass = Some(...)` inside `object mcp extends ...`.
+      // This proves tools resolve against Mill's own build config/scripts, not just regular module source.
+      """{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"find_usages","arguments":{"symbol":"build_/package_#mcp.mainClass()."}}}"""
+    )
+
+    println("Launching server with root = repo root (real Mill project, no explicit classpath arg)...")
+
+    val launcher = repoRoot.resolve("scripts/scalasemantic-mcp.sh").toString
+    val pb = new ProcessBuilder(launcher, "serve", repoRoot.toString, "--log")
+    pb.environment().put("SCALASEMANTIC_VERSION", "local")
+    val proc = pb.start()
+
+    val stdinWriter = new OutputStreamWriter(proc.getOutputStream)
+    requests.foreach { line =>
+      stdinWriter.write(line)
+      stdinWriter.write("\n")
+      stdinWriter.flush()
+    }
+    Thread.sleep(4000)
+    stdinWriter.close()
+    proc.destroy()
+    proc.waitFor()
+
+    def slurp(is: java.io.InputStream): String = {
+      val reader = new BufferedReader(new InputStreamReader(is))
+      try Iterator.continually(reader.readLine()).takeWhile(_ != null).mkString("\n")
+      finally reader.close()
+    }
+    val stdout = slurp(proc.getInputStream)
+    val stderr = slurp(proc.getErrorStream)
+
+    if (!stdout.contains("\"id\":2")) fail("did not receive response for method_signature tools/call", stdout, stderr)
+    if (!stdout.contains("projectRoot"))
+      fail(
+        "expected method_signature to resolve real signature of SemanticIndex.fromProject with parameter projectRoot",
+        stdout,
+        stderr
+      )
+
+    if (!stdout.contains("\"id\":3")) fail("did not receive response for find_usages tools/call", stdout, stderr)
+    if (!stdout.contains("referenceCount"))
+      fail("expected find_usages to return at least one usage reference", stdout, stderr)
+
+    if (!stdout.contains("\"id\":4")) fail("did not receive response for build.mill find_usages tools/call", stdout, stderr)
+    if (!stdout.contains("build.mill"))
+      fail("expected find_usages on build_/package_#mcp.mainClass(). to resolve into build.mill", stdout, stderr)
+
+    println("=== Mill E2E Smoke Test Passed Successfully ===")
+  }
+}

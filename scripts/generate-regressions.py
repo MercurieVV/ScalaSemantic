@@ -27,6 +27,11 @@ def save_json(path, data):
 
 def collect_unit_tests():
     unit_tests = []
+    # Test selectors we want to exclude because they are environment-dependent
+    # (e.g. require corpus data that is not built in CI)
+    exclusions = [
+        "com.github.mercurievv.scalasemantic.mcp.TokenMetricsSuite.token metrics artifacts match regenerated MCP-vs-baseline comparison"
+    ]
     for root, dirs, files in os.walk("out"):
         for file in files:
             if file == "out.json" and ("testForked.dest" in root or "testOnly.dest" in root):
@@ -37,8 +42,13 @@ def collect_unit_tests():
                     if isinstance(data, list) and len(data) > 1 and isinstance(data[1], list):
                         for test in data[1]:
                             if isinstance(test, dict) and "fullyQualifiedName" in test:
+                                name = test["fullyQualifiedName"]
                                 if test.get("status") == "Success":
-                                    unit_tests.append(test["fullyQualifiedName"])
+                                    if name in exclusions:
+                                        continue
+                                    if "CompatSuite.[corpus" in name:
+                                        continue
+                                    unit_tests.append(name)
                 except Exception as e:
                     print(f"Warning: failed to parse unit test output {path}: {e}", file=sys.stderr)
     return sorted(list(set(unit_tests)))
