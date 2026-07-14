@@ -767,7 +767,10 @@ final class Analyzer(
   /** Givens producing `typeSymbol`, plus the implicit dependencies they pull in, walked
     * transitively. Each step records the implicit-parameter types it `dependsOn`.
     */
-  def traceImplicitChain(typeSymbol: TypeSymbol): ImplicitChain =
+  def traceImplicitChain(
+      typeSymbol: TypeSymbol,
+      appliedType: Option[String] = None
+  ): ImplicitChain =
     val sym = typeSymbol.value
     def loop(
         queue: List[String],
@@ -786,7 +789,111 @@ final class Analyzer(
             }
             val nextTypes = produced.flatMap(h.implicitDependencyHeads)
             loop(rest ::: nextTypes, tpe :: seenTypes, steps ::: newSteps)
-    ImplicitChain(sym, loop(List(sym), Nil, Nil).distinctBy(_.target.symbol))
+    ImplicitChain(
+      sym,
+      loop(List(sym), Nil, Nil).distinctBy(_.target.symbol),
+      appliedType.map(resolveImplicitTree)
+    )
+
+  private case class TypePattern(name: String, args: List[TypePattern]):
+    def rendered: String =
+      if args.isEmpty then name else args.map(_.rendered).mkString(s"$name[", ", ", "]")
+
+  private def resolveImplicitTree(targetType: String): ImplicitTree =
+    def typeSymbolForName(name: String): Option[String] =
+      index.symbols.values
+        .filter(si => index.isType(si.symbol) && si.displayName == name)
+        .toList
+        .sortBy(_.symbol)
+        .headOption
+        .map(_.symbol)
+
+    def parseType(s0: String): TypePattern =
+      val s = s0.trim
+      val bracket = s.indexOf('[')
+      if bracket < 0 then TypePattern(s, Nil)
+      else
+        val name = s.take(bracket).trim
+        val inside = s.drop(bracket + 1).dropRight(1)
+        TypePattern(name, splitTypeArgs(inside).map(parseType))
+
+    def splitTypeArgs(s: String): List[String] =
+      val (parts, last, _) = s.foldLeft((List.empty[String], "", 0)) {
+        case ((acc, cur, depth), ',') if depth == 0 =>
+          (cur.trim :: acc, "", depth)
+        case ((acc, cur, depth), '[') =>
+          (acc, s"$cur[", depth + 1)
+        case ((acc, cur, depth), ']') =>
+          (acc, s"$cur]", depth - 1)
+        case ((acc, cur, depth), c) =>
+          (acc, s"$cur$c", depth)
+      }
+      (last.trim :: parts).filter(_.nonEmpty).reverse
+
+    def unify(
+        pattern: TypePattern,
+        wanted: TypePattern,
+        tparams: Set[String],
+        bindings: Map[String, TypePattern]
+    ): Option[Map[String, TypePattern]] =
+      if tparams.contains(pattern.name) && pattern.args.isEmpty then
+        bindings.get(pattern.name) match
+          case Some(bound) if bound == wanted => Some(bindings)
+          case Some(_)                        => None
+          case None                           => Some(bindings.updated(pattern.name, wanted))
+      else if pattern.name == wanted.name && pattern.args.size == wanted.args.size then
+        pattern.args.zip(wanted.args).foldLeft(Option(bindings)) {
+          case (Some(acc), (p, w)) => unify(p, w, tparams, acc)
+          case (None, _)           => None
+        }
+      else None
+
+    def substitute(tpe: TypePattern, bindings: Map[String, TypePattern]): TypePattern =
+      bindings.getOrElse(tpe.name, tpe.copy(args = tpe.args.map(substitute(_, bindings))))
+
+    def build(target: TypePattern, seen: Set[String]): ImplicitTree =
+      val targetText = target.rendered
+      if seen.contains(targetText) then
+        ImplicitTree(targetText, None, Nil, Nil, ambiguous = false, cycle = true)
+      else
+        val candidates = typeSymbolForName(target.name).toList.flatMap { head =>
+          h.implicitsProducing(head).flatMap { si =>
+            val produced = parseType(h.renderType(h.producedType(si)))
+            unify(produced, target, h.typeParameterNames(si), Map.empty).map(si -> _)
+          }
+        }
+        val renderedCandidates = candidates.map { (si, _) =>
+          ImplicitCandidate(
+            h.symbolRef(si.symbol),
+            h.renderType(h.producedType(si)),
+            fromExplicitImport = false
+          )
+        }
+        val chosen = candidates match
+          case (si, bindings) :: Nil =>
+            val children = h.implicitDependencyTypes(si).map { dep =>
+              build(substitute(parseType(h.renderType(dep)), bindings), seen + targetText)
+            }
+            ImplicitTree(
+              targetText,
+              Some(h.symbolRef(si.symbol)),
+              renderedCandidates,
+              children,
+              ambiguous = false,
+              cycle = false
+            )
+          case _ =>
+            ImplicitTree(
+              targetText,
+              None,
+              renderedCandidates,
+              Nil,
+              ambiguous = candidates.size > 1,
+              cycle = false
+            )
+        chosen
+
+    build(parseType(targetType), Set.empty)
 
   // --- call-graph path-find -------------------------------------------------
 

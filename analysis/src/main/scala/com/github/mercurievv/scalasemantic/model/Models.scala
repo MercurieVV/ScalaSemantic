@@ -122,7 +122,20 @@ case class ImplicitChainStep(
     dependsOn: List[String]
 ) derives ReadWriter
 
-case class ImplicitChain(queryType: String, steps: List[ImplicitChainStep]) derives ReadWriter
+case class ImplicitTree(
+    targetType: String,
+    chosen: Option[SymbolRef],
+    candidates: List[ImplicitCandidate],
+    children: List[ImplicitTree],
+    ambiguous: Boolean,
+    cycle: Boolean
+) derives ReadWriter
+
+case class ImplicitChain(
+    queryType: String,
+    steps: List[ImplicitChainStep],
+    resolved: Option[ImplicitTree] = None
+) derives ReadWriter
 
 // --- type-at-position -------------------------------------------------------
 

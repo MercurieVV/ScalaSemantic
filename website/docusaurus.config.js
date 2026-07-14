@@ -30,7 +30,7 @@ const config = {
 
   // The docs are plain CommonMark (they contain `<root>`, `List[A]`, `{...}` that MDX would try to
   // parse as JSX/expressions). `detect` parses *.md as CommonMark and only *.mdx as MDX.
-  markdown: { format: 'detect', hooks: { onBrokenMarkdownLinks: 'warn' } },
+  markdown: { format: 'detect', mermaid: true, hooks: { onBrokenMarkdownLinks: 'warn' } },
 
   // Docs link to repo files outside the site (../../README.md, ../../analysis/...) and to each other;
   // warn rather than fail the build on those.
@@ -82,6 +82,8 @@ const config = {
       }),
     ],
   ],
+
+  themes: ['@docusaurus/theme-mermaid'],
 
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */

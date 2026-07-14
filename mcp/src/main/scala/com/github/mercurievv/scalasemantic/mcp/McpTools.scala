@@ -810,13 +810,43 @@ private[mcp] object McpToolsGroupB:
           "trace_implicit_chain",
           "The givens that produce a type, plus the implicit dependencies they transitively pull in — " +
             "follows implicit resolution across givens, step by step.",
-          List(("type", "string", "the wanted type's symbol")),
+          List(
+            ("type", "string", "the wanted type's symbol"),
+            (
+              "appliedType",
+              "string",
+              "optional concrete wanted type, e.g. `Show[List[Int]]`; returns one resolved tree when unambiguous"
+            )
+          ),
           List("type")
         ) { a =>
           val typeSymbol = argTypeSymbol(a, "type")
-          val chain = az.traceImplicitChain(typeSymbol)
+          val chain = az.traceImplicitChain(
+            typeSymbol,
+            a.obj.get("appliedType").map(_.str).filter(_.nonEmpty)
+          )
+          def treeJson(t: ImplicitTree): ujson.Value =
+            jobj(
+              Some("type" -> ujson.Str(t.targetType)),
+              t.chosen.map(c => "chosen" -> ujson.Str(c.symbol)),
+              opt(t.ambiguous, "ambiguous" -> ujson.Bool(true)),
+              opt(t.cycle, "cycle" -> ujson.Bool(true)),
+              opt(
+                t.candidates.nonEmpty,
+                "candidates" -> ujson.Arr.from(
+                  t.candidates.map(c =>
+                    jobj(
+                      Some("symbol" -> ujson.Str(c.target.symbol)),
+                      Some("type" -> ujson.Str(c.tpe))
+                    )
+                  )
+                )
+              ),
+              opt(t.children.nonEmpty, "children" -> ujson.Arr.from(t.children.map(treeJson)))
+            )
           jobj(
             Some("type" -> ujson.Str(typeSymbol.value)),
+            a.obj.get("appliedType").map(v => "appliedType" -> ujson.Str(v.str)),
             Some(
               "steps" -> ujson.Arr.from(
                 chain.steps.map(st =>
@@ -827,7 +857,8 @@ private[mcp] object McpToolsGroupB:
                   )
                 )
               )
-            )
+            ),
+            chain.resolved.map(r => "resolved" -> treeJson(r))
           )
         }
       ),

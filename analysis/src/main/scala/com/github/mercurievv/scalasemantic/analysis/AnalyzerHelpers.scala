@@ -527,6 +527,20 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
           .flatMap(p => parentSymbol(valueType(p)))
       case _ => Nil
 
+  def implicitDependencyTypes(info: s.SymbolInformation): List[s.Type] =
+    info.signature match
+      case m: s.MethodSignature =>
+        m.parameterLists.toList
+          .flatMap(scope => scopeInfos(Some(scope)))
+          .filter(isImplicit)
+          .map(valueType)
+      case _ => Nil
+
+  def typeParameterNames(info: s.SymbolInformation): Set[String] =
+    info.signature match
+      case m: s.MethodSignature => scopeInfos(m.typeParameters).map(_.displayName).toSet
+      case _                    => Set.empty
+
   // --- shared helpers -------------------------------------------------------
 
   /** Member symbols declared in a type's `ClassSignature.declarations` scope. */

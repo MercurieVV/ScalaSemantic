@@ -105,6 +105,32 @@ class DocsEnrichingExamplesGoldenSuite extends munit.FunSuite:
       )
     )
 
+  test("annotated_source(Enrich.scala, format=diff, docs=strip)"):
+    assertGolden(
+      "annotated_source_enrich_docs_diff",
+      "annotated_source",
+      ujson.Obj(
+        "uri" -> EnrichPath,
+        "format" -> "diff",
+        "annotationsOnly" -> false,
+        "docs" -> "strip"
+      )
+    )
+
+  test("annotated_source(Enrich.scala, format=diff, all-on)"):
+    assertGolden(
+      "annotated_source_enrich_all_diff",
+      "annotated_source",
+      ujson.Obj(
+        "uri" -> EnrichPath,
+        "format" -> "diff",
+        "annotationsOnly" -> false,
+        "symbols" -> true,
+        "detail" -> "full",
+        "docs" -> "keep"
+      )
+    )
+
   test("annotated_source(Enrich.scala, docs=strip)"):
     assertGolden(
       "annotated_source_enrich_docs",
@@ -135,11 +161,11 @@ class DocsEnrichingExamplesGoldenSuite extends munit.FunSuite:
   test("document_outline(Enrich.scala)"):
     assertGolden("document_outline_enrich", "document_outline", ujson.Obj("uri" -> EnrichPath))
 
-  test("type_at_position(Enrich.scala:14:6)"):
+  test("type_at_position(Enrich.scala:47:4)"):
     assertGolden(
       "type_at_position_enrich",
       "type_at_position",
-      ujson.Obj("uri" -> EnrichPath, "line" -> 14, "character" -> 6)
+      ujson.Obj("uri" -> EnrichPath, "line" -> 47, "character" -> 4)
     )
 
   test("resolve_implicits(Show)"):
@@ -150,4 +176,11 @@ class DocsEnrichingExamplesGoldenSuite extends munit.FunSuite:
       "trace_implicit_chain_show",
       "trace_implicit_chain",
       ujson.Obj("type" -> ShowType)
+    )
+
+  test("trace_implicit_chain(Show[List[Int]])"):
+    assertGolden(
+      "trace_implicit_chain_show_list_int",
+      "trace_implicit_chain",
+      ujson.Obj("type" -> ShowType, "appliedType" -> "Show[List[Int]]")
     )

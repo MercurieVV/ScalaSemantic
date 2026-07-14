@@ -434,3 +434,82 @@ class AnalyzerToolsSuite extends munit.FunSuite:
     assertEquals(chain.queryType, "ic/Show#")
     assert(chain.steps.exists(_.target.displayName == "showFromEq"), chain.steps.toString)
     assert(chain.steps.exists(_.target.displayName == "eqInst"), "transitive Eq given reached")
+
+  test("traceImplicitChain resolves concrete applied types into a nested tree"):
+    def tapp(sym: String, args: s.Type*) = s.TypeRef(s.Type.Empty, sym, args)
+    val aParam = si("tc/Show.listShow().[A]", s.SymbolInformation.Kind.TYPE_PARAMETER, "A")
+    def givenObj(sym: String, display: String, produces: s.Type) =
+      si(
+        sym,
+        s.SymbolInformation.Kind.OBJECT,
+        display,
+        s.ClassSignature(None, List(produces, tref("java/lang/Object#")), s.Type.Empty, None),
+        IMPL
+      )
+    val listShow =
+      si(
+        "tc/Show.listShow().",
+        s.SymbolInformation.Kind.METHOD,
+        "listShow",
+        s.MethodSignature(
+          Some(s.Scope(hardlinks = Vector(aParam))),
+          Seq(
+            s.Scope(hardlinks =
+              Vector(
+                si(
+                  "tc/Show.listShow().(p)",
+                  s.SymbolInformation.Kind.PARAMETER,
+                  "p",
+                  s.ValueSignature(tapp("tc/Show#", tref(aParam.symbol))),
+                  IMPL
+                )
+              )
+            )
+          ),
+          tapp("tc/Show#", tapp("scala/package.List#", tref(aParam.symbol)))
+        ),
+        IMPL
+      )
+    val symbols = Seq(
+      si("tc/Show#", s.SymbolInformation.Kind.CLASS, "Show"),
+      si("scala/package.List#", s.SymbolInformation.Kind.CLASS, "List"),
+      si("scala/Int#", s.SymbolInformation.Kind.CLASS, "Int"),
+      aParam,
+      givenObj("tc/Show.intShow.", "intShow", tapp("tc/Show#", tref("scala/Int#"))),
+      listShow
+    )
+    val az = Analyzer(index(doc("tc.scala", symbols, Nil)))
+    val sym = TypeSymbol.from("tc/Show#").fold(fail(_), identity)
+    val resolved =
+      az.traceImplicitChain(sym, Some("Show[List[Int]]")).resolved.getOrElse(fail("no tree"))
+    assertEquals(resolved.chosen.map(_.displayName), Some("listShow"))
+    assertEquals(resolved.children.map(_.targetType), List("Show[Int]"))
+    assertEquals(resolved.children.head.chosen.map(_.displayName), Some("intShow"))
+
+  test("traceImplicitChain marks concrete applied type ambiguity"):
+    def tapp(sym: String, args: s.Type*) = s.TypeRef(s.Type.Empty, sym, args)
+    def givenObj(sym: String, display: String) =
+      si(
+        sym,
+        s.SymbolInformation.Kind.OBJECT,
+        display,
+        s.ClassSignature(
+          None,
+          List(tapp("tc/Show#", tref("scala/Int#")), tref("java/lang/Object#")),
+          s.Type.Empty,
+          None
+        ),
+        IMPL
+      )
+    val symbols = Seq(
+      si("tc/Show#", s.SymbolInformation.Kind.CLASS, "Show"),
+      si("scala/Int#", s.SymbolInformation.Kind.CLASS, "Int"),
+      givenObj("tc/Show.intShow1.", "intShow1"),
+      givenObj("tc/Show.intShow2.", "intShow2")
+    )
+    val az = Analyzer(index(doc("amb.scala", symbols, Nil)))
+    val sym = TypeSymbol.from("tc/Show#").fold(fail(_), identity)
+    val resolved = az.traceImplicitChain(sym, Some("Show[Int]")).resolved.getOrElse(fail("no tree"))
+    assert(resolved.ambiguous)
+    assertEquals(resolved.chosen, None)
+    assertEquals(resolved.candidates.map(_.target.displayName).toSet, Set("intShow1", "intShow2"))

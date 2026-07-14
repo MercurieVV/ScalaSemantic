@@ -2,10 +2,12 @@
   "tool": "type_at_position",
   "args": {
     "uri": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
-    "line": 14,
-    "character": 6
+    "line": 47,
+    "character": 4
   },
   "result": {
-    "found": false
+    "symbol": "com/github/mercurievv/scalasemantic/docexamples/Enrich$package.ranked.",
+    "name": "ranked",
+    "type": "List[Tuple2[String, Int]]"
   }
 }
