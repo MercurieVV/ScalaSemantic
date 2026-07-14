@@ -42,6 +42,8 @@ jobs:
           java-version: '21'
           # setup-java's built-in `cache:` only knows maven/gradle/sbt, not Mill — cache coursier +
           # Mill's own out/ dep-resolution artifacts explicitly instead.
+      - name: Install scala-cli
+        uses: VirtusLab/scala-cli-setup@v1.3.0
       - name: Cache coursier + Mill
         uses: actions/cache@v4
         with:
