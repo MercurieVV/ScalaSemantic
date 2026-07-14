@@ -73,15 +73,21 @@ object SmokeTestMill {
     println("Copying local assembly jar to cache...")
     Files.copy(assemblyJar, cacheDir.resolve("scalasemantic-mcp-local.jar"), StandardCopyOption.REPLACE_EXISTING)
 
+    // Both target symbols live in build.mill itself (Mill's own DSL/config, compiled by the
+    // meta-build into wrapped/build_/build.mill), NOT in regular application source under
+    // core/analysis/mcp — that's the whole point of this test.
+    val smokeTestSymbol = "build_/package_#smokeTest()."
+    val prePushSymbol = "build_/package_#prePush()."
     val requests = Seq(
       """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}""",
       """{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}""",
-      // A real symbol from this repo's own build: SemanticIndex.fromProject(projectRoot: String): SemanticIndex
-      """{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"method_signature","arguments":{"symbol":"com/github/mercurievv/scalasemantic/semanticdb/SemanticIndex.fromProject()."}}}""",
-      """{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"find_usages","arguments":{"symbol":"com/github/mercurievv/scalasemantic/semanticdb/SemanticIndex.fromProject()."}}}""",
-      // A real symbol from build.mill itself: `def mainClass = Some(...)` inside `object mcp extends ...`.
-      // This proves tools resolve against Mill's own build config/scripts, not just regular module source.
-      """{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"find_usages","arguments":{"symbol":"build_/package_#mcp.mainClass()."}}}"""
+      // `def smokeTest() = Task.Command { ... }` in build.mill
+      s"""{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"method_signature","arguments":{"symbol":"$smokeTestSymbol"}}}""",
+      s"""{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"find_usages","arguments":{"symbol":"$smokeTestSymbol"}}}""",
+      // `def prePush() = Task.Command { ... smokeTest()() ... }` in build.mill — calls smokeTest, so
+      // find_usages on smokeTest (above) and call_path from prePush to smokeTest both cross-check
+      // the same real build.mill call edge.
+      s"""{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"call_path","arguments":{"from":"$prePushSymbol","to":"$smokeTestSymbol"}}}"""
     )
 
     println("Launching server with root = repo root (real Mill project, no explicit classpath arg)...")
