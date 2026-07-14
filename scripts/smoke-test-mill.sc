@@ -1,7 +1,7 @@
 #!/usr/bin/env scala-cli
 
 //> using scala 3.8.4
-//> using dep com.lihaoyi::upickle::3.1.0
+//> using dep com.lihaoyi::upickle::4.2.1
 
 // End-to-end launcher smoke test for ScalaSemantic MCP server against a real Mill project.
 // Unlike scripts/smoke-test.sh (synthetic scala-cli fixture, PC-backed type_at_position), this
@@ -14,7 +14,6 @@
 import java.io.{BufferedReader, InputStreamReader, OutputStreamWriter}
 import java.nio.file.*
 import scala.jdk.CollectionConverters.*
-import scala.sys.process.*
 
 object SmokeTestMill {
 
@@ -88,9 +87,24 @@ object SmokeTestMill {
     println("Launching server with root = repo root (real Mill project, no explicit classpath arg)...")
 
     val launcher = repoRoot.resolve("scripts/scalasemantic-mcp.sh").toString
-    val pb = new ProcessBuilder(launcher, "serve", repoRoot.toString, "--log")
+    val pb = new java.lang.ProcessBuilder(launcher, "serve", repoRoot.toString, "--log")
     pb.environment().put("SCALASEMANTIC_VERSION", "local")
     val proc = pb.start()
+
+    def drain(is: java.io.InputStream): (StringBuilder, Thread) = {
+      val buf = new StringBuilder
+      val reader = new BufferedReader(new InputStreamReader(is))
+      val t = new Thread(() =>
+        Iterator.continually(reader.readLine()).takeWhile(_ != null).foreach { line =>
+          buf.append(line).append("\n")
+        }
+      )
+      t.setDaemon(true)
+      t.start()
+      (buf, t)
+    }
+    val (stdoutBuf, stdoutThread) = drain(proc.getInputStream)
+    val (stderrBuf, stderrThread) = drain(proc.getErrorStream)
 
     val stdinWriter = new OutputStreamWriter(proc.getOutputStream)
     requests.foreach { line =>
@@ -102,22 +116,43 @@ object SmokeTestMill {
     stdinWriter.close()
     proc.destroy()
     proc.waitFor()
+    stdoutThread.join(2000)
+    stderrThread.join(2000)
 
-    def slurp(is: java.io.InputStream): String = {
-      val reader = new BufferedReader(new InputStreamReader(is))
-      try Iterator.continually(reader.readLine()).takeWhile(_ != null).mkString("\n")
-      finally reader.close()
-    }
-    val stdout = slurp(proc.getInputStream)
-    val stderr = slurp(proc.getErrorStream)
+    val stdout = stdoutBuf.toString
+    val stderr = stderrBuf.toString
 
-    if (!stdout.contains("\"id\":2")) fail("did not receive response for method_signature tools/call", stdout, stderr)
-    if (!stdout.contains("projectRoot"))
+    // Parse each JSON-RPC response line and pull out the tool's own JSON payload (it comes back
+    // as a string inside result.content[0].text), so this checks the *actual* structured answer
+    // rather than grepping raw text for a substring.
+    val responsesById: Map[Int, ujson.Value] =
+      stdout
+        .linesIterator
+        .flatMap(line => scala.util.Try(ujson.read(line)).toOption)
+        .flatMap(msg => msg.obj.get("id").map(_.num.toInt -> msg))
+        .toMap
+
+    def toolResult(id: Int): ujson.Value =
+      responsesById.get(id) match {
+        case None => fail(s"did not receive any JSON-RPC response for id=$id", stdout, stderr)
+        case Some(msg) =>
+          msg.obj.get("error").foreach(err => fail(s"tools/call id=$id returned an error: $err", stdout, stderr))
+          val text = msg("result")("content")(0)("text").str
+          ujson.read(text)
+      }
+
+    val methodSigSymbol = "com/github/mercurievv/scalasemantic/semanticdb/SemanticIndex.fromProject()."
+    val methodSigResult = toolResult(2)
+    val expectedSignature = "def fromProject(projectRoot: String): SemanticIndex"
+    if (methodSigResult("symbol").str != methodSigSymbol)
+      fail(s"method_signature echoed wrong symbol: ${methodSigResult("symbol")}", stdout, stderr)
+    if (methodSigResult("signature").str != expectedSignature)
       fail(
-        "expected method_signature to resolve real signature of SemanticIndex.fromProject with parameter projectRoot",
+        s"expected method_signature($methodSigSymbol) to return exactly '$expectedSignature', got: ${methodSigResult("signature")}",
         stdout,
         stderr
       )
+    println(s"method_signature OK: ${methodSigResult("signature").str}")
 
     if (!stdout.contains("\"id\":3")) fail("did not receive response for find_usages tools/call", stdout, stderr)
     if (!stdout.contains("referenceCount"))

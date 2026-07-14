@@ -619,17 +619,31 @@ def checkScalafixFirstParty() = Task.Command {
 
 def smokeTest() = Task.Command {
   mcp.assembly()
-  val script = build.moduleDir / "scripts" / "smoke-test.sh"
-  val res = os
-    .proc("sh", script.toString)
+
+  val scalaCliScript = build.moduleDir / "scripts" / "smoke-test.sh"
+  val scalaCliRes = os
+    .proc("sh", scalaCliScript.toString)
     .call(
       cwd = build.moduleDir,
       stdout = os.Inherit,
       stderr = os.Inherit,
       check = false
     )
-  if (res.exitCode != 0) {
-    sys.error(s"E2E Smoke Test failed with exit status ${res.exitCode}")
+  if (scalaCliRes.exitCode != 0) {
+    sys.error(s"E2E Smoke Test (scala-cli fixture) failed with exit status ${scalaCliRes.exitCode}")
+  }
+
+  val millScript = build.moduleDir / "scripts" / "smoke-test-mill.sc"
+  val millRes = os
+    .proc("scala-cli", "run", millScript.toString)
+    .call(
+      cwd = build.moduleDir,
+      stdout = os.Inherit,
+      stderr = os.Inherit,
+      check = false
+    )
+  if (millRes.exitCode != 0) {
+    sys.error(s"E2E Smoke Test (Mill project) failed with exit status ${millRes.exitCode}")
   }
 }
 
@@ -645,7 +659,7 @@ def prePush() = Task.Command {
 
   Task.log.info("Checking unit and E2E regression consistency...")
   val res = os
-    .proc("python3", "scripts/generate-regressions.py", "--check", "--categories", "unit", "e2e")
+    .proc("scala-cli", "scripts/generate-regressions.scala", "--", "--check", "--categories", "unit", "e2e")
     .call(cwd = build.moduleDir, stdout = os.Inherit, stderr = os.Inherit, check = false)
   if (res.exitCode != 0) {
     sys.error(s"Regression check failed with exit status ${res.exitCode}")
