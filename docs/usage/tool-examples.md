@@ -41,10 +41,6 @@ Every tool example on this page is **executed at docs build time** by the real S
 | `method_signature` | Full signature with implicit/using params |
 | `type_at_position` | Type of code at a source location |
 
-```scala mdoc:passthrough
-val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
-```
-
 ## Find & resolve symbols
 
 Resolve names to their definitions, locate enriched source and surrounding context.
@@ -496,6 +492,7 @@ Inferred types, implicit insertions, signatures, and types at positions.
 - **Original** is the raw source.
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
 val fixedArgs      = s"""{"uri":"$enrichPath","annotationsOnly":false}"""
 val compilableArgs = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false}"""
 val symbolsArgs    = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"symbols":true}"""
