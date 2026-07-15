@@ -10,33 +10,40 @@ Every tool example on this page is **executed at docs build time** by the real S
 
 | Tool | What it tells you |
 | --- | --- |
-| **Exploration tools** | |
+| **Find & resolve symbols** | |
 | `find_symbol` | Resolve a name to its definition |
+| `symbol_source` | Source of ONE symbol's definition, enriched |
+| `source_around_position` | Source of the definition enclosing a position |
+| **References & call graph** | |
 | `find_usages` | All references to a symbol (optional `contextLines` for surrounding source) |
-| `search_text` | Scoped text/regex search over `.scala` files (string literals/comments) |
-| `class_hierarchy` | Supertypes and subtypes |
-| `find_overloads` | All overloads of a method |
-| `members` | Declared and inherited members |
 | `call_path` | Whether method A reaches method B |
 | `method_call_hierarchy` | All callers or callees |
 | `value_flow` | Trace a value through the call graph |
+| **Hierarchy & members** | |
+| `class_hierarchy` | Supertypes and subtypes |
+| `find_overloads` | All overloads of a method |
+| `members` | Declared and inherited members |
+| **Search & analysis** | |
+| `search_text` | Scoped text/regex search over `.scala` files (string literals/comments) |
+| `structure` | Dependency graph and cycles |
+| `smart_code_duplications` | Structurally identical blocks |
+| `document_outline` | File structure with compiler-rendered names |
+| **Implicits** | |
+| `resolve_implicits` | Which givens/implicits apply |
+| `trace_implicit_chain` | Path of implicit dependencies |
+| **Edit plans** | |
 | `rename_plan` | Edit ranges for a safe rename |
 | `batch_rename_plan` | Edit ranges for multiple renames, reporting range conflicts |
 | `move_plan` | Move a symbol to a new package |
 | `extract_method_plan` | Extract a code range into a method |
-| `structure` | Dependency graph and cycles |
-| `smart_code_duplications` | Structurally identical blocks |
-| **Enriching tools** | |
+| **Compiler view** | |
 | `annotated_source` | Compiler view — inferred types, implicits, exploded imports, diff (tabbed) |
 | `method_signature` | Full signature with implicit/using params |
-| `document_outline` | File structure with compiler-rendered names |
-| `resolve_implicits` | Which givens/implicits apply |
-| `trace_implicit_chain` | Path of implicit dependencies |
 | `type_at_position` | Type of code at a source location |
 
-## Exploration / edit-plan tools
+## Find & resolve symbols
 
-These tools return precise semantic answers — a symbol, a usage set, a hierarchy, an edit plan — replacing whole-file reads and grep guesswork.
+Resolve names to their definitions, locate enriched source and surrounding context.
 
 ### find_symbol
 
@@ -54,37 +61,51 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 ---
 
-### class_hierarchy
+### symbol_source
 
-**What it tells you:** supertypes and subtypes.
+**Answers:** the source of ONE symbol's definition — enriched like `annotated_source`, but scoped to just that method/class/val instead of the whole file.
+
+Same `render` symbol as below, but this time only its own signature+body come back — not `Show`, not the `given`s, not anything else in `Enrich.scala`. The gutter keeps the file's real (absolute) line numbers, so the result still tells you exactly where in the file to look.
 
 ```scala mdoc:passthrough
-val procSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"Processor"}""")
-val procData = ujson.read(procSym)
-val procSymbol = if procData("count").num.toInt > 0 then procData("symbols")(0)("symbol").str else "unknown"
-println(scalasemantic.docs.ToolRunner.runPretty("class_hierarchy", s"""{"symbol":"$procSymbol"}"""))
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "symbol_source",
+  """{"symbol":"com/github/mercurievv/scalasemantic/docexamples/Enrich$package.render()."}"""))
 ```
 
-**Replaces:** Reading files + grepping for extends/implements.
+A dotted FQN works too, so callers who only know the name (not the SemanticDB symbol grammar) can still use the tool:
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "symbol_source",
+  """{"symbol":"com.github.mercurievv.scalasemantic.docexamples.render()"}"""))
+```
+
+**Replaces:** `annotated_source` on the whole file plus manually scrolling to the one definition you actually wanted → the definition alone, absolute line numbers intact.
 
 ---
 
-### find_overloads
+### source_around_position
 
-**What it tells you:** all overloads of a method sharing its owner, plus same-named methods
-inherited from parent types (`inheritedOverloads`, each suffixed `(from <Parent>)`) — the full
-overload set visible on the type, not just the ones declared locally.
+**Answers:** the source of the definition ENCLOSING a source position — like `symbol_source`, but keyed by `file`+`line`+`column` (0-based) instead of a resolved symbol, for when you only have a cursor position (e.g. from `type_at_position` or a stack trace).
+
+Position `line=27,column=40` sits inside `Show[A].show(a)` — a REFERENCE, not a definition — on `render`'s single-line body. The tool anchors to `render`'s enclosing definition rather than jumping to `Show`'s own (unrelated) definition:
 
 ```scala mdoc:passthrough
-val fmtSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"format"}""")
-val fmtData = ujson.read(fmtSym)
-val fmtSymbol = if fmtData("count").num.toInt > 0 then fmtData("symbols")(0)("symbol").str else "unknown"
-println(scalasemantic.docs.ToolRunner.runPretty("find_overloads", s"""{"symbol":"$fmtSymbol"}"""))
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "source_around_position",
+  s"""{"file":"$enrichPath","line":27,"column":40,"format":"plain"}"""))
 ```
 
-**Replaces:** Reading code for all overloads, including a manual walk up the class hierarchy.
+When no enclosing definition exists at the position (e.g. a blank line before any declaration), the tool falls back to a fixed ±15-line window and notes the fallback in `legend`.
+
+**Replaces:** manually re-deriving "what method/class am I inside" from a line/column → the enclosing definition's source, resolved and enriched, in one call.
 
 ---
+
+## References & call graph
+
+Who calls what, value flow, and reachability.
 
 ### find_usages
 
@@ -106,40 +127,6 @@ println(scalasemantic.docs.ToolRunner.runPretty("find_usages", s"""{"symbol":"$u
 ```
 
 **Replaces:** Grepping all files → exact reference list.
-
----
-
-### search_text
-
-**What it tells you:** plain text/regex hits (file + line) over `.scala` files — string literals
-and comments, the one case SemanticDB has no symbol model for.
-
-This is the sanctioned in-MCP replacement for shelling out to `grep`/`rg` on Scala sources; it is
-**not** symbol-aware (no rename/re-export/implicit resolution) and can over-match comments/strings
-like grep does. Use `find_symbol`/`find_usages` for identifiers instead.
-
-```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.runPretty(
-  "search_text",
-  """{"query":"context bound","pathFilter":"*docexamples/Enrich.scala*"}"""))
-```
-
-**Replaces:** `grep`/`rg` on `.scala` files for non-symbol text, kept inside MCP tooling.
-
----
-
-### members
-
-**What it tells you:** declared and inherited members.
-
-```scala mdoc:passthrough
-val memSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"UpperProcessor"}""")
-val memData = ujson.read(memSym)
-val memSymbol = if memData("count").num.toInt > 0 then memData("symbols")(0)("symbol").str else "unknown"
-println(scalasemantic.docs.ToolRunner.runPretty("members", s"""{"symbol":"$memSymbol"}"""))
-```
-
-**Replaces:** Reading class + all superclass definitions.
 
 ---
 
@@ -196,6 +183,215 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 **Replaces:** Manually chasing a value through renamed parameters across files.
 
 ---
+
+## Hierarchy & members
+
+Types, supertypes, subtypes, overloads, and member lists.
+
+### class_hierarchy
+
+**What it tells you:** supertypes and subtypes.
+
+```scala mdoc:passthrough
+val procSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"Processor"}""")
+val procData = ujson.read(procSym)
+val procSymbol = if procData("count").num.toInt > 0 then procData("symbols")(0)("symbol").str else "unknown"
+println(scalasemantic.docs.ToolRunner.runPretty("class_hierarchy", s"""{"symbol":"$procSymbol"}"""))
+```
+
+**Replaces:** Reading files + grepping for extends/implements.
+
+---
+
+### find_overloads
+
+**What it tells you:** all overloads of a method sharing its owner, plus same-named methods
+inherited from parent types (`inheritedOverloads`, each suffixed `(from <Parent>)`) — the full
+overload set visible on the type, not just the ones declared locally.
+
+```scala mdoc:passthrough
+val fmtSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"format"}""")
+val fmtData = ujson.read(fmtSym)
+val fmtSymbol = if fmtData("count").num.toInt > 0 then fmtData("symbols")(0)("symbol").str else "unknown"
+println(scalasemantic.docs.ToolRunner.runPretty("find_overloads", s"""{"symbol":"$fmtSymbol"}"""))
+```
+
+**Replaces:** Reading code for all overloads, including a manual walk up the class hierarchy.
+
+---
+
+### members
+
+**What it tells you:** declared and inherited members.
+
+```scala mdoc:passthrough
+val memSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"UpperProcessor"}""")
+val memData = ujson.read(memSym)
+val memSymbol = if memData("count").num.toInt > 0 then memData("symbols")(0)("symbol").str else "unknown"
+println(scalasemantic.docs.ToolRunner.runPretty("members", s"""{"symbol":"$memSymbol"}"""))
+```
+
+**Replaces:** Reading class + all superclass definitions.
+
+---
+
+## Search & analysis
+
+Full-text search, structural patterns, and dependencies.
+
+### search_text
+
+**What it tells you:** plain text/regex hits (file + line) over `.scala` files — string literals
+and comments, the one case SemanticDB has no symbol model for.
+
+This is the sanctioned in-MCP replacement for shelling out to `grep`/`rg` on Scala sources; it is
+**not** symbol-aware (no rename/re-export/implicit resolution) and can over-match comments/strings
+like grep does. Use `find_symbol`/`find_usages` for identifiers instead.
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "search_text",
+  """{"query":"context bound","pathFilter":"*docexamples/Enrich.scala*"}"""))
+```
+
+**Replaces:** `grep`/`rg` on `.scala` files for non-symbol text, kept inside MCP tooling.
+
+---
+
+### structure
+
+**What it tells you:** dependency graph and cycles.
+
+A snapshot of the product modules' dependency structure in one call.
+
+Metric values:
+
+- `types`: number of in-project types in a module.
+- `layer`: longest dependency-chain depth after cycles are condensed; `0` means a foundation type/module, larger numbers sit above deeper dependencies.
+- `ca`: afferent coupling, the number of incoming dependencies; higher values mean more project symbols depend on this symbol/module.
+- `ce`: efferent coupling, the number of outgoing dependencies; higher values mean this symbol/module depends on more project symbols.
+- `instability`: `ce / (ca + ce)`, from `0` to `1`; `0` is stable/foundation-like, `1` is leaf/consumer-like.
+- `centrality`: PageRank-style importance; higher values mean the symbol is more structurally central because important symbols depend on it.
+- `dependencies` weight: number of semantic dependency observations collapsed into one symbol-to-symbol edge; thicker graph edges mean higher weight.
+- `moduleEdges` weight: number of symbol-level dependency edges crossing from one module to another.
+
+```scala mdoc:passthrough
+val structureArgs = """{"limit":20}"""
+val structureRaw = scalasemantic.docs.ToolRunner.runStructure(structureArgs)
+println(scalasemantic.docs.ToolRunner.requestMarkdown("structure", structureArgs))
+println()
+println(scalasemantic.docs.ToolRunner.structureGraphComponent(structureRaw))
+println()
+println(scalasemantic.docs.ToolRunner.detailsMarkdown(structureArgs, structureRaw))
+```
+
+**Replaces:** Manual dependency graph construction.
+
+---
+
+### smart_code_duplications
+
+**What it tells you:** structurally identical blocks.
+
+The tool finds structural duplicates (same pattern, different names), ignoring syntactic noise.
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "smart_code_duplications",
+  """{"minSize":15}"""))
+```
+
+Pass `showSource: true` to also get a `groupsSource` field with the duplicated lines for every
+occurrence, gutter-numbered like `annotated_source`'s `plain` format — handy for eyeballing what a
+clone group actually looks like without a second `annotated_source` round trip.
+
+**Replaces:** Manual code review for duplication.
+
+---
+
+### document_outline
+
+**What it tells you:** file structure with compiler-rendered names.
+
+The tool returns a tree with compiler-rendered names instead of a text scan. For a 50-line file, the outline is 5–10 lines; for 1000 lines, still manageable.
+
+```scala mdoc:passthrough
+val outlineArgs = s"""{"uri":"$enrichPath"}"""
+println(scalasemantic.docs.ToolRunner.requestMarkdown("document_outline", outlineArgs))
+```
+
+```scala mdoc:passthrough
+val outlineRaw = scalasemantic.docs.ToolRunner.run("document_outline", outlineArgs)
+println(scalasemantic.docs.ToolRunner.outlineMermaid(outlineRaw))
+```
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.detailsMarkdown(outlineArgs, outlineRaw))
+```
+
+**Replaces:** Scanning files → structured outline.
+
+---
+
+## Implicits
+
+Given/implicit resolution and chains.
+
+### resolve_implicits
+
+**What it tells you:** which givens/implicits apply.
+
+`resolve_implicits` returns the flat candidate set: every given/implicit in the index that can produce some `Show[X]`. For `Show#`, that includes `intShow`, `stringShow`, `listShow`, and the imported `doubleShow`/`floatShow` instances. This is the candidate set before a call-site selection, not a scope-filtered proof that one instance was applied; `chosen` is filled only when exactly one candidate exists.
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "resolve_implicits",
+  """{"type":"com/github/mercurievv/scalasemantic/docexamples/Show#"}"""))
+```
+
+**Replaces:** Guessing which givens exist → the compiler's candidate set.
+
+---
+
+### trace_implicit_chain
+
+**What it tells you:** path of implicit dependencies.
+
+`trace_implicit_chain` returns the same candidate set plus each candidate's own implicit dependencies. `listShow` produces `Show[List[A]]` only given a `Show[A]`, so its step lists `Show#` as a dependency; that dependency edge is what distinguishes it from `resolve_implicits`.
+
+Use `resolve_implicits` when you need the flat candidate set; use `trace_implicit_chain` when you also need the transitive dependencies each candidate would require.
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "trace_implicit_chain",
+  """{"type":"com/github/mercurievv/scalasemantic/docexamples/Show#"}"""))
+```
+
+For a concrete wanted type, pass `appliedType`. Here `Show[List[Int]]` resolves to `listShow`, whose nested dependency resolves to `intShow`.
+
+```scala mdoc:passthrough
+val concreteImplicitArgs =
+  """{"type":"com/github/mercurievv/scalasemantic/docexamples/Show#","appliedType":"Show[List[Int]]"}"""
+println(scalasemantic.docs.ToolRunner.requestMarkdown("trace_implicit_chain", concreteImplicitArgs))
+```
+
+```scala mdoc:passthrough
+val concreteImplicitRaw =
+  scalasemantic.docs.ToolRunner.run("trace_implicit_chain", concreteImplicitArgs)
+println(scalasemantic.docs.ToolRunner.implicitTreeMermaid(concreteImplicitRaw))
+```
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.detailsMarkdown(concreteImplicitArgs, concreteImplicitRaw))
+```
+
+**Replaces:** Manually following each given's own implicit needs → the whole chain.
+
+---
+
+## Edit plans
+
+Refactoring assistance: rename, move, extract.
 
 ### rename_plan
 
@@ -272,60 +468,9 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 ---
 
-### structure
+## Compiler view
 
-**What it tells you:** dependency graph and cycles.
-
-A snapshot of the product modules' dependency structure in one call.
-
-Metric values:
-
-- `types`: number of in-project types in a module.
-- `layer`: longest dependency-chain depth after cycles are condensed; `0` means a foundation type/module, larger numbers sit above deeper dependencies.
-- `ca`: afferent coupling, the number of incoming dependencies; higher values mean more project symbols depend on this symbol/module.
-- `ce`: efferent coupling, the number of outgoing dependencies; higher values mean this symbol/module depends on more project symbols.
-- `instability`: `ce / (ca + ce)`, from `0` to `1`; `0` is stable/foundation-like, `1` is leaf/consumer-like.
-- `centrality`: PageRank-style importance; higher values mean the symbol is more structurally central because important symbols depend on it.
-- `dependencies` weight: number of semantic dependency observations collapsed into one symbol-to-symbol edge; thicker graph edges mean higher weight.
-- `moduleEdges` weight: number of symbol-level dependency edges crossing from one module to another.
-
-```scala mdoc:passthrough
-val structureArgs = """{"limit":20}"""
-val structureRaw = scalasemantic.docs.ToolRunner.runStructure(structureArgs)
-println(scalasemantic.docs.ToolRunner.requestMarkdown("structure", structureArgs))
-println()
-println(scalasemantic.docs.ToolRunner.structureGraphComponent(structureRaw))
-println()
-println(scalasemantic.docs.ToolRunner.detailsMarkdown(structureArgs, structureRaw))
-```
-
-**Replaces:** Manual dependency graph construction.
-
----
-
-### smart_code_duplications
-
-**What it tells you:** structurally identical blocks.
-
-The tool finds structural duplicates (same pattern, different names), ignoring syntactic noise.
-
-```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.runPretty(
-  "smart_code_duplications",
-  """{"minSize":15}"""))
-```
-
-Pass `showSource: true` to also get a `groupsSource` field with the duplicated lines for every
-occurrence, gutter-numbered like `annotated_source`'s `plain` format — handy for eyeballing what a
-clone group actually looks like without a second `annotated_source` round trip.
-
-**Replaces:** Manual code review for duplication.
-
----
-
-## Enriching tools
-
-These tools show the LLM what the compiler sees but the source text does not — inferred types, synthesized implicit arguments and conversions, resolved signatures. Every example below runs against the same source file, executed at docs build time by the real Scala 3.8.4 analyzer.
+Inferred types, implicit insertions, signatures, and types at positions.
 
 ### annotated_source
 
@@ -442,48 +587,6 @@ println(s"```scala\n${scalasemantic.docs.ToolRunner.readSource(enrichPath)}\n```
 
 ---
 
-### symbol_source
-
-**Answers:** the source of ONE symbol's definition — enriched like `annotated_source`, but scoped to just that method/class/val instead of the whole file.
-
-Same `render` symbol as below, but this time only its own signature+body come back — not `Show`, not the `given`s, not anything else in `Enrich.scala`. The gutter keeps the file's real (absolute) line numbers, so the result still tells you exactly where in the file to look.
-
-```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.runPretty(
-  "symbol_source",
-  """{"symbol":"com/github/mercurievv/scalasemantic/docexamples/Enrich$package.render()."}"""))
-```
-
-A dotted FQN works too, so callers who only know the name (not the SemanticDB symbol grammar) can still use the tool:
-
-```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.runPretty(
-  "symbol_source",
-  """{"symbol":"com.github.mercurievv.scalasemantic.docexamples.render()"}"""))
-```
-
-**Replaces:** `annotated_source` on the whole file plus manually scrolling to the one definition you actually wanted → the definition alone, absolute line numbers intact.
-
----
-
-### source_around_position
-
-**Answers:** the source of the definition ENCLOSING a source position — like `symbol_source`, but keyed by `file`+`line`+`column` (0-based) instead of a resolved symbol, for when you only have a cursor position (e.g. from `type_at_position` or a stack trace).
-
-Position `line=27,column=40` sits inside `Show[A].show(a)` — a REFERENCE, not a definition — on `render`'s single-line body. The tool anchors to `render`'s enclosing definition rather than jumping to `Show`'s own (unrelated) definition:
-
-```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.runPretty(
-  "source_around_position",
-  s"""{"file":"$enrichPath","line":27,"column":40,"format":"plain"}"""))
-```
-
-When no enclosing definition exists at the position (e.g. a blank line before any declaration), the tool falls back to a fixed ±15-line window and notes the fallback in `legend`.
-
-**Replaces:** manually re-deriving "what method/class am I inside" from a line/column → the enclosing definition's source, resolved and enriched, in one call.
-
----
-
 ### method_signature
 
 **What it tells you:** full signature with implicit/using params.
@@ -497,30 +600,6 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 ```
 
 **Replaces:** Reading the definition and hand-tracing the implicit list → one resolved signature.
-
----
-
-### document_outline
-
-**What it tells you:** file structure with compiler-rendered names.
-
-The tool returns a tree with compiler-rendered names instead of a text scan. For a 50-line file, the outline is 5–10 lines; for 1000 lines, still manageable.
-
-```scala mdoc:passthrough
-val outlineArgs = s"""{"uri":"$enrichPath"}"""
-println(scalasemantic.docs.ToolRunner.requestMarkdown("document_outline", outlineArgs))
-```
-
-```scala mdoc:passthrough
-val outlineRaw = scalasemantic.docs.ToolRunner.run("document_outline", outlineArgs)
-println(scalasemantic.docs.ToolRunner.outlineMermaid(outlineRaw))
-```
-
-```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.detailsMarkdown(outlineArgs, outlineRaw))
-```
-
-**Replaces:** Scanning files → structured outline.
 
 ---
 
@@ -539,59 +618,7 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 ---
 
-### resolve_implicits
-
-**What it tells you:** which givens/implicits apply.
-
-`resolve_implicits` returns the flat candidate set: every given/implicit in the index that can produce some `Show[X]`. For `Show#`, that includes `intShow`, `stringShow`, `listShow`, and the imported `doubleShow`/`floatShow` instances. This is the candidate set before a call-site selection, not a scope-filtered proof that one instance was applied; `chosen` is filled only when exactly one candidate exists.
-
-```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.runPretty(
-  "resolve_implicits",
-  """{"type":"com/github/mercurievv/scalasemantic/docexamples/Show#"}"""))
-```
-
-**Replaces:** Guessing which givens exist → the compiler's candidate set.
-
----
-
-### trace_implicit_chain
-
-**What it tells you:** path of implicit dependencies.
-
-`trace_implicit_chain` returns the same candidate set plus each candidate's own implicit dependencies. `listShow` produces `Show[List[A]]` only given a `Show[A]`, so its step lists `Show#` as a dependency; that dependency edge is what distinguishes it from `resolve_implicits`.
-
-Use `resolve_implicits` when you need the flat candidate set; use `trace_implicit_chain` when you also need the transitive dependencies each candidate would require.
-
-```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.runPretty(
-  "trace_implicit_chain",
-  """{"type":"com/github/mercurievv/scalasemantic/docexamples/Show#"}"""))
-```
-
-For a concrete wanted type, pass `appliedType`. Here `Show[List[Int]]` resolves to `listShow`, whose nested dependency resolves to `intShow`.
-
-```scala mdoc:passthrough
-val concreteImplicitArgs =
-  """{"type":"com/github/mercurievv/scalasemantic/docexamples/Show#","appliedType":"Show[List[Int]]"}"""
-println(scalasemantic.docs.ToolRunner.requestMarkdown("trace_implicit_chain", concreteImplicitArgs))
-```
-
-```scala mdoc:passthrough
-val concreteImplicitRaw =
-  scalasemantic.docs.ToolRunner.run("trace_implicit_chain", concreteImplicitArgs)
-println(scalasemantic.docs.ToolRunner.implicitTreeMermaid(concreteImplicitRaw))
-```
-
-```scala mdoc:passthrough
-println(scalasemantic.docs.ToolRunner.detailsMarkdown(concreteImplicitArgs, concreteImplicitRaw))
-```
-
-**Replaces:** Manually following each given's own implicit needs → the whole chain.
-
----
-
-### Tools on modified code
+## Tools on modified code
 
 The tools above read the last compiled SemanticDB. But ScalaSemantic can also answer against a buffer that was **edited but never recompiled**: pass the current file text as `source` and the presentation compiler regenerates the analysis in memory. This is what makes the tools correct on a dirty working buffer.
 
