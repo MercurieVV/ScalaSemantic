@@ -89,6 +89,20 @@ final class SemanticIndex(val documents: Vector[s.TextDocument]):
 
 object SemanticIndex:
 
+  /** A cheap staleness signature for a set of `*.semanticdb` files: how many there are and the
+    * newest last-modified time among them. Two scans of an unchanged tree produce equal
+    * fingerprints; a recompile that touches any file changes at least one of the two fields.
+    */
+  final case class Fingerprint(fileCount: Int, newestMtimeMillis: Long)
+
+  /** Fingerprint the `*.semanticdb` files reachable under `roots`, without parsing them. Used to
+    * detect whether a previously loaded [[SemanticIndex]] is stale relative to disk.
+    */
+  def fingerprint(roots: Seq[Path]): Fingerprint =
+    val files = roots.filter(Files.exists(_)).flatMap(findSemanticdb)
+    val mtimes = files.map(f => Files.getLastModifiedTime(f).toMillis)
+    Fingerprint(files.size, mtimes.foldLeft(0L)(_ max _))
+
   /** Recursively scan `roots` for `*.semanticdb` files and load them. */
   def fromRoots(roots: Seq[Path]): SemanticIndex =
     val files = roots.filter(Files.exists(_)).flatMap(findSemanticdb)
