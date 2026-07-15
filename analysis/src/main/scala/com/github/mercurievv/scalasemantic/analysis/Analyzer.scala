@@ -168,6 +168,7 @@ final class Analyzer(
       case Some(_: s.MethodSignature) =>
         methodSignatureOf(symbol).map(_.rendered).getOrElse("")
       case Some(v: s.ValueSignature) => s": ${h.renderType(v.tpe)}"
+      case Some(t: s.TypeSignature)  => h.renderTypeSignature(t).strip
       case _                         => ""
 
   /** Dotted fully-qualified name built from `symbol`'s owner chain's display names (every enclosing

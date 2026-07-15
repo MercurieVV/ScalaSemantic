@@ -633,6 +633,35 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
     }.mkString
     s"def $name$tp$ps: $ret"
 
+  /** Render a `Kind.TYPE` symbol's `TypeSignature` as a compact signature suffix (the part that
+    * follows the type's name in an outline/signature line):
+    *   - transparent alias (`lowerBound == upperBound`): `[<tparams>] = <RHS>` — covers plain
+    *     `type X = T` and refined aliases like `type PositiveInt = Int Refined Positive`.
+    *   - bounded type with a meaningful bound: `[<tparams>] >: <Lo> <: <Hi>`, dropping a bound that
+    *     is the trivial `Nothing` (lower) or `Any` (upper).
+    *   - fully abstract / opaque type: SemanticDB hides an opaque type's right-hand side and emits
+    *     `>: Nothing <: Any`, so we surface exactly that rather than an empty signature.
+    *
+    * One level only — no transitive dealiasing of the RHS.
+    */
+  def renderTypeSignature(t: s.TypeSignature): String =
+    val tparams = scopeInfos(t.typeParameters).map(_.displayName).toList
+    val tp = if tparams.isEmpty then "" else tparams.mkString("[", ", ", "]")
+    val lo = renderType(t.lowerBound)
+    val hi = renderType(t.upperBound)
+    val body =
+      if lo.nonEmpty && lo == hi then s" = $hi"
+      else
+        val loPart = Option.when(lo.nonEmpty && lo != "Nothing")(s" >: $lo")
+        val hiPart = Option.when(hi.nonEmpty && hi != "Any")(s" <: $hi")
+        (loPart ++ hiPart).mkString match
+          case "" =>
+            val loShown = if lo.isEmpty then "Nothing" else lo
+            val hiShown = if hi.isEmpty then "Any" else hi
+            s" >: $loShown <: $hiShown"
+          case bounds => bounds
+    s"$tp$body"
+
   /** Best-effort rendering of a SemanticDB type to readable Scala-ish text. */
   def renderType(tpe: s.Type): String =
     tpe match
