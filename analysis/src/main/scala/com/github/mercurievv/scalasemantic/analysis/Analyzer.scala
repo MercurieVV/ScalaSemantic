@@ -279,11 +279,10 @@ final class Analyzer(
       val synthetic0: List[SourceAnnotation] = detail match {
         case SourceDetail.Terse =>
           val terse = doc.synthetics.iterator.flatMap(h.syntheticAnnotation(_, sourceLines)).toList
-          val nestedElaborated = fullAnnotations(doc, sourceLines)
-            .filter(a => a.text.indexOf("(using ") != a.text.lastIndexOf("(using "))
+          val elaborated = fullAnnotations(doc, sourceLines)
             .map(a => a.copy(kind = "elaborated", text = s"elaborated: ${a.text}"))
-          val elaboratedLines = nestedElaborated.map(_.line).toSet
-          terse.filterNot(a => elaboratedLines.contains(a.line)) ++ nestedElaborated
+          val elaboratedLines = elaborated.map(_.line).toSet
+          terse.filterNot(a => elaboratedLines.contains(a.line)) ++ elaborated
         case SourceDetail.Full =>
           fullAnnotations(doc, sourceLines)
       }
@@ -299,16 +298,18 @@ final class Analyzer(
         (a.kind == "implicit" || a.kind == "full") &&
           defStarts.exists((dl, dc) => dl == a.line && dc >= a.character)
       )
-      val elaboratedLines = synthetic.collect { case a if a.kind == "elaborated" => a.line }.toSet
       val defTypes: List[SourceAnnotation] = doc.occurrences.iterator
         .flatMap(h.defTypeAnnotation(_, sourceLines))
         .map { a =>
-          if elaboratedLines.contains(a.line) && a.text.startsWith(": ") then
-            a.copy(text = s"type: ${a.text.drop(2)}")
+          if a.text.startsWith(": ") then a.copy(text = s"type: ${a.text.drop(2)}")
           else a
         }
         .toList
-      (synthetic ++ defTypes).distinct.sortBy(a => (a.line, a.character, a.kind))
+      def annotationSortKey(a: SourceAnnotation): (Int, Int, Int, String) =
+        val kindPriority = if a.kind == "inferred-type" then 0 else 1
+        (a.line, kindPriority, a.character, a.kind)
+
+      (synthetic ++ defTypes).distinct.sortBy(annotationSortKey)
     }
 
   /** Distinct type symbols referenced in `uri`, as (simpleName -> dotted FQN), sorted, skipping
