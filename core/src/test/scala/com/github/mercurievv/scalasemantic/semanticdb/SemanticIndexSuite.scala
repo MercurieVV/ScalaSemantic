@@ -62,3 +62,37 @@ class SemanticIndexSuite extends munit.FunSuite:
     )
     assert(millBuildDoc.get.symbols.nonEmpty, "build.mill's document should carry symbol info")
   }
+
+  // Regression for the MCP-side stale-cache report: set_workspace_root cached an McpState keyed
+  // only by root path, so a recompile that regenerated *.semanticdb in place (same file count,
+  // newer mtime) was invisible to callers. fingerprint must change whenever the files on disk do.
+  test("fingerprint changes when a semanticdb file's mtime advances, unchanged file count") {
+    val dir = java.nio.file.Files.createTempDirectory("fingerprint-mtime").nn
+    val file = dir.resolve("Foo.scala.semanticdb").nn
+    java.nio.file.Files.write(file, Array[Byte](1, 2, 3))
+    val before = SemanticIndex.fingerprint(Seq(dir))
+
+    // Bump the mtime forward without changing the file count.
+    java.nio.file.Files.setLastModifiedTime(
+      file,
+      java.nio.file.attribute.FileTime.fromMillis(before.newestMtimeMillis + 60000)
+    )
+    val after = SemanticIndex.fingerprint(Seq(dir))
+
+    assertEquals(before.fileCount, after.fileCount)
+    assertNotEquals(before.newestMtimeMillis, after.newestMtimeMillis)
+    assertNotEquals(before, after)
+  }
+
+  test("fingerprint changes when a new semanticdb file is added") {
+    val dir = java.nio.file.Files.createTempDirectory("fingerprint-count").nn
+    java.nio.file.Files.write(dir.resolve("Foo.scala.semanticdb").nn, Array[Byte](1))
+    val before = SemanticIndex.fingerprint(Seq(dir))
+
+    java.nio.file.Files.write(dir.resolve("Bar.scala.semanticdb").nn, Array[Byte](2))
+    val after = SemanticIndex.fingerprint(Seq(dir))
+
+    assertEquals(before.fileCount, 1)
+    assertEquals(after.fileCount, 2)
+    assertNotEquals(before, after)
+  }

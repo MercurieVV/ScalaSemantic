@@ -363,6 +363,8 @@
   "com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackendSuite.useCurrentJvm releases the backend after a successful body (close() ran)",
   "com.github.mercurievv.scalasemantic.semanticdb.SemanticIndexSuite.displayName decodes both indexed and escaped names",
   "com.github.mercurievv.scalasemantic.semanticdb.SemanticIndexSuite.dogfoods on the Mill meta-build's own compiled build.mill",
+  "com.github.mercurievv.scalasemantic.semanticdb.SemanticIndexSuite.fingerprint changes when a new semanticdb file is added",
+  "com.github.mercurievv.scalasemantic.semanticdb.SemanticIndexSuite.fingerprint changes when a semanticdb file's mtime advances, unchanged file count",
   "com.github.mercurievv.scalasemantic.semanticdb.SemanticIndexSuite.kind predicates classify type vs method vs term",
   "com.github.mercurievv.scalasemantic.semanticdb.SemanticIndexSuite.loads documents and symbols from semanticdb artifacts",
   "com.github.mercurievv.scalasemantic.semanticdb.SemanticIndexSuite.owner returns the enclosing scope, empty for nothing above package",
