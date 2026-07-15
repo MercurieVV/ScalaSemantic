@@ -36,7 +36,8 @@ object Mcp:
       analyzer: Analyzer,
       tools: List[Tool],
       pcBackends: Option[ModulePresentationCompilerBackends] = None,
-      classpathSource: Option[String] = None
+      classpathSource: Option[String] = None,
+      fingerprint: SemanticIndex.Fingerprint = SemanticIndex.Fingerprint(0, 0L)
   ):
     def pcSelector: Option[String => Option[PresentationCompilerBackend]] =
       pcBackends.map(_.backendFor)
@@ -48,7 +49,7 @@ object Mcp:
   private[mcp] val log = new AtomicReference[String => Unit](_ => ())
   private[mcp] val stateFactory = new AtomicReference[Path => McpState](root =>
     val az = Analyzer(SemanticIndex.fromProject(root.toString), pcSelector = None)
-    new McpState(root, az, toolsFor(az, root))
+    new McpState(root, az, toolsFor(az, root), fingerprint = SemanticIndex.fingerprint(Seq(root)))
   )
 
   private[mcp] def currentState: Option[McpState] = state.get()
@@ -64,7 +65,11 @@ object Mcp:
     backendFor.set(next.pcSelector)
 
   private[mcp] def toolsFor(az: Analyzer, root: Path): List[Tool] =
-    McpTools.all(az, root) ++ List(setWorkspaceRootTool(log.get()), getWorkspaceRootTool)
+    McpTools.all(az, root) ++ List(
+      setWorkspaceRootTool(log.get()),
+      getWorkspaceRootTool,
+      refreshWorkspaceTool(log.get())
+    )
 
   val ProtocolVersion = "2025-06-18"
   val ServerName = "scala-semantic-mcp"
@@ -111,6 +116,8 @@ object Mcp:
         |  the edits to extract a code range into a new method  → extract_method_plan
         |  where a val/binding flows across method boundaries   → value_flow
         |  current stateful workspace root                      → get_workspace_root, set_workspace_root
+        |  stale index after regenerating SemanticDB (set_workspace_root's
+        |    `cached` was true but you know the files changed)  → refresh_workspace
         |
         |After changing working directories (worktree switch, cd, subproject entry, or subagent cwd
         |change), call set_workspace_root with the new absolute path before any other ScalaSemantic tool.
@@ -366,11 +373,20 @@ object Mcp:
         )
         val selector = Some(backends.backendFor)
         val az = Analyzer(SemanticIndex.fromProject(rootPath.toString), pcSelector = selector)
-        new McpState(rootPath, az, toolsFor(az, rootPath), Some(backends), Some(resolved.source))
+        val fp = SemanticIndex.fingerprint(Seq(rootPath))
+        new McpState(
+          rootPath,
+          az,
+          toolsFor(az, rootPath),
+          Some(backends),
+          Some(resolved.source),
+          fp
+        )
       case None =>
         log(s"PC backend disabled for $rootPath; no classpath metadata found")
         val az = Analyzer(SemanticIndex.fromProject(rootPath.toString), pcSelector = None)
-        new McpState(rootPath, az, toolsFor(az, rootPath))
+        val fp = SemanticIndex.fingerprint(Seq(rootPath))
+        new McpState(rootPath, az, toolsFor(az, rootPath), fingerprint = fp)
 
   /** The read/eval/write loop, parameterized over the (already-acquired, optional) PC backend.
     * Split out of [[serve]] so the backend's acquire/release stays bracketed by
@@ -705,7 +721,15 @@ object Mcp:
         sys.error(s"Path is not a directory: $resolvedPath")
       }
 
-      val isCached = stateCache.containsKey(resolvedPath)
+      val diskFingerprint = SemanticIndex.fingerprint(Seq(resolvedPath))
+      val stale = Option(stateCache.get(resolvedPath)).exists(_.fingerprint != diskFingerprint)
+      if (stale) {
+        log(
+          s"Stale index detected for $resolvedPath (semanticdb files changed on disk); rebuilding"
+        )
+        stateCache.remove(resolvedPath)
+      }
+      val isCached = !stale && stateCache.containsKey(resolvedPath)
       val newState = stateCache.computeIfAbsent(
         resolvedPath,
         r => {
@@ -719,7 +743,54 @@ object Mcp:
       ujson.Obj(
         "root" -> ujson.Str(resolvedPath.toString),
         "cached" -> ujson.Bool(isCached),
-        "classpath" -> newState.classpathSource.fold[ujson.Value](ujson.Null)(ujson.Str(_))
+        "classpath" -> newState.classpathSource.fold[ujson.Value](ujson.Null)(ujson.Str(_)),
+        "semanticdbFileCount" -> ujson.Num(newState.fingerprint.fileCount),
+        "semanticdbNewestMtime" -> ujson.Str(
+          java.time.Instant.ofEpochMilli(newState.fingerprint.newestMtimeMillis).toString
+        )
+      )
+    }
+
+  private[mcp] def refreshWorkspaceTool(
+      log: String => Unit
+  ): Tool =
+    McpToolsSupport.tool(
+      "refresh_workspace",
+      "Force-rebuild the semantic index for the current (or given) workspace root, dropping any cached copy. Use after regenerating SemanticDB files if set_workspace_root still reports the old index.",
+      List(
+        (
+          "path",
+          "string",
+          "absolute or relative path to rebuild; defaults to the current workspace root"
+        )
+      ),
+      Nil
+    ) { args =>
+      val rawPath = McpToolsSupport.argStr(args, "path")
+      val targetPath = if (rawPath.trim.isEmpty) currentRoot else Paths.get(rawPath)
+      val resolvedPath =
+        (if (targetPath.isAbsolute) targetPath else currentRoot.resolve(targetPath)).normalize().nn
+
+      if (!Files.exists(resolvedPath)) {
+        sys.error(s"Path does not exist: $resolvedPath")
+      }
+      if (!Files.isDirectory(resolvedPath)) {
+        sys.error(s"Path is not a directory: $resolvedPath")
+      }
+
+      stateCache.remove(resolvedPath)
+      log(s"Force-rebuilding Analyzer for workspace root: $resolvedPath")
+      val newState = stateFactory.get()(resolvedPath)
+      stateCache.put(resolvedPath, newState)
+      activateState(newState)
+
+      ujson.Obj(
+        "root" -> ujson.Str(resolvedPath.toString),
+        "classpath" -> newState.classpathSource.fold[ujson.Value](ujson.Null)(ujson.Str(_)),
+        "semanticdbFileCount" -> ujson.Num(newState.fingerprint.fileCount),
+        "semanticdbNewestMtime" -> ujson.Str(
+          java.time.Instant.ofEpochMilli(newState.fingerprint.newestMtimeMillis).toString
+        )
       )
     }
 
@@ -731,5 +802,13 @@ object Mcp:
       Nil
     ) { _ =>
       val cp = currentState.flatMap(_.classpathSource).fold[ujson.Value](ujson.Null)(ujson.Str(_))
-      ujson.Obj("root" -> ujson.Str(currentRoot.toString), "classpath" -> cp)
+      val fp = currentState.map(_.fingerprint)
+      ujson.Obj(
+        "root" -> ujson.Str(currentRoot.toString),
+        "classpath" -> cp,
+        "semanticdbFileCount" -> fp.fold[ujson.Value](ujson.Null)(f => ujson.Num(f.fileCount)),
+        "semanticdbNewestMtime" -> fp.fold[ujson.Value](ujson.Null)(f =>
+          ujson.Str(java.time.Instant.ofEpochMilli(f.newestMtimeMillis).toString)
+        )
+      )
     }
