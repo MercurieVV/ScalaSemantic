@@ -41,10 +41,6 @@ Every tool example on this page is **executed at docs build time** by the real S
 | `method_signature` | Full signature with implicit/using params |
 | `type_at_position` | Type of code at a source location |
 
-```scala mdoc:passthrough
-val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
-```
-
 ## Find & resolve symbols
 
 Resolve names to their definitions, locate enriched source and surrounding context.
@@ -96,6 +92,7 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 Position `line=27,column=40` sits inside `Show[A].show(a)` — a REFERENCE, not a definition — on `render`'s single-line body. The tool anchors to `render`'s enclosing definition rather than jumping to `Show`'s own (unrelated) definition:
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
 println(scalasemantic.docs.ToolRunner.runPretty(
   "source_around_position",
   s"""{"file":"$enrichPath","line":27,"column":40,"format":"plain"}"""))
@@ -320,16 +317,22 @@ clone group actually looks like without a second `annotated_source` round trip.
 The tool returns a tree with compiler-rendered names instead of a text scan. For a 50-line file, the outline is 5–10 lines; for 1000 lines, still manageable.
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
 val outlineArgs = s"""{"uri":"$enrichPath"}"""
 println(scalasemantic.docs.ToolRunner.requestMarkdown("document_outline", outlineArgs))
 ```
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+val outlineArgs = s"""{"uri":"$enrichPath"}"""
 val outlineRaw = scalasemantic.docs.ToolRunner.run("document_outline", outlineArgs)
 println(scalasemantic.docs.ToolRunner.outlineMermaid(outlineRaw))
 ```
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+val outlineArgs = s"""{"uri":"$enrichPath"}"""
+val outlineRaw = scalasemantic.docs.ToolRunner.run("document_outline", outlineArgs)
 println(scalasemantic.docs.ToolRunner.detailsMarkdown(outlineArgs, outlineRaw))
 ```
 
@@ -489,6 +492,7 @@ Inferred types, implicit insertions, signatures, and types at positions.
 - **Original** is the raw source.
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
 val fixedArgs      = s"""{"uri":"$enrichPath","annotationsOnly":false}"""
 val compilableArgs = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false}"""
 val symbolsArgs    = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"symbols":true}"""
@@ -580,6 +584,7 @@ println(scalasemantic.docs.ToolRunner.wordDiffComponent(
 The source exactly as written.
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
 println(s"```scala\n${scalasemantic.docs.ToolRunner.readSource(enrichPath)}\n```")
 ```
 
@@ -613,6 +618,7 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 The source writes no type annotation on `ranked`; the compiler inferred `List[(String, Int)]`. `type_at_position` returns exactly that — no hand-inference.
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
 println(scalasemantic.docs.ToolRunner.runPretty(
   "type_at_position", s"""{"uri":"$enrichPath","line":47,"character":4}"""))
 ```
@@ -654,6 +660,7 @@ println(scalasemantic.docs.ToolRunner.syntaxComponent(
 **PC (same code)**
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
 val pcSameRaw = scalasemantic.docs.ToolRunner.runWithSource(
   "method_signature", modSigArgs, enrichPath, enrichPath)
 println(scalasemantic.docs.ToolRunner.syntaxComponent(
@@ -663,6 +670,7 @@ println(scalasemantic.docs.ToolRunner.syntaxComponent(
 **PC (modified)**
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
 val pcModRaw = scalasemantic.docs.ToolRunner.runWithSource(
   "method_signature", modSigArgs, enrichPath, "docExamples/edited/Enrich_modified.scala")
 val before = scalasemantic.docs.ToolRunner.extractField(dbRaw, "signature")
