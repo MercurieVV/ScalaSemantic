@@ -41,10 +41,6 @@ Every tool example on this page is **executed at docs build time** by the real S
 | `method_signature` | Full signature with implicit/using params |
 | `type_at_position` | Type of code at a source location |
 
-```scala mdoc:passthrough
-val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
-```
-
 ## Find & resolve symbols
 
 Resolve names to their definitions, locate enriched source and surrounding context.
@@ -387,12 +383,18 @@ println(scalasemantic.docs.ToolRunner.requestMarkdown("trace_implicit_chain", co
 ```
 
 ```scala mdoc:passthrough
+val concreteImplicitArgs =
+  """{"type":"com/github/mercurievv/scalasemantic/docexamples/Show#","appliedType":"Show[List[Int]]"}"""
 val concreteImplicitRaw =
   scalasemantic.docs.ToolRunner.run("trace_implicit_chain", concreteImplicitArgs)
 println(scalasemantic.docs.ToolRunner.implicitTreeMermaid(concreteImplicitRaw))
 ```
 
 ```scala mdoc:passthrough
+val concreteImplicitArgs =
+  """{"type":"com/github/mercurievv/scalasemantic/docexamples/Show#","appliedType":"Show[List[Int]]"}"""
+val concreteImplicitRaw =
+  scalasemantic.docs.ToolRunner.run("trace_implicit_chain", concreteImplicitArgs)
 println(scalasemantic.docs.ToolRunner.detailsMarkdown(concreteImplicitArgs, concreteImplicitRaw))
 ```
 
@@ -496,20 +498,19 @@ Inferred types, implicit insertions, signatures, and types at positions.
 - **Original** is the raw source.
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
 val fixedArgs      = s"""{"uri":"$enrichPath","annotationsOnly":false}"""
 val compilableArgs = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false}"""
 val symbolsArgs    = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"symbols":true}"""
 val docsStripArgs  = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"docs":"strip"}"""
 val allDiffArgs    = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"symbols":true,"detail":"full","docs":"keep"}"""
-val compilableRaw = scalasemantic.docs.ToolRunner.run("annotated_source", compilableArgs)
-val symbolsRaw    = scalasemantic.docs.ToolRunner.run("annotated_source", symbolsArgs)
-val docsStripRaw  = scalasemantic.docs.ToolRunner.run("annotated_source", docsStripArgs)
-val allDiffRaw    = scalasemantic.docs.ToolRunner.run("annotated_source", allDiffArgs)
 ```
 
 The request below is shared by every tab; each tab lists only the argument values it changes.
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+val fixedArgs      = s"""{"uri":"$enrichPath","annotationsOnly":false}"""
 println(scalasemantic.docs.ToolRunner.commonRequestMarkdown("annotated_source", fixedArgs))
 ```
 
@@ -519,15 +520,24 @@ println(scalasemantic.docs.ToolRunner.commonRequestMarkdown("annotated_source", 
 Compiler insertions as a patch.
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+val compilableArgs = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false}"""
+val compilableRaw = scalasemantic.docs.ToolRunner.run("annotated_source", compilableArgs)
 println(scalasemantic.docs.ToolRunner.variantLine("compilable", """{"format":"diff"}"""))
 ```
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+val compilableArgs = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false}"""
+val compilableRaw = scalasemantic.docs.ToolRunner.run("annotated_source", compilableArgs)
 println(scalasemantic.docs.ToolRunner.wordDiffComponent(
   scalasemantic.docs.ToolRunner.extractField(compilableRaw, "source")))
 ```
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+val compilableArgs = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false}"""
+val compilableRaw = scalasemantic.docs.ToolRunner.run("annotated_source", compilableArgs)
 println(scalasemantic.docs.ToolRunner.detailsMarkdown(compilableArgs, compilableRaw))
 ```
 
@@ -537,15 +547,24 @@ println(scalasemantic.docs.ToolRunner.detailsMarkdown(compilableArgs, compilable
 Inline enrichment plus symbol details as a patch.
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+val symbolsArgs = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"symbols":true}"""
+val symbolsRaw = scalasemantic.docs.ToolRunner.run("annotated_source", symbolsArgs)
 println(scalasemantic.docs.ToolRunner.variantLine("symbols=on", """{"format":"diff","symbols":true}"""))
 ```
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+val symbolsArgs = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"symbols":true}"""
+val symbolsRaw = scalasemantic.docs.ToolRunner.run("annotated_source", symbolsArgs)
 println(scalasemantic.docs.ToolRunner.wordDiffComponent(
   scalasemantic.docs.ToolRunner.extractField(symbolsRaw, "source")))
 ```
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+val symbolsArgs = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"symbols":true}"""
+val symbolsRaw = scalasemantic.docs.ToolRunner.run("annotated_source", symbolsArgs)
 println(scalasemantic.docs.ToolRunner.detailsMarkdown(symbolsArgs, symbolsRaw))
 ```
 
@@ -555,15 +574,24 @@ println(scalasemantic.docs.ToolRunner.detailsMarkdown(symbolsArgs, symbolsRaw))
 Compiler insertions with comments removed, shown as a patch.
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+val docsStripArgs = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"docs":"strip"}"""
+val docsStripRaw = scalasemantic.docs.ToolRunner.run("annotated_source", docsStripArgs)
 println(scalasemantic.docs.ToolRunner.variantLine("docs=strip", """{"format":"diff","docs":"strip"}"""))
 ```
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+val docsStripArgs = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"docs":"strip"}"""
+val docsStripRaw = scalasemantic.docs.ToolRunner.run("annotated_source", docsStripArgs)
 println(scalasemantic.docs.ToolRunner.wordDiffComponent(
   scalasemantic.docs.ToolRunner.extractField(docsStripRaw, "source")))
 ```
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+val docsStripArgs = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"docs":"strip"}"""
+val docsStripRaw = scalasemantic.docs.ToolRunner.run("annotated_source", docsStripArgs)
 println(scalasemantic.docs.ToolRunner.detailsMarkdown(docsStripArgs, docsStripRaw))
 ```
 
@@ -573,10 +601,16 @@ println(scalasemantic.docs.ToolRunner.detailsMarkdown(docsStripArgs, docsStripRa
 Unified diff from source to enriched source.
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+val allDiffArgs = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"symbols":true,"detail":"full","docs":"keep"}"""
+val allDiffRaw = scalasemantic.docs.ToolRunner.run("annotated_source", allDiffArgs)
 println(scalasemantic.docs.ToolRunner.variantLine("All (diff)", """{"format":"diff","symbols":true,"detail":"full","docs":"keep"}"""))
 ```
 
 ```scala mdoc:passthrough
+val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+val allDiffArgs = s"""{"uri":"$enrichPath","format":"diff","annotationsOnly":false,"symbols":true,"detail":"full","docs":"keep"}"""
+val allDiffRaw = scalasemantic.docs.ToolRunner.run("annotated_source", allDiffArgs)
 println(scalasemantic.docs.ToolRunner.wordDiffComponent(
   scalasemantic.docs.ToolRunner.extractField(allDiffRaw, "source")))
 ```
@@ -655,6 +689,8 @@ println(scalasemantic.docs.ToolRunner.requestMarkdown("method_signature", modSig
 **DB (committed)**
 
 ```scala mdoc:passthrough
+val modSigArgs =
+  """{"symbol":"com/github/mercurievv/scalasemantic/docexamples/Enrich$package.render()."}"""
 val dbRaw = scalasemantic.docs.ToolRunner.run("method_signature", modSigArgs)
 println(scalasemantic.docs.ToolRunner.syntaxComponent(
   scalasemantic.docs.ToolRunner.extractField(dbRaw, "signature")))
@@ -663,6 +699,8 @@ println(scalasemantic.docs.ToolRunner.syntaxComponent(
 **PC (same code)**
 
 ```scala mdoc:passthrough
+val modSigArgs =
+  """{"symbol":"com/github/mercurievv/scalasemantic/docexamples/Enrich$package.render()."}"""
 val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
 val pcSameRaw = scalasemantic.docs.ToolRunner.runWithSource(
   "method_signature", modSigArgs, enrichPath, enrichPath)
@@ -673,7 +711,10 @@ println(scalasemantic.docs.ToolRunner.syntaxComponent(
 **PC (modified)**
 
 ```scala mdoc:passthrough
+val modSigArgs =
+  """{"symbol":"com/github/mercurievv/scalasemantic/docexamples/Enrich$package.render()."}"""
 val enrichPath = "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
+val dbRaw = scalasemantic.docs.ToolRunner.run("method_signature", modSigArgs)
 val pcModRaw = scalasemantic.docs.ToolRunner.runWithSource(
   "method_signature", modSigArgs, enrichPath, "docExamples/edited/Enrich_modified.scala")
 val before = scalasemantic.docs.ToolRunner.extractField(dbRaw, "signature")
