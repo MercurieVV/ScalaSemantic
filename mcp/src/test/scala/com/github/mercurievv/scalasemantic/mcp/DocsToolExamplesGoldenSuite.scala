@@ -77,6 +77,23 @@ class DocsToolExamplesGoldenSuite extends munit.FunSuite:
   test("find_usages(transform)"):
     assertGolden("find_usages_transform", "find_usages", ujson.Obj("symbol" -> Transform))
 
+  test("find_usages(transform, contextLines=1)"):
+    assertGolden(
+      "find_usages_transform_context",
+      "find_usages",
+      ujson.Obj("symbol" -> Transform, "contextLines" -> 1)
+    )
+
+  test("search_text(context bound)"):
+    assertGolden(
+      "search_text_context_bound",
+      "search_text",
+      ujson.Obj(
+        "query" -> "context bound",
+        "pathFilter" -> "*docexamples/Enrich.scala*"
+      )
+    )
+
   test("members(UpperProcessor)"):
     assertGolden("members_upper_processor", "members", ujson.Obj("symbol" -> UpperProcessor))
 
@@ -106,6 +123,18 @@ class DocsToolExamplesGoldenSuite extends munit.FunSuite:
       "rename_plan_transform",
       "rename_plan",
       ujson.Obj("symbol" -> Transform, "newName" -> "apply")
+    )
+
+  test("batch_rename_plan(transform, calculateTotal)"):
+    assertGolden(
+      "batch_rename_plan_transform_calculate_total",
+      "batch_rename_plan",
+      ujson.Obj(
+        "renames" -> ujson.Arr(
+          ujson.Obj("symbol" -> Transform, "newName" -> "apply"),
+          ujson.Obj("symbol" -> CalculateTotal, "newName" -> "total")
+        )
+      )
     )
 
   test("move_plan(calculateTotal -> com/example/math/)"):

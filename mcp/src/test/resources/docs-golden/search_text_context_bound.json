@@ -1,0 +1,18 @@
+{
+  "tool": "search_text",
+  "args": {
+    "query": "context bound",
+    "pathFilter": "*docexamples/Enrich.scala*"
+  },
+  "result": {
+    "query": "context bound",
+    "count": 1,
+    "hits": [
+      {
+        "uri": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+        "line": 21,
+        "text": "  // context bound `A: Show` desugars to a `(using Show[A])` parameter the source never writes"
+      }
+    ]
+  }
+}

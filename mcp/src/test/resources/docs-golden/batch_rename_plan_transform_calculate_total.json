@@ -1,0 +1,39 @@
+{
+  "tool": "batch_rename_plan",
+  "args": {
+    "renames": [
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.transform().",
+        "newName": "apply"
+      },
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Refactor$package.calculateTotal().",
+        "newName": "total"
+      }
+    ]
+  },
+  "result": {
+    "perSymbol": [
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Navigate$package.transform().",
+        "rename": "transform -> apply",
+        "editCount": 3
+      },
+      {
+        "symbol": "com/github/mercurievv/scalasemantic/docexamples/Refactor$package.calculateTotal().",
+        "rename": "calculateTotal -> total",
+        "editCount": 3
+      }
+    ],
+    "combinedEditCount": 6,
+    "combinedEdits": [
+      "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:13:4-13",
+      "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:17:2-11",
+      "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala:17:16-25",
+      "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Refactor.scala:2:4-18",
+      "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Refactor.scala:14:18-32",
+      "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Refactor.scala:15:18-32"
+    ],
+    "conflictCount": 0
+  }
+}

@@ -12,7 +12,8 @@ Every tool example on this page is **executed at docs build time** by the real S
 | --- | --- |
 | **Exploration tools** | |
 | `find_symbol` | Resolve a name to its definition |
-| `find_usages` | All references to a symbol |
+| `find_usages` | All references to a symbol (optional `contextLines` for surrounding source) |
+| `search_text` | Scoped text/regex search over `.scala` files (string literals/comments) |
 | `class_hierarchy` | Supertypes and subtypes |
 | `find_overloads` | All overloads of a method |
 | `members` | Declared and inherited members |
@@ -20,6 +21,7 @@ Every tool example on this page is **executed at docs build time** by the real S
 | `method_call_hierarchy` | All callers or callees |
 | `value_flow` | Trace a value through the call graph |
 | `rename_plan` | Edit ranges for a safe rename |
+| `batch_rename_plan` | Edit ranges for multiple renames, reporting range conflicts |
 | `move_plan` | Move a symbol to a new package |
 | `extract_method_plan` | Extract a code range into a method |
 | `structure` | Dependency graph and cycles |
@@ -95,7 +97,34 @@ val useSymbol = if useData("count").num.toInt > 0 then useData("symbols")(0)("sy
 println(scalasemantic.docs.ToolRunner.runPretty("find_usages", s"""{"symbol":"$useSymbol"}"""))
 ```
 
+Pass `contextLines` to get a few lines of source around each hit — no more piping the reference
+list to `rg -A5` for context. Each file backing a hit is read once, however many references it
+holds.
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty("find_usages", s"""{"symbol":"$useSymbol","contextLines":1}"""))
+```
+
 **Replaces:** Grepping all files → exact reference list.
+
+---
+
+### search_text
+
+**What it tells you:** plain text/regex hits (file + line) over `.scala` files — string literals
+and comments, the one case SemanticDB has no symbol model for.
+
+This is the sanctioned in-MCP replacement for shelling out to `grep`/`rg` on Scala sources; it is
+**not** symbol-aware (no rename/re-export/implicit resolution) and can over-match comments/strings
+like grep does. Use `find_symbol`/`find_usages` for identifiers instead.
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "search_text",
+  """{"query":"context bound","pathFilter":"*docexamples/Enrich.scala*"}"""))
+```
+
+**Replaces:** `grep`/`rg` on `.scala` files for non-symbol text, kept inside MCP tooling.
 
 ---
 
@@ -182,6 +211,33 @@ println(scalasemantic.docs.ToolRunner.runPretty("rename_plan", s"""{"symbol":"$r
 ```
 
 **Replaces:** Grepping + manual editing → exact edit ranges.
+
+---
+
+### batch_rename_plan
+
+**What it tells you:** edit ranges for renaming multiple symbols in one request, so a project-wide
+rename batch doesn't get done by hand one `rename_plan` call at a time.
+
+`transform` and `calculateTotal` live in different files and never touch the same edit range, so
+`combinedEditCount` is just the sum of the two individual plans' edit counts and `conflictCount` is
+`0`. The tool only detects literal edit-**range** overlaps between the requested renames — two
+different symbols renamed to the same new name (a semantic collision at a call site) is out of
+scope and remains the caller's responsibility.
+
+```scala mdoc:passthrough
+val batchSym1 = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"transform"}""")
+val batchData1 = ujson.read(batchSym1)
+val batchSymbol1 = if batchData1("count").num.toInt > 0 then batchData1("symbols")(0)("symbol").str else "unknown"
+val batchSym2 = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"calculateTotal"}""")
+val batchData2 = ujson.read(batchSym2)
+val batchSymbol2 = if batchData2("count").num.toInt > 0 then batchData2("symbols")(0)("symbol").str else "unknown"
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "batch_rename_plan",
+  s"""{"renames":[{"symbol":"$batchSymbol1","newName":"apply"},{"symbol":"$batchSymbol2","newName":"total"}]}"""))
+```
+
+**Replaces:** Running `rename_plan` once per symbol and manually reconciling edits by hand.
 
 ---
 

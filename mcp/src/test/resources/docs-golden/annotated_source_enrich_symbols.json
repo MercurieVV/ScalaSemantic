@@ -9,7 +9,7 @@
   "result": {
     "uri": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
     "format": "compilable",
-    "annotationCount": 50,
+    "annotationCount": 33,
     "legend": "Valid Scala: each note is a trailing `// ⟹` comment, no line-number gutter. Notes show compiler insertions invisible in the source: `(using …)` implicit args, `name(…)` implicit conversion, `[…]` inferred type args, `: T` inferred type. symbols=on adds a type→package legend.",
     "source": "<<see companion .scala golden file>>"
   }
