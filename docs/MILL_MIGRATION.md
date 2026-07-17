@@ -10,11 +10,9 @@ Current: **sbt 2.0.1**, Scala **3.8.4**, 5 modules + root aggregate. Sources: `b
 ## Remaining work (TODO)
 
 **Blocked on upstream (not attemptable today, revisit periodically):**
-- [ ] **Publish (`ci.yml` `publish` job)** — **disabled (`if: false`)**, not ported. No Mill 1.x
-      build of `io.chris-kipp::mill-ci-release` exists (newest published is `mill0.12`). Deferred
-      with the user's explicit sign-off ("can omit publishing to sonatype — will test/fix later").
-      Revisit when a mill1.x-tagged release ships; then wire `CiReleaseModule` + `VcsVersion`,
-      confirm Central Portal host support, and re-enable the job.
+- [x] **Publish (`ci.yml` `publish` job)** — **DONE**. Re-enabled and ported to Mill.
+      Instead of `mill-ci-release`, modules now extend `SonatypeCentralPublishModule` directly,
+      and CI runs `./mill __.publish` with Sonatype credentials and GPG args. GPG keys are imported and passphrases stripped during the build.
 - [x] **scalafix (`prePush` / CI lint step)** — **UNBLOCKED, no plugin needed.** `mill-scalafix`
       itself is still dead (no mill1.x build, see §2), but `scalafixCheck` in `Common` (build.mill)
       calls `ch.epfl.scala:scalafix-interfaces` directly — a stable, Java-facing, Maven-Central-
@@ -141,7 +139,7 @@ Mill mapping:
 
 `mill-scalafix`: **CONFIRMED BROKEN on Mill 1.1.7** — the only published artifact is `mill-scalafix_mill0.13_3:0.5.1` (no mill1.x build exists on Maven Central); loading it throws `scala.MatchError: val <none>` unpickling `ScalafixModule`'s TASTy, and once that trait fails to load ALL of `build.mill` fails to compile (a scalac plugin classpath resolution failure, not a targeted one). Left OUT of `build.mill` entirely — but scalafix itself is NOT skipped: `scalafix-interfaces` (Scalafix's own stable embedding API, published normally on Maven Central, same mechanism `gradle-scalafix`/Metals use) is called directly instead. See the TODO entry above for the full verification story.
 | sbt-wartremover 3.6.0 | wart rules | **NO Mill plugin** — add wartremover as compiler plugin dep + `-P:wartremover:…` scalacOptions by hand | **HIGH** — DONE |
-| sbt-ci-release 1.11.2 | dynver + pgp + Sonatype Central | `io.chris-kipp::mill-ci-release` (`CiReleaseModule` + `VcsVersion`) | **HIGH — NOT ported**: newest published artifact is `mill-ci-release_mill0.12_2.13:0.3.0`, same no-mill1.x-build problem as scalafix (untried, but same root cause expected). `ci.yml`'s `publish` job stays on sbt/`ci-release` for now — this is why `build.sbt`/`project/` are still in the repo. |
+| sbt-ci-release 1.11.2 | dynver + pgp + Sonatype Central | `SonatypeCentralPublishModule` | **DONE**: Mixed in `SonatypeCentralPublishModule` and configured `publish` step in `ci.yml` using `./mill __.publish`. |
 | sbt-assembly 2.3.1 | fat jar | built-in `assembly` + `assemblyRules` | med (port merge strategy) |
 | sbt-buildinfo 0.13.1 | BuildInfo | `mill.contrib.buildinfo.BuildInfo` | low |
 | sbt-dynver (via ci-release) | git version | `VcsVersion.vcsState().format()` | low |
@@ -224,11 +222,11 @@ contract), not Mill's `out/`. `project/*.scala` left in place until `project/` i
 | build | Test | `./mill __.test.testForked` |
 | verify | Verify contracts | `./mill analysis.stainlessVerify` (env `STAINLESS_TIMEOUT=30`) |
 | docs-site | Render docs | `./mill docs.run` |
-| publish | Publish | **disabled (`if: false`)** — `build.sbt` deleted, no working Mill 1.x publish path (§2) |
+| publish | Publish | `./mill __.publish` with gpg and sonatype credentials |
 | release | Build fat jar | `./mill mcp.assembly`; asset renamed from Mill's fixed `out.jar` to `scalasemantic-mcp.jar` on copy |
 
-Every job dropped `sbt/setup-sbt@v1` + `cache: sbt`, including `publish` (gated off, not deleted,
-so the sbt steps stay ready to re-enable once a Mill publish path exists).
+Every job dropped `sbt/setup-sbt@v1` + `cache: sbt`.
+`publish` job has been re-enabled and runs `./mill __.publish`.
 `actions/cache@v4` over `~/.cache/coursier` + `~/.cache/mill/download` added (see TODO list above).
 Jobs build off the `./mill` bootstrap script committed at repo root (self-downloads the pinned
 Mill 1.1.7 native binary — no separate install action needed).
@@ -320,14 +318,14 @@ Verified end-to-end locally: `./mill prePush` — 643/643 SUCCESS.
 
 **Hardest (do first, may block):**
 1. ~~**wartremover**~~ — done: compiler plugin + scalacOptions wired manually, per-module, main-vs-test split.
-2. **ci-release → Central Portal** publishing + PGP signing — **NOT ported**, confirmed no mill1.x `mill-ci-release` build exists yet; `publish` job disabled (`if: false`), deferred with user sign-off.
+2. ~~**ci-release → Central Portal**~~ — **DONE**: Ported modules to use `SonatypeCentralPublishModule` and configured `__.publish` run in CI.
 3. **stryker4s mutation** — no *released* Mill plugin (support merged upstream, unreleased — see §2/TODO); a local-snapshot Mill port compiles/mutates but hits a reproducible `InitialTestRunFailedException` in the plugin's own runner glue. `mutation.yml` disabled (`if: false`) (see §8).
 4. ~~Relocate meta-build helpers (`ScalaSemanticConfigMerger`, `CorpusFetch`) into `build.mill`~~ — done.
 5. ~~**scalafix**~~ — done: `mill-scalafix` itself stays confirmed-broken (only published build targets Mill 0.13, fails TASTy unpickling under Mill 1.1.7), but scalafix runs anyway via `ch.epfl.scala:scalafix-interfaces` called directly from `build.mill` — wired into `prePush` and CI.
 
 **Medium:** ~~assembly merge strategy, ProGuard task, testShrunk, BuildInfo, compat cross-golden~~ — done.
 mdoc-library docs task — wired (`./mill docs.run`), not fully exercised (mdoc render not run end-to-end
-in this session). CI/hook rewrites — done except `publish`/`mutation.yml` (see above).
+in this session). CI/hook rewrites — all done including `publish` (`mutation.yml` still deferred).
 
 **Found and fixed along the way (draft `build.mill` bugs, not sbt-parity gaps):**
 - `CompatModule` (`compat-fixtures`) had no `sources` override, so Mill's default `SbtModule` source

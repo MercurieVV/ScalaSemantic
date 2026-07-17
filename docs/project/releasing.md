@@ -1,6 +1,6 @@
 # Releasing
 
-CI builds and tests every push/PR, and **publishes to Sonatype Central on a `vX.Y.Z` tag** via `sbt ci-release`. Artifacts publish under `io.github.mercurievv`. Published modules: `core`, `analysis`, `mcp` (the `root` aggregate skips publish).
+CI builds and tests every push/PR, and **publishes to Sonatype Central on a `vX.Y.Z` tag** via Mill's `SonatypeCentralPublishModule` (`./mill __.publish`). Artifacts publish under `io.github.mercurievv`. Published modules: `core`, `pc`, `analysis`, `launcher`, `mcp`.
 
 Scripts read defaults from [`scripts/config.sh`](https://github.com/MercurieVV/ScalaSemantic/blob/master/scripts/config.sh); override any value with an env var of the same name.
 
