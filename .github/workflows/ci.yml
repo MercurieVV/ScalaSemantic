@@ -163,11 +163,12 @@ jobs:
 
       - name: Publish (sign + upload via Mill)
         run: |
-          ./mill __.publish \
-            --sonatypeCreds "${{ secrets.SONATYPE_USERNAME }}:${{ secrets.SONATYPE_PASSWORD }}" \
-            --gpgArgs "--no-tty,--pinentry-mode,loopback,--batch,--yes,--armor,--detach-sign" \
-            --release true \
-            --stagingRelease false
+          ./mill mill.javalib.SonatypeCentralPublishModule/publishAll \
+            --publishArtifacts __.publishArtifacts \
+            --username "${{ secrets.SONATYPE_USERNAME }}" \
+            --password "${{ secrets.SONATYPE_PASSWORD }}" \
+            --useGpgCli true \
+            --shouldRelease true
 
   release:
     name: GitHub Release (fat jar)
