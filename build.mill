@@ -19,6 +19,8 @@ import mill.scalalib.*
 import mill.scalalib.publish.*
 import mill.contrib.buildinfo.BuildInfo
 import com.goyeau.mill.scalafix.ScalafixModule
+import mill.javalib.SonatypeCentralPublishModule
+
 
 // ---------------------------------------------------------------------------------------------
 // Shared versions (were `lazy val`s in build.sbt)
@@ -203,7 +205,7 @@ trait Common extends SbtModule with ScalafixConfigured with mill.scalalib.scalaf
 // ---------------------------------------------------------------------------------------------
 // core — load + index SemanticDB. No deps.
 // ---------------------------------------------------------------------------------------------
-object core extends Common with PublishModule {
+object core extends Common with SonatypeCentralPublishModule {
   def id = "core"
   def artifactName = "scalasemantic-core"
   def publishVersion = build.publishVersion()
@@ -219,7 +221,7 @@ object core extends Common with PublishModule {
 // pc — presentation-compiler backend. dependsOn core. Tests FORKED (Mill forks by default).
 // Warts OFF (Java interop) — build.sbt `.disablePlugins(WartRemover)`.
 // ---------------------------------------------------------------------------------------------
-object pc extends Common with PublishModule {
+object pc extends Common with SonatypeCentralPublishModule {
   def id = "pc"
   def artifactName = "scalasemantic-pc"
   def publishVersion = build.publishVersion()
@@ -236,7 +238,7 @@ object pc extends Common with PublishModule {
 // ---------------------------------------------------------------------------------------------
 // analysis — query engine + models. dependsOn core, pc. Unmanaged stainless jar from lib/.
 // ---------------------------------------------------------------------------------------------
-object analysis extends Common with PublishModule {
+object analysis extends Common with SonatypeCentralPublishModule {
   def id = "analysis"
   def artifactName = "scalasemantic-analysis"
   def publishVersion = build.publishVersion()
@@ -265,7 +267,7 @@ object analysis extends Common with PublishModule {
 // ---------------------------------------------------------------------------------------------
 // launcher — jar-side setup/config dispatcher used by the shell launcher and mcp entrypoint.
 // ---------------------------------------------------------------------------------------------
-object launcher extends Common with PublishModule {
+object launcher extends Common with SonatypeCentralPublishModule {
   def id = "launcher"
   def artifactName = "scalasemantic-launcher"
   def publishVersion = build.publishVersion()
@@ -275,7 +277,7 @@ object launcher extends Common with PublishModule {
 // ---------------------------------------------------------------------------------------------
 // mcp — stdio JSON-RPC server + entrypoint. test->test dep on analysis. Version source + assembly.
 // ---------------------------------------------------------------------------------------------
-object mcp extends Common with PublishModule with BuildInfo {
+object mcp extends Common with SonatypeCentralPublishModule with BuildInfo {
   def id = "mcp"
   def artifactName = "scalasemantic-mcp"
   def publishVersion = build.publishVersion()
