@@ -366,6 +366,7 @@
   "com.github.mercurievv.scalasemantic.semanticdb.SemanticIndexSuite.fingerprint changes when a new semanticdb file is added",
   "com.github.mercurievv.scalasemantic.semanticdb.SemanticIndexSuite.fingerprint changes when a semanticdb file's mtime advances, unchanged file count",
   "com.github.mercurievv.scalasemantic.semanticdb.SemanticIndexSuite.kind predicates classify type vs method vs term",
+  "com.github.mercurievv.scalasemantic.semanticdb.SemanticIndexSuite.loads Scala CLI semanticdb target root under .semanticdb",
   "com.github.mercurievv.scalasemantic.semanticdb.SemanticIndexSuite.loads documents and symbols from semanticdb artifacts",
   "com.github.mercurievv.scalasemantic.semanticdb.SemanticIndexSuite.owner returns the enclosing scope, empty for nothing above package",
   "com.github.mercurievv.scalasemantic.semanticdb.SemanticIndexSuite.ownerChain runs outermost-first down to the symbol",
