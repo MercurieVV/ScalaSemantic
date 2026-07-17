@@ -21,7 +21,6 @@ import mill.contrib.buildinfo.BuildInfo
 import com.goyeau.mill.scalafix.ScalafixModule
 import mill.javalib.SonatypeCentralPublishModule
 
-
 // ---------------------------------------------------------------------------------------------
 // Shared versions (were `lazy val`s in build.sbt)
 // ---------------------------------------------------------------------------------------------
