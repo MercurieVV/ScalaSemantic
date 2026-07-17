@@ -127,8 +127,8 @@ object SemanticIndex:
           override def preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
             val skip = Option(dir.getFileName).exists { n =>
               val nameStr = n.toString
-              dir != root && nameStr != "." && nameStr != ".." &&
-              (nameStr.startsWith(".") || nameStr == "worktrees")
+              val hiddenCache = nameStr.startsWith(".") && nameStr != ".semanticdb"
+              dir != root && nameStr != "." && nameStr != ".." && (hiddenCache || nameStr == "worktrees")
             }
             if skip then FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
 
