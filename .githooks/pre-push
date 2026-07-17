@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
 # Run the full gate before pushing. Skip with: git push --no-verify, or PREPUSH_SKIP=1 git push.
 [ "${PREPUSH_SKIP:-0}" = "1" ] && exit 0
+./mill --meta-level 1 mill.scalalib.scalafmt/checkFormatAll sources >/dev/null || exit 1
 exec ./mill prePush >/dev/null
