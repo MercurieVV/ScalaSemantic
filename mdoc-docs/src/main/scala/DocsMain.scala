@@ -35,7 +35,11 @@ object DocsMain:
       generated
         .filter((p: java.nio.file.Path) => p.toString.endsWith(".md"))
         .filter((p: java.nio.file.Path) =>
-          java.nio.file.Files.readString(p).linesIterator.take(6).contains("format: mdx")
+          java.nio.file.Files
+            .readString(p, java.nio.charset.StandardCharsets.UTF_8)
+            .linesIterator
+            .take(6)
+            .contains("format: mdx")
         )
         .forEach((p: java.nio.file.Path) => mdxPages += p)
     finally generated.close()

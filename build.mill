@@ -723,7 +723,7 @@ def docsSiteChanged: T[Boolean] = Task {
 def docsSiteBuild() = Task.Command {
   os.proc("bash", (build.moduleDir / "scripts" / "gen-release-notes.sh").toString)
     .call(cwd = build.moduleDir, stdout = os.Inherit, stderr = os.Inherit)
-  docs.run()
+  docs.run()()
   val docusaurusBin = build.moduleDir / "website" / "node_modules" / ".bin" / "docusaurus"
   if (!os.exists(docusaurusBin)) {
     sys.error(
