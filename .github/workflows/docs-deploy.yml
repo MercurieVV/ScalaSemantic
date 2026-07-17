@@ -47,7 +47,7 @@ jobs:
       - name: Generate release notes page from tags
         run: scripts/gen-release-notes.sh # writes docs/RELEASE_NOTES.md (gitignored, build-time only)
       - name: Render docs with mdoc
-        run: ./mill docs.run # writes executed Markdown into website/docs
+        run: ./mill -i docs.run # writes executed Markdown into website/docs
       - name: Build Docusaurus site
         working-directory: website
         run: |
