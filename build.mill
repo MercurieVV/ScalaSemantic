@@ -667,6 +667,72 @@ def smokeTest() = Task.Command {
   }
 }
 
+def docsSiteRelevantPath(path: String): Boolean =
+  path.startsWith("docs/") ||
+    path.startsWith("mdoc-docs/") ||
+    path.startsWith("website/") ||
+    path == "scripts/gen-release-notes.sh"
+
+def gitLines(args: String*): Seq[String] =
+  scala.util
+    .Try {
+      os.proc("git", args).call(cwd = build.moduleDir, check = false) match {
+        case res if res.exitCode == 0 =>
+          res.out.lines().map(_.trim).filter(_.nonEmpty)
+        case _ => Seq.empty
+      }
+    }
+    .getOrElse(Seq.empty)
+
+def changedPathsForPrePush: T[Seq[String]] = Task.Input {
+  val worktreeChanges =
+    gitLines("diff", "--name-only", "--cached", "--") ++
+      gitLines("diff", "--name-only", "--") ++
+      gitLines("ls-files", "--others", "--exclude-standard")
+
+  val branchBase =
+    gitLines("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}").headOption
+      .filter(_.nonEmpty)
+      .orElse(gitLines("symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD").headOption)
+      .getOrElse("origin/master")
+
+  val pushedChanges =
+    gitLines("merge-base", "HEAD", branchBase).headOption match {
+      case Some(base) => gitLines("diff", "--name-only", s"$base..HEAD", "--")
+      case None       => Seq.empty
+    }
+
+  (worktreeChanges ++ pushedChanges).distinct.sorted
+}
+
+def docsSiteChanged: T[Boolean] = Task {
+  val relevant = changedPathsForPrePush().filter(docsSiteRelevantPath)
+  if (relevant.nonEmpty) {
+    Task.log.info(
+      "Docs-site changes detected; validating docs build:\n" +
+        relevant.map(path => s"  - $path").mkString("\n")
+    )
+    true
+  } else {
+    Task.log.info("No docs-site changes detected; skipping docs build.")
+    false
+  }
+}
+
+def docsSiteBuild() = Task.Command {
+  os.proc("bash", (build.moduleDir / "scripts" / "gen-release-notes.sh").toString)
+    .call(cwd = build.moduleDir, stdout = os.Inherit, stderr = os.Inherit)
+  docs.run()
+  val docusaurusBin = build.moduleDir / "website" / "node_modules" / ".bin" / "docusaurus"
+  if (!os.exists(docusaurusBin)) {
+    sys.error(
+      "Docs site dependencies are missing; run `cd website && npm ci` before building docs."
+    )
+  }
+  os.proc("npm", "run", "build")
+    .call(cwd = build.moduleDir / "website", stdout = os.Inherit, stderr = os.Inherit)
+}
+
 def prePush() = Task.Command {
   checkFormatFirstParty()()
   checkScalafixFirstParty()()
@@ -676,6 +742,7 @@ def prePush() = Task.Command {
   )(_.testForked())()
   analysis.stainlessVerify()()
   smokeTest()()
+  if (docsSiteChanged()) docsSiteBuild()()
 
   Task.log.info("Checking unit and E2E regression consistency...")
   val res = os
