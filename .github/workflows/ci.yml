@@ -166,7 +166,8 @@ jobs:
           ./mill __.publish \
             --sonatypeCreds "${{ secrets.SONATYPE_USERNAME }}:${{ secrets.SONATYPE_PASSWORD }}" \
             --gpgArgs "--no-tty,--pinentry-mode,loopback,--batch,--yes,--armor,--detach-sign" \
-            --release true
+            --release true \
+            --stagingRelease false
 
   release:
     name: GitHub Release (fat jar)
