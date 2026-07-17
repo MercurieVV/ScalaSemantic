@@ -19,7 +19,7 @@ Each module emits its own SemanticDB (`def semanticDbEnabled = true`), so tests 
 ```sh
 ./mill __.compile              # also (re)emits SemanticDB for every module
 ./mill __.test                 # dogfooded on core, analysis (incl. CompatSuite), mcp
-./mill prePush                 # clean; checkFormatAll; compatGoldenAll; test all modules; stainlessVerify
+./mill prePush                 # format/scalafix checks; compat goldens; tests; stainless/smoke/regression; docs site when docs changed
 ./mill mcpClientConfig --client all   # generate/merge configs and rules for all clients (dogfooding)
 ```
 
@@ -46,8 +46,12 @@ Add a version by appending to `compatFixtures`'s cross versions in `build.mill` 
 
 ```sh
 ./mill docs.run                              # mdoc renders docs → website/docs (executes Scala fences)
-cd website && npm install && npm run build   # Docusaurus static site (Node 18+)
+cd website && npm ci && npm run build        # Docusaurus static site (Node 18+)
 ```
+
+`./mill prePush` runs the docs-site build automatically when changes touch `docs/`, `mdoc-docs/`,
+`website/`, or `scripts/gen-release-notes.sh`. It expects `website/node_modules` to already exist;
+run `cd website && npm ci` once before the gate if you have not installed the site dependencies.
 
 ## Build & test gotchas
 
@@ -56,4 +60,3 @@ cd website && npm install && npm run build   # Docusaurus static site (Node 18+)
 - **Wartremover**: pinned to 3.6.0 — 3.5.6 had no artifact for Scala 3.8.4; no Mill plugin exists, so it's wired by hand as a compiler-plugin dep + `-P:wartremover:…` scalacOptions per module.
 
 More decisions and history: [Design decisions](design.md).
-

@@ -85,3 +85,6 @@ build/
 # ScalaSemantic generated classpath metadata is project-local but machine-specific.
 /.scala-semantic/
 .aider*
+/plans/
+/.gh-tasks-llm-executor/
+
