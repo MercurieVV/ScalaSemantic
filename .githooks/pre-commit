@@ -6,5 +6,6 @@
 # Skip with: git commit --no-verify, or PRECOMMIT_SKIP=1 git commit.
 [ "${PRECOMMIT_SKIP:-0}" = "1" ] && exit 0
 ./mill mill.scalalib.scalafmt/reformatAll __.sources >/dev/null
+./mill --meta-level 1 mill.scalalib.scalafmt/reformatAll sources >/dev/null
 # Re-stage tracked files scalafmt may have rewritten so the formatting is part of this commit.
 git add -u
