@@ -1,0 +1,46 @@
+{
+  "GraphMetrics.scala": [
+    [
+      "Graph",
+      "= Map[String, Set[String]]"
+    ]
+  ],
+  "InputTypes.scala": [
+    [
+      "DocumentUri",
+      ">: Nothing <: Any"
+    ],
+    [
+      "MethodSymbol",
+      ">: Nothing <: Any"
+    ],
+    [
+      "NonEmptyString",
+      "= Refined[String, NonEmpty]"
+    ],
+    [
+      "NonNegativeInt",
+      "= Refined[Int, NonNegative]"
+    ],
+    [
+      "PackageSymbol",
+      ">: Nothing <: Any"
+    ],
+    [
+      "PositiveInt",
+      "= Refined[Int, Positive]"
+    ],
+    [
+      "ScalaIdentifier",
+      ">: Nothing <: Any"
+    ],
+    [
+      "SemanticDbSymbol",
+      ">: Nothing <: Any"
+    ],
+    [
+      "TypeSymbol",
+      ">: Nothing <: Any"
+    ]
+  ]
+}
