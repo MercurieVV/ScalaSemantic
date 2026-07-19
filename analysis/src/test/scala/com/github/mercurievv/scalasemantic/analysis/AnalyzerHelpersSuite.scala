@@ -270,3 +270,45 @@ class AnalyzerHelpersSuite extends munit.FunSuite:
     // the produced type is the interface Show, not the synthetic self-class foo
     assertEquals(wh.parentSymbol(wh.producedType(givenDef)), Some("gw/Show#"))
     assertEquals(wh.implicitsProducing("gw/Show#").map(_.symbol), List("gw/foo()."))
+
+  // --- renderTypeSignature ---------------------------------------------------
+
+  private def typeParam(name: String): s.SymbolInformation =
+    sigInfo(s"tp/$name#", s.SymbolInformation.Kind.TYPE_PARAMETER, name)
+  private def typeSig(
+      lo: s.Type,
+      hi: s.Type,
+      tparams: List[s.SymbolInformation] = Nil
+  ): s.TypeSignature =
+    s.TypeSignature(
+      typeParameters = if tparams.isEmpty then None else Some(s.Scope(hardlinks = tparams)),
+      lowerBound = lo,
+      upperBound = hi
+    )
+  private val NothingT = ref("scala/Nothing#")
+  private val AnyT = ref("scala/Any#")
+
+  test("renderTypeSignature: transparent alias renders as '= RHS'"):
+    assertEquals(h.renderTypeSignature(typeSig(lo = IntT, hi = IntT)), "= Int")
+
+  test("renderTypeSignature: both bounds trivial (Nothing/Any) falls back to explicit form"):
+    assertEquals(h.renderTypeSignature(typeSig(lo = NothingT, hi = AnyT)), ">: Nothing <: Any")
+
+  test("renderTypeSignature: non-trivial lower bound only renders '>: Lo'"):
+    val loSym = ref("a/Lo#")
+    assertEquals(h.renderTypeSignature(typeSig(lo = loSym, hi = AnyT)), ">: Lo")
+
+  test("renderTypeSignature: non-trivial upper bound only renders '<: Hi'"):
+    val hiSym = ref("a/Hi#")
+    assertEquals(h.renderTypeSignature(typeSig(lo = NothingT, hi = hiSym)), "<: Hi")
+
+  test("renderTypeSignature: distinct non-trivial bounds render both, space-separated"):
+    val loSym = ref("a/Lo#")
+    val hiSym = ref("a/Hi#")
+    assertEquals(h.renderTypeSignature(typeSig(lo = loSym, hi = hiSym)), ">: Lo <: Hi")
+
+  test("renderTypeSignature: type parameters render as a bracketed prefix"):
+    val rendered = h.renderTypeSignature(
+      typeSig(lo = NothingT, hi = AnyT, tparams = List(typeParam("T")))
+    )
+    assertEquals(rendered, "[T] >: Nothing <: Any")
