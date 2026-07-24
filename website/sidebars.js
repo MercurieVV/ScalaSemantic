@@ -113,6 +113,11 @@ const sidebars = {
         },
         {
           type: 'doc',
+          id: 'adr/0001-claude-code-guard-hook',
+          label: 'ADR 0001: Claude Code Guard Hook',
+        },
+        {
+          type: 'doc',
           id: 'project/release-notes',
           label: 'Release Notes',
         },

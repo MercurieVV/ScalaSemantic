@@ -29,6 +29,18 @@ If you already have Scala CLI installed, the equivalent `setup` is also availabl
 scala-cli https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.scala setup
 ```
 
+### Guard hook (Claude Code)
+
+For Claude Code, `setup` also installs `.claude/hooks/scala-semantic-guard.sh` and registers it as a
+`PreToolUse` hook. It **denies** `grep`/`cat`/`Read`/`Grep` aimed at `.scala` files and points the
+agent at the MCP tools instead — steering files only ask, a hook enforces. It fails open when the
+semantic answer isn't available (no MCP entry, no compiled `*.semanticdb`, no `jq`/`python3`), and
+an explicit `# semantic-fallback: <reason>` marker on a shell command always passes (and is logged
+to `.claude/semantic-fallback.log`).
+
+Skip it with `setup --no-guard` (`-NoGuard` on PowerShell). Rationale and alternatives:
+[docs/adr/0001-claude-code-guard-hook.md](docs/adr/0001-claude-code-guard-hook.md).
+
 ## Tools
 
 | Tool | Purpose |
