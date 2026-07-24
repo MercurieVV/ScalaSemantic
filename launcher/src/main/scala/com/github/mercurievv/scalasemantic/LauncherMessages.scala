@@ -11,7 +11,10 @@ private[scalasemantic] object LauncherMessages:
           |sources (${LauncherGuardHook.HookRelPath}); pass --no-guard to skip it.
           |
           |Setup writes MCP client config that launches the same lightweight shell launcher:
-          |  command = ${sys.env.getOrElse("SCALASEMANTIC_LAUNCHER", "scalasemantic-mcp")}
+          |  command = ${LauncherSetup.resolveCommand(
+           java.nio.file.Path.of(".").toAbsolutePath.normalize(),
+           None
+         )}
           |  args    = [serve, .]
           |""".stripMargin
     )

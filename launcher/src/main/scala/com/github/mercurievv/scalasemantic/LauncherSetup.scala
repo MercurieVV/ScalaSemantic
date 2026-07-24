@@ -7,10 +7,14 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Using
 
 private[scalasemantic] object LauncherSetup:
+  private[scalasemantic] val DefaultCommand = "scalasemantic-mcp"
+  private val LocalLauncherScripts =
+    Seq("scalasemantic-mcp.sh", "scripts/scalasemantic-mcp.sh")
+
   final case class Options(
       project: Path = Path.of(".").toAbsolutePath.normalize(),
       client: String = "all",
-      command: String = sys.env.getOrElse("SCALASEMANTIC_LAUNCHER", "scalasemantic-mcp"),
+      command: Option[String] = None,
       skipSemanticdbConfig: Boolean = false,
       guard: Boolean = true
   )
@@ -19,11 +23,47 @@ private[scalasemantic] object LauncherSetup:
     val opts = parse(rawArgs)
     val project = opts.project
     Files.createDirectories(project)
+    val resolved = opts.copy(command = Some(resolveCommand(project, opts.command)))
     ensureSemanticdbConfig(project, opts.skipSemanticdbConfig)
     LauncherRules.ensure(project, opts.client)
-    LauncherClientConfigs.write(project, opts)
+    LauncherClientConfigs.write(project, resolved)
     if opts.guard then LauncherGuardHook.install(project, opts.client)
     ensureClasspathMetadataDir(project)
+
+  /** The command MCP clients will spawn. An explicit --command wins, then SCALASEMANTIC_LAUNCHER,
+    * then the project-local launcher script -- emitted relative so the generated config stays
+    * portable across machines and checkouts, since clients spawn the server with cwd = project.
+    * Only when no local script exists do we fall back to the bare name, which requires an install
+    * on PATH: a bare name is never resolved from cwd, so emitting it blindly produces a config that
+    * silently fails to connect.
+    */
+  private[scalasemantic] def resolveCommand(
+      project: Path,
+      explicit: Option[String],
+      env: Map[String, String] = sys.env
+  ): String =
+    explicit
+      .orElse(env.get("SCALASEMANTIC_LAUNCHER").map(relativeToProject(project, _)))
+      .getOrElse {
+        LocalLauncherScripts
+          .map(project.resolve)
+          .find(Files.isRegularFile(_))
+          .map(relativeToProject(project, _))
+          .getOrElse(DefaultCommand)
+      }
+
+  /** The shell launcher exports SCALASEMANTIC_LAUNCHER as its own absolute path, so without this
+    * the generated config would hard-code one machine's $HOME. Clients spawn the server with cwd =
+    * project, so a launcher inside the project is addressed relative to it.
+    */
+  private def relativeToProject(project: Path, command: String): String =
+    val path = Path.of(command)
+    if path.isAbsolute && path.normalize().startsWith(project) then
+      relativeToProject(project, path.normalize())
+    else command
+
+  private def relativeToProject(project: Path, path: Path): String =
+    s"./${project.relativize(path.toAbsolutePath.normalize())}"
 
   private def parse(args: List[String]): Options =
     @tailrec def loop(rest: List[String], opts: Options): Options =
@@ -34,7 +74,7 @@ private[scalasemantic] object LauncherSetup:
         case ("--client" | "-c") :: value :: tail =>
           loop(tail, opts.copy(client = value))
         case "--command" :: value :: tail =>
-          loop(tail, opts.copy(command = value))
+          loop(tail, opts.copy(command = Some(value)))
         case "--skip-semanticdb-config" :: tail =>
           loop(tail, opts.copy(skipSemanticdbConfig = true))
         case "--no-guard" :: tail =>

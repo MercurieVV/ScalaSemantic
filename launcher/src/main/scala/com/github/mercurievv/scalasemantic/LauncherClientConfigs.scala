@@ -13,7 +13,7 @@ private[scalasemantic] object LauncherClientConfigs:
   private case object YamlFmt extends Fmt
 
   def write(project: Path, opts: LauncherSetup.Options): Unit =
-    val argv = Seq(opts.command, "serve", ".")
+    val argv = Seq(opts.command.getOrElse(LauncherSetup.DefaultCommand), "serve", ".")
     val clients =
       if opts.client.trim.toLowerCase == "all" then
         Seq("claude", "codex", "gemini", "cline", "roo", "continue", "antigravity")
