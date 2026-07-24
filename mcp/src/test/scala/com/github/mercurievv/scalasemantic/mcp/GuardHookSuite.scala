@@ -2,6 +2,7 @@ package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.Launcher
 import com.github.mercurievv.scalasemantic.LauncherGuardHook
+
 import java.nio.file.Files
 import java.nio.file.Path
 
