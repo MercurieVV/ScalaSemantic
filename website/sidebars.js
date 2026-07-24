@@ -113,7 +113,8 @@ const sidebars = {
         },
         {
           type: 'doc',
-          id: 'adr/0001-claude-code-guard-hook',
+          // Docusaurus strips the "0001-" number prefix from the doc id.
+          id: 'adr/claude-code-guard-hook',
           label: 'ADR 0001: Claude Code Guard Hook',
         },
         {
