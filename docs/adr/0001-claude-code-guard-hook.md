@@ -34,11 +34,14 @@ mechanism today, and the MCP protocol itself has no way for a server to install 
 `--no-guard` (`-NoGuard` in PowerShell).
 
 - Script: `.claude/hooks/scala-semantic-guard.sh`, registered in `.claude/settings.json` under
-  `hooks.PreToolUse` with matcher `Read|Grep|Glob|Bash`.
+  `hooks.PreToolUse` with matcher `Grep|Glob|Bash`.
 - Denies (exit code 2, with the reason on stderr so the agent reads it):
-  - `Read` of a `.scala` / `.sc` file,
   - `Grep`/`Glob` whose `glob`, `path` or `type` names Scala,
-  - `Bash` running `grep|rg|ag|ack|cat|sed|awk|head|tail|less|more|nl` against a `.scala` path.
+  - `Bash` invoking `grep|rg|ag|ack|cat|sed|awk|head|tail|less|more|nl` **on** a `.scala`/`.sc`/`.mill`
+    path — the tool must be the first word of its pipeline segment and the extension must end a
+    path-like token, so `git add Foo.scala`, `mill test | tail` and package names such as
+    `com.example.scalasemantic.Foo` are not mistaken for reading source.
+- `Read` is **not** denied; see the reversal below.
 - The denial message names the MCP **server**, not one tool, and lists the routing options
   (`find_symbol`/`find_usages`/`type_at_position`, `class_hierarchy`/`members`/`resolve_implicits`,
   `method_signature`/`find_overloads`, `document_outline`/`structure`/`symbol_source`,
@@ -67,8 +70,33 @@ whenever the semantic answer is not actually available:
 `rg foo src/Main.scala   # semantic-fallback: <reason>` is always allowed and is appended to
 `.claude/semantic-fallback.log` with a timestamp. This is the pressure valve for "the MCP server is
 down" or "the index is stale and I need an answer now" — deliberately slightly awkward (it only
-exists on the `Bash` path, so a blocked `Read` has to be rerouted through a shell command) and
+exists on the `Bash` path) and
 deliberately auditable, so abuse shows up as log volume rather than as silence.
+
+### Revision: `Read` unblocked
+
+The original decision denied `Read` of Scala sources. That is reversed; the guard now covers search
+only. Three reasons, in order of weight:
+
+1. **It made editing impossible.** `Edit` and `Write` refuse to modify a file the session has not
+   `Read` — a harness rule, and content fetched through an MCP tool does not satisfy it. With `Read`
+   denied, the only remaining way to change a Scala file was a shell script doing blind string
+   replacement: no uniqueness check, no diff preview, strictly less safe than the tool the denial
+   disabled.
+2. **The justification does not transfer from search to read.** Text *search* is denied because it
+   fails invisibly — it misses renames, re-exports and inferred uses, and over-matches comments.
+   Reading a named file has none of those failure modes; it returns exactly the file asked for. The
+   token argument is also weaker than it looked: `annotated_source` returns the same source plus
+   annotations, so it is richer, not cheaper.
+3. **Every false denial spends the guard's authority.** The measured behaviour is that an agent
+   blocked once reaches for `# semantic-fallback:` almost immediately — the denial message
+   advertises it. Firing on legitimate work teaches the agent that the guard is noise, and the hatch
+   then gets used for the search calls that actually matter.
+
+Steering is kept where it belongs: a non-blocking `PreToolUse` advisory on `Read` of `.scala` points
+at `document_outline` and `annotated_source`, and the model decides. This supersedes "Warn instead
+of deny" for `Read` specifically — a warning is inadequate against a habit that produces wrong
+answers (search) and sufficient against one that merely produces expensive right ones (read).
 
 ## Alternatives considered
 
@@ -84,10 +112,9 @@ the plugin surface becomes the primary distribution channel.
 **Warn instead of deny (exit 0 + stderr).** Rejected: a non-blocking warning is just steering text
 with extra steps — it arrives after the model already chose, and models routinely proceed anyway.
 
-**Also deny `Read`, or not.** Considered allowing `Read` of `.scala` (an agent about to *edit* a
-file legitimately reads it) and blocking only search. Rejected: whole-file reads are the largest
-single token sink in the measured logs, and `document_outline` + `symbol_source` cover the "show me
-this code" case precisely. `Edit`/`Write` stay unblocked, and the fallback marker covers the rest.
+**Also deny `Read`, or not.** Originally denied, on the grounds that whole-file reads are the
+largest single token sink in the measured logs and that `document_outline` + `symbol_source` cover
+"show me this code" precisely. **Reversed** — see "Revision: `Read` unblocked".
 
 **Staleness detection** (deny only when the index is fresher than the sources). Rejected as the
 per-call cost is a full-tree mtime scan and the heuristic is wrong in both directions on partial

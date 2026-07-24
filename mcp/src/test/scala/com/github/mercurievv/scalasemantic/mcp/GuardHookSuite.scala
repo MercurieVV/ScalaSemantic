@@ -33,7 +33,7 @@ class GuardHookSuite extends munit.FunSuite:
     val settings = Files.readString(root.resolve(".claude/settings.json"))
     assert(settings.contains("PreToolUse"), settings)
     assert(settings.contains("scala-semantic-guard.sh"), settings)
-    assert(settings.contains("Read|Grep|Glob|Bash"), settings)
+    assert(settings.contains("Grep|Glob|Bash"), settings)
   }
 
   test("--no-guard skips the hook entirely") {
@@ -161,10 +161,12 @@ class GuardHookSuite extends munit.FunSuite:
     assume(hasJsonReader, "needs jq or python3")
     val root = guardedProject("ss-guard-deny")
 
+    // Read stays allowed: it cannot miss a rename or over-match a comment the way search can, and
+    // Edit/Write refuse to touch a file this session has not Read, so denying it blocks all edits.
     assertEquals(
       hookExit(root, """{"tool_name":"Read","tool_input":{"file_path":"src/Main.scala"}}"""),
-      2,
-      "Read of a .scala file must be denied"
+      0,
+      "Read of a .scala file must stay allowed"
     )
     assertEquals(
       hookExit(root, """{"tool_name":"Grep","tool_input":{"pattern":"foo","glob":"*.scala"}}"""),
@@ -215,4 +217,41 @@ class GuardHookSuite extends munit.FunSuite:
       0,
       "without an index the semantic tools cannot answer, so text tools must stay usable"
     )
+  }
+
+  test("the guard reads the command, not just the characters in it") {
+    assume(hasJsonReader, "needs jq or python3")
+    val root = guardedProject("ss-guard-command-shape")
+
+    def bash(command: String): Int =
+      hookExit(root, s"""{"tool_name":"Bash","tool_input":{"command":"$command"}}""")
+
+    // A package name is not a path: `.scala` here is the head of `.scalasemantic`.
+    assertEquals(
+      bash("./mill mcp.test.testOnly com.github.mercurievv.scalasemantic.mcp.McpSuite | tail -25"),
+      0,
+      "running a test suite and truncating its output reads no source"
+    )
+    // Downstream of a pipe a text tool filters output; it is not opening the file named upstream.
+    assertEquals(
+      bash("./mill compile 2>&1 | grep -i error"),
+      0,
+      "filtering build output must stay allowed"
+    )
+    // The tool name occurs as an argument, not as the command being run.
+    assertEquals(
+      bash("git commit -m stop-agents-falling-back-to-grep-on-Foo.scala"),
+      0,
+      "a tool name inside a commit message is not an invocation"
+    )
+    assertEquals(
+      bash("git add mcp/src/test/Foo.scala"),
+      0,
+      "staging a Scala file does not read it"
+    )
+
+    // ... while the real thing is still denied, including after a non-pipe separator.
+    assertEquals(bash("ls -la; cat Foo.scala"), 2, "cat after `;` still reads source")
+    assertEquals(bash("cd core && head -20 Index.scala"), 2, "head after `&&` still reads source")
+    assertEquals(bash("sed -n 1,20p build.mill"), 2, ".mill is a Scala source too")
   }

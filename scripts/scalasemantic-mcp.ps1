@@ -452,11 +452,6 @@ esac
 # --- does this call target Scala sources? ----------------------------------------------
 targets_scala=0
 case "$tool" in
-  Read)
-    case "$file_path" in
-      *.scala | *.sc) targets_scala=1 ;;
-    esac
-    ;;
   Grep | Glob)
     # Only when the call itself names Scala: an unscoped repo-wide search may legitimately
     # be after comments, config or non-Scala files.
@@ -465,15 +460,22 @@ case "$tool" in
     esac
     ;;
   Bash)
-    case "$command_line" in
-      *.scala*)
-        if printf '%s' "$command_line" | grep -Eq \
-          '(^|[|;&(`]|[[:space:]])(grep|rg|ag|ack|cat|sed|awk|head|tail|less|more|nl)([[:space:]]|$)'
-        then
-          targets_scala=1
-        fi
-        ;;
-    esac
+    # Deny only when a text tool is INVOKED ON a Scala source. Three things this must not
+    # confuse for that, all of which a whole-line substring test gets wrong:
+    #   `com.example.scalasemantic.Foo`  -- a package name, not a path: the extension has to END
+    #                                       a path-like token.
+    #   `mill test | tail -5`            -- truncates output rather than reading source: the tool
+    #                                       and the path must share a pipeline segment.
+    #   `git add Foo.scala` (or any commit message mentioning grep) -- the tool name appears as an
+    #                                       argument, not as the command: it must be the first
+    #                                       word of its segment.
+    _src_re='\.(scala|sc|mill)($|[^A-Za-z0-9_.-])'
+    _tool_re='^[[:space:]]*(grep|rg|ag|ack|cat|sed|awk|head|tail|less|more|nl)([[:space:]]|$)'
+    printf '%s\n' "$command_line" | sed 's/[|;]/\n/g; s/&&/\n/g' | while IFS= read -r seg; do
+      printf '%s' "$seg" | grep -Eq "$_src_re" || continue
+      printf '%s' "$seg" | grep -Eq "$_tool_re" || continue
+      exit 1
+    done || targets_scala=1
     ;;
 esac
 [ "$targets_scala" = 1 ] || exit 0
@@ -495,7 +497,7 @@ index=$(find "$root" \
 
 # --- deny ------------------------------------------------------------------------------
 cat >&2 <<'MSG'
-BLOCKED by ScalaSemantic guard: text tools are not allowed on .scala sources here.
+BLOCKED by ScalaSemantic guard: text SEARCH over Scala sources is not allowed here.
 Text search misses renames, re-exports, implicits and inferred uses, and over-matches
 comments and same-named identifiers. Use the mcp__scala-semantic__* tools instead and
 pick whichever fits the actual question:
@@ -522,7 +524,7 @@ function Merge-GuardSettings([string]$Existing) {
     $doc | Add-Member -NotePropertyName hooks -NotePropertyValue ([PSCustomObject]@{})
   }
   $entry = [PSCustomObject]@{
-    matcher = 'Read|Grep|Glob|Bash'
+    matcher = 'Grep|Glob|Bash'
     hooks   = @([PSCustomObject]@{
       type    = 'command'
       command = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/scala-semantic-guard.sh'

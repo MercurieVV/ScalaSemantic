@@ -32,8 +32,11 @@ scala-cli https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scri
 ### Guard hook (Claude Code)
 
 For Claude Code, `setup` also installs `.claude/hooks/scala-semantic-guard.sh` and registers it as a
-`PreToolUse` hook. It **denies** `grep`/`cat`/`Read`/`Grep` aimed at `.scala` files and points the
-agent at the MCP tools instead — steering files only ask, a hook enforces. It fails open when the
+`PreToolUse` hook. It **denies** text *search* over Scala sources — `Grep`/`Glob` scoped to Scala,
+and `grep`/`rg`/`cat`/`sed`/… invoked on a `.scala`/`.sc`/`.mill` path — and points the agent at the
+MCP tools instead; steering files only ask, a hook enforces. `Read` is not denied (`Edit`/`Write`
+require it, and reading a named file cannot silently miss a rename the way search can). It fails
+open when the
 semantic answer isn't available (no MCP entry, no compiled `*.semanticdb`, no `jq`/`python3`), and
 an explicit `# semantic-fallback: <reason>` marker on a shell command always passes (and is logged
 to `.claude/semantic-fallback.log`).
