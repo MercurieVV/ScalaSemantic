@@ -224,6 +224,7 @@
   "com.github.mercurievv.scalasemantic.mcp.GuardHookSuite.guard denies text tools aimed at Scala sources",
   "com.github.mercurievv.scalasemantic.mcp.GuardHookSuite.guard fails open when no SemanticDB has been emitted yet",
   "com.github.mercurievv.scalasemantic.mcp.GuardHookSuite.guard stays out of the way of everything else",
+  "com.github.mercurievv.scalasemantic.mcp.GuardHookSuite.only text SEARCH is denied; reading, editing, writing and running are not",
   "com.github.mercurievv.scalasemantic.mcp.GuardHookSuite.re-running setup neither duplicates nor rewrites the registration",
   "com.github.mercurievv.scalasemantic.mcp.GuardHookSuite.registration appends to an existing PreToolUse array",
   "com.github.mercurievv.scalasemantic.mcp.GuardHookSuite.registration splices into existing settings without dropping what is there",

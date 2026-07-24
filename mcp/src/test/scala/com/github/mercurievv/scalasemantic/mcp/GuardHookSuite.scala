@@ -251,7 +251,34 @@ class GuardHookSuite extends munit.FunSuite:
     )
 
     // ... while the real thing is still denied, including after a non-pipe separator.
-    assertEquals(bash("ls -la; cat Foo.scala"), 2, "cat after `;` still reads source")
-    assertEquals(bash("cd core && head -20 Index.scala"), 2, "head after `&&` still reads source")
-    assertEquals(bash("sed -n 1,20p build.mill"), 2, ".mill is a Scala source too")
+    assertEquals(bash("ls -la; grep foo Foo.scala"), 2, "grep after `;` still searches source")
+    assertEquals(bash("cd core && rg foo Index.scala"), 2, "rg after `&&` still searches source")
+    assertEquals(bash("egrep -n foo build.mill"), 2, ".mill is a Scala source too")
+  }
+
+  test("only text SEARCH is denied; reading, editing, writing and running are not") {
+    assume(hasJsonReader, "needs jq or python3")
+    val root = guardedProject("ss-guard-search-only")
+
+    def bash(command: String): Int =
+      hookExit(root, s"""{"tool_name":"Bash","tool_input":{"command":"$command"}}""")
+
+    // Search fails invisibly (misses renames, re-exports, inferred uses) and `search_text` is an
+    // exact in-MCP replacement, so shelling out for it is never right — including when the target
+    // is a source directory rather than a named file.
+    assertEquals(bash("grep -r foo core/src/main/scala"), 2, "grep over a Scala source root")
+    assertEquals(bash("grep --include=*.scala -r foo ."), 2, "grep scoped to Scala by --include")
+
+    // Everything below names a Scala path next to a text tool, yet none of it is source search:
+    // denying these removes a working tool and teaches the agent the guard is noise.
+    val allowed = Seq(
+      "cat > New.scala <<EOF" -> "writes a file",
+      "cat scripts/build.sc | scala-cli -" -> "runs it",
+      "sed -i '' s/a/b/ Foo.scala" -> "edits it in place",
+      "cat scripts/compare_grep.sc" -> "may never have been compiled, so no MCP tool can answer",
+      "head -5 build.mill" -> "reads, and Read itself is allowed",
+      "scala-cli run scripts/smoke.sc" -> "runs a script",
+      "find core/src/main/scala -name '*.scala'" -> "lists files, does not search their text"
+    )
+    allowed.foreach((command, why) => assertEquals(bash(command), 0, s"$command — $why"))
   }

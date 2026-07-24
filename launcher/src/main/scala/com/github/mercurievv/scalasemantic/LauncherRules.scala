@@ -17,7 +17,7 @@ private[scalasemantic] object LauncherRules:
            |
            |Use shell for builds, tests, git, config, docs, scripts, and non-Scala text work.
            |
-           |In Claude Code the search half of this rule is enforced, not merely advised: the `.claude/hooks/scala-semantic-guard.sh` PreToolUse hook denies Grep/Glob and shell text tools (`grep`, `rg`, `cat`, `sed`, ...) invoked on `.scala`/`.sc`/`.mill` paths. Read stays allowed — Edit/Write require it — so preferring `annotated_source` over a raw Read is your judgement call, not a blocked action. If the semantic tools genuinely cannot answer, re-run the command through Bash with a trailing `# semantic-fallback: <reason>` marker — allowed, and logged to `.claude/semantic-fallback.log`.
+           |In Claude Code the search half of this rule is enforced, not merely advised: the `.claude/hooks/scala-semantic-guard.sh` PreToolUse hook denies text SEARCH over Scala — Grep/Glob scoped to Scala, and `grep`/`rg`/`ag`/`ack` invoked on a `.scala`/`.sc`/`.mill` path or on a `scala` source root. Use `search_text` for literals and comments. Nothing else is denied: reading, editing, writing and running Scala files all stay allowed, so preferring `annotated_source`/`document_outline` over a raw read is your judgement call. If the semantic tools genuinely cannot answer, re-run the command through Bash with a trailing `# semantic-fallback: <reason>` marker — allowed, and logged to `.claude/semantic-fallback.log`.
            |""".stripMargin
       )
       LauncherMessages.err(s"created $rulesFile")

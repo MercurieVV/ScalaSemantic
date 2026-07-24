@@ -37,11 +37,12 @@ mechanism today, and the MCP protocol itself has no way for a server to install 
   `hooks.PreToolUse` with matcher `Grep|Glob|Bash`.
 - Denies (exit code 2, with the reason on stderr so the agent reads it):
   - `Grep`/`Glob` whose `glob`, `path` or `type` names Scala,
-  - `Bash` invoking `grep|rg|ag|ack|cat|sed|awk|head|tail|less|more|nl` **on** a `.scala`/`.sc`/`.mill`
-    path — the tool must be the first word of its pipeline segment and the extension must end a
-    path-like token, so `git add Foo.scala`, `mill test | tail` and package names such as
-    `com.example.scalasemantic.Foo` are not mistaken for reading source.
-- `Read` is **not** denied; see the reversal below.
+  - `Bash` invoking `grep|egrep|fgrep|rg|ripgrep|ag|ack` **on** a `.scala`/`.sc`/`.mill` path or on a
+    `scala` source root — the tool must be the first word of its pipeline segment and the extension
+    must end a path-like token, so `git add Foo.scala`, `mill test | tail` and package names such as
+    `com.example.scalasemantic.Foo` are not mistaken for searching source.
+- `Read`, and shell reads/edits/writes/runs (`cat`, `head`, `tail`, `sed`, `awk`, …), are **not**
+  denied; see the two reversals below.
 - The denial message names the MCP **server**, not one tool, and lists the routing options
   (`find_symbol`/`find_usages`/`type_at_position`, `class_hierarchy`/`members`/`resolve_implicits`,
   `method_signature`/`find_overloads`, `document_outline`/`structure`/`symbol_source`,
@@ -97,6 +98,39 @@ Steering is kept where it belongs: a non-blocking `PreToolUse` advisory on `Read
 at `document_outline` and `annotated_source`, and the model decides. This supersedes "Warn instead
 of deny" for `Read` specifically — a warning is inadequate against a habit that produces wrong
 answers (search) and sufficient against one that merely produces expensive right ones (read).
+
+### Revision: narrowed to search only
+
+The `Read` reversal above fixed the tool but not the principle behind it, so the same argument was
+then applied to the `Bash` path: the guard now denies text **search** and nothing else. Dropped from
+the denied set: `cat`, `head`, `tail`, `less`, `more`, `nl`, `sed`, `awk`.
+
+The reason is that a Scala path next to one of those commands is usually not source inspection:
+
+| Command | What it actually does |
+|---|---|
+| `cat > New.scala <<EOF` | writes a file |
+| `cat x.sc \| scala-cli -` | runs it |
+| `sed -i s/a/b/ Foo.scala` | edits it |
+| `cat scripts/build.sc` | reads a file that may never have been compiled, so no MCP tool can answer |
+
+Each of those was a false denial, and false denials are expensive in a way missed nudges are not:
+the agent loses a working tool, burns turns, and learns the guard is noise — which is the failure
+that destroys the guard's authority over the calls that do matter. Search has no equivalent
+excuse: it fails invisibly, and `search_text` is an exact in-MCP replacement, so shelling out for it
+is never right.
+
+Two adjustments came with the narrowing. The search set gained `egrep`/`fgrep`/`ripgrep`, and the
+target pattern gained a path component literally named `scala`, because `grep -r foo
+core/src/main/scala` names no file and was slipping through — the most common shape of the exact
+habit the guard exists to break.
+
+Explicitly rejected while narrowing: **allow, but prepend an advisory** via `PreToolUse`
+`additionalContext`. It is the "warn instead of deny" alternative under another name — steering text
+that arrives after the model already chose. A second variant, appending the *real* semantic answer
+via `PostToolUse` (a one-shot `serve` call costs ~1.4 s), was rejected too: the hook receives a
+search *pattern*, not a symbol, so only bare identifiers resolve, and everything else degrades back
+to another ignored reminder.
 
 ## Alternatives considered
 

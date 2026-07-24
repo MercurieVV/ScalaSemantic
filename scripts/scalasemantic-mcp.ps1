@@ -248,7 +248,7 @@ Do not use `cat`, `sed`, `rg`, or similar tools to inspect `.scala` files for sy
 
 Use shell for builds, tests, git, config, docs, scripts, and non-Scala text work.
 
-In Claude Code this rule is enforced, not merely advised: the `.claude/hooks/scala-semantic-guard.sh` PreToolUse hook denies Read/Grep/Glob and shell text tools that target `.scala` files. If the semantic tools genuinely cannot answer, re-run the command through Bash with a trailing `# semantic-fallback: <reason>` marker -- allowed, and logged to `.claude/semantic-fallback.log`.
+In Claude Code the search half of this rule is enforced, not merely advised: the `.claude/hooks/scala-semantic-guard.sh` PreToolUse hook denies text SEARCH over Scala — Grep/Glob scoped to Scala, and `grep`/`rg`/`ag`/`ack` invoked on a `.scala`/`.sc`/`.mill` path or on a `scala` source root. Use `search_text` for literals and comments. Nothing else is denied: reading, editing, writing and running Scala files all stay allowed, so preferring `annotated_source`/`document_outline` over a raw read is your judgement call. If the semantic tools genuinely cannot answer, re-run the command through Bash with a trailing `# semantic-fallback: <reason>` marker — allowed, and logged to `.claude/semantic-fallback.log`.
 '@
     [Console]::Error.WriteLine("scalasemantic-mcp: created $rules")
   }
@@ -386,9 +386,22 @@ $GuardScript = @'
 # to regenerate, or `scalasemantic-mcp setup --no-guard` to stop installing it (then drop
 # the PreToolUse entry from .claude/settings.json).
 #
-# Claude Code PreToolUse hook. Denies text-scraping tools on .scala sources so symbol
-# questions go to the ScalaSemantic MCP tools, which answer from compiler facts at a
-# fraction of the tokens and without missing renames/implicits/inferred uses.
+# Claude Code PreToolUse hook. Steers symbol questions to the ScalaSemantic MCP tools, which
+# answer from compiler facts at a fraction of the tokens and without missing
+# renames/implicits/inferred uses.
+#
+# Denies exactly one thing: text SEARCH over Scala sources (grep/egrep/fgrep/rg/ag/ack, and
+# Grep/Glob scoped to Scala). Search fails invisibly -- it misses renames, re-exports and
+# inferred uses -- and `search_text` is an exact in-MCP replacement, so shelling out for it is
+# never the right call.
+#
+# Deliberately NOT denied, because the command is usually not source inspection at all:
+#   cat > New.scala <<EOF     writes a file
+#   cat x.sc | scala-cli -    runs it
+#   sed -i s/a/b/ Foo.scala   edits it
+#   cat scripts/build.sc      may never have been compiled, so no MCP tool can answer
+# A wrong denial costs more than a missed nudge: it removes a working tool and teaches the
+# agent the guard is noise. Steering for those cases stays advisory (SCALA_SEMANTIC_RULES.md).
 #
 # Exit codes: 0 = allow, 2 = deny (stderr is fed back to the agent).
 
@@ -449,7 +462,7 @@ case "$command_line" in
     ;;
 esac
 
-# --- does this call target Scala sources? ----------------------------------------------
+# --- does this call search Scala sources as text? --------------------------------------
 targets_scala=0
 case "$tool" in
   Grep | Glob)
@@ -460,8 +473,8 @@ case "$tool" in
     esac
     ;;
   Bash)
-    # Deny only when a text tool is INVOKED ON a Scala source. Three things this must not
-    # confuse for that, all of which a whole-line substring test gets wrong:
+    # A text tool has to be INVOKED ON a Scala source. Three things this must not confuse
+    # for that, all of which a whole-line substring test gets wrong:
     #   `com.example.scalasemantic.Foo`  -- a package name, not a path: the extension has to END
     #                                       a path-like token.
     #   `mill test | tail -5`            -- truncates output rather than reading source: the tool
@@ -469,11 +482,13 @@ case "$tool" in
     #   `git add Foo.scala` (or any commit message mentioning grep) -- the tool name appears as an
     #                                       argument, not as the command: it must be the first
     #                                       word of its segment.
-    _src_re='\.(scala|sc|mill)($|[^A-Za-z0-9_.-])'
-    _tool_re='^[[:space:]]*(grep|rg|ag|ack|cat|sed|awk|head|tail|less|more|nl)([[:space:]]|$)'
+    # ...and `grep -r foo core/src/main/scala` names no file at all, so a path component
+    # literally called `scala` (the source-root convention) counts as naming Scala too.
+    _src_re='\.(scala|sc|mill)($|[^A-Za-z0-9_.-])|/scala(/|$|[[:space:]])'
+    _search_re='^[[:space:]]*(grep|egrep|fgrep|rg|ripgrep|ag|ack)([[:space:]]|$)'
     printf '%s\n' "$command_line" | sed 's/[|;]/\n/g; s/&&/\n/g' | while IFS= read -r seg; do
       printf '%s' "$seg" | grep -Eq "$_src_re" || continue
-      printf '%s' "$seg" | grep -Eq "$_tool_re" || continue
+      printf '%s' "$seg" | grep -Eq "$_search_re" || continue
       exit 1
     done || targets_scala=1
     ;;

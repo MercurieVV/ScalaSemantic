@@ -32,14 +32,23 @@ scala-cli https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scri
 ### Guard hook (Claude Code)
 
 For Claude Code, `setup` also installs `.claude/hooks/scala-semantic-guard.sh` and registers it as a
-`PreToolUse` hook. It **denies** text *search* over Scala sources — `Grep`/`Glob` scoped to Scala,
-and `grep`/`rg`/`cat`/`sed`/… invoked on a `.scala`/`.sc`/`.mill` path — and points the agent at the
-MCP tools instead; steering files only ask, a hook enforces. `Read` is not denied (`Edit`/`Write`
-require it, and reading a named file cannot silently miss a rename the way search can). It fails
-open when the
-semantic answer isn't available (no MCP entry, no compiled `*.semanticdb`, no `jq`/`python3`), and
-an explicit `# semantic-fallback: <reason>` marker on a shell command always passes (and is logged
-to `.claude/semantic-fallback.log`).
+`PreToolUse` hook. Steering files only ask; a hook enforces.
+
+It denies exactly one thing: **text search over Scala sources** — `Grep`/`Glob` scoped to Scala, and
+`grep`/`egrep`/`fgrep`/`rg`/`ag`/`ack` invoked on a `.scala`/`.sc`/`.mill` path or on a `scala`
+source root. Search fails invisibly (misses renames, re-exports, inferred uses; over-matches
+comments), and `search_text` is an exact in-MCP replacement, so there is no legitimate reason to
+shell out for it.
+
+Nothing else is denied. Reading, editing, writing and running Scala files all stay allowed, because
+those commands usually aren't source inspection at all — `cat > New.scala <<EOF` writes,
+`cat x.sc | scala-cli -` runs, `sed -i` edits, and an uncompiled `.sc` has no SemanticDB for any MCP
+tool to answer from. A wrong denial costs more than a missed nudge: it removes a working tool and
+teaches the agent the guard is noise.
+
+It also fails open when the semantic answer isn't available (no MCP entry, no compiled
+`*.semanticdb`, no `jq`/`python3`), and an explicit `# semantic-fallback: <reason>` marker on a shell
+command always passes (and is logged to `.claude/semantic-fallback.log`).
 
 Skip it with `setup --no-guard` (`-NoGuard` on PowerShell). Rationale and alternatives:
 [docs/adr/0001-claude-code-guard-hook.md](docs/adr/0001-claude-code-guard-hook.md).
