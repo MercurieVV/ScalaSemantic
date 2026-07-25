@@ -1,10 +1,10 @@
 package com.github.mercurievv.scalasemantic.mcp
 
-import java.nio.file.Files
-import java.nio.file.Path
-
 import com.github.mercurievv.scalasemantic.LauncherClientConfigs
 import com.github.mercurievv.scalasemantic.LauncherSetup
+
+import java.nio.file.Files
+import java.nio.file.Path
 
 /** The command written into every generated MCP client config. A bare name is only ever resolved
   * against PATH -- never against the spawn cwd -- so emitting one for a project-local launcher
