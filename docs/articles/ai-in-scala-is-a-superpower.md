@@ -1,16 +1,18 @@
 # AI in Scala is a Superpower: Beyond Basic Code Navigation
 
-In my previous post, [*It Hurts to Watch an AI Grep My Scala*](it-hurts-to-watch-ai-grep-my-scala.md), I talked about why traditional text search, like "grep" is a pretty bad tool when LLM agents navigate Scala codebases. String pattern search simply couldn't work with relationships and guarantees of type system (especially an advanced one like in Scala). Another problem with LLMs and code - models are hard to imagine inferred types, summoned `given` instances, or renamed imports.
+![Clear Understanding of project structure](ss2.jpg)
+
+In my previous post, [*It Hurts to Watch an AI Grep My Scala*](it-hurts-to-watch-ai-grep-my-scala.md), I talked about why plain text search, like `grep`, is a bad tool when LLM agents navigate Scala codebases. String search cannot understand relationships, type-system guarantees, inferred types, summoned `given` instances, or renamed imports.
 
 Once your AI assistant stops guessing with "grep" and gets direct access to the compiler's **SemanticDB**, what can it *actually* do?
 
-Here is how **ScalaSemantic MCP** turns your AI assistant (Claude Code, Codex, Antigravity) further, into a high-precision Scala co-developer.
+Here is how **ScalaSemantic MCP** turns your AI assistant, whether Claude Code, Codex, or Antigravity, into a more precise Scala co-developer.
 
 ---
 
 ## ⚡ 1. Inline Semantic Enrichment (`annotated_source`)
 
-LLMs, when reading your codebase, are just trying to guess about semantics going there, and sometimes they are impressively good at it, but why try to guess when you just can get? All real, guaranteed hidden information about your code. No guess need anymore.
+When LLMs read a Scala codebase, they often have to guess what the compiler already knows. Sometimes they guess well, but guessing is still fragile. `annotated_source` gives the model the missing semantic information directly: inferred types, resolved givens, expanded imports, and other compiler-backed facts.
 
 The `annotated_source` tool enriches files read on the fly before sending them to the model's context window:
 * **Explicit Type Annotations**: Automatically inserts inferred types for `val`, `var`, and `def` declarations.
@@ -18,25 +20,25 @@ The `annotated_source` tool enriches files read on the fly before sending them t
 * **Exploded Wildcard Imports**: Replaces wildcard imports (`import foo.bar.*`) with the exact symbols used in the file.
 * **Diff Formatting (`format=diff`)**: Emits clean diff-style representations showing exactly what the compiler sees versus what is written on disk.
 
-Take a look at what `annotated_source` added to the code for LLMs
+Take a look at what `annotated_source` adds to the code before the LLM reads it:
 
 ![Inline Semantic Annotations Diff](Screenshot%202026-07-21%20at%2003.48.01.png)
 
-As shown in the screenshot above, it highlights the exact semantic additions—such as inferred return types, parameter types, and summoned context bounds—making the code 100% unambiguous to the LLM.
+As shown in the screenshot above, it highlights exact semantic additions, such as inferred return types, parameter types, and summoned context bounds. The model no longer has to infer these details from raw source text.
 
 ---
 
 ## 🔍 2. Deep Structural Inspection & Project Relationships
 
-Rather than forcing the LLM to open 10 files to understand relationships, ScalaSemantic provides targeted semantic query tools that extract project structures and dependencies. 
+Instead of forcing the LLM to open 10 files to understand relationships, ScalaSemantic provides targeted semantic query tools that extract project structure and dependencies.
 
 ![Project Structure and Relationships Graph](Screenshot%202026-07-21%20at%2003.48.36.png)
 
-Above, I visualize a tool-created graph of ScalaSemanticMCP complex project relationships and module dependencies. Besides graph edges it also contains additional math measurements about this graph: for example node coupling, centrality, depth, etc. This help reasoning about a code much more, then just grepping here and there.
+Above, I visualize a tool-created graph of ScalaSemanticMCP's project relationships and module dependencies. Besides graph edges, it also contains useful graph metrics, such as node coupling, centrality, and depth. This helps an LLM reason about code much better than jumping between `grep` results.
 
 
 ---
-## 3. What else can it give to an LLM agent
+## 3. What Else Can It Give to an LLM Agent?
 
 | Tool                          | What It Does                                                                                             |
 | :---------------------------- | :------------------------------------------------------------------------------------------------------- |
