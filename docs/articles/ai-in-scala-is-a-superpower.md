@@ -55,7 +55,7 @@ Above, I visualize a tool-created graph of ScalaSemanticMCP's project relationsh
 ScalaSemantic requires **no sbt or Mill plugin installation**. It automatically detects `.semanticdb` files across **sbt**, **Mill**, and **Scala CLI** configurations out of the box.
 
 ```bash
-# Run automatically via Scala CLI launcher
+# Run automatically via launcher
 curl -sSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/main/scalasemantic-mcp.sh | bash
 ```
 
