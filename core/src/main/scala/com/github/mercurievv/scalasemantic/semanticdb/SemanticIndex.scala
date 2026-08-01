@@ -103,6 +103,56 @@ object SemanticIndex:
     val mtimes = files.map(f => Files.getLastModifiedTime(f).toMillis)
     Fingerprint(files.size, mtimes.foldLeft(0L)(_ max _))
 
+  /** How much of the project's Scala source the index actually covers.
+    *
+    * The server otherwise scans `*.semanticdb` only, so a source file that was never compiled with
+    * SemanticDB enabled (a test scope left out of the build, a module not compiled yet) is
+    * indistinguishable from a source file that does not exist — and a query about a symbol defined
+    * there returns a bare `count: 0` that reads as "does not exist" rather than "not indexed".
+    *
+    * `unindexed` is capped ([[Coverage.MaxListed]]) so the report stays payload-sized; `sources -
+    * indexed` is the true gap.
+    */
+  final case class Coverage(sources: Int, indexed: Int, unindexed: Seq[String]):
+    def partial: Boolean = indexed < sources
+
+  object Coverage:
+    val MaxListed = 20
+    val empty: Coverage = Coverage(0, 0, Nil)
+
+  /** Compare the `*.scala` files on disk under `roots` against the documents `index` actually
+    * loaded.
+    *
+    * Matching is done against the loaded documents' `uri`s rather than a guessed
+    * `META-INF/semanticdb/<rel>.semanticdb` target path: the uri is whatever the compiler recorded
+    * relative to its `sourceroot`, which is not always the project root, so equality on either side
+    * of a path-suffix relation is the only reliable test.
+    */
+  def coverage(roots: Seq[Path], index: SemanticIndex): Coverage =
+    val docUris = index.documents.map(_.uri).filter(_.nonEmpty)
+    // Bucket by file name so each source is checked against same-named uris only, not all of them.
+    val byName = docUris.groupBy(u => u.substring(u.lastIndexOf('/') + 1))
+    val sources = roots
+      .filter(Files.exists(_))
+      .flatMap { root =>
+        val base = root.toAbsolutePath.normalize().nn
+        findFiles(base, ".scala").map(p => relativeUri(base, p))
+      }
+      .distinct
+    val unindexed = sources.filterNot { rel =>
+      val name = rel.substring(rel.lastIndexOf('/') + 1)
+      byName.getOrElse(name, Vector.empty).exists(u => isSamePath(u, rel))
+    }
+    Coverage(sources.size, sources.size - unindexed.size, unindexed.take(Coverage.MaxListed))
+
+  private def relativeUri(root: Path, file: Path): String =
+    val rel = scala.util.Try(root.relativize(file).nn.toString).getOrElse(file.toString)
+    rel.replace(java.io.File.separator, "/")
+
+  /** Equal paths, or one a path-segment suffix of the other (different `sourceroot` depths). */
+  private def isSamePath(a: String, b: String): Boolean =
+    a == b || a.endsWith("/" + b) || b.endsWith("/" + a)
+
   /** Recursively scan `roots` for `*.semanticdb` files and load them. */
   def fromRoots(roots: Seq[Path]): SemanticIndex =
     val files = roots.filter(Files.exists(_)).flatMap(findSemanticdb)
@@ -117,7 +167,22 @@ object SemanticIndex:
   def fromProject(projectRoot: String): SemanticIndex =
     fromRoots(Seq(Paths.get(projectRoot)))
 
-  private def findSemanticdb(root: Path): Seq[Path] =
+  private def findSemanticdb(root: Path): Seq[Path] = findFiles(root, ".semanticdb")
+
+  /** Build-output directories that hold generated or copied Scala sources. Skipped when scanning
+    * for sources, but NOT when scanning for `*.semanticdb` — that is exactly where the compiler
+    * emits them.
+    */
+  private val SourceScanSkip = Set("out", "target")
+
+  /** Never holds project SemanticDB or project sources, and is routinely the largest directory in
+    * the tree — on this repo it is 80% of the walk (40k of 50k files), which matters because the
+    * fingerprint walk now runs on every request.
+    */
+  private val AlwaysSkip = Set("node_modules")
+
+  private def findFiles(root: Path, suffix: String): Seq[Path] =
+    val skipBuildOutput = suffix != ".semanticdb"
     if !Files.exists(root) then Nil
     else
       val result = new java.util.ArrayList[Path]()
@@ -128,12 +193,15 @@ object SemanticIndex:
             val skip = Option(dir.getFileName).exists { n =>
               val nameStr = n.toString
               val hiddenCache = nameStr.startsWith(".") && nameStr != ".semanticdb"
-              dir != root && nameStr != "." && nameStr != ".." && (hiddenCache || nameStr == "worktrees")
+              val buildOutput = skipBuildOutput && SourceScanSkip.contains(nameStr)
+              dir != root && nameStr != "." && nameStr != ".." &&
+              (hiddenCache || nameStr == "worktrees" || buildOutput ||
+                AlwaysSkip.contains(nameStr))
             }
             if skip then FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
 
           override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult =
-            if file.getFileName.toString.endsWith(".semanticdb") && Files.isRegularFile(file) then
+            if file.getFileName.toString.endsWith(suffix) && Files.isRegularFile(file) then
               val _ = result.add(file)
             FileVisitResult.CONTINUE
 

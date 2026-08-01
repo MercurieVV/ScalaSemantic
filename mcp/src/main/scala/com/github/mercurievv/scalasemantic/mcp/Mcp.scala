@@ -37,7 +37,8 @@ object Mcp:
       tools: List[Tool],
       pcBackends: Option[ModulePresentationCompilerBackends] = None,
       classpathSource: Option[String] = None,
-      fingerprint: SemanticIndex.Fingerprint = SemanticIndex.Fingerprint(0, 0L)
+      fingerprint: SemanticIndex.Fingerprint = SemanticIndex.Fingerprint(0, 0L),
+      coverage: SemanticIndex.Coverage = SemanticIndex.Coverage.empty
   ):
     def pcSelector: Option[String => Option[PresentationCompilerBackend]] =
       pcBackends.map(_.backendFor)
@@ -48,8 +49,16 @@ object Mcp:
     new AtomicReference[Option[String => Option[PresentationCompilerBackend]]](None)
   private[mcp] val log = new AtomicReference[String => Unit](_ => ())
   private[mcp] val stateFactory = new AtomicReference[Path => McpState](root =>
-    val az = Analyzer(SemanticIndex.fromProject(root.toString), pcSelector = None)
-    new McpState(root, az, toolsFor(az, root), fingerprint = SemanticIndex.fingerprint(Seq(root)))
+    val index = SemanticIndex.fromProject(root.toString)
+    val az = Analyzer(index, pcSelector = None)
+    val cov = SemanticIndex.coverage(Seq(root), index)
+    new McpState(
+      root,
+      az,
+      toolsFor(az, root, cov),
+      fingerprint = SemanticIndex.fingerprint(Seq(root)),
+      coverage = cov
+    )
   )
 
   private[mcp] def currentState: Option[McpState] = state.get()
@@ -64,8 +73,47 @@ object Mcp:
     state.set(Some(next))
     backendFor.set(next.pcSelector)
 
-  private[mcp] def toolsFor(az: Analyzer, root: Path): List[Tool] =
-    McpTools.all(az, root) ++ List(
+  /** Drop any cached state for `root` and build a fresh one, activating it.
+    *
+    * Closing the dropped state's presentation-compiler backends is part of the contract: `serve`'s
+    * `finally` only closes what is still in `stateCache`, so a replaced entry would otherwise leak
+    * its backends for the lifetime of the process.
+    */
+  private[mcp] def rebuildState(root: Path, reason: String, log: String => Unit): McpState =
+    Option(stateCache.remove(root)).foreach(old =>
+      scala.util
+        .Try(old.pcBackends.foreach(_.close()))
+        .failed
+        .foreach(t => log(s"Failed to close presentation-compiler backends for $root: $t"))
+    )
+    log(s"Rebuilding Analyzer for workspace root: $root ($reason)")
+    val next = stateFactory.get()(root)
+    val _ = stateCache.put(root, next)
+    activateState(next)
+    next
+
+  /** Re-check the active root's `*.semanticdb` fingerprint against disk and rebuild if it moved.
+    *
+    * Runs on every answering request. `SemanticIndex.fingerprint` walks the tree without parsing
+    * anything, and correctness is the point: before this, a recompile left every tool answering
+    * from the previous index indefinitely, with no signal that it was doing so (#290). A failure to
+    * walk degrades to serving the existing state — never to a failed request.
+    */
+  private[mcp] def ensureFresh(): Unit =
+    val _ = scala.util.Try {
+      currentState.foreach { st =>
+        val diskFingerprint = SemanticIndex.fingerprint(Seq(st.root))
+        if diskFingerprint != st.fingerprint then
+          val _ = rebuildState(st.root, "semanticdb files changed on disk", log.get())
+      }
+    }
+
+  private[mcp] def toolsFor(
+      az: Analyzer,
+      root: Path,
+      coverage: SemanticIndex.Coverage = SemanticIndex.Coverage.empty
+  ): List[Tool] =
+    McpTools.all(az, root, coverage) ++ List(
       setWorkspaceRootTool(log.get()),
       getWorkspaceRootTool,
       refreshWorkspaceTool(log.get())
@@ -116,8 +164,16 @@ object Mcp:
         |  the edits to extract a code range into a new method  → extract_method_plan
         |  where a val/binding flows across method boundaries   → value_flow
         |  current stateful workspace root                      → get_workspace_root, set_workspace_root
-        |  stale index after regenerating SemanticDB (set_workspace_root's
-        |    `cached` was true but you know the files changed)  → refresh_workspace
+        |  force a rebuild the on-disk staleness check missed,
+        |    or rebuild a root other than the active one        → refresh_workspace
+        |
+        |Freshness is automatic: every tool call re-checks the project's *.semanticdb files on disk
+        |and rebuilds the index when they changed, so a recompile needs no refresh_workspace call.
+        |
+        |Coverage: get_workspace_root / set_workspace_root report `coverage` (`sources` vs
+        |`indexed`). An empty result returned while coverage is partial carries a `coverageHint` —
+        |read it as "may not be indexed", NOT as "does not exist", and check that the build compiles
+        |the scope in question (for scala-cli, test sources need `--test`).
         |
         |After changing working directories (worktree switch, cd, subproject entry, or subagent cwd
         |change), call set_workspace_root with the new absolute path before any other ScalaSemantic tool.
@@ -153,6 +209,9 @@ object Mcp:
   ): Option[ujson.Value] =
     val method = req.obj.get("method").map(_.str).getOrElse("")
     val idOpt = req.obj.get("id")
+    // Every answering request re-checks the index against disk first: a stale answer is
+    // indistinguishable from a correct one, so the check cannot be left to the caller (#290).
+    if method == "tools/call" || method == "tools/list" then ensureFresh()
     val currentTools = activeTools(tools)
 
     method match
@@ -196,17 +255,7 @@ object Mcp:
             case None       => err(id, -32602, s"Unknown tool: $name")
             case Some(tool) =>
               onToolCall(name, args)
-              scala.util.Try(tool.run(args)) match
-                case scala.util.Success(res) =>
-                  ok(id, obj("content" -> ujson.Arr(textBlock(ujson.write(res)))))
-                case scala.util.Failure(e) =>
-                  ok(
-                    id,
-                    obj(
-                      "content" -> ujson.Arr(textBlock(s"error: ${e.getMessage}")),
-                      "isError" -> ujson.Bool(true)
-                    )
-                  )
+              runToolGuarded(id, name, tool, args)
         }
 
       case "ping"                              => idOpt.map(id => ok(id, ujson.Obj()))
@@ -225,9 +274,51 @@ object Mcp:
     lines
       .filter(_.nonEmpty)
       .flatMap(line =>
-        scala.util.Try(ujson.read(line)).toOption.flatMap(handle(_, tools, onToolCall))
+        // Guarded twice over: `handle` already converts a failing tool into an isError response,
+        // and this catches anything thrown outside it (parsing, dispatch, serialization) so one bad
+        // line ends a request rather than the iterator — and with it the whole stdio loop (#292).
+        guarded("request", log.get())(
+          scala.util.Try(ujson.read(line)).toOption.flatMap(handle(_, tools, onToolCall))
+        ).toOption.flatten
       )
       .map(ujson.write(_))
+
+  /** Run `body`, converting ANY throwable — including fatal ones — into `None` plus a logged stack
+    * trace.
+    *
+    * A `StackOverflowError` from a deep graph walk or an `OutOfMemoryError` on a large index is
+    * fatal, so `scala.util.Try` (which catches `NonFatal` only) lets it escape, unwind the stdio
+    * loop and kill the process; the client sees the transport close mid-call with nothing to
+    * diagnose. A server must not die because one request was too expensive.
+    */
+  private[mcp] def guarded[A](what: String, log: String => Unit)(body: => A): Either[Throwable, A] =
+    try Right(body)
+    catch
+      case t: Throwable =>
+        val sw = java.io.StringWriter()
+        t.printStackTrace(java.io.PrintWriter(sw))
+        log(s"$what failed with ${t.getClass.getName}: ${t.getMessage}\n$sw")
+        Left(t)
+
+  private def runToolGuarded(
+      id: ujson.Value,
+      name: String,
+      tool: Tool,
+      args: ujson.Value
+  ): ujson.Value =
+    guarded(s"tool $name", log.get())(
+      ok(id, obj("content" -> ujson.Arr(textBlock(ujson.write(tool.run(args))))))
+    ) match
+      case Right(res) => res
+      case Left(t)    =>
+        val detail = Option(t.getMessage).getOrElse(t.getClass.getName)
+        ok(
+          id,
+          obj(
+            "content" -> ujson.Arr(textBlock(s"error: $detail")),
+            "isError" -> ujson.Bool(true)
+          )
+        )
 
   /** Open the append-mode log sink for a run. Resolves the file from `SCALASEMANTIC_LOG_FILE`, else
     * `<root>/scalasemantic-mcp.log`. Returns a `log(line)` function that prepends an ISO-8601
@@ -339,6 +430,9 @@ object Mcp:
     *
     * `logging` controls the (opt-in) file log; see [[LogConfig]]. Default: no log file at all.
     */
+  // Throw: the loop's last-resort handler logs why the server died and then rethrows, so the
+  // process still exits non-zero instead of looking like a clean shutdown.
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   def serve(
       root: String,
       classpath: Option[String] = None,
@@ -355,9 +449,19 @@ object Mcp:
     val initialState = stateFactory.get()(rootPath)
     activateState(initialState)
     Mcp.stateCache.put(rootPath, initialState)
-    try runLoop(root, rootPath, initialState.pcSelector, currentLog, logging)
-    finally
-      stateCache.values().asScala.foreach(_.pcBackends.foreach(_.close()))
+    try
+      runLoop(root, rootPath, initialState.pcSelector, currentLog, logging)
+      currentLog("stdin closed; shutting down")
+    catch
+      case t: Throwable =>
+        // Nothing above should throw any more (see `guarded`); if it does, say why in the log
+        // instead of letting the client observe only a closed transport (#292).
+        val sw = java.io.StringWriter()
+        t.printStackTrace(java.io.PrintWriter(sw))
+        currentLog(s"server loop terminated by ${t.getClass.getName}: ${t.getMessage}\n$sw")
+        // Rethrow so the process still exits non-zero rather than looking like a clean shutdown.
+        throw t // scalafix:ok DisableSyntax.throw
+    finally stateCache.values().asScala.foreach(_.pcBackends.foreach(_.close()))
 
   private[mcp] def buildState(
       rootPath: Path,
@@ -372,21 +476,32 @@ object Mcp:
           s"PC backend enabled from ${resolved.source} (${cp.modules.size} modules, ${cp.merged.size} merged classpath entries)"
         )
         val selector = Some(backends.backendFor)
-        val az = Analyzer(SemanticIndex.fromProject(rootPath.toString), pcSelector = selector)
+        val index = SemanticIndex.fromProject(rootPath.toString)
+        val az = Analyzer(index, pcSelector = selector)
         val fp = SemanticIndex.fingerprint(Seq(rootPath))
+        val cov = SemanticIndex.coverage(Seq(rootPath), index)
         new McpState(
           rootPath,
           az,
-          toolsFor(az, rootPath),
+          toolsFor(az, rootPath, cov),
           Some(backends),
           Some(resolved.source),
-          fp
+          fp,
+          cov
         )
       case None =>
         log(s"PC backend disabled for $rootPath; no classpath metadata found")
-        val az = Analyzer(SemanticIndex.fromProject(rootPath.toString), pcSelector = None)
+        val index = SemanticIndex.fromProject(rootPath.toString)
+        val az = Analyzer(index, pcSelector = None)
         val fp = SemanticIndex.fingerprint(Seq(rootPath))
-        new McpState(rootPath, az, toolsFor(az, rootPath), fingerprint = fp)
+        val cov = SemanticIndex.coverage(Seq(rootPath), index)
+        new McpState(
+          rootPath,
+          az,
+          toolsFor(az, rootPath, cov),
+          fingerprint = fp,
+          coverage = cov
+        )
 
   /** The read/eval/write loop, parameterized over the (already-acquired, optional) PC backend.
     * Split out of [[serve]] so the backend's acquire/release stays bracketed by
@@ -747,16 +862,28 @@ object Mcp:
         "semanticdbFileCount" -> ujson.Num(newState.fingerprint.fileCount),
         "semanticdbNewestMtime" -> ujson.Str(
           java.time.Instant.ofEpochMilli(newState.fingerprint.newestMtimeMillis).toString
-        )
+        ),
+        "coverage" -> coverageJson(newState.coverage)
       )
     }
+
+  /** How much of the project's Scala source the loaded index covers. Informational on its own —
+    * standalone scripts and files outside the build are legitimately unindexed — but it is what
+    * turns an empty result into "possibly a coverage gap" rather than "does not exist" (#291).
+    */
+  private[mcp] def coverageJson(c: SemanticIndex.Coverage): ujson.Value =
+    obj(
+      "sources" -> ujson.Num(c.sources),
+      "indexed" -> ujson.Num(c.indexed),
+      "unindexed" -> ujson.Arr.from(c.unindexed.map(ujson.Str(_)))
+    )
 
   private[mcp] def refreshWorkspaceTool(
       log: String => Unit
   ): Tool =
     McpToolsSupport.tool(
       "refresh_workspace",
-      "Force-rebuild the semantic index for the current (or given) workspace root, dropping any cached copy. Use after regenerating SemanticDB files if set_workspace_root still reports the old index.",
+      "Force-rebuild the semantic index for the current (or given) workspace root, dropping any cached copy. Not needed after a normal recompile — every tool call re-checks the *.semanticdb files on disk and rebuilds itself. Use this only to force a rebuild the on-disk check cannot see, or to rebuild a root other than the active one.",
       List(
         (
           "path",
@@ -778,11 +905,7 @@ object Mcp:
         sys.error(s"Path is not a directory: $resolvedPath")
       }
 
-      stateCache.remove(resolvedPath)
-      log(s"Force-rebuilding Analyzer for workspace root: $resolvedPath")
-      val newState = stateFactory.get()(resolvedPath)
-      stateCache.put(resolvedPath, newState)
-      activateState(newState)
+      val newState = rebuildState(resolvedPath, "forced by refresh_workspace", log)
 
       ujson.Obj(
         "root" -> ujson.Str(resolvedPath.toString),
@@ -790,7 +913,8 @@ object Mcp:
         "semanticdbFileCount" -> ujson.Num(newState.fingerprint.fileCount),
         "semanticdbNewestMtime" -> ujson.Str(
           java.time.Instant.ofEpochMilli(newState.fingerprint.newestMtimeMillis).toString
-        )
+        ),
+        "coverage" -> coverageJson(newState.coverage)
       )
     }
 
@@ -803,9 +927,11 @@ object Mcp:
     ) { _ =>
       val cp = currentState.flatMap(_.classpathSource).fold[ujson.Value](ujson.Null)(ujson.Str(_))
       val fp = currentState.map(_.fingerprint)
+      val cov = currentState.map(_.coverage).getOrElse(SemanticIndex.Coverage.empty)
       ujson.Obj(
         "root" -> ujson.Str(currentRoot.toString),
         "classpath" -> cp,
+        "coverage" -> coverageJson(cov),
         "semanticdbFileCount" -> fp.fold[ujson.Value](ujson.Null)(f => ujson.Num(f.fileCount)),
         "semanticdbNewestMtime" -> fp.fold[ujson.Value](ujson.Null)(f =>
           ujson.Str(java.time.Instant.ofEpochMilli(f.newestMtimeMillis).toString)
