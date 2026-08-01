@@ -3,6 +3,7 @@ package com.github.mercurievv.scalasemantic.mcp
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
 import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
+import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 import upickle.default.ReadWriter
 
 import scala.jdk.CollectionConverters.*
@@ -42,10 +43,21 @@ object McpTools:
   // so the next mutant tripped the JVM's per-CLASS bytecode/constant-pool cap instead ("Class too
   // large"). Moving the tool groups into physically separate objects (separate class files) is what
   // actually fixes both: each group object has its own class-level budget.
-  def all(az: Analyzer, root: java.nio.file.Path = java.nio.file.Paths.get(".")): List[Tool] =
-    val tools =
+  def all(
+      az: Analyzer,
+      root: java.nio.file.Path = java.nio.file.Paths.get("."),
+      coverage: SemanticIndex.Coverage = SemanticIndex.Coverage.empty
+  ): List[Tool] =
+    val base =
       McpToolsGroupA.tools(az, root) ++ McpToolsGroupB.tools(az, root) ++
         McpToolsGroupC.tools(az, root) ++ McpToolsGroupD.tools(az, root)
+    // A partially indexed project answers "0 results" for symbols it simply never saw, which is
+    // byte-identical to "this does not exist" — the evidence a "nothing uses it, delete it"
+    // decision rests on. Say so on the empty answers themselves (#291).
+    val tools =
+      if coverage.partial then
+        base.map(t => t.copy(run = a => McpToolsSupport.withCoverageHint(coverage)(t.run(a))))
+      else base
     // The disk index being empty means SemanticDB was never emitted/compiled for this project —
     // every index-only/overlay tool will otherwise return misleadingly plain "no results" JSON that
     // reads the same as a genuine empty match. Attach a one-line hint so the caller fixes setup
@@ -80,6 +92,29 @@ private[mcp] object McpToolsSupport:
     case o: ujson.Obj =>
       ujson.Obj.from(o.value.toSeq :+ ("indexEmptyHint" -> ujson.Str(EmptyIndexHint)))
     case other => other
+
+  /** A result is "empty" when it reports nothing found — the shape that a coverage gap and a
+    * genuine absence produce identically.
+    */
+  private[mcp] def isEmptyResult(v: ujson.Value): Boolean = v match
+    case o: ujson.Obj =>
+      def num(k: String) = o.value.get(k).collect { case n: ujson.Num => n.value }
+      num("count").contains(0.0) || num("referenceCount").contains(0.0) ||
+      o.value.get("found").contains(ujson.Bool(false))
+    case _ => false
+
+  private[mcp] def coverageHint(c: SemanticIndex.Coverage): String =
+    s"0 results, but ${c.sources - c.indexed} of ${c.sources} Scala source files are not in the " +
+      "index — this may be a coverage gap rather than an absence. Check that the build compiles " +
+      "the scope this symbol lives in; for scala-cli, test sources need `--test`: " +
+      "`scala-cli compile . --test --semanticdb --semanticdb-sourceroot . " +
+      "--semanticdb-targetroot .semanticdb`. Call get_workspace_root for the unindexed file list."
+
+  private[mcp] def withCoverageHint(c: SemanticIndex.Coverage)(v: ujson.Value): ujson.Value =
+    v match
+      case o: ujson.Obj if isEmptyResult(o) =>
+        ujson.Obj.from(o.value.toSeq :+ ("coverageHint" -> ujson.Str(coverageHint(c))))
+      case other => other
 
   /** Render an outline entry recursively: name/kind/line, the signature and symbol, and any nested
     * children — dropping empties for token economy.
