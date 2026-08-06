@@ -163,12 +163,12 @@ The auto-generated table below is kept in sync with
 
 | Query | MCP tool | Tool tokens | Baseline tokens | Delta | Savings |
 | --- | --- | ---: | ---: | ---: | ---: |
-| `find-usages-animal` | `find_usages` | 100 | 1982 | 1882 | 95.0% |
+| `find-usages-animal` | `find_usages` | 100 | 1983 | 1883 | 95.0% |
 | `class-hierarchy-animal` | `class_hierarchy` | 111 | 480 | 369 | 76.9% |
 | `method-signature-render` | `method_signature` | 83 | 479 | 396 | 82.7% |
 | `trace-implicit-show` | `trace_implicit_chain` | 56 | 479 | 423 | 88.3% |
 | `call-path-a-to-c` | `call_path` | 65 | 478 | 413 | 86.4% |
-| **Overall (5 queries)** | | **415** | **3898** | **3483** | **89.4%** |
+| **Overall (5 queries)** | | **415** | **3899** | **3484** | **89.4%** |
 
 <!-- END AUTO-GENERATED -->
 

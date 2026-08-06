@@ -17,7 +17,7 @@ ScalaSemantic exposes MCP tools over stdio JSON-RPC. For most workflows, start w
 | `trace_implicit_chain` | Follow a given's transitive implicit dependencies. |
 | `call_path` | Find the shortest known call path between two methods. |
 | `annotated_source` | Read a source file with compiler-inserted type annotations. |
-| `document_outline` | Survey a file's declarations (kind, line, signature) without reading the full source. |
+| `document_outline` | Survey a file's declarations (kind, line, signature) without reading the full source. Narrow a large file with `query`/`symbol`/`kind`/`maxDepth` (enclosing scopes come back as context); pass `source` to outline an uncompiled buffer. |
 | `rename_plan` | Produce the exact edits to rename a symbol everywhere it is used. |
 | `move_plan` | Produce the edits to move a top-level definition to another package. |
 | `extract_method_plan` | Produce the edits to extract a code range into a new method. |

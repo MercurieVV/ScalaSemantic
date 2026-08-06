@@ -147,8 +147,11 @@ final class Analyzer(
       val definedSet = defs.map(_._1).toSet
       def parentOf(sym: String): Option[String] =
         Some(index.owner(sym)).filter(definedSet.contains)
+      // Group once instead of rescanning `defs` per node — `build` recurses over every entry, so
+      // the old per-node filter made this quadratic in the size of the file's outline.
+      val childrenOf = defs.groupBy((c, _) => parentOf(c)).withDefaultValue(Nil)
       def build(sym: String, line: Int): OutlineEntry =
-        val kids = defs.filter((c, _) => parentOf(c).contains(sym)).sortBy(_._2)
+        val kids = childrenOf(Some(sym)).sortBy(_._2)
         OutlineEntry(
           sym,
           index.displayName(sym),
@@ -157,8 +160,35 @@ final class Analyzer(
           outlineSignature(sym),
           kids.map((c, l) => build(c, l))
         )
-      defs.filter((sym, _) => parentOf(sym).isEmpty).sortBy(_._2).map((sym, l) => build(sym, l))
+      childrenOf(None).sortBy(_._2).map((sym, l) => build(sym, l))
     }
+
+  /** [[outline]] narrowed to the declarations a caller actually cares about.
+    *
+    * On a large file the full outline is the wrong answer twice over: it costs tokens the caller
+    * did not ask for, and it buries the two or three declarations the edit is about. `query`
+    * matches display names case-insensitively by substring — deliberately the same rule
+    * [[findSymbol]] uses, so a name that resolves there behaves the same here.
+    *
+    * With `includeParents` the enclosing scopes of a match are kept as context (`TaskArrows ->
+    * ResumeTaskArrows`), which is what makes the result readable as a location rather than a bare
+    * list; without it, matches are returned as roots. `maxDepth` bounds the retained subtree below
+    * each match (1 = the match alone), and applies on its own as a plain depth limit when no other
+    * filter is given.
+    */
+  def outlineFiltered(
+      uri: DocumentUri,
+      query: Option[String] = None,
+      symbol: Option[String] = None,
+      includeParents: Boolean = true,
+      maxDepth: Option[Int] = None,
+      kind: Option[String] = None
+  ): Option[List[OutlineEntry]] =
+    val matches: OutlineEntry => Boolean = e =>
+      query.forall(q => e.name.toLowerCase.nn.contains(q.toLowerCase.nn)) &&
+        symbol.forall(_ == e.symbol) &&
+        kind.forall(_.equalsIgnoreCase(e.kind.value))
+    outline(uri).map(OutlineFilter(_, matches, includeParents, maxDepth))
 
   /** A one-line signature for an outline entry, rendered from SemanticDB: a method's full clarified
     * signature, a value's resolved type, or empty for a type (its name + kind already say enough).

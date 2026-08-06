@@ -25,7 +25,7 @@ object McpTools:
   //                    the buffer alone. When `source` is given, query ONLY the PC-regenerated
   //                    document (Analyzer.bufferOnly); the stale disk index is not consulted. The PC
   //                    is authoritative for the file, so falling back to disk would only add wrong
-  //                    answers on edited buffers. → type_at_position
+  //                    answers on edited buffers. → type_at_position, document_outline
   //   • overlay      — a query that needs the whole-project index but wants ONE file fresher (e.g. to
   //                    resolve names referenced from other files). When `source`+`uri` are given,
   //                    overlay the buffer onto the index (Analyzer.withBuffer). → method_signature
@@ -1471,23 +1471,68 @@ private[mcp] object McpToolsGroupC:
           "USE INSTEAD OF reading a whole file. A structural map of a Scala file: its types and members " +
             "nested by scope, each with kind, 0-based definition line, and a signature rendered from the " +
             "compiler (explicit implicit/using params, real resolved types — not the source's inferred " +
-            "text). Use it to survey a file's API and locate where to edit without reading the source.",
+            "text). Use it to survey a file's API and locate where to edit without reading the source. " +
+            "On a large file, narrow it with `query` (display-name substring, same matching as " +
+            "find_symbol), `symbol`, `kind` and `maxDepth` — by default the enclosing scopes of a " +
+            "match come back as context, so you see where it lives. Pass `source` (the file's CURRENT " +
+            "text) to outline a buffer edited since — or never — compiled, instead of the last " +
+            "compiled SemanticDB. (The server must have been started with a classpath for `source` to " +
+            "take effect.)",
           List(
             (
               "uri",
               "string",
               "document uri as it appears in SemanticDB (path relative to project root)"
-            )
+            ),
+            (
+              "source",
+              "string",
+              "current full text of the file at `uri`; enables the live PC overlay"
+            ),
+            ("query", "string", "keep declarations whose name contains this, case-insensitive"),
+            ("symbol", "string", "keep the declaration with exactly this SemanticDB symbol"),
+            (
+              "includeParents",
+              "boolean",
+              "keep the enclosing scopes of a match as context (default true)"
+            ),
+            (
+              "maxDepth",
+              "integer",
+              "levels of nesting to keep below each match (1 = the match alone)"
+            ),
+            ("kind", "string", "keep only this kind, e.g. CLASS, TRAIT, OBJECT, METHOD")
           ),
           List("uri")
         ) { a =>
           val uri = argUri(a, "uri")
-          az.outline(uri) match
+          // PC-only category: an outline is a single-file structural question, so the buffer is
+          // queried on its own rather than overlaid on the whole index.
+          val engine = a.obj.get("source").map(_.str) match
+            case Some(src) => az.bufferOnly(root.resolve(uri.value).toUri, src, uri.value)
+            case None      => None
+          val query = a.obj.get("query").map(_.str)
+          val symbol = a.obj.get("symbol").map(_.str)
+          val kind = a.obj.get("kind").map(_.str)
+          val maxDepth = a.obj.get("maxDepth").map(_ => argPositiveInt(a, "maxDepth", 1).value)
+          val narrowed = query.nonEmpty || symbol.nonEmpty || kind.nonEmpty || maxDepth.nonEmpty
+          engine
+            .getOrElse(az)
+            .outlineFiltered(
+              uri,
+              query,
+              symbol,
+              argBool(a, "includeParents", true),
+              maxDepth,
+              kind
+            ) match
             case None =>
               jobj(Some("uri" -> ujson.Str(uri.value)), Some("found" -> ujson.Bool(false)))
             case Some(entries) =>
               jobj(
                 Some("uri" -> ujson.Str(uri.value)),
+                opt(engine.isDefined, "liveSource" -> ujson.Bool(true)),
+                opt(narrowed, "filtered" -> ujson.Bool(true)),
                 Some("outline" -> ujson.Arr.from(entries.map(outlineJson)))
               )
         }

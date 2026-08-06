@@ -155,7 +155,8 @@ object Mcp:
       |  the symbol/type at a source position                 → type_at_position
       |  the symbol for a plain name                          → find_symbol
       |  what's important / where to start, dep cycles        → structure
-      |  a file's structure / where to edit (don't read it)   → document_outline
+      |  a file's structure / where to edit (don't read it)   → document_outline (narrow a
+      |    big file with query/symbol/kind/maxDepth; pass source for an uncompiled buffer)
       |  the full text of a .scala file (read it THIS way)    → annotated_source
         |  the exact edits to rename a symbol safely            → rename_plan
         |  rename multiple symbols in one request, reporting edit-range
