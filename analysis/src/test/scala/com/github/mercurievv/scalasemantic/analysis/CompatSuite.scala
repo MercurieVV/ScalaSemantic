@@ -70,6 +70,20 @@ class CompatSuite extends munit.FunSuite:
     // `docs/testing/compat-strategy.md` section 5). What remains hand-authored below are only this
     // tool's own edge cases the corpora do not target: polymorphic/implicit call-path depth.
 
+    // #286: which symbol a `Point(0, 0)` construction resolves to is version-dependent (Scala 3
+    // puts it on the companion object, 2.13 on `<init>`), so assert the invariant that actually
+    // matters — related expansion reaches sites the class symbol alone does not — rather than
+    // pinning either compiler's choice.
+    test(s"[$version] related product-record usages cover sites the class symbol misses"):
+      val point = find("Point", (s: String) => s.endsWith("#"))
+      val sym = SemanticDbSymbol.from(point).fold(fail(_), identity)
+      val plain = az.findUsages(sym, None, Some(Set.empty))
+      val full = az.findUsages(sym)
+      assert(full.related.nonEmpty, s"[$version] no related groups for a case class")
+      val plainLocs = (plain.definitions ++ plain.references).toSet
+      val added = full.related.flatMap(_.locations).toSet.diff(plainLocs)
+      assert(added.nonEmpty, s"[$version] related expansion added no new sites")
+
     test(s"[$version] polymorphic call path: entry1 reaches callVirtual and VirtualBase.name"):
       val entry1 = find("entry1", isMethod)
       val callVirtual = find("callVirtual", isMethod)

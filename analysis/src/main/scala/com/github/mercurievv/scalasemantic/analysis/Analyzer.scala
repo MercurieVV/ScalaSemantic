@@ -487,8 +487,15 @@ final class Analyzer(
     val sym = symbol.value
     val name = newName.value
     val oldName = index.displayName(sym)
-    val edits = index
-      .occurrencesOf(sym)
+    // A case class's construction sites sit on the companion-object symbol and (on 2.13) on
+    // `<init>`, not on the class symbol, so renaming the class alone would emit a plan that
+    // compiles to nothing. Only the members that are *spelled* with the type's name are folded
+    // in — `copy`/`apply`/accessors keep their own names and must not be rewritten.
+    val renameTargets = sym :: h
+      .relatedProductSymbols(sym)
+      .collect { case ("companion" | "constructors", related) => related }
+    val edits = renameTargets
+      .flatMap(index.occurrencesOf)
       .collect { case (uri, occ) =>
         val r = occ.range.getOrElse(s.Range.defaultInstance)
         RenameEdit(
@@ -761,7 +768,11 @@ final class Analyzer(
     * any chars, unanchored substring match) — e.g. "core" + star, or star + "compat" + star.
     * `referenceCount` reflects the filtered set.
     */
-  def findUsages(symbol: SemanticDbSymbol, pathFilter: Option[String] = None): UsagesResult =
+  def findUsages(
+      symbol: SemanticDbSymbol,
+      pathFilter: Option[String] = None,
+      relatedKinds: Option[Set[String]] = None
+  ): UsagesResult =
     val sym = symbol.value
     val keep = h.globMatcher(pathFilter)
     val located = index
@@ -773,7 +784,38 @@ final class Analyzer(
       located.collect { case (s.SymbolOccurrence.Role.DEFINITION, loc) => loc }.distinct.toList
     val refs =
       located.collect { case (s.SymbolOccurrence.Role.REFERENCE, loc) => loc }.distinct.toList
-    UsagesResult(sym, index.displayName(sym), defs, refs)
+    UsagesResult(
+      sym,
+      index.displayName(sym),
+      defs,
+      refs,
+      related = relatedUsages(sym, keep, relatedKinds)
+    )
+
+  /** Usages of the members generated for a product record, grouped by how each relates to the
+    * queried symbol. Empty for anything that is not case-like, which keeps every non-record result
+    * byte-identical to what it was before related expansion existed.
+    *
+    * On by default because the alternative is worse: `find_usages` on a case class otherwise
+    * returns only type references and silently omits every construction site, which reads as a
+    * complete, compiler-backed answer.
+    */
+  private def relatedUsages(
+      sym: String,
+      keep: String => Boolean,
+      relatedKinds: Option[Set[String]]
+  ): List[RelatedUsageGroup] =
+    val want: String => Boolean = kind => relatedKinds.forall(_.contains(kind))
+    h.relatedProductSymbols(sym)
+      .filter((kind, _) => want(kind))
+      .flatMap { (kind, related) =>
+        val locs = index
+          .occurrencesOf(related)
+          .collect { case (uri, occ) if keep(uri) => h.location(uri, occ.range) }
+          .distinct
+          .toList
+        Option.when(locs.nonEmpty)(RelatedUsageGroup(kind, related, locs))
+      }
 
   // --- method-signature -----------------------------------------------------
 

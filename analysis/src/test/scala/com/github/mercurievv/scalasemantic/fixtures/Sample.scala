@@ -61,3 +61,17 @@ object Calls:
   def a(): Int = b()
   def b(): Int = c()
   def c(): Int = 1
+
+/** A product record whose usages live on generated members: `Order(...)` construction resolves to
+  * the companion object, not to `Order#`, so a plain type-reference search misses every one of the
+  * sites exercised in [[OrderUses]].
+  */
+case class Order(id: Int, item: String)
+
+object OrderUses:
+  val first: Order = Order(1, "widget")
+  val renamed: Order = first.copy(item = "gadget")
+  def label(o: Order): String = o.item + "#" + o.id
+  def isFirst(o: Order): Boolean = o match
+    case Order(1, _) => true
+    case _           => false
