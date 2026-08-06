@@ -4,9 +4,9 @@
   "summary": {
     "queryCount": 5,
     "toolTokens": 415,
-    "baselineTokens": 3898,
-    "tokenDelta": 3483,
-    "savingsPercent": 89.4
+    "baselineTokens": 4480,
+    "tokenDelta": 4065,
+    "savingsPercent": 90.7
   },
   "queries": [
     {
@@ -15,10 +15,10 @@
       "tool": "find_usages",
       "baseline": "Text grep for Animal across fixture and vendored corpus source trees.",
       "toolChars": 399,
-      "baselineChars": 7926,
+      "baselineChars": 8077,
       "toolTokens": 100,
-      "baselineTokens": 1982,
-      "tokenDelta": 1882,
+      "baselineTokens": 2020,
+      "tokenDelta": 1920,
       "savingsPercent": 95
     },
     {
@@ -27,11 +27,11 @@
       "tool": "class_hierarchy",
       "baseline": "Read the fixture source containing Animal, Dog, and Fish inheritance.",
       "toolChars": 441,
-      "baselineChars": 1917,
+      "baselineChars": 2464,
       "toolTokens": 111,
-      "baselineTokens": 480,
-      "tokenDelta": 369,
-      "savingsPercent": 76.9
+      "baselineTokens": 616,
+      "tokenDelta": 505,
+      "savingsPercent": 82
     },
     {
       "id": "method-signature-render",
@@ -39,11 +39,11 @@
       "tool": "method_signature",
       "baseline": "Read the fixture source and infer the complete signature from text.",
       "toolChars": 332,
-      "baselineChars": 1913,
+      "baselineChars": 2460,
       "toolTokens": 83,
-      "baselineTokens": 479,
-      "tokenDelta": 396,
-      "savingsPercent": 82.7
+      "baselineTokens": 615,
+      "tokenDelta": 532,
+      "savingsPercent": 86.5
     },
     {
       "id": "trace-implicit-show",
@@ -51,11 +51,11 @@
       "tool": "trace_implicit_chain",
       "baseline": "Read the fixture source and follow given definitions manually.",
       "toolChars": 221,
-      "baselineChars": 1913,
+      "baselineChars": 2460,
       "toolTokens": 56,
-      "baselineTokens": 479,
-      "tokenDelta": 423,
-      "savingsPercent": 88.3
+      "baselineTokens": 615,
+      "tokenDelta": 559,
+      "savingsPercent": 90.9
     },
     {
       "id": "call-path-a-to-c",
@@ -63,11 +63,11 @@
       "tool": "call_path",
       "baseline": "Read the fixture source and follow method bodies manually.",
       "toolChars": 259,
-      "baselineChars": 1909,
+      "baselineChars": 2456,
       "toolTokens": 65,
-      "baselineTokens": 478,
-      "tokenDelta": 413,
-      "savingsPercent": 86.4
+      "baselineTokens": 614,
+      "tokenDelta": 549,
+      "savingsPercent": 89.4
     }
   ]
 }
