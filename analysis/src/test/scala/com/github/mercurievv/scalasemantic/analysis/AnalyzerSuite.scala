@@ -282,3 +282,68 @@ class AnalyzerSuite extends munit.FunSuite:
     // the definition's own file moves with it (no import edit there); only Bar.scala needs one
     assertEquals(p.imports, List(MoveImport("b/Bar.scala", "pkgA.Foo", "pkgC.Foo")))
   }
+
+  // --- related product-record usages (#286) -----------------------------------
+
+  private val Order = "com/github/mercurievv/scalasemantic/fixtures/Order#"
+
+  test("findUsages surfaces a case class's construction sites, which are not type references") {
+    val u = az.findUsages(sym(Order))
+    val kinds = u.related.map(_.kind).toSet
+    // `Order(1, "widget")` resolves to the companion object symbol, so it is absent from
+    // `references` entirely — this is the whole point of the related section.
+    assert(kinds.contains("companion"), s"expected a companion group, got $kinds")
+    assert(
+      u.related.filter(_.kind == "companion").forall(_.locations.nonEmpty),
+      "a related group is only emitted when it has locations"
+    )
+  }
+
+  test("findUsages relates copy and parameter accessors of a case class") {
+    val kinds = az.findUsages(sym(Order)).related.map(_.kind).toSet
+    assert(kinds.contains("copy"), s"expected a copy group, got $kinds")
+    assert(kinds.contains("accessors"), s"expected an accessors group, got $kinds")
+  }
+
+  test("findUsages relates nothing for a type that is not case-like") {
+    assertEquals(az.findUsages(sym(Animal)).related, Nil)
+    assertEquals(az.findUsages(sym(Dog)).related, Nil)
+  }
+
+  test("findUsages related kinds can be narrowed, and an empty set drops the section") {
+    val only = az.findUsages(sym(Order), None, Some(Set("companion")))
+    assertEquals(only.related.map(_.kind).distinct, List("companion"))
+    assertEquals(az.findUsages(sym(Order), None, Some(Set.empty)).related, Nil)
+  }
+
+  test("findUsages related groups honour pathFilter") {
+    val scoped = az.findUsages(sym(Order), Some("*nowhere*"))
+    assertEquals(scoped.related, Nil)
+  }
+
+  test("findUsages dogfoods related expansion on this project's own UsagesResult") {
+    // The motivating case from #286: `UsagesResult(...)` is built inside `Analyzer.findUsages`,
+    // and that site resolves to the companion object — so the class symbol alone never sees it.
+    val self = sym("com/github/mercurievv/scalasemantic/model/UsagesResult#")
+    val companion = az.findUsages(self).related.filter(_.kind == "companion")
+    assert(companion.nonEmpty, "UsagesResult should relate to its companion object")
+    val uris = companion.flatMap(_.locations).map(_.uri)
+    assert(uris.exists(_.endsWith("Analyzer.scala")), s"construction site not found, saw $uris")
+    // …and that site is genuinely absent from the plain type-reference answer.
+    val plain = az.findUsages(self, None, Some(Set.empty))
+    val plainLocs = (plain.definitions ++ plain.references).toSet
+    assert(
+      companion.flatMap(_.locations).exists(!plainLocs.contains(_)),
+      "related expansion must add sites the class symbol alone does not report"
+    )
+  }
+
+  test("renamePlan of a case class rewrites its construction sites too") {
+    val plan = az.renamePlan(sym(Order), ScalaIdentifier.from("Purchase").fold(fail(_), identity))
+    val classOnly = az.findUsages(sym(Order), None, Some(Set.empty))
+    assert(
+      plan.editCount > classOnly.definitions.size + classOnly.references.size,
+      s"rename must cover the companion/constructor sites, got ${plan.editCount} edits"
+    )
+    assert(plan.edits.forall(_.newText == "Purchase"))
+  }

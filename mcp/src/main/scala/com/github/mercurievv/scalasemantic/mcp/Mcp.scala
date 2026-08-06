@@ -145,7 +145,8 @@ object Mcp:
       |
       |Pick the tool by what you want to know:
       |  who calls / references a symbol, where it is used    → find_usages (optional
-      |    contextLines param returns surrounding source lines)
+      |    contextLines param returns surrounding source lines; for a case class it also
+      |    returns construction/copy/accessor sites under `related`)
       |  subtypes / supertypes / implementers of a type       → class_hierarchy
       |  a method's signature / parameters / return           → method_signature
       |  the overloads of a method                            → find_overloads

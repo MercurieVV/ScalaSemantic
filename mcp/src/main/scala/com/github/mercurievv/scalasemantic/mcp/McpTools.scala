@@ -854,7 +854,11 @@ private[mcp] object McpToolsGroupA:
             "with `include` (subset of [\"definitions\",\"references\"]). `referenceCount` is always " +
             "returned. Set `contextLines` > 0 to also return `definitionsWithContext`/" +
             "`referencesWithContext` — each hit paired with its surrounding source lines, so you don't " +
-            "have to pipe results to `rg -A`/`sed` for context.",
+            "have to pipe results to `rg -A`/`sed` for context. For a case class the answer also " +
+            "carries a `related` section: construction sites (which resolve to the companion " +
+            "object, not to the class), `copy` calls, `apply`/`unapply` and parameter-accessor " +
+            "reads — the sites a plain type-reference search silently omits. Narrow that section " +
+            "with `related`, or pass an empty array to drop it.",
           List(
             ("symbol", "string", "SemanticDB symbol to search for"),
             ("limit", "integer", "max references to return (default 100)"),
@@ -873,6 +877,12 @@ private[mcp] object McpToolsGroupA:
               "contextLines",
               "integer",
               "lines of surrounding source per hit (default 0 = no context, no extra file I/O)"
+            ),
+            (
+              "related",
+              "array",
+              "case-class relations to include: any of \"companion\", \"constructors\", \"copy\", " +
+                "\"accessors\", \"apply\", \"unapply\" (default all; `[]` drops the section)"
             )
           ),
           List("symbol")
@@ -882,12 +892,26 @@ private[mcp] object McpToolsGroupA:
           val offset = argNonNegativeInt(a, "offset", 0)
           val want = includeWant(a)
           val contextLines = argNonNegativeInt(a, "contextLines", 0).value
-          val u = az.findUsages(symbol, a.obj.get("pathFilter").map(_.str))
+          val relatedKinds = a.obj.get("related").map(_.arr.iterator.map(_.str).toSet)
+          val u = az.findUsages(symbol, a.obj.get("pathFilter").map(_.str), relatedKinds)
           val page = u.references.slice(offset.value, offset.value + limit.value)
           val definitionsWithContext =
             if contextLines > 0 then withContext(root, u.definitions, contextLines) else Nil
           val referencesWithContext =
             if contextLines > 0 then withContext(root, page, contextLines) else Nil
+          val relatedJson = u.related.map { g =>
+            val locs = g.locations.take(limit.value)
+            jobj(
+              Some("kind" -> ujson.Str(g.kind)),
+              Some("symbol" -> ujson.Str(g.symbol)),
+              Some("locationCount" -> ujson.Num(g.locations.size)),
+              Some("locations" -> strs(locs.map(loc))),
+              opt(
+                contextLines > 0,
+                "hits" -> ujson.Arr.from(withContext(root, locs, contextLines).map(usageHitJson))
+              )
+            )
+          }
           jobj(
             Some("symbol" -> ujson.Str(symbol.value)),
             Some("name" -> ujson.Str(u.displayName)),
@@ -908,7 +932,8 @@ private[mcp] object McpToolsGroupA:
             opt(
               want("references") && referencesWithContext.nonEmpty,
               "referencesWithContext" -> ujson.Arr.from(referencesWithContext.map(usageHitJson))
-            )
+            ),
+            opt(relatedJson.nonEmpty, "related" -> ujson.Arr.from(relatedJson))
           )
         }
       ),

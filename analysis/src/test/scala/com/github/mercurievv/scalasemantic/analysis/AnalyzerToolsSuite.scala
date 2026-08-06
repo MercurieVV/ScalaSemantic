@@ -142,6 +142,138 @@ class AnalyzerToolsSuite extends munit.FunSuite:
   test("outlineFiltered of an unindexed uri stays None"):
     assertEquals(nestedAz.outlineFiltered(docUri("missing.scala"), query = Some("x")), None)
 
+  // ====================== product records (#286) ==============================
+
+  // A case class with everything the compiler generates, plus decoys: `helper` is a method that is
+  // NOT a constructor parameter (so not an accessor), `y` is a parameter whose accessor is never
+  // used (so its group must be omitted), and `Plain` is a non-case class.
+  private val CASE = s.SymbolInformation.Property.CASE.value
+
+  private val productIdx =
+    def m(sym: String, display: String) = si(sym, s.SymbolInformation.Kind.METHOD, display)
+    def scope(syms: String*) = Some(s.Scope(symlinks = syms.toVector))
+    val symbols = Seq(
+      si(
+        "p/Foo#",
+        s.SymbolInformation.Kind.CLASS,
+        "Foo",
+        s.ClassSignature(
+          None,
+          Nil,
+          s.Type.Empty,
+          scope("p/Foo#`<init>`().", "p/Foo#copy().", "p/Foo#x.", "p/Foo#y.", "p/Foo#helper().")
+        ),
+        props = CASE
+      ),
+      si(
+        "p/Foo.",
+        s.SymbolInformation.Kind.OBJECT,
+        "Foo",
+        s.ClassSignature(None, Nil, s.Type.Empty, scope("p/Foo.apply().", "p/Foo.unapply()."))
+      ),
+      si(
+        "p/Foo#`<init>`().",
+        s.SymbolInformation.Kind.METHOD,
+        "<init>",
+        s.MethodSignature(None, Seq(s.Scope(symlinks = Vector("p/Foo#x.", "p/Foo#y."))), IntT)
+      ),
+      si("p/Foo#x.", s.SymbolInformation.Kind.PARAMETER, "x"),
+      si("p/Foo#y.", s.SymbolInformation.Kind.PARAMETER, "y"),
+      m("p/Foo#copy().", "copy"),
+      m("p/Foo#helper().", "helper"),
+      m("p/Foo.apply().", "apply"),
+      m("p/Foo.unapply().", "unapply"),
+      si("p/Plain#", s.SymbolInformation.Kind.CLASS, "Plain")
+    )
+    // `p/Foo#y.` deliberately has no occurrence; `p/Ghost#` deliberately has no SymbolInformation.
+    val occs = Seq(
+      occ("p/Foo#", DEF, 0, 0, 0, 3),
+      occ("p/Foo#", REF, 1, 0, 1, 3),
+      occ("p/Foo.", REF, 2, 0, 2, 3),
+      occ("p/Foo#`<init>`().", REF, 3, 0, 3, 3),
+      occ("p/Foo#copy().", REF, 4, 0, 4, 4),
+      occ("p/Foo#x.", REF, 5, 0, 5, 1),
+      occ("p/Foo#helper().", REF, 6, 0, 6, 6),
+      occ("p/Foo.apply().", REF, 7, 0, 7, 5),
+      occ("p/Foo.unapply().", REF, 8, 0, 8, 7),
+      occ("p/Ghost#", REF, 9, 0, 9, 5)
+    )
+    index(doc("p.scala", symbols, occs))
+
+  private val productHelpers = new AnalyzerHelpers(productIdx)
+
+  test("relatedProductSymbols labels exactly the generated members, and nothing else"):
+    assertEquals(
+      productHelpers.relatedProductSymbols("p/Foo#"),
+      List(
+        "companion" -> "p/Foo.",
+        "constructors" -> "p/Foo#`<init>`().",
+        "copy" -> "p/Foo#copy().",
+        "accessors" -> "p/Foo#x.",
+        "accessors" -> "p/Foo#y.",
+        "apply" -> "p/Foo.apply().",
+        "unapply" -> "p/Foo.unapply()."
+      ),
+      "`helper` is a method but not a constructor parameter, so it is not an accessor"
+    )
+
+  test("relatedProductSymbols works from the companion spelling and drops the queried symbol"):
+    assertEquals(
+      productHelpers.relatedProductSymbols("p/Foo."),
+      List(
+        "constructors" -> "p/Foo#`<init>`().",
+        "copy" -> "p/Foo#copy().",
+        "accessors" -> "p/Foo#x.",
+        "accessors" -> "p/Foo#y.",
+        "apply" -> "p/Foo.apply().",
+        "unapply" -> "p/Foo.unapply()."
+      ),
+      "querying the companion must not relate it to itself"
+    )
+
+  test("relatedProductSymbols is empty for a non-case class and for an unknown symbol"):
+    assertEquals(productHelpers.relatedProductSymbols("p/Plain#"), Nil)
+    assertEquals(productHelpers.relatedProductSymbols("p/Nope#"), Nil)
+
+  test("isCaseLike is false for a plain class and for a symbol the index does not know"):
+    assert(productHelpers.isCaseLike("p/Foo#"))
+    assert(!productHelpers.isCaseLike("p/Plain#"), "no CASE property")
+    assert(!productHelpers.isCaseLike("p/Nope#"), "an unknown symbol is not case-like")
+    // Known only by an occurrence, with no SymbolInformation: absent properties must read as "not
+    // a case class", never as "no evidence against it".
+    assert(!productHelpers.isCaseLike("p/Ghost#"), "no SymbolInformation ⇒ not case-like")
+
+  test("classSymbolOf normalises the companion spelling and rejects what the index lacks"):
+    assertEquals(productHelpers.classSymbolOf("p/Foo#"), Some("p/Foo#"))
+    assertEquals(productHelpers.classSymbolOf("p/Foo."), Some("p/Foo#"))
+    assertEquals(productHelpers.classSymbolOf("p/Nope#"), None, "unknown symbols are not invented")
+    assertEquals(productHelpers.classSymbolOf("p/Foo#m()."), None, "not a type or term spelling")
+    // occurrence-only symbols count as known: a referenced type need not carry SymbolInformation.
+    assertEquals(productHelpers.classSymbolOf("p/Ghost#"), Some("p/Ghost#"))
+
+  test("companionObjectOf only derives from a class symbol"):
+    assertEquals(productHelpers.companionObjectOf("p/Foo#"), Some("p/Foo."))
+    assertEquals(productHelpers.companionObjectOf("p/Foo."), None, "already the companion")
+    assertEquals(productHelpers.companionObjectOf("p/Plain#"), None, "no companion in the index")
+
+  test("findUsages omits a related group whose symbol has no occurrences"):
+    val az = Analyzer(productIdx)
+    val sym = SemanticDbSymbol.from("p/Foo#").fold(fail(_), identity)
+    val groups = az.findUsages(sym).related
+    assertEquals(
+      groups.map(g => g.kind -> g.symbol),
+      List(
+        "companion" -> "p/Foo.",
+        "constructors" -> "p/Foo#`<init>`().",
+        "copy" -> "p/Foo#copy().",
+        "accessors" -> "p/Foo#x.",
+        "apply" -> "p/Foo.apply().",
+        "unapply" -> "p/Foo.unapply()."
+      ),
+      "`y` is a parameter accessor with no uses, so it contributes no group"
+    )
+    assert(groups.forall(_.locations.nonEmpty))
+
   // ============================ find-symbol ===================================
 
   private val findIdx = index(

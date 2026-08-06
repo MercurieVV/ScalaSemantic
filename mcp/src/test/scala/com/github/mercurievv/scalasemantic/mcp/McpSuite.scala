@@ -910,6 +910,29 @@ class McpSuite extends munit.FunSuite:
     assert(entries.forall(!_.obj.contains("children")), "no nesting survives maxDepth=1")
   }
 
+  test("find_usages omits the related section for a type that is not case-like (back-compat)") {
+    val r = call("find_usages", ujson.Obj("symbol" -> Animal))
+    assert(!r.obj.contains("related"), r.render())
+  }
+
+  test("find_usages returns labelled related groups for a case class") {
+    val order = "com/github/mercurievv/scalasemantic/fixtures/Order#"
+    val r = call("find_usages", ujson.Obj("symbol" -> order))
+    val groups = jsonArray(r("related"))
+    assert(groups.exists(_("kind").str == "companion"), r.render())
+    val companion = groups.find(_("kind").str == "companion").get
+    assert(companion("locations").arr.nonEmpty, companion.render())
+    assert(companion("symbol").str.endsWith("/Order."), companion.render())
+  }
+
+  test("find_usages related narrows to the requested kinds, and [] drops the section") {
+    val order = "com/github/mercurievv/scalasemantic/fixtures/Order#"
+    val only = call("find_usages", ujson.Obj("symbol" -> order, "related" -> ujson.Arr("copy")))
+    assert(jsonArray(only("related")).forall(_("kind").str == "copy"), only.render())
+    val none = call("find_usages", ujson.Obj("symbol" -> order, "related" -> ujson.Arr()))
+    assert(!none.obj.contains("related"), none.render())
+  }
+
   test("search_text finds a known literal string in this repo's own sources") {
     val r = call("search_text", ujson.Obj("query" -> "Phase 4: MCP protocol"))
     assert(r("count").num > 0, r.render())
