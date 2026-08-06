@@ -113,6 +113,29 @@ class AnalyzerPcSuite extends munit.FunSuite:
     assertEquals(p.enclosingMethod.map(_.displayName), Some("run"))
   }
 
+  test("outline resolves on an uncompiled buffer via the PC, including edits not on disk") {
+    // A member that exists only in the buffer: the disk index is empty and the file's tail does
+    // not typecheck, so anything the outline reports comes from the PC alone.
+    val edited = source.replace(
+      "  def bark(loud: Boolean): Int = 1",
+      "  def bark(loud: Boolean): Int = 1\n  def fetch(): String = \"ball\""
+    )
+    val pcOnly = az.bufferOnly(uri, edited, "Dog.scala").getOrElse(fail("no PC backend"))
+    val top = pcOnly.outline(doc("Dog.scala")).getOrElse(fail("no outline for the buffer"))
+    val dog = top.find(_.name == "Dog").getOrElse(fail(s"no Dog in ${top.map(_.name)}"))
+    assert(dog.children.exists(_.name == "fetch"), dog.children.map(_.name).toString)
+    assertEquals(az.outline(doc("Dog.scala")), None, "the disk index has nothing for this file")
+  }
+
+  test("outlineFiltered narrows an uncompiled buffer to one declaration plus its context") {
+    val pcOnly = az.bufferOnly(uri, source, "Dog.scala").getOrElse(fail("no PC backend"))
+    val top = pcOnly
+      .outlineFiltered(doc("Dog.scala"), query = Some("bark"))
+      .getOrElse(fail("no outline for the buffer"))
+    assertEquals(top.map(_.name), List("Dog"), "the enclosing class is kept as context")
+    assertEquals(top.head.children.map(_.name), List("bark"))
+  }
+
   test("bufferOnly (PC-only) queries the buffer alone; withBuffer (overlay) keeps the disk index") {
     // A disk index holding an unrelated document; the two routings differ on whether it shows.
     val diskDoc = s.TextDocument(

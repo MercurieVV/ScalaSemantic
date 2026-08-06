@@ -72,6 +72,76 @@ class AnalyzerToolsSuite extends munit.FunSuite:
     assertEquals(kids.find(_.name == "v").get.signature, ": Int", "value type")
     assertEquals(top.head.signature, "", "a type needs no signature line")
 
+  // ======================== outline filtering (#285) ==========================
+
+  // Outer -> Inner -> deep, plus a sibling method, so ancestor context and depth bounds are
+  // distinguishable from a flat name match.
+  private val nestedIdx =
+    val symbols = Seq(
+      si("n/Outer#", s.SymbolInformation.Kind.CLASS, "Outer"),
+      si("n/Outer#Inner#", s.SymbolInformation.Kind.CLASS, "Inner"),
+      si("n/Outer#Inner#deep().", s.SymbolInformation.Kind.METHOD, "deep"),
+      si("n/Outer#other().", s.SymbolInformation.Kind.METHOD, "other")
+    )
+    val occs = Seq(
+      occ("n/Outer#", DEF, 0, 0, 0, 5),
+      occ("n/Outer#Inner#", DEF, 1, 2, 1, 7),
+      occ("n/Outer#Inner#deep().", DEF, 2, 4, 2, 8),
+      occ("n/Outer#other().", DEF, 3, 2, 3, 7)
+    )
+    index(doc("n.scala", symbols, occs))
+
+  private val nestedAz = Analyzer(nestedIdx)
+  private val nestedUri = docUri("n.scala")
+
+  test("outlineFiltered with no filters is the full outline"):
+    assertEquals(nestedAz.outlineFiltered(nestedUri), nestedAz.outline(nestedUri))
+
+  test("outlineFiltered query keeps the match and its enclosing scopes as context"):
+    val top = nestedAz
+      .outlineFiltered(nestedUri, query = Some("inner"))
+      .getOrElse(fail("not indexed"))
+    assertEquals(top.map(_.name), List("Outer"), "the enclosing type is kept as context")
+    assertEquals(top.head.children.map(_.name), List("Inner"), "the sibling method is dropped")
+    assertEquals(top.head.children.head.children.map(_.name), List("deep"), "match keeps subtree")
+
+  test("outlineFiltered includeParents=false returns matches as roots"):
+    val top = nestedAz
+      .outlineFiltered(nestedUri, query = Some("inner"), includeParents = false)
+      .getOrElse(fail("not indexed"))
+    assertEquals(top.map(_.name), List("Inner"))
+
+  test("outlineFiltered symbol matches one exact declaration"):
+    val top = nestedAz
+      .outlineFiltered(nestedUri, symbol = Some("n/Outer#other()."), includeParents = false)
+      .getOrElse(fail("not indexed"))
+    assertEquals(top.map(_.symbol), List("n/Outer#other()."))
+
+  test("outlineFiltered maxDepth bounds the subtree kept below a match, not the file"):
+    val depth1 = nestedAz
+      .outlineFiltered(nestedUri, query = Some("inner"), includeParents = false, maxDepth = Some(1))
+      .getOrElse(fail("not indexed"))
+    assertEquals(depth1.map(_.name), List("Inner"))
+    assertEquals(depth1.head.children, Nil, "maxDepth=1 keeps the match alone")
+    // …and on its own it is a plain depth limit over the whole file.
+    val roots = nestedAz
+      .outlineFiltered(nestedUri, maxDepth = Some(1))
+      .getOrElse(fail("not indexed"))
+    assertEquals(roots.map(_.name), List("Outer"))
+    assertEquals(roots.head.children, Nil)
+
+  test("outlineFiltered kind keeps only declarations of that kind"):
+    val methods = nestedAz
+      .outlineFiltered(nestedUri, kind = Some("method"), includeParents = false)
+      .getOrElse(fail("not indexed"))
+    assertEquals(methods.map(_.name).sorted, List("deep", "other"), "case-insensitive kind match")
+
+  test("outlineFiltered returns an empty outline when nothing matches, not the whole file"):
+    assertEquals(nestedAz.outlineFiltered(nestedUri, query = Some("nosuchname")), Some(Nil))
+
+  test("outlineFiltered of an unindexed uri stays None"):
+    assertEquals(nestedAz.outlineFiltered(docUri("missing.scala"), query = Some("x")), None)
+
   // ====================== product records (#286) ==============================
 
   // A case class with everything the compiler generates, plus decoys: `helper` is a method that is

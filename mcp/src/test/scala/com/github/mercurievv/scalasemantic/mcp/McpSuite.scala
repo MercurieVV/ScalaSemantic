@@ -882,6 +882,34 @@ class McpSuite extends munit.FunSuite:
     assert(hit("context").arr.size > 1, hit.render())
   }
 
+  test("document_outline without filters is unchanged and carries no new keys (back-compat)") {
+    val fixture =
+      "analysis/src/test/scala/com/github/mercurievv/scalasemantic/fixtures/Sample.scala"
+    val r = call("document_outline", ujson.Obj("uri" -> fixture))
+    assert(!r.obj.contains("filtered"), r.render())
+    assert(!r.obj.contains("liveSource"), r.render())
+    assert(jsonArray(r("outline")).exists(_("name").str == "Animal"), r.render())
+  }
+
+  test("document_outline query narrows to the match and its enclosing scope") {
+    val fixture =
+      "analysis/src/test/scala/com/github/mercurievv/scalasemantic/fixtures/Sample.scala"
+    val r = call("document_outline", ujson.Obj("uri" -> fixture, "query" -> "swim"))
+    assertEquals(r("filtered").bool, true)
+    val names = jsonArray(r("outline")).map(_("name").str)
+    assert(names.nonEmpty && names.size < 5, s"expected a narrow result, got $names")
+    assert(!names.contains("Animal"), s"unrelated types must be dropped, got $names")
+  }
+
+  test("document_outline maxDepth alone bounds nesting without dropping top-level types") {
+    val fixture =
+      "analysis/src/test/scala/com/github/mercurievv/scalasemantic/fixtures/Sample.scala"
+    val r = call("document_outline", ujson.Obj("uri" -> fixture, "maxDepth" -> 1))
+    val entries = jsonArray(r("outline"))
+    assert(entries.exists(_("name").str == "Animal"), r.render())
+    assert(entries.forall(!_.obj.contains("children")), "no nesting survives maxDepth=1")
+  }
+
   test("find_usages omits the related section for a type that is not case-like (back-compat)") {
     val r = call("find_usages", ujson.Obj("symbol" -> Animal))
     assert(!r.obj.contains("related"), r.render())
