@@ -740,10 +740,11 @@ def docsSiteChanged: T[Boolean] = Task {
   }
 }
 
-def docsSiteBuild() = Task.Command {
+// Everything in docsSiteBuild except the mdoc pass, which has to stay a task call (see
+// docsSiteBuildIfChanged).
+def docsSiteNpmBuild(): Unit = {
   os.proc("bash", (build.moduleDir / "scripts" / "gen-release-notes.sh").toString)
     .call(cwd = build.moduleDir, stdout = os.Inherit, stderr = os.Inherit)
-  docs.run()()
   val docusaurusBin = build.moduleDir / "website" / "node_modules" / ".bin" / "docusaurus"
   if (!os.exists(docusaurusBin)) {
     sys.error(
@@ -752,6 +753,24 @@ def docsSiteBuild() = Task.Command {
   }
   os.proc("npm", "run", "build")
     .call(cwd = build.moduleDir / "website", stdout = os.Inherit, stderr = os.Inherit)
+}
+
+def docsSiteBuild() = Task.Command {
+  docs.run()()
+  docsSiteNpmBuild()
+}
+
+// The Task.Command macro rewrites every `someTask()` application in a command body into an
+// UPSTREAM dependency, evaluated before the body ever runs. So `if (docsSiteChanged())
+// docsSiteBuild()()` in prePush gated nothing: docsSiteBuild ran unconditionally, and prePush
+// failed with "Docs site dependencies are missing" on any checkout without website/node_modules
+// even when no docs-site file had changed. Gate at runtime instead. `docs.run()()` (mdoc ->
+// website/docs, gitignored) is still hoisted and so still runs every time — that matches the
+// prior behaviour; only the npm site build is now actually conditional.
+def docsSiteBuildIfChanged() = Task.Command {
+  val changed = docsSiteChanged()
+  docs.run()()
+  if (changed) docsSiteNpmBuild()
 }
 
 def prePush() = Task.Command {
@@ -763,7 +782,7 @@ def prePush() = Task.Command {
   )(_.testForked())()
   analysis.stainlessVerify()()
   smokeTest()()
-  if (docsSiteChanged()) docsSiteBuild()()
+  docsSiteBuildIfChanged()()
 
   Task.log.info("Checking unit and E2E regression consistency...")
   val res = os

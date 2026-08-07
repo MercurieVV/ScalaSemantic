@@ -191,13 +191,14 @@ final class Analyzer(
     outline(uri).map(OutlineFilter(_, matches, includeParents, maxDepth))
 
   /** A one-line signature for an outline entry, rendered from SemanticDB: a method's full clarified
-    * signature, a value's resolved type, or empty for a type (its name + kind already say enough).
+    * signature, a value's resolved type, or a type alias's right-hand side / bounds.
     */
   private def outlineSignature(symbol: String): String =
     index.info(symbol).map(_.signature) match
       case Some(_: s.MethodSignature) =>
         methodSignatureOf(symbol).map(_.rendered).getOrElse("")
       case Some(v: s.ValueSignature) => s": ${h.renderType(v.tpe)}"
+      case Some(t: s.TypeSignature)  => h.renderTypeSignature(t)
       case _                         => ""
 
   /** Dotted fully-qualified name built from `symbol`'s owner chain's display names (every enclosing

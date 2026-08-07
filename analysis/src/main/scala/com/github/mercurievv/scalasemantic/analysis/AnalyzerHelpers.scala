@@ -727,6 +727,28 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
       case s.ConstantType(c)       => renderConstant(c)
       case _                       => ""
 
+  /** Compact signature-suffix rendering of a type-alias / opaque-type / abstract-type declaration.
+    *
+    * A transparent alias has `lowerBound == upperBound == RHS` and renders as `[T] = <RHS>`; a
+    * bounded or opaque type renders as `[T] >: <Lo> <: <Hi>`, dropping a trivial `Nothing` lower or
+    * `Any` upper bound. SemanticDB hides an opaque type's RHS, so those surface as `>: Nothing <:
+    * Any` rather than empty. One level only — no transitive dealiasing.
+    */
+  def renderTypeSignature(t: s.TypeSignature): String =
+    val tps = scopeInfos(t.typeParameters).map(_.displayName)
+    val tp = if tps.isEmpty then "" else tps.mkString("[", ", ", "]")
+    val lo = renderType(t.lowerBound)
+    val hi = renderType(t.upperBound)
+    val bounds =
+      if t.lowerBound == t.upperBound && lo.nonEmpty then s"= $lo"
+      else
+        val loPart = if lo.isEmpty || lo == "Nothing" then "" else s">: $lo"
+        val hiPart = if hi.isEmpty || hi == "Any" then "" else s"<: $hi"
+        List(loPart, hiPart).filter(_.nonEmpty).mkString(" ") match
+          case ""    => ">: Nothing <: Any"
+          case other => other
+    s"$tp $bounds".strip
+
   /** Render a literal/constant type (Scala 3 singleton-literal types, e.g. `42`, `"x"`, `true`). */
   def renderConstant(c: s.Constant): String =
     c match

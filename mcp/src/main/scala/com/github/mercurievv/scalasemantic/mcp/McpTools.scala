@@ -485,6 +485,10 @@ private[mcp] object McpToolsSupport:
 
   /** Every `.scala` file under `root`, as project-relative uri strings, sorted for deterministic
     * output. Skips [[SearchTextExcludedDirs]] entirely rather than filtering after the fact.
+    *
+    * Exclusions are matched on the path RELATIVE to `root`: `root` itself may legitimately sit
+    * inside an excluded directory (e.g. an agent worktree under `.worktrees/`), and matching on the
+    * absolute path would then exclude every file in the project.
     */
   private[mcp] def scalaFilesUnder(root: java.nio.file.Path): List[String] =
     val stream = java.nio.file.Files.walk(root)
@@ -492,9 +496,12 @@ private[mcp] object McpToolsSupport:
       stream
         .iterator()
         .asScala
-        .filterNot(p => p.iterator().asScala.exists(seg => SearchTextExcludedDirs(seg.toString)))
-        .filter(p => java.nio.file.Files.isRegularFile(p) && p.toString.endsWith(".scala"))
-        .map(p => root.relativize(p).toString)
+        .map(p => (p, root.relativize(p)))
+        .filterNot((_, rel) =>
+          rel.iterator().asScala.exists(seg => SearchTextExcludedDirs(seg.toString))
+        )
+        .filter((p, _) => java.nio.file.Files.isRegularFile(p) && p.toString.endsWith(".scala"))
+        .map((_, rel) => rel.toString)
         .toList
         .sorted
     finally stream.close()
