@@ -70,13 +70,21 @@ class ModelsPropertySuite extends munit.ScalaCheckSuite:
       rendered <- nonEmptyStr
     yield MethodSignature(sym, name, tyParams, pLists, ret, rendered)
 
+  private val genRelatedUsageGroup: Gen[RelatedUsageGroup] =
+    for
+      kind <- Gen.oneOf("companion", "constructors", "copy", "accessors", "apply", "unapply")
+      sym <- nonEmptyStr
+      locs <- Gen.listOf(genLocation)
+    yield RelatedUsageGroup(kind, sym, locs)
+
   private val genUsagesResult: Gen[UsagesResult] =
     for
       sym <- nonEmptyStr
       name <- nonEmptyStr
       defs <- Gen.listOf(genLocation)
       refs <- Gen.listOf(genLocation)
-    yield UsagesResult(sym, name, defs, refs)
+      related <- Gen.listOf(genRelatedUsageGroup)
+    yield UsagesResult(sym, name, defs, refs, related = related)
 
   private val genClassHierarchy: Gen[ClassHierarchy] =
     for

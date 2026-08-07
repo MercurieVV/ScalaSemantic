@@ -3,6 +3,7 @@ package com.github.mercurievv.scalasemantic.mcp
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
 import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
+import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 import upickle.default.ReadWriter
 
 import scala.jdk.CollectionConverters.*
@@ -24,7 +25,7 @@ object McpTools:
   //                    the buffer alone. When `source` is given, query ONLY the PC-regenerated
   //                    document (Analyzer.bufferOnly); the stale disk index is not consulted. The PC
   //                    is authoritative for the file, so falling back to disk would only add wrong
-  //                    answers on edited buffers. → type_at_position
+  //                    answers on edited buffers. → type_at_position, document_outline
   //   • overlay      — a query that needs the whole-project index but wants ONE file fresher (e.g. to
   //                    resolve names referenced from other files). When `source`+`uri` are given,
   //                    overlay the buffer onto the index (Analyzer.withBuffer). → method_signature
@@ -42,10 +43,21 @@ object McpTools:
   // so the next mutant tripped the JVM's per-CLASS bytecode/constant-pool cap instead ("Class too
   // large"). Moving the tool groups into physically separate objects (separate class files) is what
   // actually fixes both: each group object has its own class-level budget.
-  def all(az: Analyzer, root: java.nio.file.Path = java.nio.file.Paths.get(".")): List[Tool] =
-    val tools =
+  def all(
+      az: Analyzer,
+      root: java.nio.file.Path = java.nio.file.Paths.get("."),
+      coverage: SemanticIndex.Coverage = SemanticIndex.Coverage.empty
+  ): List[Tool] =
+    val base =
       McpToolsGroupA.tools(az, root) ++ McpToolsGroupB.tools(az, root) ++
         McpToolsGroupC.tools(az, root) ++ McpToolsGroupD.tools(az, root)
+    // A partially indexed project answers "0 results" for symbols it simply never saw, which is
+    // byte-identical to "this does not exist" — the evidence a "nothing uses it, delete it"
+    // decision rests on. Say so on the empty answers themselves (#291).
+    val tools =
+      if coverage.partial then
+        base.map(t => t.copy(run = a => McpToolsSupport.withCoverageHint(coverage)(t.run(a))))
+      else base
     // The disk index being empty means SemanticDB was never emitted/compiled for this project —
     // every index-only/overlay tool will otherwise return misleadingly plain "no results" JSON that
     // reads the same as a genuine empty match. Attach a one-line hint so the caller fixes setup
@@ -80,6 +92,29 @@ private[mcp] object McpToolsSupport:
     case o: ujson.Obj =>
       ujson.Obj.from(o.value.toSeq :+ ("indexEmptyHint" -> ujson.Str(EmptyIndexHint)))
     case other => other
+
+  /** A result is "empty" when it reports nothing found — the shape that a coverage gap and a
+    * genuine absence produce identically.
+    */
+  private[mcp] def isEmptyResult(v: ujson.Value): Boolean = v match
+    case o: ujson.Obj =>
+      def num(k: String) = o.value.get(k).collect { case n: ujson.Num => n.value }
+      num("count").contains(0.0) || num("referenceCount").contains(0.0) ||
+      o.value.get("found").contains(ujson.Bool(false))
+    case _ => false
+
+  private[mcp] def coverageHint(c: SemanticIndex.Coverage): String =
+    s"0 results, but ${c.sources - c.indexed} of ${c.sources} Scala source files are not in the " +
+      "index — this may be a coverage gap rather than an absence. Check that the build compiles " +
+      "the scope this symbol lives in; for scala-cli, test sources need `--test`: " +
+      "`scala-cli compile . --test --semanticdb --semanticdb-sourceroot . " +
+      "--semanticdb-targetroot .semanticdb`. Call get_workspace_root for the unindexed file list."
+
+  private[mcp] def withCoverageHint(c: SemanticIndex.Coverage)(v: ujson.Value): ujson.Value =
+    v match
+      case o: ujson.Obj if isEmptyResult(o) =>
+        ujson.Obj.from(o.value.toSeq :+ ("coverageHint" -> ujson.Str(coverageHint(c))))
+      case other => other
 
   /** Render an outline entry recursively: name/kind/line, the signature and symbol, and any nested
     * children — dropping empties for token economy.
@@ -826,7 +861,11 @@ private[mcp] object McpToolsGroupA:
             "with `include` (subset of [\"definitions\",\"references\"]). `referenceCount` is always " +
             "returned. Set `contextLines` > 0 to also return `definitionsWithContext`/" +
             "`referencesWithContext` — each hit paired with its surrounding source lines, so you don't " +
-            "have to pipe results to `rg -A`/`sed` for context.",
+            "have to pipe results to `rg -A`/`sed` for context. For a case class the answer also " +
+            "carries a `related` section: construction sites (which resolve to the companion " +
+            "object, not to the class), `copy` calls, `apply`/`unapply` and parameter-accessor " +
+            "reads — the sites a plain type-reference search silently omits. Narrow that section " +
+            "with `related`, or pass an empty array to drop it.",
           List(
             ("symbol", "string", "SemanticDB symbol to search for"),
             ("limit", "integer", "max references to return (default 100)"),
@@ -845,6 +884,12 @@ private[mcp] object McpToolsGroupA:
               "contextLines",
               "integer",
               "lines of surrounding source per hit (default 0 = no context, no extra file I/O)"
+            ),
+            (
+              "related",
+              "array",
+              "case-class relations to include: any of \"companion\", \"constructors\", \"copy\", " +
+                "\"accessors\", \"apply\", \"unapply\" (default all; `[]` drops the section)"
             )
           ),
           List("symbol")
@@ -854,12 +899,26 @@ private[mcp] object McpToolsGroupA:
           val offset = argNonNegativeInt(a, "offset", 0)
           val want = includeWant(a)
           val contextLines = argNonNegativeInt(a, "contextLines", 0).value
-          val u = az.findUsages(symbol, a.obj.get("pathFilter").map(_.str))
+          val relatedKinds = a.obj.get("related").map(_.arr.iterator.map(_.str).toSet)
+          val u = az.findUsages(symbol, a.obj.get("pathFilter").map(_.str), relatedKinds)
           val page = u.references.slice(offset.value, offset.value + limit.value)
           val definitionsWithContext =
             if contextLines > 0 then withContext(root, u.definitions, contextLines) else Nil
           val referencesWithContext =
             if contextLines > 0 then withContext(root, page, contextLines) else Nil
+          val relatedJson = u.related.map { g =>
+            val locs = g.locations.take(limit.value)
+            jobj(
+              Some("kind" -> ujson.Str(g.kind)),
+              Some("symbol" -> ujson.Str(g.symbol)),
+              Some("locationCount" -> ujson.Num(g.locations.size)),
+              Some("locations" -> strs(locs.map(loc))),
+              opt(
+                contextLines > 0,
+                "hits" -> ujson.Arr.from(withContext(root, locs, contextLines).map(usageHitJson))
+              )
+            )
+          }
           jobj(
             Some("symbol" -> ujson.Str(symbol.value)),
             Some("name" -> ujson.Str(u.displayName)),
@@ -880,7 +939,8 @@ private[mcp] object McpToolsGroupA:
             opt(
               want("references") && referencesWithContext.nonEmpty,
               "referencesWithContext" -> ujson.Arr.from(referencesWithContext.map(usageHitJson))
-            )
+            ),
+            opt(relatedJson.nonEmpty, "related" -> ujson.Arr.from(relatedJson))
           )
         }
       ),
@@ -1443,23 +1503,68 @@ private[mcp] object McpToolsGroupC:
           "USE INSTEAD OF reading a whole file. A structural map of a Scala file: its types and members " +
             "nested by scope, each with kind, 0-based definition line, and a signature rendered from the " +
             "compiler (explicit implicit/using params, real resolved types — not the source's inferred " +
-            "text). Use it to survey a file's API and locate where to edit without reading the source.",
+            "text). Use it to survey a file's API and locate where to edit without reading the source. " +
+            "On a large file, narrow it with `query` (display-name substring, same matching as " +
+            "find_symbol), `symbol`, `kind` and `maxDepth` — by default the enclosing scopes of a " +
+            "match come back as context, so you see where it lives. Pass `source` (the file's CURRENT " +
+            "text) to outline a buffer edited since — or never — compiled, instead of the last " +
+            "compiled SemanticDB. (The server must have been started with a classpath for `source` to " +
+            "take effect.)",
           List(
             (
               "uri",
               "string",
               "document uri as it appears in SemanticDB (path relative to project root)"
-            )
+            ),
+            (
+              "source",
+              "string",
+              "current full text of the file at `uri`; enables the live PC overlay"
+            ),
+            ("query", "string", "keep declarations whose name contains this, case-insensitive"),
+            ("symbol", "string", "keep the declaration with exactly this SemanticDB symbol"),
+            (
+              "includeParents",
+              "boolean",
+              "keep the enclosing scopes of a match as context (default true)"
+            ),
+            (
+              "maxDepth",
+              "integer",
+              "levels of nesting to keep below each match (1 = the match alone)"
+            ),
+            ("kind", "string", "keep only this kind, e.g. CLASS, TRAIT, OBJECT, METHOD")
           ),
           List("uri")
         ) { a =>
           val uri = argUri(a, "uri")
-          az.outline(uri) match
+          // PC-only category: an outline is a single-file structural question, so the buffer is
+          // queried on its own rather than overlaid on the whole index.
+          val engine = a.obj.get("source").map(_.str) match
+            case Some(src) => az.bufferOnly(root.resolve(uri.value).toUri, src, uri.value)
+            case None      => None
+          val query = a.obj.get("query").map(_.str)
+          val symbol = a.obj.get("symbol").map(_.str)
+          val kind = a.obj.get("kind").map(_.str)
+          val maxDepth = a.obj.get("maxDepth").map(_ => argPositiveInt(a, "maxDepth", 1).value)
+          val narrowed = query.nonEmpty || symbol.nonEmpty || kind.nonEmpty || maxDepth.nonEmpty
+          engine
+            .getOrElse(az)
+            .outlineFiltered(
+              uri,
+              query,
+              symbol,
+              argBool(a, "includeParents", true),
+              maxDepth,
+              kind
+            ) match
             case None =>
               jobj(Some("uri" -> ujson.Str(uri.value)), Some("found" -> ujson.Bool(false)))
             case Some(entries) =>
               jobj(
                 Some("uri" -> ujson.Str(uri.value)),
+                opt(engine.isDefined, "liveSource" -> ujson.Bool(true)),
+                opt(narrowed, "filtered" -> ujson.Bool(true)),
                 Some("outline" -> ujson.Arr.from(entries.map(outlineJson)))
               )
         }

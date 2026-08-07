@@ -23,6 +23,7 @@ It reads compiler-emitted **SemanticDB**, so answers reflect what the compiler r
 
 - [Development](project/development.md) — repository layout, build, test, cross-version
 - [Design decisions](project/design.md) — implementation approach and extension points
+- [ADR 0001: Claude Code guard hook](adr/0001-claude-code-guard-hook.md) — why setup installs a hook that denies text tools on `.scala` sources
 - [Releasing](project/releasing.md) — Sonatype Central release process
 - [Property-based testing audit](testing/pb-audit.md) — conversion candidates for property/golden tests
 

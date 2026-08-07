@@ -173,7 +173,8 @@ private[scalasemantic] object LauncherConfigMerge:
           if i > vs && s.charAt(i - 1).isWhitespace then back(i - 1) else i
         back(scan(vs))
 
-  private def matchBracket(s: String, openIdx: Int): Int =
+  // Also used by LauncherGuardHook to splice into .claude/settings.json.
+  def matchBracket(s: String, openIdx: Int): Int =
     @tailrec def loop(i: Int, depth: Int, inStr: Boolean, esc: Boolean): Int =
       if i >= s.length then -1
       else
@@ -196,7 +197,7 @@ private[scalasemantic] object LauncherConfigMerge:
     val j = skipWs(s, from, end)
     j < end && s.charAt(j) == ':'
 
-  private def findJsonKey(s: String, start: Int, end: Int, key: String): Int =
+  def findJsonKey(s: String, start: Int, end: Int, key: String): Int =
     val target = "\"" + key + "\""
     @tailrec def loop(i: Int, depth: Int, inStr: Boolean, esc: Boolean): Int =
       if i >= end then -1

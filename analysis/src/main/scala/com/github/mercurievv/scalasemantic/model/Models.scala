@@ -58,13 +58,26 @@ case class UsagesResult(
     definitions: List[Location],
     references: List[Location],
     definitionsWithContext: List[UsageHit] = Nil,
-    referencesWithContext: List[UsageHit] = Nil
+    referencesWithContext: List[UsageHit] = Nil,
+    related: List[RelatedUsageGroup] = Nil
 ) derives ReadWriter
 
 /** One usage location plus a few surrounding source lines (populated only when the caller requests
   * `contextLines > 0`; empty otherwise).
   */
 case class UsageHit(location: Location, context: List[String] = Nil) derives ReadWriter
+
+/** Usages of one symbol *related* to the queried one — for a case class, the companion object,
+  * constructor, `copy`, `apply`/`unapply` and the parameter accessors. `kind` names the relation
+  * (`companion`, `constructors`, `copy`, `accessors`, `apply`, `unapply`), `symbol` is the related
+  * SemanticDB symbol whose occurrences produced `locations`.
+  */
+case class RelatedUsageGroup(
+    kind: String,
+    symbol: String,
+    locations: List[Location],
+    hits: List[UsageHit] = Nil
+) derives ReadWriter
 
 // --- method-signature / find-overloads --------------------------------------
 

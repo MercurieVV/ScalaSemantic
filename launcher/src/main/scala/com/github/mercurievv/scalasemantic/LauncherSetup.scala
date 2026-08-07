@@ -11,7 +11,8 @@ private[scalasemantic] object LauncherSetup:
       project: Path = Path.of(".").toAbsolutePath.normalize(),
       client: String = "all",
       command: String = sys.env.getOrElse("SCALASEMANTIC_LAUNCHER", "scalasemantic-mcp"),
-      skipSemanticdbConfig: Boolean = false
+      skipSemanticdbConfig: Boolean = false,
+      guard: Boolean = true
   )
 
   def setup(rawArgs: List[String]): Unit =
@@ -21,6 +22,7 @@ private[scalasemantic] object LauncherSetup:
     ensureSemanticdbConfig(project, opts.skipSemanticdbConfig)
     LauncherRules.ensure(project, opts.client)
     LauncherClientConfigs.write(project, opts)
+    if opts.guard then LauncherGuardHook.install(project, opts.client)
     ensureClasspathMetadataDir(project)
 
   private def parse(args: List[String]): Options =
@@ -35,6 +37,10 @@ private[scalasemantic] object LauncherSetup:
           loop(tail, opts.copy(command = value))
         case "--skip-semanticdb-config" :: tail =>
           loop(tail, opts.copy(skipSemanticdbConfig = true))
+        case "--no-guard" :: tail =>
+          loop(tail, opts.copy(guard = false))
+        case "--guard" :: tail =>
+          loop(tail, opts.copy(guard = true))
         case ("--help" | "-h") :: _ =>
           LauncherMessages.usage(0)
         case bad :: _ =>

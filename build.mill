@@ -56,7 +56,17 @@ trait ScalafixConfigured extends ScalafixModule {
   def scalafixIvyDeps = Seq(mvn"org.typelevel::typelevel-scalafix:0.5.0")
 }
 
-trait Common extends SbtModule with ScalafixConfigured with mill.scalalib.scalafmt.ScalafmtModule {
+trait ScalafixConfiguredScala3 extends ScalafixConfigured {
+  override def scalafixIvyDeps = Seq(
+    mvn"org.typelevel::typelevel-scalafix:0.5.0",
+    mvn"io.github.mercurievv:scala-purrism-scalafix_3:0.6.2"
+  )
+}
+
+trait Common
+    extends SbtModule
+    with ScalafixConfiguredScala3
+    with mill.scalalib.scalafmt.ScalafmtModule {
   def id: String
   def scalaVersion = V.scala3
 
@@ -185,7 +195,7 @@ trait Common extends SbtModule with ScalafixConfigured with mill.scalalib.scalaf
   trait CommonTests
       extends SbtTests
       with TestModule.Munit
-      with ScalafixConfigured
+      with ScalafixConfiguredScala3
       with mill.scalalib.scalafmt.ScalafmtModule {
     def mvnDeps = munitDeps
     // Dogfood suites call SemanticIndex.fromProject(".") and scan for *.semanticdb from cwd. Mill
@@ -271,6 +281,7 @@ object launcher extends Common with SonatypeCentralPublishModule {
   def artifactName = "scalasemantic-launcher"
   def publishVersion = build.publishVersion()
   def pomSettings = commonPom("scalasemantic-launcher")
+  object test extends CommonTests
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -460,6 +471,12 @@ trait CompatModule
   def scalaVersion = crossValue
   def moduleDir = build.moduleDir / "compat-fixtures"
 
+  // This module is cross-built for 2.13 as well as 3, and the scala-purrism rules in the root
+  // .scalafix.conf ship only as `scala-purrism-scalafix_3` — under 2.13 scalafix cannot load them
+  // at all and fails the run with "Unknown rule". Point it at the subset config instead; these are
+  // throwaway SemanticDB fixtures, so the omitted rules cost nothing here.
+  override def scalafixConfig = Task(Some(build.moduleDir / ".scalafix-compat.conf"))
+
   // sbt's crossScalaVersions convention auto-adds a `src/main/scala-<binVer>` sibling directory to
   // the source set; Mill's SbtModule doesn't, so the version-specific fixtures (BasicClasses.scala
   // etc. under scala-2.13/ or scala-3/) were being silently skipped — `allSourceFiles` came back
@@ -508,7 +525,10 @@ trait CompatModule
 // packaged jar's own correctness (manifest, entrypoint, shading) is covered by mcp's own tests,
 // not by this doc build.
 // ---------------------------------------------------------------------------------------------
-object docs extends SbtModule with ScalafixConfigured with mill.scalalib.scalafmt.ScalafmtModule {
+object docs
+    extends SbtModule
+    with ScalafixConfiguredScala3
+    with mill.scalalib.scalafmt.ScalafmtModule {
   def scalaVersion = V.scala3
   def moduleDir = build.moduleDir / "mdoc-docs"
   def moduleDeps = Seq(mcp)

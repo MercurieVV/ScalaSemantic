@@ -147,8 +147,11 @@ final class Analyzer(
       val definedSet = defs.map(_._1).toSet
       def parentOf(sym: String): Option[String] =
         Some(index.owner(sym)).filter(definedSet.contains)
+      // Group once instead of rescanning `defs` per node — `build` recurses over every entry, so
+      // the old per-node filter made this quadratic in the size of the file's outline.
+      val childrenOf = defs.groupBy((c, _) => parentOf(c)).withDefaultValue(Nil)
       def build(sym: String, line: Int): OutlineEntry =
-        val kids = defs.filter((c, _) => parentOf(c).contains(sym)).sortBy(_._2)
+        val kids = childrenOf(Some(sym)).sortBy(_._2)
         OutlineEntry(
           sym,
           index.displayName(sym),
@@ -157,8 +160,35 @@ final class Analyzer(
           outlineSignature(sym),
           kids.map((c, l) => build(c, l))
         )
-      defs.filter((sym, _) => parentOf(sym).isEmpty).sortBy(_._2).map((sym, l) => build(sym, l))
+      childrenOf(None).sortBy(_._2).map((sym, l) => build(sym, l))
     }
+
+  /** [[outline]] narrowed to the declarations a caller actually cares about.
+    *
+    * On a large file the full outline is the wrong answer twice over: it costs tokens the caller
+    * did not ask for, and it buries the two or three declarations the edit is about. `query`
+    * matches display names case-insensitively by substring — deliberately the same rule
+    * [[findSymbol]] uses, so a name that resolves there behaves the same here.
+    *
+    * With `includeParents` the enclosing scopes of a match are kept as context (`TaskArrows ->
+    * ResumeTaskArrows`), which is what makes the result readable as a location rather than a bare
+    * list; without it, matches are returned as roots. `maxDepth` bounds the retained subtree below
+    * each match (1 = the match alone), and applies on its own as a plain depth limit when no other
+    * filter is given.
+    */
+  def outlineFiltered(
+      uri: DocumentUri,
+      query: Option[String] = None,
+      symbol: Option[String] = None,
+      includeParents: Boolean = true,
+      maxDepth: Option[Int] = None,
+      kind: Option[String] = None
+  ): Option[List[OutlineEntry]] =
+    val matches: OutlineEntry => Boolean = e =>
+      query.forall(q => e.name.toLowerCase.nn.contains(q.toLowerCase.nn)) &&
+        symbol.forall(_ == e.symbol) &&
+        kind.forall(_.equalsIgnoreCase(e.kind.value))
+    outline(uri).map(OutlineFilter(_, matches, includeParents, maxDepth))
 
   /** A one-line signature for an outline entry, rendered from SemanticDB: a method's full clarified
     * signature, a value's resolved type, or a type alias's right-hand side / bounds.
@@ -488,8 +518,15 @@ final class Analyzer(
     val sym = symbol.value
     val name = newName.value
     val oldName = index.displayName(sym)
-    val edits = index
-      .occurrencesOf(sym)
+    // A case class's construction sites sit on the companion-object symbol and (on 2.13) on
+    // `<init>`, not on the class symbol, so renaming the class alone would emit a plan that
+    // compiles to nothing. Only the members that are *spelled* with the type's name are folded
+    // in — `copy`/`apply`/accessors keep their own names and must not be rewritten.
+    val renameTargets = sym :: h
+      .relatedProductSymbols(sym)
+      .collect { case ("companion" | "constructors", related) => related }
+    val edits = renameTargets
+      .flatMap(index.occurrencesOf)
       .collect { case (uri, occ) =>
         val r = occ.range.getOrElse(s.Range.defaultInstance)
         RenameEdit(
@@ -762,7 +799,11 @@ final class Analyzer(
     * any chars, unanchored substring match) — e.g. "core" + star, or star + "compat" + star.
     * `referenceCount` reflects the filtered set.
     */
-  def findUsages(symbol: SemanticDbSymbol, pathFilter: Option[String] = None): UsagesResult =
+  def findUsages(
+      symbol: SemanticDbSymbol,
+      pathFilter: Option[String] = None,
+      relatedKinds: Option[Set[String]] = None
+  ): UsagesResult =
     val sym = symbol.value
     val keep = h.globMatcher(pathFilter)
     val located = index
@@ -774,7 +815,38 @@ final class Analyzer(
       located.collect { case (s.SymbolOccurrence.Role.DEFINITION, loc) => loc }.distinct.toList
     val refs =
       located.collect { case (s.SymbolOccurrence.Role.REFERENCE, loc) => loc }.distinct.toList
-    UsagesResult(sym, index.displayName(sym), defs, refs)
+    UsagesResult(
+      sym,
+      index.displayName(sym),
+      defs,
+      refs,
+      related = relatedUsages(sym, keep, relatedKinds)
+    )
+
+  /** Usages of the members generated for a product record, grouped by how each relates to the
+    * queried symbol. Empty for anything that is not case-like, which keeps every non-record result
+    * byte-identical to what it was before related expansion existed.
+    *
+    * On by default because the alternative is worse: `find_usages` on a case class otherwise
+    * returns only type references and silently omits every construction site, which reads as a
+    * complete, compiler-backed answer.
+    */
+  private def relatedUsages(
+      sym: String,
+      keep: String => Boolean,
+      relatedKinds: Option[Set[String]]
+  ): List[RelatedUsageGroup] =
+    val want: String => Boolean = kind => relatedKinds.forall(_.contains(kind))
+    h.relatedProductSymbols(sym)
+      .filter((kind, _) => want(kind))
+      .flatMap { (kind, related) =>
+        val locs = index
+          .occurrencesOf(related)
+          .collect { case (uri, occ) if keep(uri) => h.location(uri, occ.range) }
+          .distinct
+          .toList
+        Option.when(locs.nonEmpty)(RelatedUsageGroup(kind, related, locs))
+      }
 
   // --- method-signature -----------------------------------------------------
 

@@ -80,6 +80,57 @@ class McpPcSuite extends munit.FunSuite:
     }
   }
 
+  test("document_outline reads a never-compiled buffer and narrows it to one declaration") {
+    val root = java.nio.file.Files.createTempDirectory("mcp-outline").nn
+    val file = root.resolve("Shapes.scala").nn
+    val source =
+      """package demo
+        |
+        |class Circle:
+        |  def area(r: Double): Double = r * r
+        |  def name(): String = "circle"
+        |
+        |class Square:
+        |  def area(s: Double): Double = s * s
+        |""".stripMargin
+    java.nio.file.Files.writeString(file, source)
+
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+      val pcTools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
+      def outline(args: ujson.Obj): ujson.Value =
+        val resp = Mcp.handle(
+          req("tools/call", ujson.Obj("name" -> "document_outline", "arguments" -> args)),
+          pcTools
+        )
+        ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
+
+      // Nothing is compiled and the disk index is empty, so without `source` there is no outline.
+      assertEquals(outline(ujson.Obj("uri" -> "Shapes.scala"))("found").bool, false)
+
+      val full = outline(ujson.Obj("uri" -> "Shapes.scala", "source" -> source))
+      assertEquals(full("liveSource").bool, true)
+      assert(!full.obj.contains("filtered"), full.render())
+      assertEquals(
+        full("outline").arr.map(_("name").str).toList.sorted,
+        List("Circle", "Square")
+      )
+
+      val narrowed = outline(
+        ujson.Obj("uri" -> "Shapes.scala", "source" -> source, "query" -> "name")
+      )
+      assertEquals(narrowed("filtered").bool, true)
+      assertEquals(
+        narrowed("outline").arr.map(_("name").str).toList,
+        List("Circle"),
+        "context, not the match"
+      )
+      assertEquals(
+        narrowed("outline")(0)("children").arr.map(_("name").str).toList,
+        List("name")
+      )
+    }
+  }
+
   test("launcher smoke discovers module-aware classpath metadata for live buffers") {
     val root = java.nio.file.Files.createTempDirectory("mcp-launcher").nn
     val appDir = root.resolve("app").nn

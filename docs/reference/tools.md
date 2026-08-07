@@ -7,7 +7,7 @@ ScalaSemantic exposes MCP tools over stdio JSON-RPC. For most workflows, start w
 | Tool | Use it for |
 | --- | --- |
 | `find_symbol` | Resolve a plain or partial name to SemanticDB symbol strings. Start here. |
-| `find_usages` | Find exact references to a symbol, split by definition/reference, with paging. |
+| `find_usages` | Find exact references to a symbol, split by definition/reference, with paging. For a case class it also returns `related` groups — construction sites (which resolve to the companion object, not the class), `copy`, `apply`/`unapply` and parameter accessors. |
 | `method_signature` | Render a method signature, including type params and implicit/using parameter lists. |
 | `class_hierarchy` | Inspect parents, linearization, and known subtypes across the index. |
 | `find_overloads` | List overloads that share a name and owner. |
@@ -17,7 +17,7 @@ ScalaSemantic exposes MCP tools over stdio JSON-RPC. For most workflows, start w
 | `trace_implicit_chain` | Follow a given's transitive implicit dependencies. |
 | `call_path` | Find the shortest known call path between two methods. |
 | `annotated_source` | Read a source file with compiler-inserted type annotations. |
-| `document_outline` | Survey a file's declarations (kind, line, signature) without reading the full source. |
+| `document_outline` | Survey a file's declarations (kind, line, signature) without reading the full source. Narrow a large file with `query`/`symbol`/`kind`/`maxDepth` (enclosing scopes come back as context); pass `source` to outline an uncompiled buffer. |
 | `rename_plan` | Produce the exact edits to rename a symbol everywhere it is used. |
 | `move_plan` | Produce the edits to move a top-level definition to another package. |
 | `extract_method_plan` | Produce the edits to extract a code range into a new method. |

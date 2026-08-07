@@ -76,7 +76,42 @@ Scala 2.13 (resolve the plugin jar with coursier first):
 scalac -Xplugin:/path/to/semanticdb-scalac_2.13.16-4.13.9.jar -Yrangepos -P:semanticdb:sourceroot:. <sources...>
 ```
 
+**Scala CLI** — use the directive/flag, not raw scalac options, and compile the **test scope too**:
+
+```sh
+scala-cli compile . --test --semanticdb --semanticdb-sourceroot . --semanticdb-targetroot .semanticdb
+```
+
+Without `--test`, `scala-cli compile .` builds the main scope only, so every `*.test.scala` is
+missing from the index — see [Coverage](#coverage-what-the-index-does-not-see) below.
+
 Whatever the build tool, the only machine requirement to *run* the server is a **JVM** (`java` on PATH).
+
+## Coverage: what the index does not see
+
+The server answers from the `*.semanticdb` the compiler emitted. A source file that was never
+compiled with SemanticDB enabled — a test scope left out of the build, a module not compiled yet, a
+standalone script outside the build — is simply not in the index, and a query about a symbol defined
+there returns `count: 0`. That is the same answer as "this symbol does not exist", which is the
+answer a *"nothing uses this, delete it"* decision rests on.
+
+So the server measures it: `get_workspace_root`, `set_workspace_root` and `refresh_workspace` return
+
+```json
+"coverage": { "sources": 82, "indexed": 70, "unindexed": ["src/AgentInventory.test.scala", "…"] }
+```
+
+and any tool result that is empty **while coverage is partial** carries a `coverageHint` saying so.
+Treat that hint as "may not be indexed", not as "does not exist". Files legitimately outside the
+build will always be listed as unindexed; the number to watch is a scope you expected to be there.
+
+## Freshness: recompiles are picked up automatically
+
+Every tool call re-checks the project's `*.semanticdb` files on disk (a walk, without parsing) and
+rebuilds the index when they changed. A recompile therefore needs **no** `refresh_workspace` call —
+that tool remains available to force a rebuild the on-disk check cannot see, or to rebuild a root
+other than the active one.
+
 
 Each release publishes both a self-contained fat jar attached to the [GitHub Release](https://github.com/MercurieVV/ScalaSemantic/releases) and the same server as regular Maven Central artifacts (`io.github.mercurievv::scalasemantic-mcp` and friends). Options A and C run the fat jar; option B resolves the Maven Central artifact directly via scala-cli/coursier.
 

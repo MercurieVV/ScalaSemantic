@@ -552,6 +552,79 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
         case _                   => None)
       .getOrElse(Nil)
 
+  // --- product records (case classes) -----------------------------------------
+
+  /** The class half of a type/companion pair: `p/Foo#` for both `p/Foo#` and `p/Foo.`. `None` when
+    * the derived symbol is unknown to the index, so we never fabricate a symbol that this
+    * compiler/version did not emit.
+    */
+  def classSymbolOf(symbol: String): Option[String] =
+    if symbol.endsWith("#") then Some(symbol).filter(known)
+    else if symbol.endsWith(".") then Some(symbol.dropRight(1) + "#").filter(known)
+    else None
+
+  /** The companion-object term symbol `p/Foo.` for a class symbol `p/Foo#`, when the index knows
+    * it.
+    *
+    * This is the one that matters: in the SemanticDB emitted by Scala 3, a `Foo(...)` construction
+    * site resolves to the companion **object** symbol, not to `Foo.apply().` and not to
+    * ``Foo#`<init>`().`` — both of which are frequently absent from the index entirely.
+    */
+  def companionObjectOf(classSymbol: String): Option[String] =
+    Option.when(classSymbol.endsWith("#"))(classSymbol.dropRight(1) + ".").filter(known)
+
+  /** True for a case class / case object / enum case — anything carrying SemanticDB's `CASE`
+    * property, i.e. the types whose construction and `copy` sites live on generated members.
+    */
+  def isCaseLike(symbol: String): Boolean =
+    classSymbolOf(symbol).exists { cls =>
+      index.info(cls).exists(si => (si.properties & s.SymbolInformation.Property.CASE.value) != 0)
+    }
+
+  /** Symbols generated for a product record, each labelled by how it relates to the class, in a
+    * stable order. Every symbol is index-verified: nothing here is string-built and returned
+    * unchecked, because Scala 2.13 and Scala 3 disagree about which of these members exist.
+    */
+  def relatedProductSymbols(symbol: String): List[(String, String)] =
+    classSymbolOf(symbol).filter(_ => isCaseLike(symbol)).toList.flatMap { cls =>
+      val decls = declarationSymbols(cls)
+      val companion = companionObjectOf(cls)
+      val constructors = decls.filter(named("<init>"))
+      val paramNames = constructorParamNames(constructors)
+      val related =
+        companion.map("companion" -> _).toList
+          ++ constructors.map("constructors" -> _)
+          ++ decls.filter(named("copy")).map("copy" -> _)
+          ++ decls.filter(s => paramNames.contains(index.displayName(s))).map("accessors" -> _)
+          ++ companion.toList.flatMap(declarationSymbols).collect {
+            case s if named("apply")(s)   => "apply" -> s
+            case s if named("unapply")(s) => "unapply" -> s
+          }
+      related.filterNot(_._2 == symbol).distinct
+    }
+
+  /** Display names of the primary constructor's first parameter list — the case-class fields whose
+    * accessors we surface. Empty when no constructor is indexed.
+    */
+  private def constructorParamNames(constructors: List[String]): Set[String] =
+    constructors
+      .flatMap(index.info)
+      .collect { case si =>
+        si.signature match
+          case m: s.MethodSignature =>
+            m.parameterLists.headOption.toList.flatMap(sc =>
+              scopeInfos(Some(sc)).map(_.displayName)
+            )
+          case _ => Nil
+      }
+      .flatten
+      .toSet
+
+  private def named(name: String)(symbol: String): Boolean = index.displayName(symbol) == name
+
+  private def known(symbol: String): Boolean =
+    index.info(symbol).isDefined || index.occurrencesOf(symbol).nonEmpty
+
   def memberInfo(member: String, declaredIn: String): MemberInfo =
     MemberInfo(member, index.displayName(member), kindName(member), symbolRef(declaredIn))
 
