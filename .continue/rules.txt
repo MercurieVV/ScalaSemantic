@@ -1,6 +1,6 @@
 # Project Rules & Context
 
-Please follow the rules in [SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md) for working with Scala code.
+MUST follow the rules in [SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md) for working with Scala code. Mandatory, not optional.
 
 ## Project Description & Startup Context
 
