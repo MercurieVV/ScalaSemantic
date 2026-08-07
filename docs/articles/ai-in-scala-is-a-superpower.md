@@ -36,8 +36,7 @@ Instead of forcing the LLM to open 10 files to understand relationships, ScalaSe
 
 Above, I visualize a tool-created graph of ScalaSemanticMCP's project relationships and module dependencies. Besides graph edges, it also contains useful graph metrics, such as node coupling, centrality, and depth. This helps an LLM reason about code much better than jumping between `grep` results.
 
-
----
+ScalaSemantic MCP gives coding agents understanding of Scala code through SemanticDB: code navigation, types, givens and project structure
 ## 3. What Else Can It Give to an LLM Agent?
 
 | Tool                          | What It Does                                                                                             |

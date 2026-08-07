@@ -281,6 +281,7 @@ object launcher extends Common with SonatypeCentralPublishModule {
   def artifactName = "scalasemantic-launcher"
   def publishVersion = build.publishVersion()
   def pomSettings = commonPom("scalasemantic-launcher")
+  object test extends CommonTests
 }
 
 // ---------------------------------------------------------------------------------------------
