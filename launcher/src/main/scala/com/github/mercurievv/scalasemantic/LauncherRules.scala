@@ -55,11 +55,25 @@ private[scalasemantic] object LauncherRules:
         if current.contains("SCALA_CODE_RULES.md") then
           Files.writeString(file, current.replace("SCALA_CODE_RULES.md", "SCALA_SEMANTIC_RULES.md"))
           LauncherMessages.err(s"updated $file")
+        else if current.contains("Please follow the rules in") then
+          Files.writeString(
+            file,
+            current
+              .replace(
+                s"Please follow the rules in $reference.",
+                s"MUST follow the rules in $reference. Mandatory, not optional."
+              )
+              .replace(
+                s"Please follow the rules in $reference for working with Scala code.",
+                s"MUST follow the rules in $reference for working with Scala code. Mandatory, not optional."
+              )
+          )
+          LauncherMessages.err(s"updated $file")
         else if !current.contains("SCALA_SEMANTIC_RULES.md") then
           val sep = if current.endsWith("\n") then "" else "\n"
           Files.writeString(
             file,
-            current + sep + s"\n## Scala Code Rules\nPlease follow the rules in $reference.\n"
+            current + sep + s"\n## Scala Code Rules\nMUST follow the rules in $reference. Mandatory, not optional.\n"
           )
           LauncherMessages.err(s"updated $file")
       else
@@ -72,7 +86,7 @@ private[scalasemantic] object LauncherRules:
                 |</INSTRUCTIONS>
                 |""".stripMargin
           else
-            s"# Project Rules\n\nPlease follow the rules in $reference for working with Scala code.\n"
+            s"# Project Rules\n\nMUST follow the rules in $reference for working with Scala code. Mandatory, not optional.\n"
         Files.writeString(file, content)
         LauncherMessages.err(s"created $file")
     }

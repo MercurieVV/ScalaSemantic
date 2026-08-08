@@ -1,4 +1,10 @@
 [
+  "com.github.mercurievv.scalasemantic.LauncherClientConfigsSuite.relativizeCommand leaves a bare PATH command untouched",
+  "com.github.mercurievv.scalasemantic.LauncherClientConfigsSuite.relativizeCommand leaves an absolute command outside the project untouched",
+  "com.github.mercurievv.scalasemantic.LauncherClientConfigsSuite.relativizeCommand leaves an already-relative command untouched",
+  "com.github.mercurievv.scalasemantic.LauncherClientConfigsSuite.relativizeCommand rewrites a nested absolute path with its subdirectory",
+  "com.github.mercurievv.scalasemantic.LauncherClientConfigsSuite.relativizeCommand rewrites an absolute path inside the project to a relative one",
+  "com.github.mercurievv.scalasemantic.LauncherClientConfigsSuite.write emits a project-relative command for an in-project absolute launcher path",
   "com.github.mercurievv.scalasemantic.analysis.AnalyzerCorePropertySuite.callHierarchy: every node's children equal its direct edges, unless depth-limited or already visited on this path (which makes it a leaf) — for any call graph, root, depth, and direction",
   "com.github.mercurievv.scalasemantic.analysis.AnalyzerCorePropertySuite.methodSignature flags a parameter list implicit iff it is non-empty and all params are implicit",
   "com.github.mercurievv.scalasemantic.analysis.AnalyzerCorePropertySuite.resolveImplicits: candidate count is the number of givens; chosen is defined iff exactly one",

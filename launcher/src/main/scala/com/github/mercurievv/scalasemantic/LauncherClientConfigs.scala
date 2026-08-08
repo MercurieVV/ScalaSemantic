@@ -13,7 +13,7 @@ private[scalasemantic] object LauncherClientConfigs:
   private case object YamlFmt extends Fmt
 
   def write(project: Path, opts: LauncherSetup.Options): Unit =
-    val argv = Seq(opts.command, "serve", ".")
+    val argv = Seq(relativizeCommand(project, opts.command), "serve", ".")
     val clients =
       if opts.client.trim.toLowerCase == "all" then
         Seq("claude", "codex", "gemini", "cline", "roo", "continue", "antigravity")
@@ -37,6 +37,18 @@ private[scalasemantic] object LauncherClientConfigs:
         case None =>
           LauncherMessages.err(s"unsupported client '$client'")
     }
+
+  // Relative wins when the launcher script lives inside the project (portable across clones,
+  // matches this repo's own .mcp.json); absolute stays as fallback for bare PATH commands or a
+  // launcher living outside the project, since some MCP clients spawn the server with cwd != project.
+  private[scalasemantic] def relativizeCommand(project: Path, command: String): String =
+    val path = Path.of(command)
+    if path.isAbsolute then
+      val root = project.toAbsolutePath.normalize()
+      val abs = path.toAbsolutePath.normalize()
+      if abs.startsWith(root) then "./" + root.relativize(abs).toString
+      else command
+    else command
 
   private def targetFor(client: String): Option[Target] =
     client.trim.toLowerCase.replace('_', '-') match
