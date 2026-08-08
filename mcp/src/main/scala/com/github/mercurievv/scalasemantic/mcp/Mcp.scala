@@ -275,15 +275,33 @@ object Mcp:
   ): Iterator[String] =
     lines
       .filter(_.nonEmpty)
-      .flatMap(line =>
+      .flatMap { line =>
         // Guarded twice over: `handle` already converts a failing tool into an isError response,
         // and this catches anything thrown outside it (parsing, dispatch, serialization) so one bad
         // line ends a request rather than the iterator — and with it the whole stdio loop (#292).
-        guarded("request", log.get())(
-          scala.util.Try(ujson.read(line)).toOption.flatMap(handle(_, tools, onToolCall))
-        ).toOption.flatten
+        val parsed = scala.util.Try(ujson.read(line)).toOption
+        guarded("request", log.get())(parsed.flatMap(handle(_, tools, onToolCall))) match
+          case Right(response) => response
+          // A request that carried an `id` MUST be answered. Dropping it leaves the client blocked
+          // on a reply that will never come, which it reports as a dead or closed transport — the
+          // very symptom this guard exists to remove (#292). Only a notification or an unparseable
+          // line, neither of which has an id to answer, may legitimately produce nothing.
+          case Left(t) => parsed.flatMap(requestId).map(id => err(id, -32603, internalError(t)))
+      }
+      .flatMap(response =>
+        // Serializing the envelope can itself fail (an OutOfMemoryError on a very large payload),
+        // and an unwritten response is again an unanswered request, so fall back to an envelope
+        // small enough that writing it cannot plausibly fail.
+        guarded("response", log.get())(ujson.write(response)).toOption
+          .orElse(requestId(response).map(id => ujson.write(err(id, -32603, "response too large"))))
       )
-      .map(ujson.write(_))
+
+  /** The `id` of a request or response, when it has one that can be echoed back. */
+  private[mcp] def requestId(value: ujson.Value): Option[ujson.Value] =
+    scala.util.Try(value.obj.get("id")).toOption.flatten.filterNot(_.isNull)
+
+  private def internalError(t: Throwable): String =
+    s"internal error: ${t.getClass.getName}: ${Option(t.getMessage).getOrElse("")}"
 
   /** Run `body`, converting ANY throwable — including fatal ones — into `None` plus a logged stack
     * trace.

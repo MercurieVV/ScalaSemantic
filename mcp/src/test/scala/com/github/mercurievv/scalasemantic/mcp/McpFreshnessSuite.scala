@@ -181,3 +181,46 @@ class McpFreshnessSuite extends munit.FunSuite:
       assertEquals(ujson.read(out(1))("id").num, 2.0)
     finally Mcp.state.set(savedState)
   }
+
+  // A surviving loop is not enough: a request that carries an `id` and gets no reply leaves the
+  // client blocked forever, which it reports as a closed or dead transport — the symptom of #292
+  // finding 3. The failure has to come back as an answer.
+  test("a request whose dispatch throws is still answered, with its own id") {
+    val savedState = Mcp.state.get()
+    val savedFactory = Mcp.stateFactory.get()
+    val root = Files.createTempDirectory("mcp-dispatch-boom").nn
+    try
+      writeSemanticdb(root, "Alpha.scala", doc("Alpha.scala", "Alpha", "demo/Alpha#"))
+      val initial = savedFactory(root)
+      Mcp.activateState(initial)
+      val _ = Mcp.stateCache.put(root, initial)
+      // Move the fingerprint so the next request rebuilds, then make that rebuild fail fatally.
+      // This is the OOM-on-a-large-index path: it happens inside `ensureFresh`, before any tool
+      // runs, so `runToolGuarded` never sees it.
+      writeSemanticdb(root, "Beta.scala", doc("Beta.scala", "Beta", "demo/Beta#"))
+      Mcp.stateFactory.set(_ =>
+        throw new OutOfMemoryError("simulated index rebuild") // scalafix:ok DisableSyntax.throw
+      )
+      val in = Iterator(
+        """{"jsonrpc":"2.0","id":11,"method":"tools/list","params":{}}""",
+        """{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}""",
+        """not json at all"""
+      )
+      val out = Mcp.process(in, Nil).toList.map(ujson.read(_))
+      assertEquals(out.size, 1, "only the request with an id is answerable")
+      assertEquals(out.head("id").num, 11.0)
+      assertEquals(out.head("error")("code").num, -32603.0)
+      assert(out.head("error")("message").str.contains("OutOfMemoryError"), out.head.render())
+    finally
+      Mcp.stateCache.remove(root)
+      Mcp.stateFactory.set(savedFactory)
+      Mcp.state.set(savedState)
+  }
+
+  test("requestId echoes a usable id and refuses one that is absent or null") {
+    assertEquals(Mcp.requestId(ujson.Obj("id" -> 4)).map(_.num), Some(4.0))
+    assertEquals(Mcp.requestId(ujson.Obj("id" -> "abc")).map(_.str), Some("abc"))
+    assertEquals(Mcp.requestId(ujson.Obj("method" -> "ping")), None, "a notification has no id")
+    assertEquals(Mcp.requestId(ujson.Obj("id" -> ujson.Null)), None, "null is not an id")
+    assertEquals(Mcp.requestId(ujson.Str("not an object")), None, "never throws on a non-object")
+  }
