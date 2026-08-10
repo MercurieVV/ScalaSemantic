@@ -54,13 +54,16 @@ object SmokeTestScripts {
 
     val targetScript = scriptsDir.resolve("smoke-test-mill.sc")
     println(s"Compiling $targetScript with --semanticdb to (re)generate its SemanticDB...")
-    val compileProc = new java.lang.ProcessBuilder("scala-cli", "compile", "--semanticdb", targetScript.toString)
-      .redirectOutput(java.lang.ProcessBuilder.Redirect.INHERIT)
-      .redirectError(java.lang.ProcessBuilder.Redirect.INHERIT)
-      .start()
+    val compileProc =
+      new java.lang.ProcessBuilder("scala-cli", "compile", "--semanticdb", targetScript.toString)
+        .redirectOutput(java.lang.ProcessBuilder.Redirect.INHERIT)
+        .redirectError(java.lang.ProcessBuilder.Redirect.INHERIT)
+        .start()
     val compileExit = compileProc.waitFor()
     if (compileExit != 0) {
-      System.err.println(s"Error: scala-cli compile --semanticdb failed with exit code $compileExit")
+      System.err.println(
+        s"Error: scala-cli compile --semanticdb failed with exit code $compileExit"
+      )
       sys.exit(1)
     }
 
@@ -68,7 +71,9 @@ object SmokeTestScripts {
     val semanticdbFiles =
       findFiles(scalaBuildDir, _.getFileName.toString == "smoke-test-mill.sc.semanticdb")
     if (semanticdbFiles.isEmpty) {
-      System.err.println(s"Error: no smoke-test-mill.sc.semanticdb found under $scalaBuildDir after compile.")
+      System.err.println(
+        s"Error: no smoke-test-mill.sc.semanticdb found under $scalaBuildDir after compile."
+      )
       sys.exit(1)
     }
     println(s"Found scala-cli-emitted SemanticDB: ${semanticdbFiles.head}")
@@ -83,7 +88,9 @@ object SmokeTestScripts {
       s"""{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"find_usages","arguments":{"symbol":"$failSymbol"}}}"""
     )
 
-    println(s"Launching server with root = $scalaBuildDir (hidden dir passed directly as the root)...")
+    println(
+      s"Launching server with root = $scalaBuildDir (hidden dir passed directly as the root)..."
+    )
     val launcher = repoRoot.resolve("scripts/scalasemantic-mcp.sh").toString
     val pb = new java.lang.ProcessBuilder(launcher, "serve", scalaBuildDir.toString, "--log")
     pb.environment().put("SCALASEMANTIC_VERSION", "local")
@@ -121,17 +128,18 @@ object SmokeTestScripts {
     val stderr = stderrBuf.toString
 
     val responsesById: Map[Int, ujson.Value] =
-      stdout
-        .linesIterator
+      stdout.linesIterator
         .flatMap(line => scala.util.Try(ujson.read(line)).toOption)
         .flatMap(msg => msg.obj.get("id").map(_.num.toInt -> msg))
         .toMap
 
     def toolResult(id: Int): ujson.Value =
       responsesById.get(id) match {
-        case None => fail(s"did not receive any JSON-RPC response for id=$id", stdout, stderr)
+        case None      => fail(s"did not receive any JSON-RPC response for id=$id", stdout, stderr)
         case Some(msg) =>
-          msg.obj.get("error").foreach(err => fail(s"tools/call id=$id returned an error: $err", stdout, stderr))
+          msg.obj
+            .get("error")
+            .foreach(err => fail(s"tools/call id=$id returned an error: $err", stdout, stderr))
           val text = msg("result")("content")(0)("text").str
           ujson.read(text)
       }
@@ -153,13 +161,25 @@ object SmokeTestScripts {
       fail(s"find_usages echoed wrong symbol: ${findUsagesResult("symbol")}", stdout, stderr)
     val referenceCount = findUsagesResult("referenceCount").num.toInt
     if (referenceCount < 1)
-      fail(s"expected find_usages($failSymbol) to find at least 1 usage, got $referenceCount", stdout, stderr)
+      fail(
+        s"expected find_usages($failSymbol) to find at least 1 usage, got $referenceCount",
+        stdout,
+        stderr
+      )
     val definitions = findUsagesResult("definitions").arr.map(_.str)
     if (!definitions.exists(_.contains("smoke-test-mill.sc")))
-      fail(s"expected a find_usages definition inside smoke-test-mill.sc, got: $definitions", stdout, stderr)
+      fail(
+        s"expected a find_usages definition inside smoke-test-mill.sc, got: $definitions",
+        stdout,
+        stderr
+      )
     val references = findUsagesResult("references").arr.map(_.str)
     if (!references.forall(_.contains("smoke-test-mill.sc")))
-      fail(s"expected all find_usages references to be inside smoke-test-mill.sc, got: $references", stdout, stderr)
+      fail(
+        s"expected all find_usages references to be inside smoke-test-mill.sc, got: $references",
+        stdout,
+        stderr
+      )
     println(s"find_usages OK: $referenceCount reference(s) in smoke-test-mill.sc")
 
     println("=== Scripts E2E Smoke Test Passed Successfully ===")
