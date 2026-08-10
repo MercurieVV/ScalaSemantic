@@ -535,7 +535,7 @@ object docs
   // OrganizeImports/RemoveUnused (scalafix) require -Wunused enabled to have anything to check.
   def scalacOptions = super.scalacOptions() ++ Seq("-Wunused:all")
   def mvnDeps = Seq(
-    mvn"org.scalameta::mdoc:2.9.0",
+    mvn"org.scalameta::mdoc:2.9.1",
     mvn"com.lihaoyi::os-lib:0.11.3",
     mvn"com.lihaoyi::upickle:4.4.3",
     // mdoc:2.9.0 transitively pulls scala3-compiler_3:3.3.7 (its LTS build). Force it to match
