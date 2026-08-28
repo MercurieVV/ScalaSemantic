@@ -3,8 +3,8 @@ running stryker4s in local checkout (full log: /home/runner/work/ScalaSemantic/S
 running module analysis (log: /home/runner/work/ScalaSemantic/ScalaSemantic/out/stryker-run.log) ...
 299] 505 mutant(s) detected as having no code coverage. They will be skipped and marked as NoCoverage
 299] 58 mutant(s) detected as static. They will be skipped and marked as Ignored
-299] Written JSON report to /home/runner/work/ScalaSemantic/ScalaSemantic/target/stryker4s-report/1787833247458/report.json
-wrote reports/mutation/analysis/report.json from /home/runner/work/ScalaSemantic/ScalaSemantic/target/stryker4s-report/1787833247458/report.json
+299] Written JSON report to /home/runner/work/ScalaSemantic/ScalaSemantic/target/stryker4s-report/1787924749689/report.json
+wrote reports/mutation/analysis/report.json from /home/runner/work/ScalaSemantic/ScalaSemantic/target/stryker4s-report/1787924749689/report.json
 analysis mutation score: 48.28% (618/1280 detected, alert threshold 80%)
 mutants by status:
   Ignored: 58
@@ -21,7 +21,7 @@ surviving mutants by type:
   BooleanLiteral: 6
 alert: analysis mutation score 48.28% is below 80%
 alert: surviving mutants match MUTATION_ALERT_MUTATORS=ConditionalExpression,EqualityOperator,LogicalOperator
-  ConditionalExpression: 26 (analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:123 #201, analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:123 #202, analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:563 #269)
-  EqualityOperator: 47 (analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:43 #108, analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:68 #119, analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:68 #123)
-  LogicalOperator: 44 (analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:43 #111, analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:43 #115, analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:68 #122)
+  ConditionalExpression: 26 (analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:123 #163, analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:123 #164, analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/AnalyzerHelpers.scala:704 #291)
+  EqualityOperator: 47 (analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:68 #117, analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:68 #121, analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:127 #124)
+  LogicalOperator: 44 (analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:68 #120, analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:45 #135, analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/PureKernels.scala:45 #139)
 done. local Stryker output kept under */target and out/stryker-run*.log
