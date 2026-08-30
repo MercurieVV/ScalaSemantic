@@ -10,6 +10,9 @@ import java.nio.file.Paths
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 import scala.jdk.CollectionConverters.*
+import scala.sys.process.Process
+import scala.sys.process.ProcessLogger
+import scala.util.Using
 
 /** A single MCP tool: its name, one-line description, JSON-Schema for arguments, and a handler
   * producing a (deliberately lean) JSON result.
@@ -171,6 +174,14 @@ object Mcp:
         |
         |Freshness is automatic: every tool call re-checks the project's *.semanticdb files on disk
         |and rebuilds the index when they changed, so a recompile needs no refresh_workspace call.
+        |
+        |Never compiled yet, or you cannot run the build yourself (e.g. a restricted session that
+        |cannot shell out): call refresh_workspace with compile=true — it auto-detects the build
+        |(mill/sbt/scala-cli) and runs its compile task itself, then rebuilds the index, all as one
+        |MCP tool call. If that also fails (no recognized build, or the compile itself fails), fall
+        |back to document_outline / annotated_source / type_at_position with the file's current text
+        |passed as `source`: those answer from the presentation compiler against the classpath alone
+        |and need no persistent SemanticDB index at all — they just can't see other files.
         |
         |Coverage: get_workspace_root / set_workspace_root report `coverage` (`sources` vs
         |`indexed`). An empty result returned while coverage is partial carries a `coverageHint` —
@@ -898,17 +909,76 @@ object Mcp:
       "unindexed" -> ujson.Arr.from(c.unindexed.map(ujson.Str(_)))
     )
 
+  /** The build command that would populate `root`'s SemanticDB, auto-detected from files on disk —
+    * mirrors the detection `LauncherSetup.ensureSemanticdbConfig` uses when writing the SemanticDB
+    * config, but for actually invoking the build rather than configuring it. `None` when no
+    * recognized build exists (nothing to run).
+    */
+  private[mcp] def detectCompileCommand(root: Path): Option[Seq[String]] =
+    def isExec(p: Path) = Files.isRegularFile(p) && Files.isExecutable(p)
+    def hasSuffix(suffix: String): Boolean =
+      Files.exists(root) && Using
+        .resource(Files.list(root))(
+          _.iterator().asScala.exists(p =>
+            Files.isRegularFile(p) && p.getFileName.toString.endsWith(suffix)
+          )
+        )
+    val hasBuildMill =
+      Files.exists(root.resolve("build.mill")) || Files.exists(root.resolve("build.sc"))
+    val hasSbtFiles = hasSuffix(".sbt")
+    if hasBuildMill then
+      val cmd = if isExec(root.resolve("mill")) then "./mill" else "mill"
+      Some(Seq(cmd, "__.compile"))
+    else if hasSbtFiles then
+      val cmd = if isExec(root.resolve("sbt")) then "./sbt" else "sbt"
+      Some(Seq(cmd, "compile", "Test/compile"))
+    else if Files.exists(root.resolve("project.scala")) || hasSuffix(".scala") || hasSuffix(".sc")
+    then Some(Seq("scala-cli", "compile", ".", "--test"))
+    else None
+
+  /** Run the auto-detected build's compile task in `root`, so `refresh_workspace(compile = true)`
+    * can populate a never-compiled or stale SemanticDB index itself instead of asking the caller to
+    * shell out — which, unlike this MCP tool call, a restricted session (e.g. Claude Code plan
+    * mode) may not be allowed to do at all (#296). Output is captured and trimmed to its last 4000
+    * chars — a compile failure's useful detail is at the end, not the start.
+    */
+  private[mcp] def runCompile(root: Path, log: String => Unit): Either[String, String] =
+    detectCompileCommand(root) match
+      case None =>
+        Left(
+          s"could not detect a build to compile at $root (no build.mill/build.sc, *.sbt, or " +
+            "project.scala/*.scala found); compile it manually, then call refresh_workspace again"
+        )
+      case Some(cmd) =>
+        try
+          log(s"refresh_workspace(compile=true): running ${cmd.mkString(" ")} (cwd=$root)")
+          val outputRef = new AtomicReference[Vector[String]](Vector.empty)
+          def capture(line: String): Unit = { val _ = outputRef.updateAndGet(_ :+ line) }
+          val logger = ProcessLogger(capture, capture)
+          val exit = Process(cmd, root.toFile).!(logger)
+          val tail = outputRef.get().mkString("\n").takeRight(4000)
+          if exit == 0 then Right(tail)
+          else Left(s"compile failed (exit $exit) running '${cmd.mkString(" ")}':\n$tail")
+        catch
+          case e: Exception =>
+            Left(s"failed to run '${cmd.mkString(" ")}': ${e.getMessage}")
+
   private[mcp] def refreshWorkspaceTool(
       log: String => Unit
   ): Tool =
     McpToolsSupport.tool(
       "refresh_workspace",
-      "Force-rebuild the semantic index for the current (or given) workspace root, dropping any cached copy. Not needed after a normal recompile — every tool call re-checks the *.semanticdb files on disk and rebuilds itself. Use this only to force a rebuild the on-disk check cannot see, or to rebuild a root other than the active one.",
+      "Force-rebuild the semantic index for the current (or given) workspace root, dropping any cached copy. Not needed after a normal recompile — every tool call re-checks the *.semanticdb files on disk and rebuilds itself. Use this only to force a rebuild the on-disk check cannot see, or to rebuild a root other than the active one. Pass compile=true to also run the project's build compile task first (mill/sbt/scala-cli, auto-detected) — use this when the index is empty or stale and you have no other way to run the build yourself (e.g. a session that cannot shell out).",
       List(
         (
           "path",
           "string",
           "absolute or relative path to rebuild; defaults to the current workspace root"
+        ),
+        (
+          "compile",
+          "boolean",
+          "run the auto-detected build's compile task in this directory before rebuilding the index (default false)"
         )
       ),
       Nil
@@ -925,9 +995,12 @@ object Mcp:
         sys.error(s"Path is not a directory: $resolvedPath")
       }
 
+      val doCompile = McpToolsSupport.argBool(args, "compile", false)
+      val compileResult = if (doCompile) Some(runCompile(resolvedPath, log)) else None
+
       val newState = rebuildState(resolvedPath, "forced by refresh_workspace", log)
 
-      ujson.Obj(
+      val base = Seq(
         "root" -> ujson.Str(resolvedPath.toString),
         "classpath" -> newState.classpathSource.fold[ujson.Value](ujson.Null)(ujson.Str(_)),
         "semanticdbFileCount" -> ujson.Num(newState.fingerprint.fileCount),
@@ -936,6 +1009,11 @@ object Mcp:
         ),
         "coverage" -> coverageJson(newState.coverage)
       )
+      val withCompile = compileResult match
+        case None               => base
+        case Some(Right(out))   => base :+ ("compileOutput" -> ujson.Str(out))
+        case Some(Left(errMsg)) => base :+ ("compileError" -> ujson.Str(errMsg))
+      ujson.Obj.from(withCompile)
     }
 
   private[mcp] def getWorkspaceRootTool: Tool =

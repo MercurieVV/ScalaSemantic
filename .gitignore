@@ -87,4 +87,7 @@ build/
 .aider*
 /plans/
 /.gh-tasks-llm-executor/
+# Local Obsidian vaults/config (editor-local, not part of the repo).
+/ScalaSemantic/
+/docs/.obsidian/
 

@@ -86,7 +86,11 @@ private[mcp] object McpToolsSupport:
   private[mcp] val EmptyIndexHint =
     "SemanticDB index is empty (no *.semanticdb files found) — this project likely has not been " +
       "compiled with SemanticDB enabled yet. See the Integration doc's \"Prerequisite\" section for " +
-      "how to enable it for your build tool (sbt/Mill/Gradle/scalac), then recompile."
+      "how to enable it for your build tool (sbt/Mill/Gradle/scalac), then recompile. If you cannot " +
+      "run the build yourself (e.g. a restricted session), call refresh_workspace with compile=true " +
+      "to have the server detect and run it for you; failing that, document_outline / " +
+      "annotated_source / type_at_position with the current file text passed as `source` answer " +
+      "from the presentation compiler alone and need no persistent index."
 
   private[mcp] def withEmptyIndexHint(v: ujson.Value): ujson.Value = v match
     case o: ujson.Obj =>
@@ -108,7 +112,8 @@ private[mcp] object McpToolsSupport:
       "index — this may be a coverage gap rather than an absence. Check that the build compiles " +
       "the scope this symbol lives in; for scala-cli, test sources need `--test`: " +
       "`scala-cli compile . --test --semanticdb --semanticdb-sourceroot . " +
-      "--semanticdb-targetroot .semanticdb`. Call get_workspace_root for the unindexed file list."
+      "--semanticdb-targetroot .semanticdb`. Call get_workspace_root for the unindexed file list, " +
+      "or refresh_workspace with compile=true to have the server compile the scope itself."
 
   private[mcp] def withCoverageHint(c: SemanticIndex.Coverage)(v: ujson.Value): ujson.Value =
     v match

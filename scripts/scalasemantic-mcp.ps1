@@ -504,7 +504,9 @@ pick whichever fits the actual question:
   signatures / overloads        -> method_signature, find_overloads
   file or project shape         -> document_outline, structure, symbol_source
   literals, comments, TODOs     -> search_text
-Stale or missing index: run the project's compile task, then refresh_workspace.
+Stale or missing index: run the project's compile task, then refresh_workspace — or, if you
+cannot run the build yourself (e.g. this session cannot shell out), call refresh_workspace
+with compile=true and it will detect and run the build itself.
 If the semantic tools genuinely cannot answer this, re-run the command through Bash with
 a trailing `# semantic-fallback: <reason>` marker (allowed, and logged).
 MSG
