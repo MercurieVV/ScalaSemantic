@@ -28,7 +28,7 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
   )
 
   def includeInOutline(symbol: String): Boolean =
-    index.info(symbol).exists { si =>
+    !index.isLocal(symbol) && index.info(symbol).exists { si =>
       outlineKinds.contains(si.kind) && si.displayName.nonEmpty && si.displayName != "<init>"
     }
 
