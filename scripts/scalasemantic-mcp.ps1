@@ -386,13 +386,18 @@ $GuardScript = @'
 # to regenerate, or `scalasemantic-mcp setup --no-guard` to stop installing it (then drop
 # the PreToolUse entry from .claude/settings.json).
 #
-# Claude Code PreToolUse hook. Denies text-scraping tools on .scala sources so symbol
-# questions go to the ScalaSemantic MCP tools, which answer from compiler facts at a
-# fraction of the tokens and without missing renames/implicits/inferred uses.
+# Claude Code PreToolUse hook, two jobs:
+#   READS  -- text-scraping tools on .scala sources are denied, so symbol questions go to
+#             the ScalaSemantic MCP tools, which answer from compiler facts at a fraction
+#             of the tokens and without missing renames/implicits/inferred uses.
+#   EDITS  -- writing a .scala source is allowed but reminds the agent to edit the
+#             annotated buffer instead, so it edits with the compiler's inferred types and
+#             implicits in view. `setup --strict-edits` turns that reminder into a denial.
 #
-# Exit codes: 0 = allow, 2 = deny (stderr is fed back to the agent).
+# Exit codes: 0 = allow (stdout is fed back to the agent as context), 2 = deny (stderr is).
 
 set -u
+strict_edits=0
 
 root="${CLAUDE_PROJECT_DIR:-$PWD}"
 payload=$(cat)
@@ -449,34 +454,54 @@ case "$command_line" in
     ;;
 esac
 
-# --- does this call target Scala sources? ----------------------------------------------
-targets_scala=0
+# --- does this call target Scala sources, and is it a read or a write? -----------------
+# mode: "" = not our business, "read" = text-scraping a Scala source, "write" = editing one.
+mode=
 case "$tool" in
   Read)
     case "$file_path" in
-      *.scala | *.sc) targets_scala=1 ;;
+      *.scala | *.sc) mode=read ;;
     esac
     ;;
   Grep | Glob)
     # Only when the call itself names Scala: an unscoped repo-wide search may legitimately
     # be after comments, config or non-Scala files.
     case "$glob$path$ftype" in
-      *scala*) targets_scala=1 ;;
+      *scala*) mode=read ;;
+    esac
+    ;;
+  Edit | Write | MultiEdit | NotebookEdit)
+    case "$file_path" in
+      *.scala | *.sc) mode=write ;;
     esac
     ;;
   Bash)
-    case "$command_line" in
-      *.scala*)
-        if printf '%s' "$command_line" | grep -Eq \
-          '(^|[|;&(`]|[[:space:]])(grep|rg|ag|ack|cat|sed|awk|head|tail|less|more|nl)([[:space:]]|$)'
-        then
-          targets_scala=1
-        fi
-        ;;
-    esac
+    # `.scala` must end a path, not merely appear: `mill.scalalib`, `scalafmt` and
+    # `.scala-build` are not Scala sources, and blocking them blocks the build itself.
+    if printf '%s' "$command_line" | grep -Eq '\.(scala|sc)([^[:alnum:]_-]|$)'; then
+      if printf '%s' "$command_line" | grep -Eq \
+        '(^|[|;&(`]|[[:space:]])(grep|rg|ag|ack|cat|sed|awk|head|tail|less|more|nl)([[:space:]]|$)'
+      then
+        mode=read
+      fi
+      # Handing the file to a runner is executing it, not reading it -- and the pipeline
+      # that filters its OUTPUT (`scala-cli foo.sc | grep ...`) is not a text search either.
+      if printf '%s' "$command_line" | grep -Eq \
+        '(^|[|;&(`/]|[[:space:]])(scala-cli|scala|scalac|amm|mill|sbt|java)([[:space:]]|$)'
+      then
+        mode=
+      fi
+      # A redirect or in-place edit whose TARGET is the Scala file is a write, not a read --
+      # and it outranks a reader that appears on the same line (`cat > A.scala`).
+      if printf '%s' "$command_line" | grep -Eq \
+        '(>>?|tee)[[:space:]]*"?[^[:space:]"]*\.(scala|sc)([[:space:]"]|$)|sed[[:space:]]+-i[^|;&]*\.(scala|sc)([[:space:]]|$)'
+      then
+        mode=write
+      fi
+    fi
     ;;
 esac
-[ "$targets_scala" = 1 ] || exit 0
+[ -n "$mode" ] || exit 0
 
 # --- fail open when the semantic answer is not actually available ----------------------
 # No MCP server wired into this project: nothing better to route the agent to.
@@ -492,6 +517,45 @@ index=$(find "$root" \
      -o -name .worktrees -o -name website \) -prune -o \
   -name '*.semanticdb' -print 2>/dev/null | head -n 1)
 [ -n "$index" ] || exit 0
+
+# --- editing a Scala source ------------------------------------------------------------
+# Not a denial by default: a three-line change through Edit is cheaper than a whole-file
+# roundtrip. The reminder exists because the annotated buffer is what makes the edit
+# compiler-aware, and nothing else in the session mentions it at the moment of the edit.
+if [ "$mode" = write ]; then
+  if [ "$strict_edits" = 1 ]; then
+    cat >&2 <<'MSG'
+BLOCKED by ScalaSemantic guard (--strict-edits): edit .scala sources through the MCP write
+path, so the edit is made against the compiler's view of the file:
+  1. annotated_source(uri, format="compilable", sentinel=true)
+     -> the source with inferred types, implicit args and conversions inline as
+        /*SEM:...:SEM*/ blocks (no line-number gutter), plus its sha256
+  2. edit that buffer, leaving the SEM blocks wherever they are
+  3. annotated_source(uri, write=<edited text>, baseHash=<that sha256>)
+     -> every SEM block is stripped before the file is saved
+Both arguments matter: sentinel=true makes the notes machine-strippable, format=compilable
+drops the read-only gutter. Any other read is a view, not a buffer -- writing it back would
+persist annotations into the source, and is refused.
+Re-run `scalasemantic-mcp setup` without --strict-edits to make this a reminder instead.
+MSG
+    exit 2
+  fi
+  cat <<'MSG'
+ScalaSemantic: editing a Scala source. For an annotation-aware edit, work on the annotated
+buffer instead of the raw text:
+  1. annotated_source(uri, format="compilable", sentinel=true)
+     -> inferred types, implicit args and conversions inline as /*SEM:...:SEM*/ blocks
+        (no line-number gutter), plus its sha256
+  2. edit that buffer, leaving the SEM blocks in place
+  3. annotated_source(uri, write=<edited text>, baseHash=<that sha256>)
+     -> SEM blocks are stripped before the file is saved
+Both arguments matter: sentinel=true makes the notes machine-strippable, format=compilable
+drops the read-only gutter. Any other read is a view, not a buffer -- writing it back would
+persist annotations into the source, and is refused.
+A small mechanical edit can stay with this tool -- this is a reminder, not a refusal.
+MSG
+  exit 0
+fi
 
 # --- deny ------------------------------------------------------------------------------
 cat >&2 <<'MSG'
@@ -524,7 +588,7 @@ function Merge-GuardSettings([string]$Existing) {
     $doc | Add-Member -NotePropertyName hooks -NotePropertyValue ([PSCustomObject]@{})
   }
   $entry = [PSCustomObject]@{
-    matcher = 'Read|Grep|Glob|Bash'
+    matcher = 'Read|Grep|Glob|Bash|Edit|Write|MultiEdit'
     hooks   = @([PSCustomObject]@{
       type    = 'command'
       command = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/scala-semantic-guard.sh'
@@ -539,7 +603,7 @@ function Merge-GuardSettings([string]$Existing) {
   return ($doc | ConvertTo-Json -Depth 10) + "`n"
 }
 
-function Install-GuardHook([string]$Project, [string]$Client) {
+function Install-GuardHook([string]$Project, [string]$Client, [bool]$StrictEdits = $false) {
   $normalized = $Client.Trim().ToLowerInvariant().Replace('_', '-')
   if ($normalized -notin @('all', 'claude', 'claude-code', 'anthropic')) { return }
 
@@ -547,6 +611,8 @@ function Install-GuardHook([string]$Project, [string]$Client) {
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $hook) | Out-Null
   # LF endings on purpose: `sh` chokes on a CRLF shebang line, and Git Bash/WSL run this file.
   $body = $GuardScript.Replace("`r`n", "`n")
+  # The only difference between the two hook variants: reminder (0) vs denial (1) on edits.
+  if ($StrictEdits) { $body = $body.Replace("strict_edits=0", "strict_edits=1") }
   if (-not $body.EndsWith("`n")) { $body += "`n" }
   $existing = if (Test-Path $hook) { [System.IO.File]::ReadAllText($hook) } else { $null }
   if ($existing -ne $body) {
@@ -570,6 +636,7 @@ function Setup-Main {
   $Command = @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Self)
   $SkipSemanticdb = $false
   $Guard = $true
+  $StrictEdits = $false
 
   $i = 0
   while ($i -lt $Rest.Count) {
@@ -584,6 +651,8 @@ function Setup-Main {
       { $_ -in @('--skip-semanticdb-config', '-SkipSemanticdbConfig') } { $SkipSemanticdb = $true; $i += 1 }
       { $_ -in @('--no-guard', '-NoGuard') } { $Guard = $false; $i += 1 }
       { $_ -in @('--guard', '-Guard') } { $Guard = $true; $i += 1 }
+      { $_ -in @('--strict-edits', '-StrictEdits') } { $StrictEdits = $true; $i += 1 }
+      { $_ -in @('--no-strict-edits', '-NoStrictEdits') } { $StrictEdits = $false; $i += 1 }
       { $_ -in @('--help', '-h') } { Show-Usage; return }
       default { throw "scalasemantic-mcp: unknown setup argument: $($Rest[$i])" }
     }
@@ -598,17 +667,19 @@ function Setup-Main {
 
   $argv = @($Command) + @('serve', '.')
   Write-ClientConfigs $Project $Client $argv
-  if ($Guard) { Install-GuardHook $Project $Client }
+  if ($Guard) { Install-GuardHook $Project $Client $StrictEdits }
 }
 
 function Show-Usage {
   [Console]::Error.WriteLine(@"
 Usage:
-  scalasemantic-mcp.ps1 setup [-ClientName all|claude|codex|gemini|cline|roo|continue|antigravity] [-Project DIR] [-NoGuard]
+  scalasemantic-mcp.ps1 setup [-ClientName all|claude|codex|gemini|cline|roo|continue|antigravity] [-Project DIR] [-NoGuard] [-StrictEdits]
   scalasemantic-mcp.ps1 serve <semanticdb-root> [classpath-file] [--log] [--log-output]
 
 For Claude Code, setup also installs a PreToolUse guard hook that denies text tools on .scala
-sources (.claude/hooks/scala-semantic-guard.sh); pass -NoGuard to skip it.
+sources (.claude/hooks/scala-semantic-guard.sh); pass -NoGuard to skip it. Editing a Scala
+source is only reminded about; pass -StrictEdits to deny that too, so edits go through
+annotated_source's write mode.
 
 setup writes MCP client config that launches this same script:
   command = powershell

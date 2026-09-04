@@ -28,6 +28,23 @@ class LauncherSetupSuite extends munit.FunSuite:
 
   // Regression: the JVM derives `user.home` from the OS account, not from the environment, so
   // defaulting to it made a sandboxed install write into the developer's real home directory.
+  test("edits are only reminded about, not denied, unless --strict-edits is passed") {
+    assertEquals(LauncherSetup.parse(Nil).strictEdits, false)
+    assertEquals(LauncherSetup.parse(List("--strict-edits")).strictEdits, true)
+    assertEquals(
+      LauncherSetup.parse(List("--strict-edits", "--no-strict-edits")).strictEdits,
+      false
+    )
+  }
+
+  test("--strict-edits composes with the other setup flags") {
+    val opts =
+      LauncherSetup.parse(List("--scope", "project", "--strict-edits", "--client", "claude"))
+    assertEquals(opts.strictEdits, true)
+    assertEquals(opts.client, "claude")
+    assertEquals(opts.scope, LauncherScope.Project)
+  }
+
   test("Options.home follows $HOME") {
     sys.env.get("HOME").foreach { h =>
       assertEquals(LauncherSetup.Options().home, Path.of(h).toAbsolutePath.normalize())

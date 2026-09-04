@@ -57,5 +57,18 @@ no `*.semanticdb` has been emitted yet, when the MCP server is not configured fo
 when neither `jq` nor `python3` is available. A shell command carrying
 `# semantic-fallback: <reason>` is always allowed, and appended to `.claude/semantic-fallback.log`.
 
-Opt out with `./scalasemantic-mcp.sh setup --no-guard`. Background:
+The same hook also fires when the agent **edits** a Scala source. That is not denied — it prints a
+reminder to work on the annotated buffer instead, so the edit is made with the compiler's inferred
+types and implicits in view:
+
+```
+annotated_source(uri, format="compilable", sentinel=true)   -> buffer + sha256
+edit that buffer, leaving the /*SEM:...:SEM*/ blocks in place
+annotated_source(uri, write=<edited text>, baseHash=<sha256>)
+```
+
+Write mode strips the SEM blocks before saving, and `baseHash` rejects the write if the file changed
+meanwhile. Pass `--strict-edits` to setup to make Scala edits a denial instead of a reminder.
+
+Opt out of the whole hook with `./scalasemantic-mcp.sh setup --no-guard`. Background:
 [ADR 0001](../adr/0001-claude-code-guard-hook.md).

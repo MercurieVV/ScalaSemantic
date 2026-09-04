@@ -23,11 +23,16 @@ to install one.
 ## Decision
 
 A project install writes `.claude/hooks/scala-semantic-guard.sh` and registers it under
-`hooks.PreToolUse` with matcher `Read|Grep|Glob|Bash`. On by default; opt out with `--no-guard`.
+`hooks.PreToolUse` with matcher `Read|Grep|Glob|Bash|Edit|Write|MultiEdit`. On by default; opt out
+with `--no-guard`.
 
 Denied (exit 2, reason on stderr so the agent reads it): `Read` of `.scala`/`.sc`; `Grep`/`Glob`
 naming Scala; `Bash` running `grep|rg|ag|ack|cat|sed|awk|head|tail|less|more|nl` against a `.scala`
-path. Everything else passes — `Edit`/`Write`, builds, tests, git, non-Scala search.
+path. Everything else passes — builds, tests, git, non-Scala search.
+
+Writes of a Scala source (`Edit`/`Write`/`MultiEdit`, or a shell redirect / `tee` / `sed -i` whose
+target is a Scala path) are **allowed with a reminder** on stdout, which Claude Code feeds back as
+context (see "Edits are reminded about, not denied" below).
 
 The denial names the *server* and lists routing options, so the agent picks what fits:
 
@@ -37,6 +42,36 @@ BLOCKED by ScalaSemantic guard: text tools are not allowed on .scala sources her
   hierarchy / members / givens  -> class_hierarchy, members, resolve_implicits
   …
 ```
+
+### Edits are reminded about, not denied
+
+Reading is a strict win for the semantic tools; editing is not. A three-line change through `Edit`
+costs less than the whole-file roundtrip that `annotated_source`'s write mode requires. What the
+write path buys is not safety but *sight*: the buffer it hands back carries the compiler's inferred
+types, implicit arguments and conversions inline, so the edit is made against what the compiler
+sees rather than against the text as written.
+
+That is worth a nudge, not a wall, so the hook prints the recipe and exits 0:
+
+```
+annotated_source(uri, format="compilable", sentinel=true)   -> buffer + sha256
+edit that buffer, leaving the SEM blocks in place
+annotated_source(uri, write=<edited text>, baseHash=<sha256>)
+```
+
+Both arguments are load-bearing. `sentinel=true` renders each note as a machine-strippable
+`/*SEM:...:SEM*/` block; `format=compilable` drops the read-only line-number gutter. Write mode
+strips only SEM blocks, so a buffer read any other way would persist rendered notes or a gutter
+into the source. Such a write is refused server-side rather than applied.
+
+`setup --strict-edits` (`-StrictEdits` on PowerShell) regenerates the hook with that branch as a
+denial, for sessions where coverage matters more than roundtrip cost. Off by default. The choice is
+recorded in the generated script as `strict_edits=0|1`; nothing else differs between the variants.
+
+Widening the matcher forced one change to registration: `mergeSettings` used to skip any
+`settings.json` already naming the guard, which would have left every existing install on the old
+matcher and made the edit branch dead code. It now rewrites that entry's `matcher` value in place
+and leaves the rest of the file untouched.
 
 ### Fails open when the semantic answer is unavailable
 
@@ -60,6 +95,11 @@ deliberately auditable — abuse shows up as log volume rather than silence.
 - **Stronger wording in steering files** — the status quo that fails; prose cannot beat a habit that
   fires at tool-selection time.
 - **Warn instead of deny** — steering text with extra steps; it arrives after the model already chose.
+- **Deny edits outright by default** — every one-line change would pay a whole-file roundtrip, and
+  the guard would be switched off within a week. Kept available as `--strict-edits`.
+- **Fire the reminder only when that file was already read through `annotated_source`** — the
+  precise trigger, but it needs per-file state written by a `PostToolUse` hook and read by this one.
+  Shelved until the stateless reminder proves too noisy.
 - **Allow `Read`, block only search** — whole-file reads are the largest token sink in the measured
   logs, and `document_outline` + `symbol_source` cover "show me this code" precisely.
 - **Staleness detection** — a full-tree mtime scan per call, and wrong in both directions on partial

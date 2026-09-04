@@ -176,6 +176,22 @@ object Mcp:
       |  a file's structure / where to edit (don't read it)   → document_outline (narrow a
       |    big file with query/symbol/kind/maxDepth; pass source for an uncompiled buffer)
       |  the full text of a .scala file (read it THIS way)    → annotated_source
+      |  EDITING a .scala file — read it as a buffer, not a
+      |    view: annotated_source(uri, format="compilable",
+      |    sentinel=true) returns the source with the compiler's
+      |    inferred types, implicit args and conversions inline
+      |    as /*SEM:...:SEM*/ blocks and no line-number gutter,
+      |    plus its sha256. Edit THAT text — you are then editing
+      |    with the compiler's view in front of you — and persist
+      |    it with annotated_source(uri, write=<edited text>,
+      |    baseHash=<that sha256>): every SEM block is stripped
+      |    before the file is saved, and baseHash rejects the
+      |    write if the file changed meanwhile. Both arguments
+      |    matter: without sentinel=true the notes are `⟹` text
+      |    that cannot be stripped, and without format=compilable
+      |    the gutter comes with them — a write carrying either is
+      |    refused rather than persisted. Small mechanical edits
+      |    need none of this; use your editor tool for those.
         |  the exact edits to rename a symbol safely            → rename_plan
         |  rename multiple symbols in one request, reporting edit-range
         |    conflicts instead of silently merging them → batch_rename_plan

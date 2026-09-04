@@ -19,6 +19,9 @@ private[scalasemantic] object LauncherSetup:
       command: String = sys.env.getOrElse("SCALASEMANTIC_LAUNCHER", "scalasemantic-mcp"),
       skipSemanticdbConfig: Boolean = false,
       guard: Boolean = true,
+      // Editing a .scala source is reminded about, not denied, unless this is on: a three-line
+      // change through Edit stays cheaper than a whole-file annotated roundtrip.
+      strictEdits: Boolean = false,
       scope: LauncherScope = LauncherScope.Project,
       // $HOME first: the JVM derives `user.home` from the OS account, not the environment, so a
       // sandboxed run (the install test, a container) could not redirect user-scope writes and
@@ -42,7 +45,7 @@ private[scalasemantic] object LauncherSetup:
         ensureSemanticdbConfig(project, opts.skipSemanticdbConfig)
         LauncherRules.ensure(project, opts.client)
         LauncherClientConfigs.write(project, opts)
-        if opts.guard then LauncherGuardHook.install(project, opts.client)
+        if opts.guard then LauncherGuardHook.install(project, opts.client, opts.strictEdits)
         ensureClasspathMetadataDir(project)
 
   private[scalasemantic] def parse(args: List[String]): Options =
@@ -61,6 +64,10 @@ private[scalasemantic] object LauncherSetup:
           loop(tail, opts.copy(guard = false))
         case "--guard" :: tail =>
           loop(tail, opts.copy(guard = true))
+        case "--strict-edits" :: tail =>
+          loop(tail, opts.copy(strictEdits = true))
+        case "--no-strict-edits" :: tail =>
+          loop(tail, opts.copy(strictEdits = false))
         case "--scope" :: value :: tail =>
           val scope = value.trim.toLowerCase match
             case "user"    => LauncherScope.User

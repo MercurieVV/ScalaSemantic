@@ -84,6 +84,31 @@ class AnnotatedSourceWriteSuite extends munit.FunSuite:
       "object Foo:\n  def bar = 999 // someone else's edit\n"
     )
 
+  // Only `SEM:...:SEM` blocks are strippable. A buffer read in any other annotated form carries
+  // `⟹` notes (and, in the default format, a line-number gutter) that would be persisted verbatim
+  // and corrupt the source — so such a write is refused rather than applied.
+  test("write is refused when the buffer still carries ⟹ notes from a non-sentinel read"):
+    val root = Files.createTempDirectory("ss-annotated-write-notes").nn
+    val original = "object Foo:\n  def bar = 1\n"
+    writeFile(root, "Foo.scala", original)
+    intercept[RuntimeException]:
+      call(
+        root,
+        ujson.Obj("uri" -> "Foo.scala", "write" -> "object Foo:\n  def bar = 1 // ⟹ : Int\n")
+      )
+    assertEquals(Files.readString(root.resolve("Foo.scala")), original)
+
+  test("write is refused when the buffer still carries the read-only line-number gutter"):
+    val root = Files.createTempDirectory("ss-annotated-write-gutter").nn
+    val original = "object Foo:\n  def bar = 1\n"
+    writeFile(root, "Foo.scala", original)
+    intercept[RuntimeException]:
+      call(
+        root,
+        ujson.Obj("uri" -> "Foo.scala", "write" -> "    1  object Foo:\n    2    def bar = 1\n")
+      )
+    assertEquals(Files.readString(root.resolve("Foo.scala")), original)
+
   test("write without baseHash succeeds even if the file changed since it was last read"):
     val root = Files.createTempDirectory("ss-annotated-write-nohash").nn
     writeFile(root, "Foo.scala", "object Foo:\n  def bar = 1\n")

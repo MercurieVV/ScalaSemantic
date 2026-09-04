@@ -4,7 +4,7 @@ private[scalasemantic] object LauncherMessages:
   def usage(exit: Int): Nothing =
     Console.err.println(
       s"""|Usage:
-          |  scalasemantic-mcp setup [--scope user|project] [--client claude|codex|gemini|cline|roo|continue|antigravity|all] [--project DIR] [--no-guard]
+          |  scalasemantic-mcp setup [--scope user|project] [--client claude|codex|gemini|cline|roo|continue|antigravity|all] [--project DIR] [--no-guard] [--strict-edits]
           |  scalasemantic-mcp serve <semanticdb-root> [classpath-file] [--log] [--log-output]
           |
           |--scope project (default) writes config into the project directory and also configures
@@ -12,7 +12,10 @@ private[scalasemantic] object LauncherMessages:
           |MCP registration, into the per-user config of each client that has one.
           |
           |For Claude Code, setup also installs a PreToolUse guard hook denying text tools on .scala
-          |sources (${LauncherGuardHook.HookRelPath}); pass --no-guard to skip it.
+          |sources (${LauncherGuardHook.HookRelPath}); pass --no-guard to skip it. Editing a Scala
+          |source is allowed but reminds the agent to edit the annotated buffer instead
+          |(annotated_source with format=compilable, sentinel=true, then write=); --strict-edits
+          |turns that reminder into a denial.
           |
           |Setup writes MCP client config that launches the same lightweight shell launcher:
           |  command = ${sys.env.getOrElse("SCALASEMANTIC_LAUNCHER", "scalasemantic-mcp")}

@@ -652,6 +652,19 @@ private[mcp] object McpToolsSupport:
   private[mcp] def notFoundUri(uri: String): ujson.Value =
     jobj(Some("uri" -> ujson.Str(uri)), Some("found" -> ujson.Bool(false)))
 
+  /** True when a buffer offered to `annotated_source`'s write mode is a rendered VIEW rather than a
+    * writable buffer: it still carries `⟹` notes, or the read-only line-number gutter. Neither is
+    * strippable — only `/*SEM:...:SEM*/` blocks are — so persisting such text would write the
+    * annotations into the source. The gutter test demands EVERY non-blank line be numbered, so
+    * ordinary code that merely starts with a digit is not mistaken for one.
+    */
+  private[mcp] def carriesRenderedAnnotations(edited: String): Boolean =
+    val lines = edited.split("\n", -1).nn.toIndexedSeq.map(l => Option(l).getOrElse(""))
+    val gutterLine = "^\\s*\\d+\\s{2}.*$".r
+    val meaningful = lines.filter(_.trim.nonEmpty)
+    lines.exists(_.contains("⟹")) ||
+    (meaningful.sizeIs > 1 && meaningful.forall(l => gutterLine.matches(l)))
+
   /** Resolve a tool's `symbol` argument that accepts EITHER a raw SemanticDB symbol (e.g.
     * `com/ollo/SuperClass#method().`) OR a friendlier dotted FQN (e.g.
     * `com.ollo.SuperClass.method()` — a trailing `()` is stripped). Tried as a raw symbol FIRST,
@@ -1748,6 +1761,14 @@ private[mcp] object McpToolsGroupC:
                   error(
                     s"annotated_source write rejected: '${uri.value}' changed on disk since " +
                       "baseHash was read (concurrent edit) — read it again and retry"
+                  )
+                else if carriesRenderedAnnotations(edited) then
+                  error(
+                    s"annotated_source write rejected: '${uri.value}' still carries rendered " +
+                      "annotations — `⟹` notes or the read-only line-number gutter. Only " +
+                      "`/*SEM:...:SEM*/` blocks are strippable, so writing this would persist the " +
+                      "annotations into the source. Re-read with format=\"compilable\", " +
+                      "sentinel=true and edit that buffer."
                   )
                 else
                   val stripped =

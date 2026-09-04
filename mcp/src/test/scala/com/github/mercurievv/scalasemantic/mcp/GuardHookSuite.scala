@@ -33,7 +33,11 @@ class GuardHookSuite extends munit.FunSuite:
     val settings = Files.readString(root.resolve(".claude/settings.json"))
     assert(settings.contains("PreToolUse"), settings)
     assert(settings.contains("scala-semantic-guard.sh"), settings)
-    assert(settings.contains("Read|Grep|Glob|Bash"), settings)
+    assert(settings.contains(LauncherGuardHook.Matcher), settings)
+    assert(
+      settings.contains("Edit") && settings.contains("Write"),
+      s"the guard must be registered for edit tools too, or its edit branch never runs:\n$settings"
+    )
   }
 
   test("--no-guard skips the hook entirely") {
@@ -107,7 +111,10 @@ class GuardHookSuite extends munit.FunSuite:
 
   test("the PowerShell installer ships the same guard script as the jar") {
     val ps1 = Files.readString(Path.of("scripts/scalasemantic-mcp.ps1"))
-    assert(ps1.contains(LauncherGuardHook.script.trim), "PowerShell guard body drifted")
+    assert(
+      ps1.contains(LauncherGuardHook.script(strictEdits = false).trim),
+      "PowerShell guard body drifted"
+    )
     assert(ps1.contains("Install-GuardHook"), "PowerShell installer must call the guard install")
   }
 
@@ -141,6 +148,21 @@ class GuardHookSuite extends munit.FunSuite:
       .#<(new java.io.ByteArrayInputStream(payload.getBytes("UTF-8")))
       .!(silentLogger)
 
+  /** Exit code plus what the hook said, and where: Claude Code feeds stdout back to the agent as
+    * context (a nudge) and stderr as the reason for a denial.
+    */
+  private def hookRun(root: Path, payload: String): (Int, String, String) =
+    val hook = root.resolve(LauncherGuardHook.HookRelPath)
+    val pb = java.lang.ProcessBuilder(java.util.List.of("sh", hook.toString))
+    val _ = pb.directory(root.toFile)
+    val _ = pb.environment().nn.put("CLAUDE_PROJECT_DIR", root.toString)
+    val proc = pb.start().nn
+    proc.getOutputStream.nn.write(payload.getBytes("UTF-8").nn)
+    proc.getOutputStream.nn.close()
+    val out = String(proc.getInputStream.nn.readAllBytes().nn, "UTF-8")
+    val err = String(proc.getErrorStream.nn.readAllBytes().nn, "UTF-8")
+    (proc.waitFor(), out, err)
+
   test("guard denies text tools aimed at Scala sources") {
     assume(hasJsonReader, "needs jq or python3")
     val root = guardedProject("ss-guard-deny")
@@ -171,9 +193,141 @@ class GuardHookSuite extends munit.FunSuite:
       """{"tool_name":"Grep","tool_input":{"pattern":"foo","glob":"*.md"}}""",
       """{"tool_name":"Bash","tool_input":{"command":"./mill __.compile"}}""",
       """{"tool_name":"Bash","tool_input":{"command":"git diff src/Main.scala"}}""",
+      // `.scala` inside a longer word is not a Scala path: blocking these blocks the build.
+      """{"tool_name":"Bash","tool_input":{"command":"./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll | tail -3"}}""",
+      """{"tool_name":"Bash","tool_input":{"command":"cat .scala-build/log | head -5"}}""",
+      // Running a Scala script is not reading it, and filtering its output is not a text search.
+      """{"tool_name":"Bash","tool_input":{"command":"scala-cli scripts/smoke.sc | grep -E '^\\['"}}""",
+      """{"tool_name":"Bash","tool_input":{"command":"./mill foo.test src/Main.scala | tail -3"}}""",
       """{"tool_name":"Edit","tool_input":{"file_path":"src/Main.scala"}}"""
     )
     allowed.foreach(payload => assertEquals(hookExit(root, payload), 0, payload))
+  }
+
+  // --- edit-time steer -----------------------------------------------------------------------
+
+  test("editing a Scala source is allowed, but reminds the agent of the annotated write path") {
+    assume(hasJsonReader, "needs jq or python3")
+    val root = guardedProject("ss-guard-edit-remind")
+
+    val edits = Seq(
+      """{"tool_name":"Edit","tool_input":{"file_path":"src/Main.scala"}}""",
+      """{"tool_name":"Write","tool_input":{"file_path":"src/Main.scala"}}""",
+      """{"tool_name":"MultiEdit","tool_input":{"file_path":"src/Main.sc"}}""",
+      """{"tool_name":"Bash","tool_input":{"command":"cat > src/Main.scala <<EOF"}}""",
+      """{"tool_name":"Bash","tool_input":{"command":"sed -i '' s/a/b/ src/Main.scala"}}"""
+    )
+    edits.foreach { payload =>
+      val (code, out, _) = hookRun(root, payload)
+      assertEquals(code, 0, s"an edit must never be blocked by default: $payload")
+      assert(out.contains("annotated_source"), s"$payload produced no reminder:\n$out")
+      assert(out.contains("sentinel"), s"$payload: reminder must name sentinel:\n$out")
+      // sentinel alone still carries the line-number gutter, which write mode does not strip.
+      assert(out.contains("compilable"), s"$payload: reminder must name format=compilable:\n$out")
+    }
+  }
+
+  test("the edit reminder stays silent for everything that is not a Scala source") {
+    assume(hasJsonReader, "needs jq or python3")
+    val root = guardedProject("ss-guard-edit-quiet")
+
+    val quiet = Seq(
+      """{"tool_name":"Edit","tool_input":{"file_path":"README.md"}}""",
+      """{"tool_name":"Edit","tool_input":{"file_path":"build.mill"}}""",
+      """{"tool_name":"Write","tool_input":{"file_path":".claude/settings.json"}}""",
+      """{"tool_name":"Bash","tool_input":{"command":"./mill __.compile"}}"""
+    )
+    quiet.foreach { payload =>
+      val (code, out, _) = hookRun(root, payload)
+      assertEquals(code, 0, payload)
+      assertEquals(out.trim, "", s"$payload must produce no output:\n$out")
+    }
+  }
+
+  test("--strict-edits denies edits of Scala sources and names the write path") {
+    assume(hasJsonReader, "needs jq or python3")
+    val root = tempProject("ss-guard-strict")
+    runSetup(root, "--strict-edits")
+    val semanticdb = root.resolve("META-INF/semanticdb")
+    Files.createDirectories(semanticdb)
+    Files.writeString(semanticdb.resolve("Fixture.scala.semanticdb"), "")
+
+    val (code, _, err) =
+      hookRun(root, """{"tool_name":"Edit","tool_input":{"file_path":"src/Main.scala"}}""")
+    assertEquals(code, 2, "strict mode must deny the edit")
+    assert(err.contains("annotated_source"), s"the denial must say what to use instead:\n$err")
+
+    val (mdCode, mdOut, _) =
+      hookRun(root, """{"tool_name":"Edit","tool_input":{"file_path":"README.md"}}""")
+    assertEquals(mdCode, 0, "strict mode still only covers Scala sources")
+    assertEquals(mdOut.trim, "")
+  }
+
+  test("--strict-edits is off unless asked for") {
+    assume(hasJsonReader, "needs jq or python3")
+    val root = guardedProject("ss-guard-strict-default")
+    assertEquals(
+      hookExit(root, """{"tool_name":"Edit","tool_input":{"file_path":"src/Main.scala"}}"""),
+      0
+    )
+  }
+
+  test("setup widens the matcher of an install that predates the edit branch") {
+    val old =
+      """|{
+         |  "hooks": {
+         |    "PreToolUse": [
+         |      {
+         |        "matcher": "Read|Grep|Glob|Bash",
+         |        "hooks": [
+         |          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/scala-semantic-guard.sh" }
+         |        ]
+         |      }
+         |    ]
+         |  }
+         |}
+         |""".stripMargin
+
+    val merged = LauncherGuardHook
+      .mergeSettings(Some(old))
+      .getOrElse(fail("an out-of-date matcher must be rewritten, not left alone"))
+
+    assert(merged.contains(LauncherGuardHook.Matcher), merged)
+    assert(!merged.contains("\"Read|Grep|Glob|Bash\""), s"the old matcher survived:\n$merged")
+    assertEquals("scala-semantic-guard".r.findAllIn(merged).size, 1, merged)
+    assertEquals(LauncherGuardHook.mergeSettings(Some(merged)), None, "must settle after one pass")
+  }
+
+  test("widening the matcher leaves the rest of settings.json alone") {
+    val old =
+      """|{
+         |  "model": "opus",
+         |  "hooks": {
+         |    "PreToolUse": [
+         |      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "other.sh" }] },
+         |      {
+         |        "matcher": "Read|Grep|Glob|Bash",
+         |        "hooks": [
+         |          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/scala-semantic-guard.sh" }
+         |        ]
+         |      }
+         |    ],
+         |    "PostToolUse": [
+         |      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "log.sh" }] }
+         |    ]
+         |  }
+         |}
+         |""".stripMargin
+
+    val merged = LauncherGuardHook
+      .mergeSettings(Some(old))
+      .getOrElse(fail("expected the matcher to be widened"))
+
+    assert(merged.contains("\"model\": \"opus\""), merged)
+    assert(merged.contains("other.sh"), merged)
+    assert(merged.contains("log.sh"), merged)
+    assert(merged.contains(LauncherGuardHook.Matcher), merged)
+    assertEquals("scala-semantic-guard".r.findAllIn(merged).size, 1, merged)
   }
 
   test("an explicit semantic-fallback marker overrides the guard and is logged") {

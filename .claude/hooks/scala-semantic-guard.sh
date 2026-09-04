@@ -3,13 +3,18 @@
 # to regenerate, or `scalasemantic-mcp setup --no-guard` to stop installing it (then drop
 # the PreToolUse entry from .claude/settings.json).
 #
-# Claude Code PreToolUse hook. Denies text-scraping tools on .scala sources so symbol
-# questions go to the ScalaSemantic MCP tools, which answer from compiler facts at a
-# fraction of the tokens and without missing renames/implicits/inferred uses.
+# Claude Code PreToolUse hook, two jobs:
+#   READS  -- text-scraping tools on .scala sources are denied, so symbol questions go to
+#             the ScalaSemantic MCP tools, which answer from compiler facts at a fraction
+#             of the tokens and without missing renames/implicits/inferred uses.
+#   EDITS  -- writing a .scala source is allowed but reminds the agent to edit the
+#             annotated buffer instead, so it edits with the compiler's inferred types and
+#             implicits in view. `setup --strict-edits` turns that reminder into a denial.
 #
-# Exit codes: 0 = allow, 2 = deny (stderr is fed back to the agent).
+# Exit codes: 0 = allow (stdout is fed back to the agent as context), 2 = deny (stderr is).
 
 set -u
+strict_edits=0
 
 root="${CLAUDE_PROJECT_DIR:-$PWD}"
 payload=$(cat)
@@ -66,34 +71,54 @@ case "$command_line" in
     ;;
 esac
 
-# --- does this call target Scala sources? ----------------------------------------------
-targets_scala=0
+# --- does this call target Scala sources, and is it a read or a write? -----------------
+# mode: "" = not our business, "read" = text-scraping a Scala source, "write" = editing one.
+mode=
 case "$tool" in
   Read)
     case "$file_path" in
-      *.scala | *.sc) targets_scala=1 ;;
+      *.scala | *.sc) mode=read ;;
     esac
     ;;
   Grep | Glob)
     # Only when the call itself names Scala: an unscoped repo-wide search may legitimately
     # be after comments, config or non-Scala files.
     case "$glob$path$ftype" in
-      *scala*) targets_scala=1 ;;
+      *scala*) mode=read ;;
+    esac
+    ;;
+  Edit | Write | MultiEdit | NotebookEdit)
+    case "$file_path" in
+      *.scala | *.sc) mode=write ;;
     esac
     ;;
   Bash)
-    case "$command_line" in
-      *.scala*)
-        if printf '%s' "$command_line" | grep -Eq \
-          '(^|[|;&(`]|[[:space:]])(grep|rg|ag|ack|cat|sed|awk|head|tail|less|more|nl)([[:space:]]|$)'
-        then
-          targets_scala=1
-        fi
-        ;;
-    esac
+    # `.scala` must end a path, not merely appear: `mill.scalalib`, `scalafmt` and
+    # `.scala-build` are not Scala sources, and blocking them blocks the build itself.
+    if printf '%s' "$command_line" | grep -Eq '\.(scala|sc)([^[:alnum:]_-]|$)'; then
+      if printf '%s' "$command_line" | grep -Eq \
+        '(^|[|;&(`]|[[:space:]])(grep|rg|ag|ack|cat|sed|awk|head|tail|less|more|nl)([[:space:]]|$)'
+      then
+        mode=read
+      fi
+      # Handing the file to a runner is executing it, not reading it -- and the pipeline
+      # that filters its OUTPUT (`scala-cli foo.sc | grep ...`) is not a text search either.
+      if printf '%s' "$command_line" | grep -Eq \
+        '(^|[|;&(`/]|[[:space:]])(scala-cli|scala|scalac|amm|mill|sbt|java)([[:space:]]|$)'
+      then
+        mode=
+      fi
+      # A redirect or in-place edit whose TARGET is the Scala file is a write, not a read --
+      # and it outranks a reader that appears on the same line (`cat > A.scala`).
+      if printf '%s' "$command_line" | grep -Eq \
+        '(>>?|tee)[[:space:]]*"?[^[:space:]"]*\.(scala|sc)([[:space:]"]|$)|sed[[:space:]]+-i[^|;&]*\.(scala|sc)([[:space:]]|$)'
+      then
+        mode=write
+      fi
+    fi
     ;;
 esac
-[ "$targets_scala" = 1 ] || exit 0
+[ -n "$mode" ] || exit 0
 
 # --- fail open when the semantic answer is not actually available ----------------------
 # No MCP server wired into this project: nothing better to route the agent to.
@@ -110,6 +135,45 @@ index=$(find "$root" \
   -name '*.semanticdb' -print 2>/dev/null | head -n 1)
 [ -n "$index" ] || exit 0
 
+# --- editing a Scala source ------------------------------------------------------------
+# Not a denial by default: a three-line change through Edit is cheaper than a whole-file
+# roundtrip. The reminder exists because the annotated buffer is what makes the edit
+# compiler-aware, and nothing else in the session mentions it at the moment of the edit.
+if [ "$mode" = write ]; then
+  if [ "$strict_edits" = 1 ]; then
+    cat >&2 <<'MSG'
+BLOCKED by ScalaSemantic guard (--strict-edits): edit .scala sources through the MCP write
+path, so the edit is made against the compiler's view of the file:
+  1. annotated_source(uri, format="compilable", sentinel=true)
+     -> the source with inferred types, implicit args and conversions inline as
+        /*SEM:...:SEM*/ blocks (no line-number gutter), plus its sha256
+  2. edit that buffer, leaving the SEM blocks wherever they are
+  3. annotated_source(uri, write=<edited text>, baseHash=<that sha256>)
+     -> every SEM block is stripped before the file is saved
+Both arguments matter: sentinel=true makes the notes machine-strippable, format=compilable
+drops the read-only gutter. Any other read is a view, not a buffer -- writing it back would
+persist annotations into the source, and is refused.
+Re-run `scalasemantic-mcp setup` without --strict-edits to make this a reminder instead.
+MSG
+    exit 2
+  fi
+  cat <<'MSG'
+ScalaSemantic: editing a Scala source. For an annotation-aware edit, work on the annotated
+buffer instead of the raw text:
+  1. annotated_source(uri, format="compilable", sentinel=true)
+     -> inferred types, implicit args and conversions inline as /*SEM:...:SEM*/ blocks
+        (no line-number gutter), plus its sha256
+  2. edit that buffer, leaving the SEM blocks in place
+  3. annotated_source(uri, write=<edited text>, baseHash=<that sha256>)
+     -> SEM blocks are stripped before the file is saved
+Both arguments matter: sentinel=true makes the notes machine-strippable, format=compilable
+drops the read-only gutter. Any other read is a view, not a buffer -- writing it back would
+persist annotations into the source, and is refused.
+A small mechanical edit can stay with this tool -- this is a reminder, not a refusal.
+MSG
+  exit 0
+fi
+
 # --- deny ------------------------------------------------------------------------------
 cat >&2 <<'MSG'
 BLOCKED by ScalaSemantic guard: text tools are not allowed on .scala sources here.
@@ -121,7 +185,9 @@ pick whichever fits the actual question:
   signatures / overloads        -> method_signature, find_overloads
   file or project shape         -> document_outline, structure, symbol_source
   literals, comments, TODOs     -> search_text
-Stale or missing index: run the project's compile task, then refresh_workspace.
+Stale or missing index: run the project's compile task, then refresh_workspace — or, if you
+cannot run the build yourself (e.g. this session cannot shell out), call refresh_workspace
+with compile=true and it will detect and run the build itself.
 If the semantic tools genuinely cannot answer this, re-run the command through Bash with
 a trailing `# semantic-fallback: <reason>` marker (allowed, and logged).
 MSG
