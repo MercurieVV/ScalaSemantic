@@ -11,6 +11,7 @@
     "format": "diff",
     "annotationCount": 33,
     "legend": "Unified diff, source-as-written → enriched: `-` lines are the original, `+` lines add the compiler's inline `// ⟹` insertions and explode wildcard/`given` imports (with symbols=on). Render in any diff viewer for green/red. Notes show compiler insertions invisible in the source: `(using …)` implicit args, `name(…)` implicit conversion, `[…]` inferred type args, `: T` inferred type. symbols=on adds a type→package legend.",
-    "source": "<<see companion .scala golden file>>"
+    "source": "<<see companion .scala golden file>>",
+    "sha256": "a85e6538e95fa5477af9fdb11f769e71145d0489c0351e2a6aea051e4a99e5fc"
   }
 }

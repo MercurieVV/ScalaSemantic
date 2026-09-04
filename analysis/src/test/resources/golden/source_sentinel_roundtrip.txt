@@ -1,0 +1,6 @@
+package com.example
+
+/** A tiny fixture class. */
+class Greeter:
+  def greet(name: String): String = // real trailing comment, must survive
+    s"Hello, $name"

@@ -643,6 +643,42 @@ def checkScalafixFirstParty() = Task.Command {
   )(_.fix("--check"))()
 }
 
+// SourceSentinel (analysis module) marks LLM-facing annotations with a `/*SEM:...:SEM*/` block
+// comment that `annotated_source` write mode strips before persisting — see
+// docs/superpowers/plans/2026-09-02-source-sentinel-isomorphism.md. The marker is plain ASCII (not
+// a private-use codepoint), so a stray one reaching a real, tracked `.scala` file is a real risk
+// (a bypassed/failed strip, a manual paste) worth failing the build over, not just a cosmetic
+// concern — this is that guard. `git grep` scans tracked files as committed/staged, matching the
+// "tracked .scala file" scope the plan calls out; exit code 1 means no match (the success case).
+// Deliberate, expected mentions of the literal `/*SEM:...:SEM*/` text — test fixtures and tool
+// docs for the feature itself, not a leak. New deliberate mentions (a new SourceSentinel test
+// suite, a new docs-golden fixture exercising sentinel=on) must be added here explicitly, same
+// discipline as a locked golden file: an addition is a conscious choice, not silently swallowed.
+def sentinelLeakExclusions: Seq[String] = Seq(
+  "analysis/src/test/scala/com/github/mercurievv/scalasemantic/analysis/SourceSentinelSuite.scala",
+  "mcp/src/main/scala/com/github/mercurievv/scalasemantic/mcp/McpTools.scala",
+  "mcp/src/test/resources/docs-golden/annotated_source_enrich_sentinel.scala",
+  "mcp/src/test/scala/com/github/mercurievv/scalasemantic/mcp/AnnotatedSourceWriteSuite.scala"
+)
+
+def checkNoSentinelLeak() = Task.Command {
+  val pathspecs = Seq("*.scala") ++ sentinelLeakExclusions.map(p => s":(exclude)$p")
+  val res = os
+    .proc(Seq("git", "grep", "-n", "-E", raw"/\*SEM:.*:SEM\*/", "--") ++ pathspecs)
+    .call(cwd = build.moduleDir, stdout = os.Pipe, stderr = os.Pipe, check = false)
+  if (res.exitCode == 0) {
+    sys.error(
+      "SourceSentinel marker (/*SEM:...:SEM*/) found in tracked .scala file(s) outside the known " +
+        "sentinelLeakExclusions — annotated_source write mode should have stripped it before " +
+        "persisting; do not commit sentinel-annotated source. If this IS a deliberate new " +
+        "mention (a new test/doc for the feature), add its path to sentinelLeakExclusions in " +
+        "build.mill:\n" + res.out.text()
+    )
+  } else if (res.exitCode > 1) {
+    sys.error(s"git grep failed while checking for sentinel leaks: ${res.err.text()}")
+  }
+}
+
 def smokeTest() = Task.Command {
   mcp.assembly()
 
@@ -776,6 +812,7 @@ def docsSiteBuildIfChanged() = Task.Command {
 def prePush() = Task.Command {
   checkFormatFirstParty()()
   checkScalafixFirstParty()()
+  checkNoSentinelLeak()()
   compatGoldenAll()()
   Task.traverse(
     build.moduleInternal.modules.collect { case m: TestModule => m }

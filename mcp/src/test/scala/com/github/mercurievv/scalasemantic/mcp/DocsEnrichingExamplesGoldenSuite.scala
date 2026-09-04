@@ -82,6 +82,18 @@ class DocsEnrichingExamplesGoldenSuite extends munit.FunSuite:
       ujson.Obj("uri" -> EnrichPath, "format" -> "compilable", "annotationsOnly" -> false)
     )
 
+  test("annotated_source(Enrich.scala, sentinel=on)"):
+    assertGolden(
+      "annotated_source_enrich_sentinel",
+      "annotated_source",
+      ujson.Obj(
+        "uri" -> EnrichPath,
+        "format" -> "compilable",
+        "annotationsOnly" -> false,
+        "sentinel" -> true
+      )
+    )
+
   test("annotated_source(Enrich.scala, symbols=on)"):
     assertGolden(
       "annotated_source_enrich_symbols",

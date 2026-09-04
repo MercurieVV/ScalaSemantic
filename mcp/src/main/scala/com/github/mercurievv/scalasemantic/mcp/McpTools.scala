@@ -1,6 +1,7 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.analysis.SourceSentinel
 import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
@@ -171,6 +172,15 @@ private[mcp] object McpToolsSupport:
         "detail",
         "string",
         "terse (default) | full — render a merged elaborated expression at each call site"
+      ),
+      (
+        "sentinel",
+        "boolean",
+        "append each note as a machine-strippable `/*SEM:...:SEM*/` block comment at the end of its line " +
+          "instead of a `⟹` note (default false). Reversible: " +
+          "`SourceSentinel.strip` (analysis module) removes exactly this block and nothing else — " +
+          "real comments elsewhere on the line survive untouched — so edited-and-annotated text can " +
+          "be stripped back to plain source before it is persisted."
       )
     )
 
@@ -187,19 +197,22 @@ private[mcp] object McpToolsSupport:
         format: SourceFormat,
         annotationsOnly: Boolean,
         symbols: List[(String, String)] = Nil,
-        lineOffset: Int = 0
+        lineOffset: Int = 0,
+        sentinel: Boolean = false
     ): ujson.Value =
       val legendBlock =
         if symbols.isEmpty then ""
         else symbols.map((n, fqn) => s"//   $n → $fqn").mkString("\n// symbols:\n", "\n", "")
       val rendered = format match
-        case SourceFormat.Diff => renderDiff(uri, rawLines, displayLines, anns, symbols, lineOffset)
-        case _ => render(displayLines, anns, format, annotationsOnly, lineOffset) + legendBlock
+        case SourceFormat.Diff =>
+          renderDiff(uri, rawLines, displayLines, anns, symbols, lineOffset, sentinel)
+        case _ =>
+          render(displayLines, anns, format, annotationsOnly, lineOffset, sentinel) + legendBlock
       ujson.Obj(
         "uri" -> ujson.Str(uri),
         "format" -> ujson.Str(format.value),
         "annotationCount" -> ujson.Num(anns.size),
-        "legend" -> ujson.Str(legend(format)),
+        "legend" -> ujson.Str(legend(format, sentinel)),
         "source" -> ujson.Str(rendered)
       )
 
@@ -236,7 +249,8 @@ private[mcp] object McpToolsSupport:
         displayLines: IndexedSeq[String],
         anns: List[SourceAnnotation],
         symbols: List[(String, String)],
-        lineOffset: Int
+        lineOffset: Int,
+        sentinel: Boolean
     ): String =
       val byLine = anns.groupBy(_.line)
       val legendLines: List[String] =
@@ -252,7 +266,15 @@ private[mcp] object McpToolsSupport:
           .map { case ((raw, disp), i) =>
             val notes = byLine.getOrElse(i, Nil)
             val enriched =
-              if notes.isEmpty then disp else s"$disp  // ⟹ ${notes.map(_.text).mkString("; ")}"
+              if notes.isEmpty then disp
+              else
+                val joined = notes.map(_.text).mkString("; ")
+                if sentinel then
+                  SourceSentinel
+                    .inject(Vector(disp), List(SourceSentinel.Note(0, joined)))
+                    .headOption
+                    .getOrElse(disp)
+                else s"$disp  // ⟹ $joined"
             (Some(raw), Some(enriched))
           }
           .toList
@@ -301,7 +323,8 @@ private[mcp] object McpToolsSupport:
         anns: List[SourceAnnotation],
         fmt: SourceFormat,
         annotationsOnly: Boolean,
-        lineOffset: Int
+        lineOffset: Int,
+        sentinel: Boolean
     ): String =
       val byLine = anns.groupBy(_.line)
       // `plain` shows no notes, so `annotationsOnly` would be empty — ignore it there.
@@ -319,17 +342,27 @@ private[mcp] object McpToolsSupport:
               // `(using Show[A])`) — the renderer just joins them, no column arithmetic.
               val joined = notes.map(_.text).mkString("; ")
               Some(
-                if fmt == SourceFormat.Compilable then s"$base  // ⟹ $joined"
+                if sentinel then
+                  SourceSentinel
+                    .inject(Vector(base), List(SourceSentinel.Note(0, joined)))
+                    .headOption
+                    .getOrElse(base)
+                else if fmt == SourceFormat.Compilable then s"$base  // ⟹ $joined"
                 else s"$base   ⟹ $joined"
               )
         }
         .mkString("\n")
 
-    private def legend(fmt: SourceFormat): String =
+    private def legend(fmt: SourceFormat, sentinel: Boolean): String =
       val markers =
         "Notes show compiler insertions invisible in the source: `(using …)` implicit args, " +
           "`name(…)` implicit conversion, `[…]` inferred type args, `: T` inferred type. " +
-          "symbols=on adds a type→package legend."
+          "symbols=on adds a type→package legend." +
+          (if sentinel then
+             " sentinel=on: each note is appended as a `/*SEM:...:SEM*/` block comment instead of a `⟹` note — " +
+               "strippable via `SourceSentinel.strip` (analysis module), which removes exactly " +
+               "that block and leaves everything else on the line untouched."
+           else "")
       fmt match
         case SourceFormat.Compilable =>
           s"Valid Scala: each note is a trailing `// ⟹` comment, no line-number gutter. $markers"
@@ -412,7 +445,8 @@ private[mcp] object McpToolsSupport:
           fmt,
           argBool(a, "annotationsOnly", false),
           legendSymbols,
-          lineOffset = start
+          lineOffset = start,
+          sentinel = argBool(a, "sentinel", false)
         )
       }
 
@@ -780,6 +814,14 @@ private[mcp] object McpToolsSupport:
 
   private[mcp] def error(message: String): Nothing =
     sys.error(message)
+
+  /** Lowercase hex SHA-256 of `bytes` — used as a cheap concurrent-edit guard for
+    * `annotated_source` write mode: a caller reads a file (getting back its `sha256`), edits it,
+    * and passes that hash back as `baseHash`; a mismatch means the file changed on disk meanwhile.
+    */
+  private[mcp] def sha256Hex(bytes: Array[Byte]): String =
+    val digest = java.security.MessageDigest.getInstance("SHA-256").nn.digest(bytes).nn
+    digest.map(b => f"${b & 0xff}%02x").mkString
 
   private[mcp] def tool(
       name: String,
@@ -1590,12 +1632,31 @@ private[mcp] object McpToolsGroupC:
             "`diff` (a unified diff from the source as written to the enriched view — `+` lines are the " +
             "compiler's insertions, render green/red in any diff viewer). In " +
             "`annotated`/`plain` the gutter is a READ-ONLY view: never paste it into code; edit the real " +
-            "file at `uri` (gutter numbers map 1:1).",
+            "file at `uri` (gutter numbers map 1:1). Pass `sentinel` to make notes machine-strippable: " +
+            "each becomes a `/*SEM:...:SEM*/` block comment at the end of its line instead of a `⟹` note, " +
+            "removable via `SourceSentinel.strip` without touching any real comment on the line. WRITE " +
+            "MODE: pass `write` (the file's edited full text, typically read here with `sentinel=on`, " +
+            "then edited) to persist it to `uri` instead of reading — every `/*SEM:...:SEM*/` block is " +
+            "stripped before the file is saved, so the annotations never reach disk. Pass `baseHash` " +
+            "(the `sha256` field from an earlier read of this `uri`) to reject the write if the file " +
+            "changed on disk since — omit it only when you accept overwriting a concurrent change.",
           (
             "uri",
             "string",
             "document uri as it appears in SemanticDB (path relative to project root)"
           )
+            :: (
+              "write",
+              "string",
+              "the file's edited full text — switches this tool to WRITE mode: /*SEM:...:SEM*/ blocks are " +
+                "stripped and the result is saved to uri. Omit to read instead."
+            )
+            :: (
+              "baseHash",
+              "string",
+              "write mode only: the `sha256` from an earlier read of this uri — the write is rejected " +
+                "if the file no longer matches (a concurrent edit happened)."
+            )
             :: SourceView.params,
           List("uri")
         ) { a =>
@@ -1603,30 +1664,58 @@ private[mcp] object McpToolsGroupC:
           val file = root.resolve(uri.value)
           if !java.nio.file.Files.isRegularFile(file) then notFoundUri(uri.value)
           else
-            val rawLines = java.nio.file.Files.readString(file).split("\n", -1).toIndexedSeq
-            val docs = argStr(a, "docs")
-            val lines = if docs == "strip" then az.stripComments(rawLines) else rawLines
-            val detail = argDetail(a, "detail")
-            az.sourceAnnotations(uri, lines, detail) match
-              case None       => notFoundUri(uri.value)
-              case Some(anns) =>
-                val symbolsOn = argBool(a, "symbols", false)
-                val symbols = if symbolsOn then az.symbolLegend(uri) else Nil
-                val fmt = argFormat(a, "format")
-                // import-explosion is the compilable rendering of symbols=on (and its diff): desugar
-                // wildcard / `given` imports into explicit ones so no name enters scope invisibly.
-                val explode =
-                  symbolsOn && (fmt == SourceFormat.Compilable || fmt == SourceFormat.Diff)
-                val displayLines = if explode then az.explodeImports(uri, lines) else lines
-                SourceView.result(
-                  uri.value,
-                  rawLines,
-                  displayLines,
-                  anns,
-                  fmt,
-                  argBool(a, "annotationsOnly", false),
-                  symbols
-                )
+            a.obj.get("write") match
+              case Some(ujson.Str(edited)) =>
+                val currentHash = sha256Hex(java.nio.file.Files.readAllBytes(file).nn)
+                val baseHash = argStr(a, "baseHash")
+                if baseHash.nonEmpty && baseHash != currentHash then
+                  error(
+                    s"annotated_source write rejected: '${uri.value}' changed on disk since " +
+                      "baseHash was read (concurrent edit) — read it again and retry"
+                  )
+                else
+                  val stripped =
+                    SourceSentinel.strip(edited.split("\n", -1).toIndexedSeq).mkString("\n")
+                  val strippedBytes = stripped.getBytes(java.nio.charset.StandardCharsets.UTF_8).nn
+                  val _ = java.nio.file.Files.write(file, strippedBytes)
+                  ujson.Obj(
+                    "uri" -> ujson.Str(uri.value),
+                    "written" -> ujson.Bool(true),
+                    "bytesWritten" -> ujson.Num(strippedBytes.length.toDouble),
+                    "sha256" -> ujson.Str(sha256Hex(strippedBytes))
+                  )
+              case _ =>
+                val rawBytes = java.nio.file.Files.readAllBytes(file).nn
+                val rawLines =
+                  new String(rawBytes, java.nio.charset.StandardCharsets.UTF_8).nn
+                    .split("\n", -1)
+                    .toIndexedSeq
+                val docs = argStr(a, "docs")
+                val lines = if docs == "strip" then az.stripComments(rawLines) else rawLines
+                val detail = argDetail(a, "detail")
+                az.sourceAnnotations(uri, lines, detail) match
+                  case None       => notFoundUri(uri.value)
+                  case Some(anns) =>
+                    val symbolsOn = argBool(a, "symbols", false)
+                    val symbols = if symbolsOn then az.symbolLegend(uri) else Nil
+                    val fmt = argFormat(a, "format")
+                    // import-explosion is the compilable rendering of symbols=on (and its diff):
+                    // desugar wildcard / `given` imports into explicit ones so no name enters scope
+                    // invisibly.
+                    val explode =
+                      symbolsOn && (fmt == SourceFormat.Compilable || fmt == SourceFormat.Diff)
+                    val displayLines = if explode then az.explodeImports(uri, lines) else lines
+                    val res = SourceView.result(
+                      uri.value,
+                      rawLines,
+                      displayLines,
+                      anns,
+                      fmt,
+                      argBool(a, "annotationsOnly", false),
+                      symbols,
+                      sentinel = argBool(a, "sentinel", false)
+                    )
+                    ujson.Obj.from(res.obj.toSeq :+ ("sha256" -> ujson.Str(sha256Hex(rawBytes))))
         }
       ),
       toolDef(
