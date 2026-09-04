@@ -7,8 +7,9 @@ set -eu
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(cd -- "$SCRIPT_DIR/.." && pwd)
 
-# Cache directory used by the launcher
-CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/scalasemantic-mcp"
+# Jar directory used by the launcher (ADR-0004 moved it out of the cache: an installed release jar
+# is data, not a cache, and must not be evicted by a cache cleaner).
+CACHE_DIR="${SCALASEMANTIC_HOME:-$HOME/.local/share/scalasemantic-mcp}"
 mkdir -p "$CACHE_DIR"
 
 # Copy local assembly jar to the cache as 'local' version

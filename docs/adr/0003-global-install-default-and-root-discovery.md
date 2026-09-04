@@ -34,6 +34,11 @@ because a misconfigured client (or a client that changes its cwd contract later)
 the server indexes the wrong directory and returns confident-looking `count: 0` answers instead of
 an error.
 
+> **Amended by [ADR-0004](0004-single-launcher-script-and-user-scope-install.md).** Decision 3's
+> fail-closed behaviour no longer exits the process: the server starts, lists its tools, and returns
+> the error below on each tool call instead. Everything else here still holds. ADR-0004 also
+> supersedes the two-script install layout described in Decision 1.
+
 ## Decision
 
 **1. Global install becomes the documented default.** `docs/getting-started/quickstart.md`'s step 1

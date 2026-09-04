@@ -67,7 +67,10 @@ object SmokeTestMill {
       case Some(p) => println(s"Found Mill meta-build SemanticDB for build.mill: $p")
     }
 
-    val cacheDir = Paths.get(sys.env.getOrElse("XDG_CACHE_HOME", sys.env("HOME") + "/.cache"), "scalasemantic-mcp")
+    // ADR-0004: the launcher keeps its jar under SCALASEMANTIC_HOME, not in a cache directory.
+    val cacheDir = Paths.get(
+      sys.env.getOrElse("SCALASEMANTIC_HOME", sys.env("HOME") + "/.local/share/scalasemantic-mcp")
+    )
     Files.createDirectories(cacheDir)
     println("Copying local assembly jar to cache...")
     Files.copy(assemblyJar, cacheDir.resolve("scalasemantic-mcp-local.jar"), StandardCopyOption.REPLACE_EXISTING)

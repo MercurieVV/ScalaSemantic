@@ -3,7 +3,7 @@
 //| - com.lihaoyi::mill-contrib-buildinfo:$MILL_VERSION
 //| - com.goyeau::mill-scalafix::0.6.0
 //| bspScriptIgnore: [scripts/**, .scala-build/**]
-// scripts/scalasemantic-mcp.scala is a scala-cli script (own `//> using dep`, own .bsp/scala-cli.json
+// scripts/*.sc are scala-cli scripts (own `//> using dep`, own .bsp/scala-cli.json
 // connection) — NOT a Mill module. Without bspScriptIgnore above, Mill's BSP support walks the
 // workspace for loose .java/.scala/.kt files and wraps it in a synthetic single-file module using
 // Mill's OWN build classpath, ignoring the script's using-directives entirely and breaking IDE
