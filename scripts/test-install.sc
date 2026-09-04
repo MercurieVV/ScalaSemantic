@@ -46,31 +46,79 @@ object TestInstall {
     val e = pb.environment()
     env.foreach { case (k, v) => e.put(k, v) }
     val proc = pb.start()
+    proc.getOutputStream.close() // no stdin: otherwise CLI clients stall waiting for piped input
     val out = new String(proc.getInputStream.readAllBytes(), "UTF-8")
     val err = new String(proc.getErrorStream.readAllBytes(), "UTF-8")
     (proc.waitFor(), out, err)
   }
 
-  /** A minimal but real sbt project with SemanticDB on and one distinctively-named symbol. */
+  /** A real Scala CLI project carrying `project.scala` (a root-discovery marker) and one
+    * distinctively-named symbol, compiled so an actual SemanticDB exists — without it every
+    * `find_symbol` below would answer "not found" no matter how correct the install was.
+    *
+    * Compiled with the ambient environment on purpose: the toolchain download is not what this
+    * test exercises, and forcing it through the sandbox HOME would refetch all of Scala.
+    */
   def fixtureProject(parent: Path): Path = {
     val dir = parent.resolve("fixture-project")
-    Files.createDirectories(dir.resolve("src/main/scala"))
-    Files.createDirectories(dir.resolve("project"))
+    Files.createDirectories(dir)
     Files.writeString(
-      dir.resolve("build.sbt"),
-      """|ThisBuild / scalaVersion := "3.8.4"
-         |ThisBuild / semanticdbEnabled := true
-         |lazy val root = (project in file("."))
-         |""".stripMargin
+      dir.resolve("project.scala"),
+      // SemanticDB comes from the --semanticdb CLI flag below, not a directive: `//> using
+      // semanticdb` is not recognised by Scala CLI.
+      "//> using scala 3.8.4\n"
     )
-    Files.writeString(dir.resolve("project/build.properties"), "sbt.version=1.10.7\n")
     Files.writeString(
-      dir.resolve("src/main/scala/Fixture.scala"),
+      dir.resolve("Fixture.scala"),
       """|object Fixture:
          |  def zzUniqueFixtureSymbol(n: Int): Int = n + 1
          |""".stripMargin
     )
+    // The target root must be a VISIBLE directory: Scala CLI's default puts SemanticDB under the
+    // hidden .scala-build/, and SemanticIndex skips hidden directories while walking a project.
+    val (code, out, err) = run(
+      Seq(
+        "scala-cli",
+        "compile",
+        "--semanticdb",
+        "--semanticdb-sourceroot",
+        ".",
+        "--semanticdb-targetroot",
+        "semanticdb",
+        "."
+      ),
+      dir,
+      Map.empty
+    )
+    check(code == 0, s"fixture failed to compile\n--- stdout ---\n$out\n--- stderr ---\n$err")
+    val semanticdbs =
+      Files.walk(dir).iterator().asScala.filter(_.toString.endsWith(".semanticdb")).toVector
+    check(semanticdbs.nonEmpty, s"fixture compiled but emitted no SemanticDB under $dir")
     dir
+  }
+
+  /** Speaks raw JSON-RPC to the installed launcher and asserts the fixture symbol comes back. This
+    * is what proves the install works in both scopes; the LLM clients below are the extra mile.
+    */
+  def assertServerAnswers(launcher: Path, project: Path, env: Map[String, String]): Unit = {
+    val requests = Seq(
+      """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}""",
+      """{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"find_symbol","arguments":{"name":"zzUniqueFixtureSymbol"}}}"""
+    ).mkString("", "\n", "\n")
+    val pb = new ProcessBuilder(Seq(launcher.toString, "serve", ".").asJava)
+    pb.directory(project.toFile)
+    env.foreach { case (k, v) => pb.environment().put(k, v) }
+    val proc = pb.start()
+    proc.getOutputStream.write(requests.getBytes("UTF-8"))
+    proc.getOutputStream.close()
+    val out = new String(proc.getInputStream.readAllBytes(), "UTF-8")
+    val err = new String(proc.getErrorStream.readAllBytes(), "UTF-8")
+    check(proc.waitFor() == 0, s"server exited non-zero\n$out\n$err")
+    check(
+      out.contains("zzUniqueFixtureSymbol"),
+      s"server did not resolve the fixture symbol\n--- stdout ---\n$out\n--- stderr ---\n$err"
+    )
+    println("[ok] server resolves the fixture symbol")
   }
 
   /** Config files each mode is expected to create, relative to HOME (user) or project (project). */
@@ -95,6 +143,126 @@ object TestInstall {
         ".roo/mcp.json",
         ".agents/mcp_config.json"
       )
+
+  /** Headless invocations that force one MCP tool call. A client missing from PATH is skipped —
+    * loudly — so an absent `agy` cannot mask a real failure in the `claude` path.
+    */
+  def clientCommands(prompt: String, dshOverlay: Path): Seq[(String, Seq[String])] = Seq(
+    // Each client needs its tool call pre-approved: headless runs cannot answer a prompt.
+    // --allowedTools takes a list, so use the =form: otherwise it swallows the prompt argument.
+    "claude" -> Seq("claude", "--allowedTools=mcp__scala-semantic__find_symbol", "-p", prompt),
+    "dsh" -> Seq(
+      "dsh",
+      "--profile",
+      "headless",
+      "--patch",
+      dshOverlay.toAbsolutePath.toString,
+      prompt
+    ),
+    // agy: disabled until antigravity-cli#548 is fixed — headless mode ignores permissions.allow
+    // entirely, so the only way to drive it is --dangerously-skip-permissions. Re-enable with:
+    //
+    //   "agy" -> Seq("agy", "-p", prompt)      // plus seedAgyPermissions(project)
+    //
+    // codex: temporarily disabled (no API credits available to run it).
+    //
+    // Re-enabling is not just uncommenting. `codex --help` documents config as loaded from
+    // ~/.codex/config.toml, overridable only via $CODEX_HOME; there is no project-local
+    // .codex/config.toml discovery. A run here duly ignored the fixture's .codex/config.toml and
+    // reached for the developer's global MCP servers instead. So project-scope Codex support is a
+    // no-op today, and driving Codex hermetically needs CODEX_HOME pointed at a directory holding
+    // both the generated config and a copy of the real auth.json:
+    //
+    //   "codex" -> Seq("codex", "exec", "--skip-git-repo-check", prompt)
+  )
+
+  /** Grants exactly the tools the client check needs, in the project-level settings the installer
+    * already writes — the alternative to auto-approving everything with
+    * --dangerously-skip-permissions.
+    *
+    * UNUSED for now: agy's headless (`-p`) mode never consults `permissions.allow` in any scope,
+    * so no rule set can work there yet — https://github.com/google-antigravity/antigravity-cli/issues/548.
+    * Kept ready so agy can be re-enabled in `clientCommands` the moment that lands.
+    */
+  def seedAgyPermissions(project: Path): Unit = {
+    val file = project.resolve(".gemini/settings.json")
+    Files.createDirectories(file.getParent)
+    val json =
+      if (Files.exists(file)) ujson.read(Files.readString(file)) else ujson.Obj()
+    json("permissions") = ujson.Obj(
+      // Every rule takes a target — a bare tool name is silently ignored.
+      "allow" -> ujson.Arr(
+        "read_file(*)",
+        "read_many_files(*)",
+        "glob(*)",
+        "search_file_content(*)",
+        // Spawning the stdio MCP server itself counts as a "command".
+        "command(*)",
+        "run_shell_command(*)",
+        "find_symbol(*)",
+        "mcp__scala-semantic__find_symbol(*)",
+        "scala-semantic__find_symbol(*)"
+      )
+    )
+    Files.writeString(file, ujson.write(json, indent = 2))
+  }
+
+  /** dsh (DeepSeek Harness) configures MCP through a cordis patch overlay, one server per plugin
+    * entry — not through any `mcpServers` map, so the installer writes nothing for it. Its
+    * `headless` profile also omits the MCP plugin entirely, so overlay it here. This proves the
+    * launcher works under dsh; it does NOT prove the installer configured dsh, because it cannot.
+    */
+  def dshPatch(project: Path, launcher: Path): Path = {
+    val patch = project.resolve("dsh-scalasemantic.patch.yml")
+    Files.writeString(
+      patch,
+      s"""|- name: '@deepseek-ai/dsh-mcp-client'
+          |  config:
+          |    serverName: scalasemantic
+          |    transport: stdio
+          |    command: '${launcher.toAbsolutePath}'
+          |    args:
+          |      - serve
+          |      - .
+          |    cwd: '${project.toAbsolutePath}'
+          |""".stripMargin
+    )
+    patch
+  }
+
+  def onPath(exe: String): Boolean =
+    sys.env
+      .getOrElse("PATH", "")
+      .split(java.io.File.pathSeparator)
+      .exists(d => Files.isExecutable(Paths.get(d).resolve(exe)))
+
+  /** ADR-0004: an unresolved root must still connect and must say why on each call. */
+  def assertNonScalaDirConnects(launcher: Path, sandbox: Path, env: Map[String, String]): Unit = {
+    val empty = Files.createDirectories(sandbox.resolve("not-a-scala-project"))
+    val requests = Seq(
+      """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}""",
+      """{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}""",
+      """{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"find_symbol","arguments":{"name":"Anything"}}}"""
+    ).mkString("", "\n", "\n")
+
+    val pb = new ProcessBuilder(Seq(launcher.toString, "serve", ".").asJava)
+    pb.directory(empty.toFile)
+    env.foreach { case (k, v) => pb.environment().put(k, v) }
+    val proc = pb.start()
+    proc.getOutputStream.write(requests.getBytes("UTF-8"))
+    proc.getOutputStream.close()
+    val out = new String(proc.getInputStream.readAllBytes(), "UTF-8")
+    val code = proc.waitFor()
+
+    check(code == 0, s"server exited $code in a non-Scala directory; it must stay connectable\n$out")
+    check(out.contains("\"tools\""), s"tools/list returned nothing:\n$out")
+    check(out.contains("find_symbol"), s"tool list is missing find_symbol:\n$out")
+    check(
+      out.contains("could not detect a Scala project root"),
+      s"expected the discovery error from the tool call:\n$out"
+    )
+    println("[ok] non-Scala directory connects and explains itself")
+  }
 
   def main(args: Array[String]): Unit = {
     // scala-cli forwards the `--` separator itself; drop it so both invocation styles work.
@@ -157,6 +325,34 @@ object TestInstall {
     }
     println("[ok] configs written")
 
+    // 5. Assert the installed server actually answers, over the wire.
+    assertServerAnswers(launcher, project, env)
+
+    // 5b. In project mode the config is project-local, so the real HOME can be left alone and the
+    //     LLM clients stay authenticated — drive them for a true end-to-end check. User mode cannot
+    //     do this: its config lives in HOME, and pointing a client at the real HOME would mean
+    //     writing the test's server entry into the developer's own configs.
+    if (mode == "project") {
+      val prompt =
+        "Use the scala-semantic MCP tool find_symbol to look up the symbol " +
+          "zzUniqueFixtureSymbol in this project, and print the tool's raw answer."
+      val clientEnv = env - "HOME"
+      var drove = 0
+      clientCommands(prompt, dshPatch(project, launcher)).foreach { case (name, cmd) =>
+        if (!onPath(name)) println(s"[skip] $name not on PATH")
+        else {
+          val (c, o, e) = run(cmd, project, clientEnv)
+          check(
+            c == 0 && o.contains("zzUniqueFixtureSymbol"),
+            s"$name did not get the fixture symbol back (exit $c)\n--- stdout ---\n$o\n--- stderr ---\n$e"
+          )
+          println(s"[ok] $name reached the server")
+          drove += 1
+        }
+      }
+      check(drove > 0, "no MCP client was available on PATH; install one to run this step")
+    } else println("[skip] LLM clients: user scope would need the developer's real HOME")
+
     // 6. Idempotent: a second install must not change a byte, must not duplicate the entry, and
     //    must preserve an unrelated server planted beforehand.
     val claudeConfig = configs.head
@@ -173,6 +369,8 @@ object TestInstall {
       s"duplicate scala-semantic entry after re-install:\n$after"
     )
     println("[ok] idempotent")
+
+    assertNonScalaDirConnects(launcher, sandbox, env)
 
     // 7. Teardown.
     rmTree(sandbox)
