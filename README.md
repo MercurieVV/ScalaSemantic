@@ -11,9 +11,17 @@ Works with Scala 2.13.* and 3.*.*, any sbt/Mill/Gradle project, and any MCP-comp
 
 ## Quick setup
 
-Needs only `java` (no sbt, no Scala CLI). Download the launcher once and run `setup`. It
-idempotently enables SemanticDB, writes the agent steering files, and merges an MCP server entry
-into every client config it finds — re-running is always safe:
+Needs only `java` (no sbt, no Scala CLI). Install the launcher once — it's shared across every
+project on the machine, not copied per-project — then run `setup` from the project you want to
+analyze. `setup` idempotently enables SemanticDB, writes the agent steering files, and merges an
+MCP server entry into every client config it finds — re-running is always safe:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/install.sh | sh
+cd /path/to/your-project && scalasemantic-mcp setup
+```
+
+Prefer a launcher version pinned inside the project instead of a shared machine-wide binary?
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.sh -o scalasemantic-mcp.sh && chmod +x scalasemantic-mcp.sh && ./scalasemantic-mcp.sh setup
