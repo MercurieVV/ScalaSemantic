@@ -6,26 +6,40 @@ import scala.annotation.tailrec
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 
+/** Where an install registers the server: in one project's config files, or in the per-user config
+  * of every client that has one. See ADR-0004.
+  */
+private[scalasemantic] enum LauncherScope:
+  case User, Project
+
 private[scalasemantic] object LauncherSetup:
   final case class Options(
       project: Path = Path.of(".").toAbsolutePath.normalize(),
       client: String = "all",
       command: String = sys.env.getOrElse("SCALASEMANTIC_LAUNCHER", "scalasemantic-mcp"),
       skipSemanticdbConfig: Boolean = false,
-      guard: Boolean = true
+      guard: Boolean = true,
+      scope: LauncherScope = LauncherScope.Project,
+      home: Path = Path.of(sys.props.getOrElse("user.home", ".")).toAbsolutePath.normalize()
   )
 
   def setup(rawArgs: List[String]): Unit =
     val opts = parse(rawArgs)
-    val project = opts.project
-    Files.createDirectories(project)
-    ensureSemanticdbConfig(project, opts.skipSemanticdbConfig)
-    LauncherRules.ensure(project, opts.client)
-    LauncherClientConfigs.write(project, opts)
-    if opts.guard then LauncherGuardHook.install(project, opts.client)
-    ensureClasspathMetadataDir(project)
+    opts.scope match
+      // User scope registers the server and nothing else: SemanticDB config, the rules file and the
+      // guard hook all configure a project, and a user-scope install has no project to configure.
+      case LauncherScope.User =>
+        LauncherClientConfigs.write(opts.project, opts)
+      case LauncherScope.Project =>
+        val project = opts.project
+        Files.createDirectories(project)
+        ensureSemanticdbConfig(project, opts.skipSemanticdbConfig)
+        LauncherRules.ensure(project, opts.client)
+        LauncherClientConfigs.write(project, opts)
+        if opts.guard then LauncherGuardHook.install(project, opts.client)
+        ensureClasspathMetadataDir(project)
 
-  private def parse(args: List[String]): Options =
+  private[scalasemantic] def parse(args: List[String]): Options =
     @tailrec def loop(rest: List[String], opts: Options): Options =
       rest match
         case Nil                                       => opts
@@ -41,6 +55,14 @@ private[scalasemantic] object LauncherSetup:
           loop(tail, opts.copy(guard = false))
         case "--guard" :: tail =>
           loop(tail, opts.copy(guard = true))
+        case "--scope" :: value :: tail =>
+          val scope = value.trim.toLowerCase match
+            case "user"    => LauncherScope.User
+            case "project" => LauncherScope.Project
+            case bad       =>
+              LauncherMessages.err(s"unknown --scope value: $bad (expected user or project)")
+              LauncherMessages.usage(2)
+          loop(tail, opts.copy(scope = scope))
         case ("--help" | "-h") :: _ =>
           LauncherMessages.usage(0)
         case bad :: _ =>

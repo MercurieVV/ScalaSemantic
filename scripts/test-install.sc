@@ -75,8 +75,16 @@ object TestInstall {
 
   /** Config files each mode is expected to create, relative to HOME (user) or project (project). */
   def expectedConfigs(mode: String): Seq[String] =
+    // cline and roo are absent on purpose: their global config lives inside VS Code's OS-specific
+    // globalStorage, so they have no user-scope path and the installer skips them.
     if (mode == "user")
-      Seq(".claude.json", ".codex/config.toml", ".gemini/settings.json", ".continue/config.yaml")
+      Seq(
+        ".claude.json",
+        ".codex/config.toml",
+        ".gemini/settings.json",
+        ".gemini/config/mcp_config.json",
+        ".continue/config.yaml"
+      )
     else
       Seq(
         ".mcp.json",
