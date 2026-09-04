@@ -122,6 +122,20 @@ object Mcp:
       refreshWorkspaceTool(log.get())
     )
 
+  /** The full tool surface, but answering with `message` instead of querying an index. Used when
+    * the launch directory is not a Scala project: the server stays connectable (ADR-0004, amending
+    * ADR-0003 §3) and says why on each call, rather than exiting and showing as a failed server in
+    * every non-Scala repository. Building the list against an empty scratch directory keeps tool
+    * names and JSON schemas identical to the healthy server, so a client sees no difference until
+    * it calls something. The workspace-root tools stay live: they are the in-band fix.
+    */
+  private[mcp] def unresolvedRootTools(scratch: Path, message: String): List[Tool] =
+    val passthrough = Set("set_workspace_root", "get_workspace_root")
+    buildState(scratch, None, _ => ()).tools.map { tool =>
+      if passthrough.contains(tool.name) then tool
+      else tool.copy(run = _ => textBlock(message))
+    }
+
   val ProtocolVersion = "2025-06-18"
   val ServerName = "scala-semantic-mcp"
   // dynver-derived at build time (see mcp/buildInfoKeys), so it tracks the published version.
@@ -467,7 +481,8 @@ object Mcp:
   def serve(
       root: String,
       classpath: Option[String] = None,
-      logging: LogConfig = LogConfig.off
+      logging: LogConfig = LogConfig.off,
+      unresolvedRoot: Option[String] = None
   ): Unit =
     val rootPath = Paths.get(root).toAbsolutePath.nn
     val currentLog: String => Unit = if logging.active then fileLogger(rootPath) else (_ => ())
@@ -477,11 +492,21 @@ object Mcp:
     // without a hand-rolled try/finally here.
     stateCache.clear()
     Mcp.stateFactory.set(path => buildState(path, classpath, currentLog))
-    val initialState = stateFactory.get()(rootPath)
-    activateState(initialState)
-    Mcp.stateCache.put(rootPath, initialState)
     try
-      runLoop(root, rootPath, initialState.pcSelector, currentLog, logging)
+      unresolvedRoot match
+        // With an unresolved root there is nothing safe to index: building state over cwd is
+        // exactly the silently-wrong-index failure ADR-0003 exists to prevent. Serve tools that
+        // explain themselves instead.
+        case Some(message) =>
+          val scratch = Files.createTempDirectory("scalasemantic-unresolved")
+          scratch.toFile.deleteOnExit()
+          currentLog(s"root unresolved: $message")
+          runLoopWithTools(unresolvedRootTools(scratch, message), currentLog, logging)
+        case None =>
+          val initialState = stateFactory.get()(rootPath)
+          activateState(initialState)
+          Mcp.stateCache.put(rootPath, initialState)
+          runLoop(root, rootPath, initialState.pcSelector, currentLog, logging)
       currentLog("stdin closed; shutting down")
     catch
       case t: Throwable =>
@@ -555,6 +580,14 @@ object Mcp:
         (if backendFor.isEmpty then " (index-only; pass a classpath to enable live buffers)"
          else "")
     )
+    runLoopWithTools(tools, log, logging)
+
+  /** The stdio JSON-RPC loop itself, over a tool list someone else chose. */
+  private def runLoopWithTools(
+      tools: List[Tool],
+      log: String => Unit,
+      logging: LogConfig
+  ): Unit =
     val reader = java.io.BufferedReader(java.io.InputStreamReader(System.in, "UTF-8"))
     val out = java.io.PrintStream(System.out, true, "UTF-8")
     val lines = Iterator.continually(Option(reader.readLine())).takeWhile(_.isDefined).flatten

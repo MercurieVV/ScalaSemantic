@@ -29,21 +29,24 @@ private[scalasemantic] def serveMcp(args: Seq[String]): Unit =
   val logOutputs = flags.contains("--log-output") || envOn("SCALASEMANTIC_LOG_OUTPUT")
   val logEnabled = flags.contains("--log") || envOn("SCALASEMANTIC_LOG") || logOutputs
   val rootArg = positional.headOption.getOrElse(".")
-  val root =
-    if rootArg != "." then rootArg
+  // A failed discovery is reported per tool call, not by exiting: a user-scope registration must
+  // stay connectable in every non-Scala repository on the machine. See ADR-0004.
+  val (root, unresolved) =
+    if rootArg != "." then (rootArg, None)
     else
       ProjectRootDiscovery.resolveDefaultRoot(
         Path.of("."),
         envOn("SCALASEMANTIC_SKIP_ROOT_CHECK")
       ) match
-        case Right(resolved) => resolved.toString
+        case Right(resolved) => (resolved.toString, None)
         case Left(error)     =>
           System.err.println(error)
-          sys.exit(1)
+          (".", Some(error))
   Mcp.serve(
     root,
     positional.drop(1).headOption,
-    Mcp.LogConfig(enabled = logEnabled, logOutputs = logOutputs)
+    Mcp.LogConfig(enabled = logEnabled, logOutputs = logOutputs),
+    unresolved
   )
 
 /** Throwaway entrypoint: load a project's SemanticDB and print a summary. Usage: `run

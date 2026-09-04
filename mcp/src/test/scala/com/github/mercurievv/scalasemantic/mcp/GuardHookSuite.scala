@@ -99,27 +99,11 @@ class GuardHookSuite extends munit.FunSuite:
     assertEquals("PreToolUse".r.findAllIn(merged).size, 1, merged)
   }
 
-  // --- the two standalone installers must ship the same hook -------------------------------
+  // --- the standalone installer must ship the same hook ------------------------------------
 
-  /** Reconstructs a `"""|…""".stripMargin` block, so the scala-cli script's copy can be compared
-    * against the jar's without depending on how either file is indented.
-    */
-  private def stripMarginBlock(source: String, from: String): String =
-    val lines = source.linesIterator.dropWhile(!_.contains(from)).toVector
-    lines
-      .takeWhile(!_.contains("\"\"\".stripMargin"))
-      .map(_.replace("\"\"\"|", "|"))
-      .map(line =>
-        line.trim match
-          case trimmed if trimmed.startsWith("|") => trimmed.drop(1)
-          case _                                  => line
-      )
-      .mkString("\n") + "\n"
-
-  test("the scala-cli installer ships the same guard script as the jar") {
-    val script = Files.readString(Path.of("scripts/scalasemantic-mcp.scala"))
-    assertEquals(stripMarginBlock(script, "#!/bin/sh"), LauncherGuardHook.script)
-  }
+  // The scala-cli installer (scripts/scalasemantic-mcp.scala) was deleted in ADR-0004: it
+  // duplicated the launcher module, so there is no second copy of the guard script left to drift.
+  // The PowerShell installer still carries its own copy, hence the check below.
 
   test("the PowerShell installer ships the same guard script as the jar") {
     val ps1 = Files.readString(Path.of("scripts/scalasemantic-mcp.ps1"))
