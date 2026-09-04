@@ -232,6 +232,29 @@ Download `scalasemantic-mcp.jar` from the [latest release](https://github.com/Me
 
 > Do not use `runMain` (sbt or Mill) — it writes build logs to stdout and corrupts the JSON-RPC stream. To build the jar locally: `./mill mcp.assembly`.
 
+## Developing on ScalaSemantic
+
+To run your own build of the server in every project on your machine:
+
+```bash
+./mill installLocal
+```
+
+This builds the fat jar, installs the launcher to `~/.local/bin/scalasemantic-mcp`, places the jar
+as the single `*-local.jar` in `~/.local/share/scalasemantic-mcp/`, and configures your MCP clients
+through the same code path the release install uses. Restart your MCP clients to pick it up.
+
+While a local jar is installed the launcher never resolves or downloads a release, so an
+auto-update cannot revert you mid-change. Go back to releases with:
+
+```bash
+scalasemantic-mcp --use-release
+```
+
+`./mill installLocal --skip-clients` installs the jar and launcher without touching client configs —
+useful once your configs are already written. `BIN_DIR` and `SCALASEMANTIC_HOME` override both
+destinations. See [ADR-0005](../adr/0005-local-jar-channel.md).
+
 ## Logging
 
 Silent by default. Enable with flags appended to `args` (after the project root), or matching env vars:
