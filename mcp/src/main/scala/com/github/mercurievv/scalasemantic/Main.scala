@@ -3,6 +3,8 @@ package com.github.mercurievv.scalasemantic
 import com.github.mercurievv.scalasemantic.mcp.Mcp
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
+import java.nio.file.Path
+
 /** Start the MCP server over stdio. Usage: `runMain com.github.mercurievv.scalasemantic.mcpServer
   * [semanticdbRoot] [classpath] [--log] [--log-output]`.
   *   - `semanticdbRoot` (default `.`): where it recursively finds emitted `*.semanticdb` files.
@@ -26,8 +28,20 @@ private[scalasemantic] def serveMcp(args: Seq[String]): Unit =
     sys.env.get(name).map(_.trim.toLowerCase).exists(Set("1", "true", "yes", "on"))
   val logOutputs = flags.contains("--log-output") || envOn("SCALASEMANTIC_LOG_OUTPUT")
   val logEnabled = flags.contains("--log") || envOn("SCALASEMANTIC_LOG") || logOutputs
+  val rootArg = positional.headOption.getOrElse(".")
+  val root =
+    if rootArg != "." then rootArg
+    else
+      ProjectRootDiscovery.resolveDefaultRoot(
+        Path.of("."),
+        envOn("SCALASEMANTIC_SKIP_ROOT_CHECK")
+      ) match
+        case Right(resolved) => resolved.toString
+        case Left(error)     =>
+          System.err.println(error)
+          sys.exit(1)
   Mcp.serve(
-    positional.headOption.getOrElse("."),
+    root,
     positional.drop(1).headOption,
     Mcp.LogConfig(enabled = logEnabled, logOutputs = logOutputs)
   )

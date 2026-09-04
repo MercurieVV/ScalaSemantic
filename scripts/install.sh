@@ -45,13 +45,17 @@ esac
 
 cat >&2 <<EOF
 
-Register it with your MCP client (.mcp.json), pointing args at the project to analyze:
+Register it once per project, from that project's root:
+
+  cd /path/to/your-project && $DEST setup --client all
+
+...or by hand (run from inside the project you're analyzing so its own client picks up cwd = project root; see ADR-0003):
 
 {
   "mcpServers": {
     "scala-semantic": {
       "command": "$DEST",
-      "args": ["/abs/path/to/project-to-analyze"]
+      "args": ["serve", "."]
     }
   }
 }

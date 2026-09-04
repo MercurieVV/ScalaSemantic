@@ -2,10 +2,16 @@
 
 Shortest path for any project.
 
-1. **Download and run the auto-download script** (needs only `java`):
+1. **Install the launcher once, shared across all your projects** (needs only `java`):
    ```sh
-   curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.sh -o scalasemantic-mcp.sh && chmod +x scalasemantic-mcp.sh && ./scalasemantic-mcp.sh setup
+   curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/install.sh | sh
    ```
+   Then, from the root of the project you want to analyze:
+   ```sh
+   scalasemantic-mcp setup
+   ```
+   (Prefer a version pinned inside the project instead of a shared machine-wide binary? See
+   [Integration](integration.md) option A/B for the per-project script flow.)
 2. **Compile the project**:
    ```sh
    sbt compile

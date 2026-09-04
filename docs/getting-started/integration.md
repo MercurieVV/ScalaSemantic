@@ -117,13 +117,50 @@ Each release publishes both a self-contained fat jar attached to the [GitHub Rel
 
 ## Three ways to launch
 
-| | A — Scala CLI remote script | B — auto-download script | C — plain `java -jar` |
+| | B — global install (default, see [ADR-0003](../adr/0003-global-install-default-and-root-discovery.md)) | A — Scala CLI remote script | C — plain `java -jar` |
 |---|---|---|---|
-| Get the jar | scala-cli/coursier resolve + cache the published artifact | script downloads + caches | you download once |
-| Write client config | `scala-cli ... setup` | by hand | by hand |
-| Enable SemanticDB | script creates sbt config if missing | you add one line | you add one line |
-| Stays up to date | yes (`latest.release`) | yes | manual |
-| Works with | any build tool with Scala CLI installed | any build tool | any build tool |
+| Get the jar | one shared launcher + jar cache for the whole machine | scala-cli/coursier resolve + cache the published artifact | you download once |
+| Write client config | `scalasemantic-mcp setup` (run from the project) | `scala-cli ... setup` | by hand |
+| Enable SemanticDB | you add one line | script creates sbt config if missing | you add one line |
+| Stays up to date | yes | yes (`latest.release`) | manual |
+| Works with | any build tool | any build tool with Scala CLI installed | any build tool |
+
+### Option B — auto-download launcher (default)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/install.sh | sh
+```
+
+Installs the launcher to `~/.local/bin/scalasemantic-mcp`, shared by every project on the machine.
+It downloads and caches the fat jar from GitHub Releases (uses coursier if available). Pin a
+version with `SCALASEMANTIC_VERSION=vX.Y.Z`.
+
+Run `setup` from the project you want to analyze so it writes that project's client config:
+
+```sh
+cd /path/to/your-project
+scalasemantic-mcp setup --client all
+```
+
+Or register manually — run from inside the project so the client's own cwd = project root:
+
+```json
+{
+  "mcpServers": {
+    "scala-semantic": {
+      "command": "scalasemantic-mcp",
+      "args": ["serve", "."]
+    }
+  }
+}
+```
+
+Since `command` is a single machine-wide binary (not something living inside the project), the
+server validates that `.` (the default root) actually looks like a Scala project before trusting it
+— see [ADR-0003](../adr/0003-global-install-default-and-root-discovery.md). If your build tool uses
+none of the recognized markers (`build.mill`, `build.sbt`, `pom.xml`, `build.gradle[.kts]`,
+`project/build.properties`, `project.scala`), either add one or set
+`SCALASEMANTIC_SKIP_ROOT_CHECK=1`.
 
 ### Option A — Scala CLI remote script
 
@@ -165,30 +202,6 @@ the agent later changes cwd or enters a git worktree, and do not reliably send r
 notifications. After such a cwd change, call `set_workspace_root` with the new absolute path before
 other ScalaSemantic tools; use `get_workspace_root` to confirm the current state and discovered
 classpath metadata.
-
-### Option B — auto-download launcher
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/install.sh | sh
-```
-
-Installs the launcher to `~/.local/bin/scalasemantic-mcp`. It downloads and caches the fat jar from GitHub Releases (uses coursier if available). Pin a version with `SCALASEMANTIC_VERSION=vX.Y.Z`.
-
-Then register manually in your client config:
-
-```json
-{
-  "mcpServers": {
-    "scala-semantic": {
-      "command": "~/.local/bin/scalasemantic-mcp",
-      "args": [
-        "serve",
-        "."
-      ]
-    }
-  }
-}
-```
 
 ### Option C — plain `java -jar`
 
