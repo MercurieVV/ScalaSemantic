@@ -14,6 +14,7 @@ Every tool example on this page is **executed at docs build time** by the real S
 | `find_symbol` | Resolve a name to its definition |
 | `symbol_source` | Source of ONE symbol's definition, enriched |
 | `source_around_position` | Source of the definition enclosing a position |
+| `source_ranges` | Deep-dive `detail=full` on chosen line spans, across files, in one call |
 | **References & call graph** | |
 | `find_usages` | All references to a symbol (optional `contextLines` for surrounding source) |
 | `call_path` | Whether method A reaches method B |
@@ -101,6 +102,37 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 When no enclosing definition exists at the position (e.g. a blank line before any declaration), the tool falls back to a fixed ±15-line window and notes the fallback in `legend`.
 
 **Replaces:** manually re-deriving "what method/class am I inside" from a line/column → the enclosing definition's source, resolved and enriched, in one call.
+
+---
+
+### source_ranges
+
+**Answers:** what the compiler inferred on a few chosen lines — types, type args, resolved implicits — spliced into real code. Use it standalone, or as the deep-dive after skimming a file with `annotated_source`.
+
+`query` is `target[N-M;...]` (`;`-separated for multiple files/ranges); the response's line numbers always match the source's — the tool rewrites line content only, never adds, removes, or reorders lines.
+
+The diffs below are built on this docs page for illustration only; the tool itself returns enriched code, never a diff.
+
+The seven `val`s right before `labeled` all get a real inferred type, and each call's resolved instance (`doubleShow`, `listShow(using intShow)`, ...) replaces the original call outright:
+
+```scala mdoc:passthrough
+val rangesWideArgs = s"""{"query":"$enrichPath[43-49]"}"""
+val rangesWideRaw = scalasemantic.docs.ToolRunner.run("source_ranges", rangesWideArgs)
+println(scalasemantic.docs.ToolRunner.requestMarkdown("source_ranges", rangesWideArgs))
+```
+
+```scala mdoc:passthrough
+val rangesWideResult = ujson.read(rangesWideRaw)("results").arr.head
+println(scalasemantic.docs.ToolRunner.wordDiffComponent(
+  scalasemantic.docs.ToolRunner.sourceRangesDiff(
+    rangesWideResult("uri").str, rangesWideResult("requestedRange").str, rangesWideResult("source").str)))
+```
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.detailsMarkdown(rangesWideArgs, rangesWideRaw))
+```
+
+**Replaces:** re-reading a whole file (or making one `symbol_source` call per spot) to see the compiler's full elaborated view of a few unrelated lines → one call naming exactly the lines that matter, returned as enriched code alone.
 
 ---
 

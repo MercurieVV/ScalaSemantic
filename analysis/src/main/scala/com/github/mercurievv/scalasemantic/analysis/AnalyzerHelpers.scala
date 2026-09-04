@@ -53,6 +53,7 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
           SourceAnnotation(
             r.startLine,
             r.startCharacter,
+            r.endCharacter,
             "inferred-type-args",
             if anchor.isEmpty then targs else s"$anchor$targs"
           )
@@ -66,6 +67,7 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
               SourceAnnotation(
                 r.startLine,
                 r.startCharacter,
+                r.endCharacter,
                 "implicit",
                 args.mkString("(using ", ", ", ")")
               )
@@ -77,7 +79,13 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
             insertedName(fn).filter(_ != "apply").map { c =>
               val arg =
                 app.arguments.headOption.flatMap(convertedText(_, sourceLines)).getOrElse("…")
-              SourceAnnotation(r.startLine, r.startCharacter, "implicit-conversion", s"$c($arg)")
+              SourceAnnotation(
+                r.startLine,
+                r.startCharacter,
+                r.endCharacter,
+                "implicit-conversion",
+                s"$c($arg)"
+              )
             }
       case _ => None
 
@@ -270,7 +278,15 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
           val line = sourceLines.lift(r.startLine).getOrElse("")
           if rendered.isEmpty || alreadyAscribed(line, r.startCharacter) then None
           else
-            Some(SourceAnnotation(r.startLine, r.startCharacter, "inferred-type", s": $rendered"))
+            Some(
+              SourceAnnotation(
+                r.startLine,
+                r.startCharacter,
+                r.endCharacter,
+                "inferred-type",
+                s": $rendered"
+              )
+            )
         }
 
   /** Whether the definition whose name starts at `nameStart` on `line` already has an explicit type

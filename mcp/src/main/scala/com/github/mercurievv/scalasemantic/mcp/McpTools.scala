@@ -1,6 +1,8 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.analysis.InlineEnrich
+import com.github.mercurievv.scalasemantic.analysis.RangeSelector
 import com.github.mercurievv.scalasemantic.analysis.SourceSentinel
 import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
@@ -450,6 +452,57 @@ private[mcp] object McpToolsSupport:
         )
       }
 
+  /** Enriched source for exactly `range` of `uri`, splicing the compiler's insertions directly into
+    * the code via [[InlineEnrich]] — real type ascriptions and type args placed at their call —
+    * instead of appending them as `// ⟹` comments (`renderRange`/[[SourceView.result]]'s
+    * `compilable` format) or a bare `⟹` line note (its `annotated` format). This is
+    * `source_ranges`' own rendering, not shared with `symbol_source`/`source_around_position`: the
+    * whole point of naming a few chosen lines in full detail is to see the compiler's elaboration
+    * in place, not bolted on. `None` when the file is missing or `uri` is not indexed.
+    */
+  private[mcp] def renderRangeEnriched(
+      az: Analyzer,
+      root: java.nio.file.Path,
+      uri: DocumentUri,
+      range: SourceRange,
+      a: ujson.Value
+  ): Option[ujson.Value] =
+    val file = root.resolve(uri.value)
+    if !java.nio.file.Files.isRegularFile(file) then None
+    else
+      val rawLines0 = java.nio.file.Files.readString(file).split("\n", -1).toIndexedSeq
+      val docs = argStr(a, "docs")
+      val lines = if docs == "strip" then az.stripComments(rawLines0) else rawLines0
+      val detail = argDetail(a, "detail")
+      az.sourceAnnotations(uri, lines, detail).map { allAnns =>
+        val start = range.startLine
+        val endExclusive = math.min(range.endLine, rawLines0.length)
+        val slicedRaw = lines.slice(start, endExclusive)
+        val byLine = allAnns
+          .filter(ann => ann.line >= start && ann.line < endExclusive)
+          .groupBy(_.line - start)
+        val annotationsOnly = argBool(a, "annotationsOnly", false)
+        val renderedLines = slicedRaw.zipWithIndex.collect {
+          case (line, i) if !annotationsOnly || byLine.contains(i) =>
+            val ln = i + 1 + start
+            val spliced = InlineEnrich.spliceLine(line, byLine.getOrElse(i, Nil))
+            f"$ln%5d  $spliced"
+        }
+        ujson.Obj(
+          "uri" -> ujson.Str(uri.value),
+          "format" -> ujson.Str("enriched"),
+          "annotationCount" -> ujson.Num(byLine.valuesIterator.map(_.size).sum),
+          "legend" -> ujson.Str(
+            "Compiler insertions spliced directly into the code (real type ascriptions, type " +
+              "args placed at their call) instead of appended as comments. A note with no known " +
+              "splice point (an implicit arg/conversion) trails the line after a bare ⟹ — never a " +
+              "`//` comment. READ-ONLY view: never paste it into code; edit the real file at uri " +
+              "(gutter line numbers map 1:1)."
+          ),
+          "source" -> ujson.Str(renderedLines.mkString("\n"))
+        )
+      }
+
   /** The source lines a [[Location]] spans, gutter-numbered exactly like `annotated_source`'s
     * `plain` format (1-based, absolute file line numbers) — reuses [[SourceView.result]] on the
     * whole file so the gutter logic is never duplicated, then slices the rendered lines down to the
@@ -641,6 +694,29 @@ private[mcp] object McpToolsSupport:
   private[mcp] def looksLikeFilePath(value: String, root: java.nio.file.Path): Boolean =
     value.contains("/") || value.endsWith(".scala") || value.endsWith(".sc") ||
       value.endsWith(".mill") || java.nio.file.Files.isRegularFile(root.resolve(value))
+
+  /** Resolve a `RangeSelector.Entry.target` to the `DocumentUri` `source_ranges` should read: a
+    * literal file path (appending `.scala` when the given path doesn't already exist as-is) for a
+    * file-shaped target, or the defining file of a resolved symbol/FQN otherwise — same resolution
+    * `symbol_source` uses via [[resolveSymbolOrFqn]], minus its own definition range (the caller
+    * supplies the range explicitly). `None` when neither resolves.
+    */
+  private[mcp] def resolveRangeTarget(
+      az: Analyzer,
+      root: java.nio.file.Path,
+      target: String
+  ): Option[DocumentUri] =
+    if looksLikeFilePath(target, root) then
+      val candidate =
+        if java.nio.file.Files.isRegularFile(root.resolve(target)) then target
+        else s"$target.scala"
+      if java.nio.file.Files.isRegularFile(root.resolve(candidate)) then
+        DocumentUri.from(candidate).toOption
+      else None
+    else
+      resolveSymbolOrFqn(az, target).flatMap { case (sym, _) =>
+        az.symbolDefinitionRange(sym).map { case (uri, _) => uri }
+      }
 
   /** Every [[OutlineEntry]] in `entries`, flattened depth-first (parents before children) — turns
     * `outline`'s nested tree into a flat list so callers can filter by `kind` regardless of nesting
@@ -2233,6 +2309,109 @@ private[mcp] object McpToolsGroupD:
               )
             )
           )
+        }
+      ),
+      toolDef(
+        tool(
+          "source_ranges",
+          "Zoom in on exact line ranges across many files/symbols in ONE call, with the " +
+            "compiler's inferred types/implicits woven directly into the code (not just noted " +
+            "beside it). Use this when you already know which few line spans matter — e.g. after " +
+            "`annotated_source` or `document_outline` pointed at them, or a diff/error message " +
+            "named them — and want the full compiler-elaborated view of just those spans without " +
+            "re-reading whole files. For a single symbol's full body instead, use `symbol_source`; " +
+            "for a whole file, use `annotated_source`. HOW TO CALL: `query` is one or more " +
+            "`target[range;range;...]` entries separated by `;`, where `target` is a file path " +
+            "(with or without extension) or a dotted symbol name (e.g. `com.foo.Bar.method`), and " +
+            "each `range` is `startLine-endLine`, 1-based and inclusive, counting from the top of " +
+            "the file — the same numbers an editor or stack trace would show. Multiple ranges on " +
+            "one target, and multiple targets, are both allowed in a single query. EXAMPLE: " +
+            "`\"src/Foo.scala[10-20;30-40];com.bar.Baz[5-8]\"` inspects lines 10-20 and 30-40 of " +
+            "Foo.scala plus lines 5-8 of wherever Baz is defined, in one response. OUTPUT: each " +
+            "requested range comes back as real code, but every place the compiler silently filled " +
+            "something in — an inferred type, an implicit argument, an implicit conversion, an " +
+            "inferred type parameter — is inserted right into the text at the exact spot it " +
+            "belongs, instead of a separate note far from where it applies. A target or range that " +
+            "can't be resolved comes back with `found: false` and an `error` explaining why, " +
+            "without failing the other targets in the same query.",
+          List(
+            (
+              "query",
+              "string",
+              "`target[startLine-endLine;...];target2[startLine-endLine]` — see description"
+            ),
+            (
+              "annotationsOnly",
+              "boolean",
+              "return only the lines that carry an annotation, not the whole range (default false)"
+            ),
+            ("docs", "string", "keep (default) | strip — drop comments for a leaner token view"),
+            (
+              "detail",
+              "string",
+              "terse | full (default) — merge multiple insertions at one call site into one note"
+            )
+          ),
+          List("query")
+        ) { a =>
+          val query = argStr(a, "query")
+          RangeSelector.parse(query) match
+            case Left(err)      => error(s"source_ranges: $err")
+            case Right(entries) =>
+              val argsWithDefaultDetail =
+                if a.obj.contains("detail") then a
+                else ujson.Obj.from(a.obj.toSeq ++ Seq("detail" -> ujson.Str("full")))
+              val results = entries.flatMap { entry =>
+                resolveRangeTarget(az, root, entry.target) match
+                  case None =>
+                    List(
+                      jobj(
+                        Some("target" -> ujson.Str(entry.target)),
+                        Some("found" -> ujson.Bool(false)),
+                        Some(
+                          "error" -> ujson.Str(
+                            s"could not resolve target '${entry.target}' to a file or symbol"
+                          )
+                        )
+                      )
+                    )
+                  case Some(uri) =>
+                    entry.ranges.map { lr =>
+                      SourceRange.from(lr.startLine - 1, 0, lr.endLine, 0) match
+                        case Left(err) =>
+                          jobj(
+                            Some("target" -> ujson.Str(entry.target)),
+                            Some("requestedRange" -> ujson.Str(s"${lr.startLine}-${lr.endLine}")),
+                            Some("found" -> ujson.Bool(false)),
+                            Some("error" -> ujson.Str(err))
+                          )
+                        case Right(range) =>
+                          renderRangeEnriched(az, root, uri, range, argsWithDefaultDetail) match
+                            case None =>
+                              jobj(
+                                Some("target" -> ujson.Str(entry.target)),
+                                Some(
+                                  "requestedRange" -> ujson.Str(s"${lr.startLine}-${lr.endLine}")
+                                ),
+                                Some("found" -> ujson.Bool(false)),
+                                Some("error" -> ujson.Str(s"'${uri.value}' has no such range"))
+                              )
+                            case Some(res) =>
+                              ujson.Obj.from(
+                                res.obj.toSeq ++ Seq(
+                                  "target" -> ujson.Str(entry.target),
+                                  "requestedRange" -> ujson.Str(
+                                    s"${lr.startLine}-${lr.endLine}"
+                                  ),
+                                  "found" -> ujson.Bool(true)
+                                )
+                              )
+                    }
+              }
+              jobj(
+                Some("query" -> ujson.Str(query)),
+                Some("results" -> ujson.Arr.from(results))
+              )
         }
       )
     )

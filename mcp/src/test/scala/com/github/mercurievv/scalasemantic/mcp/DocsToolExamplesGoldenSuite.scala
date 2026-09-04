@@ -64,6 +64,8 @@ class DocsToolExamplesGoldenSuite extends munit.FunSuite:
     "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Navigate.scala"
   private val RefactorFile =
     "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Refactor.scala"
+  private val EnrichFile =
+    "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
 
   test("find_symbol('transform')"):
     assertGolden("find_symbol_transform", "find_symbol", ujson.Obj("query" -> "transform"))
@@ -175,4 +177,18 @@ class DocsToolExamplesGoldenSuite extends munit.FunSuite:
       "smart_code_duplications_min15_show_source",
       "smart_code_duplications",
       ujson.Obj("minSize" -> 15, "showSource" -> true)
+    )
+
+  test("source_ranges(Enrich.scala[28-28;49-49])"):
+    assertGolden(
+      "source_ranges_enrich_multi",
+      "source_ranges",
+      ujson.Obj("query" -> s"$EnrichFile[28-28;49-49]")
+    )
+
+  test("source_ranges(Enrich.scala[43-49])"):
+    assertGolden(
+      "source_ranges_enrich_wide",
+      "source_ranges",
+      ujson.Obj("query" -> s"$EnrichFile[43-49]")
     )

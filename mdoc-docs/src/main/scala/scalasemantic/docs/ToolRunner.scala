@@ -139,11 +139,15 @@ object ToolRunner:
 
   /** A `<EnrichedCode>` MDX element wrapping a tool result's `source` field — the intra-line
     * insert-tinting component (see `website/src/components/EnrichedCode.js`), which highlights only
-    * the compiler's `// ⟹` insertions rather than diffing whole lines. The source is passed as a
-    * JSON-encoded string prop so backticks, braces, and the `⟹` glyph survive MDX parsing intact.
+    * the compiler's `// ⟹` insertions rather than diffing whole lines. Base64-encoded, like
+    * [[wordDiffComponent]], so arbitrary source text (parens, brackets, `⟹`) can never be misparsed
+    * by mdoc/MDX's own markdown parser (e.g. a stray `(n)` read as a link reference).
     */
   def enrichedComponent(raw: String): String =
-    s"<EnrichedCode code={${ujson.write(extractField(raw, "source"))}} />"
+    val encoded = Base64.getEncoder.encodeToString(
+      extractField(raw, "source").getBytes(java.nio.charset.StandardCharsets.UTF_8)
+    )
+    s"<EnrichedCode base64=\"$encoded\" />"
 
   def syntaxComponent(code: String, language: String = "scala"): String =
     s"<SyntaxCode language=\"$language\" code={${ujson.write(code)}} />"
@@ -175,6 +179,36 @@ object ToolRunner:
     val encoded =
       Base64.getEncoder.encodeToString(diff.getBytes(java.nio.charset.StandardCharsets.UTF_8))
     s"<WordDiffCode base64=\"$encoded\" />"
+
+  /** `source_ranges`' own `NNNNN  ` gutter prefix, stripped so its `source` lines compare cleanly
+    * against the real file's plain lines.
+    */
+  private def stripGutter(line: String): String =
+    line.replaceFirst("^\\s*\\d+  ", "")
+
+  /** A line-diff (`wordDiffComponent`-ready) between the real original lines of `requestedRange`
+    * (read fresh from `uri`, the same "1-4" shape `source_ranges` echoes back) and one of its
+    * results' own enriched `source` — a docs-presentation aid only: `source_ranges` itself never
+    * computes or returns a diff, its `source` field is enriched code alone. This exists so the docs
+    * page can still show what changed, without asking the tool to be two things at once. Changed
+    * lines are shown as a whole removed `-` line followed by a whole added `+` line (unified-diff
+    * style), not an intraline word/char diff — a changed line is usually rewritten almost entirely,
+    * so highlighting the few surviving characters reads as noise rather than signal.
+    */
+  def sourceRangesDiff(uri: String, requestedRange: String, enrichedSource: String): String =
+    val bounds = requestedRange.split("-", 2)
+    val startLine = bounds(0).toInt
+    val endLine = bounds(1).toInt
+    val original = readSource(uri).split("\n", -1).toList.slice(startLine - 1, endLine)
+    val enriched = enrichedSource.split("\n", -1).toList.map(stripGutter)
+    val header = s"--- $uri (original)\n+++ $uri (enriched)"
+    val count = original.size
+    val hunkHeader = s"@@ -$startLine,$count +$startLine,$count @@"
+    val lines =
+      original.zip(enriched).flatMap { (o, n) =>
+        if o == n then List(s" $o") else List(s"-$o", s"+$n")
+      }
+    s"$header\n$hunkHeader\n${lines.mkString("\n")}"
 
   /** Render a `document_outline` result's nested `outline` array as a Mermaid `graph TD` tree: one
     * node per member (label = name + kind; signature shown when present), edges parent->child. Node

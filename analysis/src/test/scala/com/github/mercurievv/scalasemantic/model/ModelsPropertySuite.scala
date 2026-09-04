@@ -221,6 +221,7 @@ class ModelsPropertySuite extends munit.ScalaCheckSuite:
     for
       line <- Gen.chooseNum(0, 1000)
       char <- Gen.chooseNum(0, 1000)
+      endChar <- Gen.chooseNum(char, char + 100)
       kind <- Gen.oneOf(
         "implicit",
         "inferred-type",
@@ -228,7 +229,7 @@ class ModelsPropertySuite extends munit.ScalaCheckSuite:
         "inferred-type-args"
       )
       text <- nonEmptyStr
-    yield SourceAnnotation(line, char, kind, text)
+    yield SourceAnnotation(line, char, endChar, kind, text)
 
   private val genDuplicateOccurrence: Gen[DuplicateOccurrence] =
     for

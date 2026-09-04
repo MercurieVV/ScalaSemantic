@@ -484,7 +484,7 @@ final class Analyzer(
               val enclosed = enclosingRanges.exists(parent => parent != r && contains(parent, r))
               val text = h.renderTree(app, sourceLines, typeApps)
               Option.when(!enclosed && text.nonEmpty)(
-                SourceAnnotation(r.startLine, r.startCharacter, "full", text)
+                SourceAnnotation(r.startLine, r.startCharacter, r.endCharacter, "full", text)
               )
             case _ => None
         case _ => None
@@ -499,7 +499,7 @@ final class Analyzer(
               val enclosed = enclosingRanges.exists(parent => parent != r && contains(parent, r))
               val text = h.renderTree(app, sourceLines, typeApps)
               Option.when(!enclosed && text.nonEmpty)(
-                SourceAnnotation(r.startLine, r.startCharacter, "full", text)
+                SourceAnnotation(r.startLine, r.startCharacter, r.endCharacter, "full", text)
               )
         case _ => None
     }.toList

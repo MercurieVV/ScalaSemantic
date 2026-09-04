@@ -275,8 +275,13 @@ case class OutlineEntry(
   * unascribed). `text` is the rendered insertion, e.g. `(using sh)`, `toSeq(…)`, `[String]`, or `:
   * Future[Int]`.
   */
-case class SourceAnnotation(line: Int, character: Int, kind: String, text: String)
-    derives ReadWriter
+case class SourceAnnotation(
+    line: Int,
+    character: Int,
+    endCharacter: Int,
+    kind: String,
+    text: String
+) derives ReadWriter
 
 // --- rename plan ------------------------------------------------------------
 

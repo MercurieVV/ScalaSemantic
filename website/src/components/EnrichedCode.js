@@ -2,20 +2,32 @@ import React from 'react';
 import { Highlight, themes } from 'prism-react-renderer';
 import { useColorMode } from '@docusaurus/theme-common';
 
-// The delimiter the analysis layer uses for every inserted note in the `compilable` format.
-// Everything from this marker to end-of-line is a compiler insertion (not in the source as written),
-// so we tint only that span — the "intra-line diff" that avoids re-printing whole `+`/`-` lines.
-const NOTE_MARKER = '// ⟹';
+// The glyph the analysis layer uses for every inserted note — as a trailing `// ⟹` comment
+// (annotated_source's `compilable` format) or a bare trailing `⟹` (source_ranges' notes with no
+// known splice point). Everything from the glyph to end-of-line is a compiler insertion (not in the
+// source as written), so we tint only that span — the "intra-line diff" that avoids re-printing
+// whole `+`/`-` lines. Spliced insertions (source_ranges' real `: T`/`[T]`) carry no marker at all
+// and are not tinted — they ARE the code, not a note about it.
+const NOTE_MARKER = '⟹';
+
+function decodeBase64(value) {
+  if (!value) return '';
+  const bytes = atob(value);
+  const escaped = Array.from(bytes, (c) => `%${c.charCodeAt(0).toString(16).padStart(2, '0')}`).join('');
+  return decodeURIComponent(escaped);
+}
 
 /**
  * Renders enriched Scala from `annotated_source` (compilable format) with Prism syntax colours,
  * background-tinting ONLY the inserted `// ⟹ …` notes green — so the reader sees exactly what the
- * compiler added, in place, without a whole-line diff. `code` arrives as a plain string prop.
+ * compiler added, in place, without a whole-line diff. Pass `code` (a plain string prop) or
+ * `base64` (matching `WordDiffCode`'s prop) — base64 is the safer choice for text mdoc/MDX's own
+ * markdown parser could otherwise misparse (e.g. `(n)` read as a link reference).
  */
-export default function EnrichedCode({ code, language = 'scala' }) {
+export default function EnrichedCode({ code, base64, language = 'scala' }) {
   const { colorMode } = useColorMode();
   const theme = colorMode === 'dark' ? themes.dracula : themes.github;
-  const src = (code ?? '').replace(/\n+$/, '');
+  const src = (code ?? decodeBase64(base64)).replace(/\n+$/, '');
   return (
     <Highlight theme={theme} code={src} language={language}>
       {({ className, style, tokens, getLineProps, getTokenProps }) => (

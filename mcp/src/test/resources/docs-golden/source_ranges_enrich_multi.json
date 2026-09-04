@@ -1,0 +1,31 @@
+{
+  "tool": "source_ranges",
+  "args": {
+    "query": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala[28-28;49-49]"
+  },
+  "result": {
+    "query": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala[28-28;49-49]",
+    "results": [
+      {
+        "uri": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+        "format": "enriched",
+        "annotationCount": 1,
+        "legend": "Compiler insertions spliced directly into the code (real type ascriptions, type args placed at their call) instead of appended as comments. A note with no known splice point (an implicit arg/conversion) trails the line after a bare ⟹ — never a `//` comment. READ-ONLY view: never paste it into code; edit the real file at uri (gutter line numbers map 1:1).",
+        "source": "   28  def render[A: Show](a: A): String = Show[A](using Show[A]).show(a)",
+        "target": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+        "requestedRange": "28-28",
+        "found": true
+      },
+      {
+        "uri": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+        "format": "enriched",
+        "annotationCount": 3,
+        "legend": "Compiler insertions spliced directly into the code (real type ascriptions, type args placed at their call) instead of appended as comments. A note with no known splice point (an implicit arg/conversion) trails the line after a bare ⟹ — never a `//` comment. READ-ONLY view: never paste it into code; edit the real file at uri (gutter line numbers map 1:1).",
+        "source": "   49  val labeled: List[Tuple2[Int, String]] = nums.map(n => ArrowAssoc[Int](n) -> render[Int](n)(using intShow))",
+        "target": "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala",
+        "requestedRange": "49-49",
+        "found": true
+      }
+    ]
+  }
+}
