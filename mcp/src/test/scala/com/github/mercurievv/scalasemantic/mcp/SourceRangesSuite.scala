@@ -3,7 +3,8 @@ package com.github.mercurievv.scalasemantic.mcp
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
-import java.nio.file.{Files, Path}
+import java.nio.file.Files
+import java.nio.file.Path
 
 /** `source_ranges` resolution/validation behavior that doesn't need a real SemanticDB index: a
   * literal file path resolves (or fails to resolve) purely by looking at disk, and a malformed
