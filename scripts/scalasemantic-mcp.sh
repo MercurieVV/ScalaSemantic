@@ -54,6 +54,9 @@ self_install() {
 
 newest_cached() { ls -t "$DATA"/scalasemantic-mcp-*.jar 2>/dev/null | head -1 || true; }
 
+# The local development channel: a jar built by `./mill installLocal`. See ADR-0005.
+newest_local() { ls -t "$DATA"/scalasemantic-mcp-*-local.jar 2>/dev/null | head -1 || true; }
+
 resolve_tag() {
   if [ -n "${SCALASEMANTIC_VERSION:-}" ]; then printf '%s' "$SCALASEMANTIC_VERSION"; return 0; fi
   fetch_stdout "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
@@ -80,6 +83,12 @@ background_fetch() {
 
 jar_to_run() {
   if [ -n "${SCALASEMANTIC_JAR:-}" ]; then printf '%s' "$SCALASEMANTIC_JAR"; return 0; fi
+  # A locally built jar owns the machine while it is installed: no release resolution, no
+  # background fetch, so an auto-update cannot silently revert the developer to a release. It wins
+  # regardless of mtime — a release downloaded later is still newer, and must not take the slot.
+  # `scalasemantic-mcp --use-release` removes it. See ADR-0005.
+  local_jar=$(newest_local)
+  if [ -n "$local_jar" ]; then printf '%s' "$local_jar"; return 0; fi
   cached=$(newest_cached)
   if [ -z "${SCALASEMANTIC_VERSION:-}" ] && [ -n "$cached" ]; then
     ( "$SELF" --bg-fetch >/dev/null 2>&1 </dev/null & ) >/dev/null 2>&1 || true
