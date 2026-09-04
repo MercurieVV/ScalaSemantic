@@ -123,6 +123,20 @@ case "${1:-}" in
   --bg-fetch) background_fetch; exit 0 ;;
   --prefetch) shift; jar=$(jar_to_run)
               echo "scalasemantic-mcp: prefetched $(basename "$jar")" >&2; exit 0 ;;
+  --use-release)
+    removed=0
+    for j in "$DATA"/*-local.jar; do
+      [ -f "$j" ] || continue   # unmatched glob stays literal under sh; skip it
+      rm -f "$j"
+      echo "scalasemantic-mcp: removed $(basename "$j")" >&2
+      removed=1
+    done
+    if [ "$removed" = 0 ]; then
+      echo "scalasemantic-mcp: no local jar installed; already on the release channel" >&2
+    else
+      echo "scalasemantic-mcp: next start resolves a release" >&2
+    fi
+    exit 0 ;;
 esac
 
 JAR=$(jar_to_run)

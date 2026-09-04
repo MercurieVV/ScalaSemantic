@@ -723,6 +723,22 @@ def smokeTest() = Task.Command {
       s"E2E Smoke Test (standalone scripts/ scala-cli scripts) failed with exit status ${scriptsRes.exitCode}"
     )
   }
+
+  // Launcher-only half of the local channel tests (ADR-0005): hermetic, no network, no auth. Its
+  // `with-mill` half re-enters Mill and so is deliberately left out of this task.
+  val localChannelScript =
+    build.moduleDir / "scripts" / "smoke-tests-local-run" / "test-local-channel.sc"
+  val localChannelRes = os
+    .proc("scala-cli", "run", "--server=false", localChannelScript.toString)
+    .call(
+      cwd = build.moduleDir,
+      stdout = os.Inherit,
+      stderr = os.Inherit,
+      check = false
+    )
+  if (localChannelRes.exitCode != 0) {
+    sys.error(s"local channel test failed with exit status ${localChannelRes.exitCode}")
+  }
 }
 
 def docsSiteRelevantPath(path: String): Boolean =

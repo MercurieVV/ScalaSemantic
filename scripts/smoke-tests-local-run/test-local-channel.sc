@@ -119,9 +119,55 @@ object TestLocalChannel {
     println("[ok] -local jar wins and suppresses release resolution")
   }
 
+  def testUseReleaseRemovesLocalJar(): Unit = {
+    val box = sandbox()
+    val home = Files.createDirectories(box.resolve("home"))
+    val data = Files.createDirectories(box.resolve("data"))
+    val bin = stubBin(Files.createDirectories(box.resolve("bin")))
+
+    val now = System.currentTimeMillis()
+    val local = seedJar(data, "scalasemantic-mcp-0.1.0-local.jar", now - 60000)
+    val release = seedJar(data, "scalasemantic-mcp-9.9.9.jar", now)
+
+    val env = Map(
+      "HOME" -> home.toString,
+      "SCALASEMANTIC_HOME" -> data.toString,
+      "PATH" -> s"$bin${java.io.File.pathSeparator}${sys.env.getOrElse("PATH", "")}"
+    )
+
+    val (code, _, err) = run(Seq(Launcher.toString, "--use-release"), box, env)
+    check(code == 0, s"--use-release exited $code\n$err")
+    check(!Files.exists(local), s"local jar still present after --use-release: $local")
+    check(Files.exists(release), s"--use-release must not touch cached releases: $release")
+    check(
+      err.contains("scalasemantic-mcp-0.1.0-local.jar"),
+      s"--use-release must name what it removed:\n$err"
+    )
+
+    // Idempotent: a second run is a clean no-op that says so.
+    val (code2, _, err2) = run(Seq(Launcher.toString, "--use-release"), box, env)
+    check(code2 == 0, s"second --use-release exited $code2\n$err2")
+    check(
+      err2.contains("no local jar"),
+      s"second --use-release should report there is nothing to remove:\n$err2"
+    )
+
+    // Selection now falls back to the newest cached release.
+    val (code3, out3, _) = run(Seq(Launcher.toString, "serve", "."), box, env)
+    check(code3 == 0, s"launcher exited $code3 after --use-release")
+    check(
+      out3.contains(release.toString),
+      s"expected fallback to the cached release $release, got:\n$out3"
+    )
+
+    rmTree(box)
+    println("[ok] --use-release removes the local jar, idempotently, and falls back")
+  }
+
   def main(args: Array[String]): Unit = {
     check(Files.exists(Launcher), s"launcher not found at $Launcher")
     testPrefersLocalJar()
+    testUseReleaseRemovesLocalJar()
     println("[ok] all local-channel tests passed")
   }
 }
