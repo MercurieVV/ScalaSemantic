@@ -26,6 +26,14 @@ class LauncherSetupSuite extends munit.FunSuite:
     assertEquals(LauncherSetup.parse(List("--scope", "project")).scope, LauncherScope.Project)
   }
 
+  // Regression: the JVM derives `user.home` from the OS account, not from the environment, so
+  // defaulting to it made a sandboxed install write into the developer's real home directory.
+  test("Options.home follows $HOME") {
+    sys.env.get("HOME").foreach { h =>
+      assertEquals(LauncherSetup.Options().home, Path.of(h).toAbsolutePath.normalize())
+    }
+  }
+
   test("targetPathFor resolves user-scope paths under home") {
     withTempDir("launcher-home") { home =>
       val opts = LauncherSetup.Options(scope = LauncherScope.User, home = home)

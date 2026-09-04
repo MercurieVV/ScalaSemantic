@@ -20,7 +20,13 @@ private[scalasemantic] object LauncherSetup:
       skipSemanticdbConfig: Boolean = false,
       guard: Boolean = true,
       scope: LauncherScope = LauncherScope.Project,
-      home: Path = Path.of(sys.props.getOrElse("user.home", ".")).toAbsolutePath.normalize()
+      // $HOME first: the JVM derives `user.home` from the OS account, not the environment, so a
+      // sandboxed run (the install test, a container) could not redirect user-scope writes and
+      // would silently edit the real home directory.
+      home: Path = Path
+        .of(sys.env.getOrElse("HOME", sys.props.getOrElse("user.home", ".")))
+        .toAbsolutePath
+        .normalize()
   )
 
   def setup(rawArgs: List[String]): Unit =
