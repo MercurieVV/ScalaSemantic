@@ -161,6 +161,26 @@ jobs:
           echo "$PGP_PASSPHRASE" | gpg --pinentry-mode loopback --passphrase-fd 0 --import /tmp/signing-key.gpg
           (echo "$PGP_PASSPHRASE"; echo; echo) | gpg --command-fd 0 --pinentry-mode loopback --change-passphrase $(gpg --list-secret-keys --with-colons 2> /dev/null | grep '^sec:' | cut --delimiter ':' --fields 5 | tail -n 1)
 
+      # TEMPORARY diagnostic for the "no default secret key" failure on v0.6.0/v0.6.1 — remove once
+      # root-caused. Confirms whether the key survives the passphrase-strip step usable, and
+      # whether a plain `gpg --sign` (no explicit -u) picks a default key at all.
+      - name: Debug - inspect gpg state after import
+        run: |
+          echo "--- secret keys ---"
+          gpg --list-secret-keys --keyid-format LONG
+          echo "--- ownertrust ---"
+          gpg --export-ownertrust
+          echo "--- default-key config ---"
+          cat ~/.gnupg/gpg.conf 2>/dev/null || echo "(no gpg.conf)"
+          echo "--- test sign with no -u (what mill's useGpgCli does) ---"
+          echo test | gpg --batch --yes --pinentry-mode loopback --armor --detach-sign -o /tmp/test.asc
+          echo "exit: $?"
+          echo "--- test sign with explicit -u ---"
+          KEYID=$(gpg --list-secret-keys --with-colons 2>/dev/null | grep '^sec:' | cut -d: -f5 | tail -n 1)
+          echo "keyid: $KEYID"
+          echo test | gpg --batch --yes --pinentry-mode loopback --local-user "$KEYID" --armor --detach-sign -o /tmp/test2.asc
+          echo "exit: $?"
+
       - name: Publish (sign + upload via Mill)
         # -j 1: serialize signing. Concurrent `gpg` calls against the single agent from this job
         # race intermittently ("no default secret key") when publishAll signs artifacts in
