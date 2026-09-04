@@ -162,8 +162,11 @@ jobs:
           (echo "$PGP_PASSPHRASE"; echo; echo) | gpg --command-fd 0 --pinentry-mode loopback --change-passphrase $(gpg --list-secret-keys --with-colons 2> /dev/null | grep '^sec:' | cut --delimiter ':' --fields 5 | tail -n 1)
 
       - name: Publish (sign + upload via Mill)
+        # -j 1: serialize signing. Concurrent `gpg` calls against the single agent from this job
+        # race intermittently ("no default secret key") when publishAll signs artifacts in
+        # parallel; sequential is slower but reliable for the handful of modules this repo has.
         run: |
-          ./mill mill.javalib.SonatypeCentralPublishModule/publishAll \
+          ./mill -j 1 mill.javalib.SonatypeCentralPublishModule/publishAll \
             --publishArtifacts __.publishArtifacts \
             --username "${{ secrets.SONATYPE_USERNAME }}" \
             --password "${{ secrets.SONATYPE_PASSWORD }}" \
