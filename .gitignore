@@ -91,3 +91,4 @@ build/
 /ScalaSemantic/
 /docs/.obsidian/
 
+/scripts/smoke-tests-local-run/.scala-build/

@@ -3,9 +3,14 @@
 # Runs the server through the same process boundary users exercise, using the compiled local assembly jar.
 set -eu
 
-# Resolve the repository root directory (the parent of the scripts directory)
+# Resolve the repository root. Walk up to the directory holding build.mill rather than counting
+# `..` levels, so moving this script between scripts/ subdirectories cannot break it again.
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
-REPO_ROOT=$(cd -- "$SCRIPT_DIR/.." && pwd)
+REPO_ROOT="$SCRIPT_DIR"
+while [ ! -f "$REPO_ROOT/build.mill" ] && [ "$REPO_ROOT" != "/" ]; do
+  REPO_ROOT=$(dirname -- "$REPO_ROOT")
+done
+[ -f "$REPO_ROOT/build.mill" ] || { echo "smoke-test: cannot find the repo root" >&2; exit 1; }
 
 # Jar directory used by the launcher (ADR-0004 moved it out of the cache: an installed release jar
 # is data, not a cache, and must not be evicted by a cache cleaner).

@@ -4,7 +4,7 @@
 //> using dep com.lihaoyi::upickle::4.2.1
 
 // End-to-end launcher smoke test for ScalaSemantic MCP server against a real Mill project.
-// Unlike scripts/smoke-test.sh (synthetic scala-cli fixture, PC-backed type_at_position), this
+// Unlike scripts/smoke-tests-local-run/smoke-test.sh (synthetic scala-cli fixture, PC-backed type_at_position), this
 // dogfoods the launcher directly against THIS repo's own build.mill — Mill's own DSL/config code,
 // compiled by Mill's meta-build into out/mill-build/.../wrapped/build_/build.mill.semanticdb — run
 // from the project root, proving index-based tools work against real Mill build-script code (not
