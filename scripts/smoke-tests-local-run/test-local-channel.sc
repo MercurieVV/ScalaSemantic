@@ -164,10 +164,104 @@ object TestLocalChannel {
     println("[ok] --use-release removes the local jar, idempotently, and falls back")
   }
 
+  /** A Scala CLI fixture project with a distinctive symbol and a real SemanticDB, so the installed
+    * launcher can be asked a question that only a working server answers.
+    */
+  def fixtureProject(parent: Path): Path = {
+    val dir = Files.createDirectories(parent.resolve("fixture-project"))
+    write(dir.resolve("project.scala"), "//> using scala 3.8.4\n")
+    write(
+      dir.resolve("Fixture.scala"),
+      """|object Fixture:
+         |  def zzLocalChannelSymbol(n: Int): Int = n + 1
+         |""".stripMargin
+    )
+    val (code, out, err) = run(
+      Seq(
+        "scala-cli",
+        "compile",
+        "--semanticdb",
+        "--semanticdb-sourceroot",
+        ".",
+        "--semanticdb-targetroot",
+        "semanticdb",
+        "."
+      ),
+      dir,
+      Map.empty // ambient env on purpose: not re-downloading a toolchain into the sandbox
+    )
+    check(code == 0, s"fixture compile failed\n--- out ---\n$out\n--- err ---\n$err")
+    dir
+  }
+
+  /** Drives the installed launcher over stdio with a real MCP handshake. */
+  def assertServerAnswers(launcher: Path, project: Path, env: Map[String, String]): Unit = {
+    val requests = Seq(
+      """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}""",
+      """{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}""",
+      """{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"find_symbol","arguments":{"name":"zzLocalChannelSymbol"}}}"""
+    ).mkString("", "\n", "\n")
+
+    val pb = new ProcessBuilder(Seq(launcher.toString, "serve", ".").asJava)
+    pb.directory(project.toFile)
+    env.foreach { case (k, v) => pb.environment().put(k, v) }
+    val proc = pb.start()
+    proc.getOutputStream.write(requests.getBytes("UTF-8"))
+    proc.getOutputStream.close()
+    val out = new String(proc.getInputStream.readAllBytes(), "UTF-8")
+    val code = proc.waitFor()
+
+    check(code == 0, s"installed server exited $code\n$out")
+    check(out.contains("find_symbol"), s"tools/list is missing find_symbol:\n$out")
+    check(out.contains("zzLocalChannelSymbol"), s"server did not resolve the fixture symbol:\n$out")
+  }
+
+  def localJars(dataDir: Path): List[Path] = {
+    val s = Files.list(dataDir)
+    try s.iterator().asScala.filter(_.getFileName.toString.endsWith("-local.jar")).toList
+    finally s.close()
+  }
+
+  def testInstallLocal(): Unit = {
+    val box = sandbox()
+    val home = Files.createDirectories(box.resolve("home"))
+    val data = Files.createDirectories(box.resolve("data"))
+    val bin = Files.createDirectories(box.resolve("bin")) // real java here, not the stub
+    val project = fixtureProject(box)
+
+    // A stale release jar that the install must end up outranked by.
+    seedJar(data, "scalasemantic-mcp-9.9.9.jar", System.currentTimeMillis())
+
+    val millEnv = Map("BIN_DIR" -> bin.toString, "SCALASEMANTIC_HOME" -> data.toString)
+    val (code, out, err) =
+      run(Seq("./mill", "installLocal", "--skip-clients"), RepoRoot, millEnv)
+    check(code == 0, s"installLocal exited $code\n--- out ---\n$out\n--- err ---\n$err")
+
+    val launcher = bin.resolve("scalasemantic-mcp")
+    check(Files.exists(launcher), s"launcher missing after installLocal: $launcher")
+    check(Files.isExecutable(launcher), s"launcher not executable: $launcher")
+    check(localJars(data).size == 1, s"expected exactly one -local jar, got ${localJars(data)}")
+
+    val serverEnv = Map("HOME" -> home.toString, "SCALASEMANTIC_HOME" -> data.toString)
+    assertServerAnswers(launcher, project, serverEnv)
+    println("[ok] installLocal installs a working launcher and one local jar")
+
+    // Idempotent: re-running replaces rather than accumulates, and still answers.
+    val (code2, out2, err2) =
+      run(Seq("./mill", "installLocal", "--skip-clients"), RepoRoot, millEnv)
+    check(code2 == 0, s"second installLocal exited $code2\n--- out ---\n$out2\n--- err ---\n$err2")
+    check(localJars(data).size == 1, s"second run left ${localJars(data).size} local jars")
+    assertServerAnswers(launcher, project, serverEnv)
+
+    rmTree(box)
+    println("[ok] installLocal is idempotent")
+  }
+
   def main(args: Array[String]): Unit = {
     check(Files.exists(Launcher), s"launcher not found at $Launcher")
     testPrefersLocalJar()
     testUseReleaseRemovesLocalJar()
+    if (args.filterNot(_ == "--").contains("with-mill")) testInstallLocal()
     println("[ok] all local-channel tests passed")
   }
 }
