@@ -12,6 +12,7 @@
     "annotationCount": 33,
     "legend": "Valid Scala: each note is a trailing `// ⟹` comment, no line-number gutter. Notes show compiler insertions invisible in the source: `(using …)` implicit args, `name(…)` implicit conversion, `[…]` inferred type args, `: T` inferred type. symbols=on adds a type→package legend. sentinel=on: each note is appended as a `/*SEM:...:SEM*/` block comment instead of a `⟹` note — strippable via `SourceSentinel.strip` (analysis module), which removes exactly that block and leaves everything else on the line untouched.",
     "source": "<<see companion .scala golden file>>",
-    "sha256": "a85e6538e95fa5477af9fdb11f769e71145d0489c0351e2a6aea051e4a99e5fc"
+    "sha256": "a85e6538e95fa5477af9fdb11f769e71145d0489c0351e2a6aea051e4a99e5fc",
+    "staleIndex": false
   }
 }

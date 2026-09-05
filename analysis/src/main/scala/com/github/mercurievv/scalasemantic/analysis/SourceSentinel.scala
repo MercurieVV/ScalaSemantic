@@ -16,7 +16,9 @@ object SourceSentinel:
   /** Closes a sentinel block, inside its wrapping block comment. */
   val End: String = ":SEM"
 
-  private val BlockPattern = raw" ?/\*SEM:.*?:SEM\*/".r
+  // The non-greedy body may not contain a close marker, so one block never swallows the code
+  // between it and the next.
+  private val BlockPattern = raw" ?/\*SEM:(?:(?!:SEM\*/).)*:SEM\*/".r
 
   /** One annotation to attach to `line` (0-based index into the lines passed to `inject`). */
   final case class Note(line: Int, payload: String)
@@ -39,4 +41,30 @@ object SourceSentinel:
     * passes through unchanged.
     */
   def strip(lines: IndexedSeq[String]): IndexedSeq[String] =
-    lines.map(BlockPattern.replaceAllIn(_, ""))
+    lines.map(stripLine)
+
+  /** Removes every sentinel block on one line EXCEPT those sitting inside a string literal: a
+    * source may legitimately contain the marker as data (`val marker = "/*SEM:x:SEM*/"`), and
+    * stripping that wrote the file back as `val marker = ""` — silent loss of the author's text.
+    * Blocks are removed back to front so earlier indices stay valid.
+    */
+  private def stripLine(line: String): String =
+    BlockPattern
+      .findAllMatchIn(line)
+      .filter(m => notInString(line, 0, m.start, inStr = false))
+      .toList
+      .reverse
+      .foldLeft(line)((acc, m) => acc.take(m.start) + acc.drop(m.end))
+
+  /** Whether `upTo` sits outside a `"`-delimited literal, by a deliberately naive scan: escapes are
+    * honoured, but the scan never leaves the line, so a marker inside a MULTI-line string is still
+    * treated as code on its continuation lines.
+    */
+  @annotation.tailrec
+  private def notInString(line: String, i: Int, upTo: Int, inStr: Boolean): Boolean =
+    if i >= upTo then !inStr
+    else
+      line.charAt(i) match
+        case '\\' if inStr => notInString(line, i + 2, upTo, inStr)
+        case '"'           => notInString(line, i + 1, upTo, !inStr)
+        case _             => notInString(line, i + 1, upTo, inStr)

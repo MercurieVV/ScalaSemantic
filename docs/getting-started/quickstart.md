@@ -50,7 +50,7 @@ somewhere real with the `set_workspace_root` tool, or pass a root explicitly
 
 ## Claude Code: the guard hook
 
-A **project** install additionally installs `.claude/hooks/scala-semantic-guard.sh` and registers it as a
+`setup --rwhook-local` installs `.claude/hooks/scala-semantic-guard.sh` and registers it as a
 `PreToolUse` hook, so text tools (`Read`, `Grep`, `Glob`, and shell `grep`/`rg`/`cat`/`sed`/…) are
 **denied** on `.scala` files and the agent is told which MCP tool to use instead. It fails open when
 no `*.semanticdb` has been emitted yet, when the MCP server is not configured for the project, or
@@ -70,5 +70,34 @@ annotated_source(uri, write=<edited text>, baseHash=<sha256>)
 Write mode strips the SEM blocks before saving, and `baseHash` rejects the write if the file changed
 meanwhile. Pass `--strict-edits` to setup to make Scala edits a denial instead of a reminder.
 
-Opt out of the whole hook with `./scalasemantic-mcp.sh setup --no-guard`. Background:
+The hook is opt-in — a plain `setup` installs none, since it changes how every later session in
+that directory reads Scala:
+
+```sh
+./scalasemantic-mcp.sh setup --rwhook-local    # this project
+./scalasemantic-mcp.sh setup --rwhook-user     # ~/.claude, every project you open
+./scalasemantic-mcp.sh setup --rw-hook-remove  # remove it from both
+```
+
+A plain run still keeps a hook that is already installed up to date. Background:
 [ADR 0001](../adr/0001-claude-code-guard-hook.md).
+
+### Checking that the guard actually fires
+
+Because the hook fails open silently, a broken install looks exactly like a healthy one. `doctor`
+re-runs every condition the hook checks and prints the verdict:
+
+```
+./scalasemantic-mcp.sh doctor            # or: doctor --project /path/to/project
+scalasemantic-mcp: doctor: /path/to/project
+  ok    guard hook installed - .claude/hooks/scala-semantic-guard.sh
+  ok    guard hook up to date - matches this version of the launcher
+  ok    guard hook registered - PreToolUse entry in .claude/settings.json
+  ok    MCP server configured - found in .mcp.json / .claude/settings*.json
+  ok    SemanticDB index - out/core/semanticDbData.dest/classes/META-INF/semanticdb/...
+  ok    JSON reader for the hook - jq
+```
+
+It exits 1 when the guard is installed but any of those conditions fails, i.e. when it would let
+every text tool through. `setup` runs the same check at the end of an install and reports only the
+failures.

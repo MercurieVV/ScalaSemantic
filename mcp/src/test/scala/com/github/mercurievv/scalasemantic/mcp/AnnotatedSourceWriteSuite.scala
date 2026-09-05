@@ -115,3 +115,26 @@ class AnnotatedSourceWriteSuite extends munit.FunSuite:
     val res = call(root, ujson.Obj("uri" -> "Foo.scala", "write" -> "object Foo:\n  def bar = 3\n"))
     assertEquals(res("written").bool, true)
     assertEquals(Files.readString(root.resolve("Foo.scala")), "object Foo:\n  def bar = 3\n")
+
+  test("a write answers with a unified diff of what it changed on disk"):
+    val root = Files.createTempDirectory("ss-annotated-write-diff").nn
+    writeFile(root, "Foo.scala", "object Foo:\n  def bar = 1\n  def baz = 2\n")
+    // The buffer still carries its SEM block: the diff must describe the edit, not the annotation.
+    val edited = "object Foo:\n  def bar = 11 /*SEM:type=Int:SEM*/\n  def baz = 2\n"
+    val res = call(root, ujson.Obj("uri" -> "Foo.scala", "write" -> edited))
+    assertEquals(res("changed").bool, true)
+    val diff = res("diff").str
+    assert(diff.startsWith("--- Foo.scala (on disk)\n+++ Foo.scala (written)"), diff)
+    assert(diff.contains("-  def bar = 1"), diff)
+    assert(diff.contains("+  def bar = 11"), diff)
+    assert(!diff.contains("SEM:"), diff)
+    assert(diff.contains("   def baz = 2"), diff)
+
+  test("a write that changes nothing reports changed=false and an empty diff"):
+    val root = Files.createTempDirectory("ss-annotated-write-nodiff").nn
+    val original = "object Foo:\n  def bar = 1\n"
+    writeFile(root, "Foo.scala", original)
+    val res = call(root, ujson.Obj("uri" -> "Foo.scala", "write" -> original))
+    assertEquals(res("written").bool, true)
+    assertEquals(res("changed").bool, false)
+    assertEquals(res("diff").str, "")

@@ -22,9 +22,18 @@ to install one.
 
 ## Decision
 
-A project install writes `.claude/hooks/scala-semantic-guard.sh` and registers it under
-`hooks.PreToolUse` with matcher `Read|Grep|Glob|Bash|Edit|Write|MultiEdit`. On by default; opt out
-with `--no-guard`.
+`setup --rwhook-local` writes `.claude/hooks/scala-semantic-guard.sh` and registers it under
+`hooks.PreToolUse` with matcher
+`Read|Grep|Glob|Bash|Edit|Write|MultiEdit|mcp__scala-semantic__annotated_source`.
+`--rwhook-user` installs the same hook into `$HOME/.claude` instead, registered by absolute path
+(`$CLAUDE_PROJECT_DIR` points at the project being edited, which holds no copy of the script), so
+it covers every project the user opens. `--rw-hook-remove` takes it out of both.
+
+**Opt-in, not on by default.** Installing the hook silently changes how every later agent session
+in that directory reads Scala — a `Read` the agent has always been able to make starts failing — so
+it is not something `setup` should do as a side effect of registering an MCP server. A plain setup
+run does still regenerate a hook that is already installed, so upgrading the launcher upgrades the
+hook.
 
 Denied (exit 2, reason on stderr so the agent reads it): `Read` of `.scala`/`.sc`; `Grep`/`Glob`
 naming Scala; `Bash` running `grep|rg|ag|ack|cat|sed|awk|head|tail|less|more|nl` against a `.scala`
@@ -110,6 +119,11 @@ deliberately auditable — abuse shows up as log volume rather than silence.
 ## Consequences
 
 - The rule holds without depending on model compliance — the only such integration point here.
+- Failing open is silent by construction, so a liveness bug in the hook is indistinguishable from a
+  healthy install from the outside. (One shipped: the index probe pruned `out`/`target`, which is
+  exactly where Mill and sbt emit SemanticDB, so the guard never blocked anything on a real
+  project.) `scalasemantic-mcp doctor` — `LauncherDoctor`, also run at the end of `setup` — re-runs
+  each of those conditions eagerly and names the ones that fail.
 - Two implementations must stay in sync: `LauncherGuardHook` (the jar) and the PowerShell script.
   `GuardHookSuite` pins jar-side behaviour and diffs the PowerShell copy against it. (A third,
   `scripts/scalasemantic-mcp.scala`, was deleted in [ADR-0004](0004-single-launcher-script-and-user-scope-install.md).)

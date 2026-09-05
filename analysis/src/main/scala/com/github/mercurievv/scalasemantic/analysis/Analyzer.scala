@@ -443,6 +443,15 @@ final class Analyzer(
   def stripComments(lines: IndexedSeq[String]): IndexedSeq[String] =
     h.stripComments(lines)
 
+  /** The MD5 SemanticDB recorded for `uri`'s source text at compile time, when it recorded one.
+    *
+    * Compare it against the digest of the file as it is now to tell whether the annotations still
+    * describe the text on disk. `None` means the index holds no digest for this file — not that the
+    * two agree.
+    */
+  def sourceMd5(uri: String): Option[String] =
+    index.document(uri).map(_.md5).filter(_.nonEmpty)
+
   private def fullAnnotations(
       doc: s.TextDocument,
       sourceLines: IndexedSeq[String]

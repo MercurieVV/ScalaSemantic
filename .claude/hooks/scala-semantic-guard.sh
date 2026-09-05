@@ -9,7 +9,11 @@
 #             of the tokens and without missing renames/implicits/inferred uses.
 #   EDITS  -- writing a .scala source is allowed but reminds the agent to edit the
 #             annotated buffer instead, so it edits with the compiler's inferred types and
-#             implicits in view. `setup --strict-edits` turns that reminder into a denial.
+#             implicits in view. `setup --strict-edits` turns that reminder into a denial
+#             that the `# semantic-fallback:` marker cannot bypass.
+#   BUFFERS -- an annotated_source READ is rewritten (PreToolUse updatedInput) to
+#             format=compilable + sentinel=true, so what the agent gets back is an
+#             editable buffer rather than a read-only view.
 #
 # Exit codes: 0 = allow (stdout is fed back to the agent as context), 2 = deny (stderr is).
 
@@ -60,15 +64,39 @@ path=$(printf '%s\n' "$fields" | sed -n 4p)
 ftype=$(printf '%s\n' "$fields" | sed -n 5p)
 command_line=$(printf '%s\n' "$fields" | sed -n 6p)
 
+# --- upgrade a plain annotated_source read into an editable buffer ---------------------
+# A read the agent asked for as `format=plain` (or with the default gutter view, or without
+# `sentinel`) cannot be edited and written back: the gutter is not source, and notes that
+# are not sentinel-delimited cannot be stripped. PreToolUse `updatedInput` rewrites the
+# call in place, so the agent gets a buffer whatever it asked for, without a round trip.
+# Writes (`write` present) are passed through untouched.
+if [ "$tool" = mcp__scala-semantic__annotated_source ] && [ "$reader" = jq ]; then
+  upgraded=$(printf '%s' "$payload" | jq -c '
+    if (.tool_input | type) != "object" then empty
+    elif (.tool_input | has("write")) then empty
+    elif (.tool_input.format == "compilable" and .tool_input.sentinel == true) then empty
+    else { hookSpecificOutput: {
+             hookEventName: "PreToolUse",
+             permissionDecision: "allow",
+             permissionDecisionReason:
+               "ScalaSemantic guard: upgraded this read to an editable annotated buffer (format=compilable, sentinel=true) so it can be edited and written back through annotated_source.",
+             updatedInput: (.tool_input + { format: "compilable", sentinel: true }) } }
+    end' 2>/dev/null)
+  if [ -n "${upgraded:-}" ]; then
+    printf '%s\n' "$upgraded"
+  fi
+  exit 0
+fi
+
 # --- explicit human/agent override -----------------------------------------------------
-# `rg foo *.scala   # semantic-fallback: <reason>` is always allowed, and logged so the
-# override stays auditable instead of silent.
+# `rg foo *.scala   # semantic-fallback: <reason>` is allowed for READS, and logged so the
+# override stays auditable instead of silent. Whether it applies is decided AFTER the call
+# is classified, because it deliberately does not cover writes: a marker appended to
+# `sed -i ... A.scala` would otherwise talk its way straight past --strict-edits, which is
+# the one thing strict mode exists to prevent.
+fallback=0
 case "$command_line" in
-  *semantic-fallback:*)
-    printf '%s\t%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$command_line" \
-      >>"$root/.claude/semantic-fallback.log" 2>/dev/null
-    exit 0
-    ;;
+  *semantic-fallback:*) fallback=1 ;;
 esac
 
 # --- does this call target Scala sources, and is it a read or a write? -----------------
@@ -120,6 +148,14 @@ case "$tool" in
 esac
 [ -n "$mode" ] || exit 0
 
+# The override, now that we know what kind of call this is: it releases a read, and is
+# logged either way so an attempt to use it on a write stays visible.
+if [ "$fallback" = 1 ]; then
+  printf '%s\t%s\t%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$mode" "$command_line" \
+    >>"$root/.claude/semantic-fallback.log" 2>/dev/null
+  if [ "$mode" = read ]; then exit 0; fi
+fi
+
 # --- fail open when the semantic answer is not actually available ----------------------
 # No MCP server wired into this project: nothing better to route the agent to.
 for cfg in "$root/.mcp.json" "$root/.claude/settings.json" "$root/.claude/settings.local.json"; do
@@ -129,10 +165,14 @@ done
 
 # No SemanticDB emitted yet (never compiled, or a non-Scala project): the MCP tools would
 # return an empty index, so text search is the only thing that can work.
+# The index lives INSIDE the build's output dir for every mainstream build tool -- Mill:
+# out/<mod>/semanticDbData*.dest/classes/META-INF/semanticdb, sbt: target/scala-3.*/**/
+# META-INF/semanticdb -- so `out`/`target`/`.scala-build` must NOT be pruned here, or the
+# probe finds nothing and the guard silently fails open on every real project. Matching the
+# distinctive META-INF/semanticdb path keeps the walk cheap without them.
 index=$(find "$root" \
-  \( -name .git -o -name out -o -name target -o -name node_modules -o -name .scala-build \
-     -o -name .worktrees -o -name website \) -prune -o \
-  -name '*.semanticdb' -print 2>/dev/null | head -n 1)
+  \( -name .git -o -name node_modules -o -name .worktrees -o -name website \) -prune -o \
+  -path '*/META-INF/semanticdb/*.semanticdb' -print 2>/dev/null | head -n 1)
 [ -n "$index" ] || exit 0
 
 # --- editing a Scala source ------------------------------------------------------------
@@ -147,12 +187,15 @@ path, so the edit is made against the compiler's view of the file:
   1. annotated_source(uri, format="compilable", sentinel=true)
      -> the source with inferred types, implicit args and conversions inline as
         /*SEM:...:SEM*/ blocks (no line-number gutter), plus its sha256
-  2. edit that buffer, leaving the SEM blocks wherever they are
+  2. edit that buffer, leaving every SEM block exactly where it is -- they are stripped
+     for you, and taking them out by hand edits lines your change does not concern
   3. annotated_source(uri, write=<edited text>, baseHash=<that sha256>)
      -> every SEM block is stripped before the file is saved
 Both arguments matter: sentinel=true makes the notes machine-strippable, format=compilable
 drops the read-only gutter. Any other read is a view, not a buffer -- writing it back would
 persist annotations into the source, and is refused.
+A `# semantic-fallback:` marker does NOT exempt a write: under --strict-edits this is the
+only way to change a .scala source.
 Re-run `scalasemantic-mcp setup` without --strict-edits to make this a reminder instead.
 MSG
     exit 2
@@ -163,7 +206,8 @@ buffer instead of the raw text:
   1. annotated_source(uri, format="compilable", sentinel=true)
      -> inferred types, implicit args and conversions inline as /*SEM:...:SEM*/ blocks
         (no line-number gutter), plus its sha256
-  2. edit that buffer, leaving the SEM blocks in place
+  2. edit that buffer, leaving every SEM block exactly where it is -- they are stripped
+     for you, and taking them out by hand edits lines your change does not concern
   3. annotated_source(uri, write=<edited text>, baseHash=<that sha256>)
      -> SEM blocks are stripped before the file is saved
 Both arguments matter: sentinel=true makes the notes machine-strippable, format=compilable
@@ -178,8 +222,18 @@ fi
 cat >&2 <<'MSG'
 BLOCKED by ScalaSemantic guard: text tools are not allowed on .scala sources here.
 Text search misses renames, re-exports, implicits and inferred uses, and over-matches
-comments and same-named identifiers. Use the mcp__scala-semantic__* tools instead and
-pick whichever fits the actual question:
+comments and same-named identifiers.
+To READ a Scala file, this is the tool:
+  annotated_source(uri)
+     -> the whole source, plus the inferred types, implicit arguments and conversions the
+        compiler resolved, inline. `cat` shows none of that.
+To EDIT one, read it as a buffer and write that buffer back:
+  annotated_source(uri, format="compilable", sentinel=true)   -> text + its sha256
+  annotated_source(uri, write=<edited text>, baseHash=<that sha256>)
+     -> the /*SEM:...:SEM*/ blocks are stripped before the file is saved
+Leave those blocks where they are in the text you send: the server removes them, and
+removing them yourself edits lines your change does not concern.
+For anything else, pick the tool that fits the question:
   symbols / references / types  -> find_symbol, find_usages, type_at_position
   hierarchy / members / givens  -> class_hierarchy, members, resolve_implicits
   signatures / overloads        -> method_signature, find_overloads
@@ -188,7 +242,8 @@ pick whichever fits the actual question:
 Stale or missing index: run the project's compile task, then refresh_workspace — or, if you
 cannot run the build yourself (e.g. this session cannot shell out), call refresh_workspace
 with compile=true and it will detect and run the build itself.
-If the semantic tools genuinely cannot answer this, re-run the command through Bash with
-a trailing `# semantic-fallback: <reason>` marker (allowed, and logged).
+If the semantic tools genuinely cannot answer this, re-run the READ through Bash with a
+trailing `# semantic-fallback: <reason>` marker (allowed, and logged). It releases reads
+only -- a write still has to go through annotated_source.
 MSG
 exit 2

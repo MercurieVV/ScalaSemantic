@@ -45,6 +45,28 @@ class LauncherSetupSuite extends munit.FunSuite:
     assertEquals(opts.scope, LauncherScope.Project)
   }
 
+  test("the guard hook is opt-in, and each flag says where it goes") {
+    assertEquals(LauncherSetup.parse(Nil).guardHook, GuardHookAction.Keep)
+    assertEquals(LauncherSetup.parse(List("--no-guard")).guardHook, GuardHookAction.Keep)
+    assertEquals(LauncherSetup.parse(List("--rwhook-local")).guardHook, GuardHookAction.Project)
+    assertEquals(LauncherSetup.parse(List("--rwhook-user")).guardHook, GuardHookAction.User)
+    assertEquals(LauncherSetup.parse(List("--rw-hook-remove")).guardHook, GuardHookAction.Remove)
+    assertEquals(LauncherSetup.parse(List("--guard")).guardHook, GuardHookAction.Project)
+  }
+
+  // --strict-edits is a property of the hook; without one it would silently do nothing at all.
+  test("--strict-edits implies a project install, unless the caller placed the hook itself") {
+    assertEquals(LauncherSetup.parse(List("--strict-edits")).guardHook, GuardHookAction.Project)
+    assertEquals(
+      LauncherSetup.parse(List("--strict-edits", "--rwhook-user")).guardHook,
+      GuardHookAction.User
+    )
+    assertEquals(
+      LauncherSetup.parse(List("--strict-edits", "--rw-hook-remove")).guardHook,
+      GuardHookAction.Remove
+    )
+  }
+
   test("Options.home follows $HOME") {
     sys.env.get("HOME").foreach { h =>
       assertEquals(LauncherSetup.Options().home, Path.of(h).toAbsolutePath.normalize())

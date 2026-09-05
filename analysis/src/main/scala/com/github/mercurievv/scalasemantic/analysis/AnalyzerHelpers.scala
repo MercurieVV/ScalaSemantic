@@ -247,7 +247,12 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
                 if line == r.startLine && start >= r.startCharacter && end <= r.endCharacter =>
               (start - r.startCharacter, end - r.startCharacter, args)
           }
-          .sortBy(-_._1)
+          // Each splice happens AT `end`, so the fold must run in descending END order. Sorting by
+          // start is a different ordering: a nested type application (`List.apply[String]`) starts
+          // after the range that encloses it (`sizes(…).sum[Int]`) but ends well before it, so
+          // start-order splices the inner one first and shifts the outer one's index off its mark —
+          // landing the type args inside an argument, e.g. `"bb[Int]"`.
+          .sortBy { case (start, end, _) => (-end, -start) }
         contained.foldLeft(base) { case (acc, (_, end, args)) =>
           acc.take(end) + args + acc.drop(end)
         }
