@@ -110,6 +110,11 @@ deliberately auditable — abuse shows up as log volume rather than silence.
 ## Consequences
 
 - The rule holds without depending on model compliance — the only such integration point here.
+- Failing open is silent by construction, so a liveness bug in the hook is indistinguishable from a
+  healthy install from the outside. (One shipped: the index probe pruned `out`/`target`, which is
+  exactly where Mill and sbt emit SemanticDB, so the guard never blocked anything on a real
+  project.) `scalasemantic-mcp doctor` — `LauncherDoctor`, also run at the end of `setup` — re-runs
+  each of those conditions eagerly and names the ones that fail.
 - Two implementations must stay in sync: `LauncherGuardHook` (the jar) and the PowerShell script.
   `GuardHookSuite` pins jar-side behaviour and diffs the PowerShell copy against it. (A third,
   `scripts/scalasemantic-mcp.scala`, was deleted in [ADR-0004](0004-single-launcher-script-and-user-scope-install.md).)

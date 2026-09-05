@@ -9,6 +9,8 @@ private[scalasemantic] object Launcher:
     args.headOption match
       case Some("setup" | "configure" | "install") =>
         LauncherSetup.setup(args.drop(1).toList)
+      case Some("doctor" | "check") =>
+        LauncherDoctor.run(args.drop(1).toList)
       case Some("serve" | "run") =>
         serve(args.drop(1).toList)
       case Some("--help" | "-h" | "help") =>

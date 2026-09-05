@@ -47,6 +47,9 @@ private[scalasemantic] object LauncherSetup:
         LauncherClientConfigs.write(project, opts)
         if opts.guard then LauncherGuardHook.install(project, opts.client, opts.strictEdits)
         ensureClasspathMetadataDir(project)
+        // A guard that silently never fires is the failure mode this catches: report it now,
+        // while the person who ran setup is still looking, not weeks later.
+        LauncherDoctor.selfTest(project)
 
   private[scalasemantic] def parse(args: List[String]): Options =
     @tailrec def loop(rest: List[String], opts: Options): Options =

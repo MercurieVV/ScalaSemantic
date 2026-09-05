@@ -129,10 +129,14 @@ done
 
 # No SemanticDB emitted yet (never compiled, or a non-Scala project): the MCP tools would
 # return an empty index, so text search is the only thing that can work.
+# The index lives INSIDE the build's output dir for every mainstream build tool -- Mill:
+# out/<mod>/semanticDbData*.dest/classes/META-INF/semanticdb, sbt: target/scala-3.*/**/
+# META-INF/semanticdb -- so `out`/`target`/`.scala-build` must NOT be pruned here, or the
+# probe finds nothing and the guard silently fails open on every real project. Matching the
+# distinctive META-INF/semanticdb path keeps the walk cheap without them.
 index=$(find "$root" \
-  \( -name .git -o -name out -o -name target -o -name node_modules -o -name .scala-build \
-     -o -name .worktrees -o -name website \) -prune -o \
-  -name '*.semanticdb' -print 2>/dev/null | head -n 1)
+  \( -name .git -o -name node_modules -o -name .worktrees -o -name website \) -prune -o \
+  -path '*/META-INF/semanticdb/*.semanticdb' -print 2>/dev/null | head -n 1)
 [ -n "$index" ] || exit 0
 
 # --- editing a Scala source ------------------------------------------------------------

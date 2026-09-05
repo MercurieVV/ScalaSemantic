@@ -136,10 +136,17 @@ class GuardHookSuite extends munit.FunSuite:
   private def guardedProject(name: String): Path =
     val root = tempProject(name)
     runSetup(root)
-    val semanticdb = root.resolve("META-INF/semanticdb")
+    emitSemanticdb(root, "out/core/semanticDbData.dest/classes/META-INF/semanticdb")
+    root
+
+  /** Where the compiler actually drops the index: under the build tool's own output directory (Mill
+    * `out/`, sbt `target/`), never at the project root. A probe that prunes those dirs finds
+    * nothing and the guard fails open on every real project.
+    */
+  private def emitSemanticdb(root: Path, relDir: String): Unit =
+    val semanticdb = root.resolve(relDir)
     Files.createDirectories(semanticdb)
     Files.writeString(semanticdb.resolve("Fixture.scala.semanticdb"), "")
-    root
 
   private def hookExit(root: Path, payload: String): Int =
     val hook = root.resolve(LauncherGuardHook.HookRelPath)
@@ -248,9 +255,7 @@ class GuardHookSuite extends munit.FunSuite:
     assume(hasJsonReader, "needs jq or python3")
     val root = tempProject("ss-guard-strict")
     runSetup(root, "--strict-edits")
-    val semanticdb = root.resolve("META-INF/semanticdb")
-    Files.createDirectories(semanticdb)
-    Files.writeString(semanticdb.resolve("Fixture.scala.semanticdb"), "")
+    emitSemanticdb(root, "out/core/semanticDbData.dest/classes/META-INF/semanticdb")
 
     val (code, _, err) =
       hookRun(root, """{"tool_name":"Edit","tool_input":{"file_path":"src/Main.scala"}}""")
@@ -341,6 +346,26 @@ class GuardHookSuite extends munit.FunSuite:
     )
     val log = Files.readString(root.resolve(".claude/semantic-fallback.log"))
     assert(log.contains("semantic-fallback: index cannot answer this"), log)
+  }
+
+  test("guard sees an index under the build's output dir (Mill out/, sbt target/)") {
+    assume(hasJsonReader, "needs jq or python3")
+    val layouts = Seq(
+      "out/core/semanticDbData.dest/classes/META-INF/semanticdb",
+      "out/mcp/semanticDbData.super/classes/META-INF/semanticdb/com/example",
+      "target/scala-3.8.4/classes/META-INF/semanticdb/src/main/scala",
+      ".scala-build/project_abc/classes/main/META-INF/semanticdb"
+    )
+    layouts.foreach { rel =>
+      val root = tempProject("ss-guard-index-layout")
+      runSetup(root)
+      emitSemanticdb(root, rel)
+      assertEquals(
+        hookExit(root, """{"tool_name":"Read","tool_input":{"file_path":"src/Main.scala"}}"""),
+        2,
+        s"an index at $rel must count as usable, or the guard fails open on real projects"
+      )
+    }
   }
 
   test("guard fails open when no SemanticDB has been emitted yet") {

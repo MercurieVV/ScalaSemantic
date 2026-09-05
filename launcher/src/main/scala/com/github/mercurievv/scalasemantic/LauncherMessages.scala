@@ -5,7 +5,13 @@ private[scalasemantic] object LauncherMessages:
     Console.err.println(
       s"""|Usage:
           |  scalasemantic-mcp setup [--scope user|project] [--client claude|codex|gemini|cline|roo|continue|antigravity|all] [--project DIR] [--no-guard] [--strict-edits]
+          |  scalasemantic-mcp doctor [--project DIR]
           |  scalasemantic-mcp serve <semanticdb-root> [classpath-file] [--log] [--log-output]
+          |
+          |doctor re-runs, and reports in words, every condition the guard hook checks before it is
+          |willing to deny a text tool: hook installed, up to date and registered, MCP server
+          |configured, a SemanticDB index emitted, a JSON reader on PATH. Exits 1 when the guard is
+          |installed but would fail open. setup runs the same check at the end of an install.
           |
           |--scope project (default) writes config into the project directory and also configures
           |SemanticDB, the tool rules file and the Claude guard hook. --scope user writes only the

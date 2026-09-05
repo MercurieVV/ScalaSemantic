@@ -72,3 +72,23 @@ meanwhile. Pass `--strict-edits` to setup to make Scala edits a denial instead o
 
 Opt out of the whole hook with `./scalasemantic-mcp.sh setup --no-guard`. Background:
 [ADR 0001](../adr/0001-claude-code-guard-hook.md).
+
+### Checking that the guard actually fires
+
+Because the hook fails open silently, a broken install looks exactly like a healthy one. `doctor`
+re-runs every condition the hook checks and prints the verdict:
+
+```
+./scalasemantic-mcp.sh doctor            # or: doctor --project /path/to/project
+scalasemantic-mcp: doctor: /path/to/project
+  ok    guard hook installed - .claude/hooks/scala-semantic-guard.sh
+  ok    guard hook up to date - matches this version of the launcher
+  ok    guard hook registered - PreToolUse entry in .claude/settings.json
+  ok    MCP server configured - found in .mcp.json / .claude/settings*.json
+  ok    SemanticDB index - out/core/semanticDbData.dest/classes/META-INF/semanticdb/...
+  ok    JSON reader for the hook - jq
+```
+
+It exits 1 when the guard is installed but any of those conditions fails, i.e. when it would let
+every text tool through. `setup` runs the same check at the end of an install and reports only the
+failures.
