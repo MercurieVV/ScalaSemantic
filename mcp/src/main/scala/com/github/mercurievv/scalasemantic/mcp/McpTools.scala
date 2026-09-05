@@ -2008,25 +2008,35 @@ private[mcp] object McpToolsGroupC:
                   )
               case _ =>
                 val rawBytes = java.nio.file.Files.readAllBytes(file).nn
-                val rawLines =
-                  new String(rawBytes, java.nio.charset.StandardCharsets.UTF_8).nn
-                    .split("\n", -1)
-                    .toIndexedSeq
+                val rawText = new String(rawBytes, java.nio.charset.StandardCharsets.UTF_8).nn
+                val rawLines = rawText.split("\n", -1).toIndexedSeq
                 val docs = argStr(a, "docs")
                 val lines = if docs == "strip" then az.stripComments(rawLines) else rawLines
                 val detail = argDetail(a, "detail")
-                az.sourceAnnotations(uri, lines, detail) match
+                // The compiled SemanticDB index has nothing for this file when it never compiled
+                // (syntax error, not yet built, excluded from the classpath) — the PC still
+                // best-effort-typechecks a broken/uncompiled buffer, so fall back to it instead of
+                // refusing to show the file at all.
+                val primary = az.sourceAnnotations(uri, lines, detail)
+                val (engine, pcFallback, annsOpt) = primary match
+                  case Some(anns) => (az, false, Some(anns))
+                  case None       =>
+                    az.bufferOnly(file.toUri, rawText, uri.value) match
+                      case Some(pc) => (pc, true, pc.sourceAnnotations(uri, lines, detail))
+                      case None     => (az, false, None)
+                annsOpt match
                   case None       => notFoundUri(uri.value)
                   case Some(anns) =>
                     val symbolsOn = argBool(a, "symbols", false)
-                    val symbols = if symbolsOn then az.symbolLegend(uri) else Nil
+                    val symbols = if symbolsOn then engine.symbolLegend(uri) else Nil
                     val fmt = argFormat(a, "format")
                     // import-explosion is the compilable rendering of symbols=on (and its diff):
                     // desugar wildcard / `given` imports into explicit ones so no name enters scope
                     // invisibly.
                     val explode =
                       symbolsOn && (fmt == SourceFormat.Compilable || fmt == SourceFormat.Diff)
-                    val displayLines = if explode then az.explodeImports(uri, lines) else lines
+                    val displayLines =
+                      if explode then engine.explodeImports(uri, lines) else lines
                     val res = SourceView.result(
                       uri.value,
                       rawLines,
@@ -2042,22 +2052,42 @@ private[mcp] object McpToolsGroupC:
                     // code that is no longer there. Silence would be worse than a stale note: the
                     // agent would reason from it. Reported only when the index actually carries a
                     // digest to compare against; a missing one means "cannot tell", not "current".
-                    val stale = staleAgainstIndex(az, uri.value, rawBytes)
-                    val staleFields = stale match
-                      case Some(true) =>
+                    // Skipped entirely under a PC fallback: there is no compiled digest at all, by
+                    // definition of having taken that path.
+                    val staleFields =
+                      if pcFallback then Nil
+                      else
+                        staleAgainstIndex(az, uri.value, rawBytes) match
+                          case Some(true) =>
+                            Seq(
+                              "staleIndex" -> ujson.Bool(true),
+                              "staleHint" -> ujson.Str(
+                                s"'${uri.value}' has changed since it was last compiled: these " +
+                                  "annotations describe the compiled version, so a note may name code " +
+                                  "the file no longer contains. Recompile and call refresh_workspace " +
+                                  "for annotations that match this text."
+                              )
+                            )
+                          case Some(false) => Seq("staleIndex" -> ujson.Bool(false))
+                          case None        => Nil
+                    val pcFallbackFields =
+                      if pcFallback then
                         Seq(
-                          "staleIndex" -> ujson.Bool(true),
-                          "staleHint" -> ujson.Str(
-                            s"'${uri.value}' has changed since it was last compiled: these " +
-                              "annotations describe the compiled version, so a note may name code " +
-                              "the file no longer contains. Recompile and call refresh_workspace " +
-                              "for annotations that match this text."
+                          "pcFallback" -> ujson.Bool(true),
+                          "pcFallbackHint" -> ujson.Str(
+                            s"'${uri.value}' has no compiled SemanticDB entry (it may not compile, " +
+                              "or hasn't been built yet), so these annotations come from the " +
+                              "presentation compiler's best-effort typecheck of this file alone, not " +
+                              "the project's compiled index — expect gaps where the PC also can't " +
+                              "resolve a type."
                           )
                         )
-                      case Some(false) => Seq("staleIndex" -> ujson.Bool(false))
-                      case None        => Nil
+                      else Nil
                     ujson.Obj.from(
-                      res.obj.toSeq ++ (("sha256" -> ujson.Str(sha256Hex(rawBytes))) +: staleFields)
+                      res.obj.toSeq ++
+                        (("sha256" -> ujson.Str(
+                          sha256Hex(rawBytes)
+                        )) +: (staleFields ++ pcFallbackFields))
                     )
         }
       ),
