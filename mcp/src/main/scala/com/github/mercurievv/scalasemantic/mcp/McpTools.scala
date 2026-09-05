@@ -3,6 +3,7 @@ package com.github.mercurievv.scalasemantic.mcp
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
 import com.github.mercurievv.scalasemantic.analysis.InlineEnrich
 import com.github.mercurievv.scalasemantic.analysis.RangeSelector
+import com.github.mercurievv.scalasemantic.analysis.SourceDiff
 import com.github.mercurievv.scalasemantic.analysis.SourceSentinel
 import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
@@ -912,6 +913,27 @@ private[mcp] object McpToolsSupport:
     val digest = java.security.MessageDigest.getInstance("SHA-256").nn.digest(bytes).nn
     digest.map(b => f"${b & 0xff}%02x").mkString
 
+  /** Uppercase hex MD5, the digest SemanticDB itself stores in `TextDocument.md5` — matching its
+    * algorithm and casing is the whole point, so this is not interchangeable with [[sha256Hex]].
+    */
+  private[mcp] def md5Hex(bytes: Array[Byte]): String =
+    val digest = java.security.MessageDigest.getInstance("MD5").nn.digest(bytes).nn
+    digest.map(b => f"${b & 0xff}%02X").mkString
+
+  /** Has `uri` changed since the compile that produced its SemanticDB?
+    *
+    * `Some(true)` = the file on disk differs from the text the annotations were derived from;
+    * `Some(false)` = they agree; `None` = the index carries no digest for this file, so the
+    * question cannot be answered — reported as absence rather than as "current", which would be a
+    * guess.
+    */
+  private[mcp] def staleAgainstIndex(
+      az: Analyzer,
+      uri: String,
+      currentBytes: Array[Byte]
+  ): Option[Boolean] =
+    az.sourceMd5(uri).map(recorded => !recorded.equalsIgnoreCase(md5Hex(currentBytes)))
+
   private[mcp] def tool(
       name: String,
       description: String,
@@ -1713,7 +1735,11 @@ private[mcp] object McpToolsGroupC:
             "arguments & conversions it synthesised, the type arguments it inferred, and the inferred " +
             "result/value type of every definition the source left unascribed. Each note is appended to " +
             "its line after `⟹`, self-anchored to the call it applies to (e.g. `a.map[String]`, " +
-            "`(using Show[A])`); lines are 1-based. " +
+            "`(using Show[A])`); lines are 1-based. The answer carries `staleIndex`: true when the " +
+            "file has changed since the compile these annotations come from — the source text is " +
+            "always current, but a note may then describe code the file no longer contains, so " +
+            "recompile and call refresh_workspace before trusting one. The field is absent when the " +
+            "index records no digest for the file and the question cannot be answered. " +
             "A plain text read MISSES all of this — this shows what the compiler actually sees. Pass " +
             "`annotationsOnly` to get just the annotated lines. Pick the `format` for your need: " +
             "`annotated` (default, densest — gutter + `⟹` notes, NOT valid Scala), `compilable` (notes as " +
@@ -1726,7 +1752,14 @@ private[mcp] object McpToolsGroupC:
             "removable via `SourceSentinel.strip` without touching any real comment on the line. WRITE " +
             "MODE: pass `write` (the file's edited full text, typically read here with `sentinel=on`, " +
             "then edited) to persist it to `uri` instead of reading — every `/*SEM:...:SEM*/` block is " +
-            "stripped before the file is saved, so the annotations never reach disk. Pass `baseHash` " +
+            "stripped before the file is saved, so the annotations never reach disk. LEAVE THE " +
+            "`/*SEM:...:SEM*/` BLOCKS IN THE TEXT YOU SEND: removing them yourself is extra editing of " +
+            "lines you did not mean to touch (and of real comments sharing those lines) for no gain — " +
+            "the server strips them, exactly and only them. Send the buffer back as you read it, with " +
+            "your edit applied and nothing else changed. The write " +
+            "answers with a `diff`: a unified diff of what the file said on disk against what was " +
+            "just written (both in stripped form, so it shows your edit, not the annotations), " +
+            "plus `changed` — false when the write was a no-op. Pass `baseHash` " +
             "(the `sha256` field from an earlier read of this `uri`) to reject the write if the file " +
             "changed on disk since — omit it only when you accept overwriting a concurrent change.",
           (
@@ -1738,7 +1771,9 @@ private[mcp] object McpToolsGroupC:
               "write",
               "string",
               "the file's edited full text — switches this tool to WRITE mode: /*SEM:...:SEM*/ blocks are " +
-                "stripped and the result is saved to uri. Omit to read instead."
+                "stripped and the result is saved to uri. Send the buffer you read, edited in place, " +
+                "with its /*SEM:...:SEM*/ blocks still where they were — stripping them yourself is " +
+                "unnecessary work on lines your edit does not concern. Omit to read instead."
             )
             :: (
               "baseHash",
@@ -1774,12 +1809,26 @@ private[mcp] object McpToolsGroupC:
                   val stripped =
                     SourceSentinel.strip(edited.split("\n", -1).toIndexedSeq).mkString("\n")
                   val strippedBytes = stripped.getBytes(java.nio.charset.StandardCharsets.UTF_8).nn
+                  // What the file said before this call, in the same stripped form the write
+                  // persists, so the diff shows the agent's edit and never the annotations.
+                  val previous =
+                    new String(
+                      java.nio.file.Files.readAllBytes(file).nn,
+                      java.nio.charset.StandardCharsets.UTF_8
+                    ).nn
                   val _ = java.nio.file.Files.write(file, strippedBytes)
+                  val diff = SourceDiff.unified(
+                    uri.value,
+                    previous.split("\n", -1).toIndexedSeq,
+                    stripped.split("\n", -1).toIndexedSeq
+                  )
                   ujson.Obj(
                     "uri" -> ujson.Str(uri.value),
                     "written" -> ujson.Bool(true),
                     "bytesWritten" -> ujson.Num(strippedBytes.length.toDouble),
-                    "sha256" -> ujson.Str(sha256Hex(strippedBytes))
+                    "sha256" -> ujson.Str(sha256Hex(strippedBytes)),
+                    "changed" -> ujson.Bool(diff.nonEmpty),
+                    "diff" -> ujson.Str(diff)
                   )
               case _ =>
                 val rawBytes = java.nio.file.Files.readAllBytes(file).nn
@@ -1812,7 +1861,28 @@ private[mcp] object McpToolsGroupC:
                       symbols,
                       sentinel = argBool(a, "sentinel", false)
                     )
-                    ujson.Obj.from(res.obj.toSeq :+ ("sha256" -> ujson.Str(sha256Hex(rawBytes))))
+                    // SemanticDB records the MD5 of the text it was compiled from, so a file edited
+                    // since that compile is detectable exactly — and the annotations then describe
+                    // code that is no longer there. Silence would be worse than a stale note: the
+                    // agent would reason from it. Reported only when the index actually carries a
+                    // digest to compare against; a missing one means "cannot tell", not "current".
+                    val stale = staleAgainstIndex(az, uri.value, rawBytes)
+                    val staleFields = stale match
+                      case Some(true) =>
+                        Seq(
+                          "staleIndex" -> ujson.Bool(true),
+                          "staleHint" -> ujson.Str(
+                            s"'${uri.value}' has changed since it was last compiled: these " +
+                              "annotations describe the compiled version, so a note may name code " +
+                              "the file no longer contains. Recompile and call refresh_workspace " +
+                              "for annotations that match this text."
+                          )
+                        )
+                      case Some(false) => Seq("staleIndex" -> ujson.Bool(false))
+                      case None        => Nil
+                    ujson.Obj.from(
+                      res.obj.toSeq ++ (("sha256" -> ujson.Str(sha256Hex(rawBytes))) +: staleFields)
+                    )
         }
       ),
       toolDef(

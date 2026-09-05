@@ -244,6 +244,10 @@ class McpSuite extends munit.FunSuite:
     // annotationsOnly trims to just the carrying lines (each one keeps the marker).
     val only = call("annotated_source", ujson.Obj("uri" -> uri, "annotationsOnly" -> true))
     assert(only("source").str.linesIterator.forall(_.contains("⟹")), only("source").str)
+
+    // The build compiles before it tests, so this fixture's SemanticDB was produced from exactly
+    // the bytes now on disk — the digest comparison behind `staleIndex` must agree.
+    assertEquals(r("staleIndex").bool, false)
   }
 
   test("annotated_source format: plain strips notes, compilable comments them out") {
