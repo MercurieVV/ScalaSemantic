@@ -22,9 +22,18 @@ to install one.
 
 ## Decision
 
-A project install writes `.claude/hooks/scala-semantic-guard.sh` and registers it under
-`hooks.PreToolUse` with matcher `Read|Grep|Glob|Bash|Edit|Write|MultiEdit`. On by default; opt out
-with `--no-guard`.
+`setup --rwhook-local` writes `.claude/hooks/scala-semantic-guard.sh` and registers it under
+`hooks.PreToolUse` with matcher
+`Read|Grep|Glob|Bash|Edit|Write|MultiEdit|mcp__scala-semantic__annotated_source`.
+`--rwhook-user` installs the same hook into `$HOME/.claude` instead, registered by absolute path
+(`$CLAUDE_PROJECT_DIR` points at the project being edited, which holds no copy of the script), so
+it covers every project the user opens. `--rw-hook-remove` takes it out of both.
+
+**Opt-in, not on by default.** Installing the hook silently changes how every later agent session
+in that directory reads Scala — a `Read` the agent has always been able to make starts failing — so
+it is not something `setup` should do as a side effect of registering an MCP server. A plain setup
+run does still regenerate a hook that is already installed, so upgrading the launcher upgrades the
+hook.
 
 Denied (exit 2, reason on stderr so the agent reads it): `Read` of `.scala`/`.sc`; `Grep`/`Glob`
 naming Scala; `Bash` running `grep|rg|ag|ack|cat|sed|awk|head|tail|less|more|nl` against a `.scala`

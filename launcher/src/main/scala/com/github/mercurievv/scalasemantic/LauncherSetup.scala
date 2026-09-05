@@ -12,13 +12,32 @@ import scala.util.Using
 private[scalasemantic] enum LauncherScope:
   case User, Project
 
+/** What `setup` does with the Claude Code guard hook ([[LauncherGuardHook]]).
+  *
+  * Installing one changes how every later agent session in that directory behaves -- reads of a
+  * Scala source stop working the way the agent expects -- so it is never a side effect of running
+  * setup: it has to be asked for by name. [[Keep]] is what a plain run does.
+  */
+private[scalasemantic] enum GuardHookAction:
+  /** Install nothing, but keep an install that is already there up to date. */
+  case Keep
+
+  /** `--rwhook-local`: install into this project's `.claude`. */
+  case Project
+
+  /** `--rwhook-user`: install into `$HOME/.claude`, for every project this user opens. */
+  case User
+
+  /** `--rw-hook-remove`: remove it from both. */
+  case Remove
+
 private[scalasemantic] object LauncherSetup:
   final case class Options(
       project: Path = Path.of(".").toAbsolutePath.normalize(),
       client: String = "all",
       command: String = sys.env.getOrElse("SCALASEMANTIC_LAUNCHER", "scalasemantic-mcp"),
       skipSemanticdbConfig: Boolean = false,
-      guard: Boolean = true,
+      guardHook: GuardHookAction = GuardHookAction.Keep,
       // Editing a .scala source is reminded about, not denied, unless this is on: a three-line
       // change through Edit stays cheaper than a whole-file annotated roundtrip.
       strictEdits: Boolean = false,
@@ -39,17 +58,41 @@ private[scalasemantic] object LauncherSetup:
       // guard hook all configure a project, and a user-scope install has no project to configure.
       case LauncherScope.User =>
         LauncherClientConfigs.write(opts.project, opts)
+        applyGuardHook(opts)
       case LauncherScope.Project =>
         val project = opts.project
         Files.createDirectories(project)
         ensureSemanticdbConfig(project, opts.skipSemanticdbConfig)
         LauncherRules.ensure(project, opts.client)
         LauncherClientConfigs.write(project, opts)
-        if opts.guard then LauncherGuardHook.install(project, opts.client, opts.strictEdits)
+        applyGuardHook(opts)
         ensureClasspathMetadataDir(project)
         // A guard that silently never fires is the failure mode this catches: report it now,
         // while the person who ran setup is still looking, not weeks later.
         LauncherDoctor.selfTest(project)
+
+  /** The guard hook is the one part of setup that is never installed unless asked for. What a plain
+    * run still does is keep an install that is already there current, so upgrading the launcher
+    * upgrades the hook.
+    */
+  private[scalasemantic] def applyGuardHook(opts: Options): Unit =
+    opts.guardHook match
+      case GuardHookAction.Keep =>
+        val dir = opts.scope match
+          case LauncherScope.User    => opts.home
+          case LauncherScope.Project => opts.project
+        LauncherGuardHook.refreshIfInstalled(dir, opts.client, opts.strictEdits)
+      case GuardHookAction.Project =>
+        LauncherGuardHook.install(opts.project, opts.client, opts.strictEdits)
+      case GuardHookAction.User =>
+        LauncherGuardHook.installUser(opts.home, opts.client, opts.strictEdits)
+      case GuardHookAction.Remove =>
+        // Both, always: which scope an install went into is not something the person uninstalling
+        // it should have to remember.
+        val fromProject = LauncherGuardHook.uninstall(opts.project)
+        val fromUser = LauncherGuardHook.uninstall(opts.home)
+        if !fromProject && !fromUser then
+          LauncherMessages.err("no guard hook installed in this project or in your user config")
 
   private[scalasemantic] def parse(args: List[String]): Options =
     @tailrec def loop(rest: List[String], opts: Options): Options =
@@ -63,10 +106,17 @@ private[scalasemantic] object LauncherSetup:
           loop(tail, opts.copy(command = value))
         case "--skip-semanticdb-config" :: tail =>
           loop(tail, opts.copy(skipSemanticdbConfig = true))
+        // `--guard`/`--no-guard` predate the three below. Installing is opt-in now, so
+        // `--no-guard` is the default and says nothing; it does NOT remove an existing install --
+        // that is `--rw-hook-remove`.
+        case ("--rwhook-local" | "--rwhook-project" | "--guard") :: tail =>
+          loop(tail, opts.copy(guardHook = GuardHookAction.Project))
+        case "--rwhook-user" :: tail =>
+          loop(tail, opts.copy(guardHook = GuardHookAction.User))
+        case ("--rw-hook-remove" | "--rwhook-remove") :: tail =>
+          loop(tail, opts.copy(guardHook = GuardHookAction.Remove))
         case "--no-guard" :: tail =>
-          loop(tail, opts.copy(guard = false))
-        case "--guard" :: tail =>
-          loop(tail, opts.copy(guard = true))
+          loop(tail, opts.copy(guardHook = GuardHookAction.Keep))
         case "--strict-edits" :: tail =>
           loop(tail, opts.copy(strictEdits = true))
         case "--no-strict-edits" :: tail =>
@@ -84,7 +134,12 @@ private[scalasemantic] object LauncherSetup:
         case bad :: _ =>
           LauncherMessages.err(s"unknown setup argument: $bad")
           LauncherMessages.usage(2)
-    loop(args, Options())
+    val opts = loop(args, Options())
+    // --strict-edits is a property of the hook and does nothing without one, so asking for it is
+    // asking for the hook -- unless the caller already said where it goes, or that it goes away.
+    if opts.strictEdits && opts.guardHook == GuardHookAction.Keep then
+      opts.copy(guardHook = GuardHookAction.Project)
+    else opts
 
   private def ensureSemanticdbConfig(project: Path, skip: Boolean): Unit =
     if !skip then

@@ -632,8 +632,11 @@ MSG
 exit 2
 '@
 
+$GuardMatcher = 'Read|Grep|Glob|Bash|Edit|Write|MultiEdit|mcp__scala-semantic__annotated_source'
+$GuardProjectCommand = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/scala-semantic-guard.sh'
+
 # Splices the guard entry into .claude/settings.json, preserving whatever else is configured.
-function Merge-GuardSettings([string]$Existing) {
+function Merge-GuardSettings([string]$Existing, [string]$Command = $GuardProjectCommand) {
   $doc = $null
   if ($Existing -and $Existing.Trim()) {
     try { $doc = $Existing | ConvertFrom-Json } catch { $doc = $null }
@@ -643,10 +646,10 @@ function Merge-GuardSettings([string]$Existing) {
     $doc | Add-Member -NotePropertyName hooks -NotePropertyValue ([PSCustomObject]@{})
   }
   $entry = [PSCustomObject]@{
-    matcher = 'Read|Grep|Glob|Bash|Edit|Write|MultiEdit'
+    matcher = $GuardMatcher
     hooks   = @([PSCustomObject]@{
       type    = 'command'
-      command = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/scala-semantic-guard.sh'
+      command = $Command
     })
   }
   $existingPre = @()
@@ -658,11 +661,15 @@ function Merge-GuardSettings([string]$Existing) {
   return ($doc | ConvertTo-Json -Depth 10) + "`n"
 }
 
-function Install-GuardHook([string]$Project, [string]$Client, [bool]$StrictEdits = $false) {
+# $Dir is the directory whose .claude/ the hook goes into: the project, or $HOME for a
+# user-scope install covering every project. A user-scope entry cannot go through
+# $CLAUDE_PROJECT_DIR -- that points at the project being edited, which has no copy of the
+# script -- so the caller passes the absolute path instead.
+function Install-GuardHook([string]$Dir, [string]$Client, [bool]$StrictEdits = $false, [string]$Command = $GuardProjectCommand) {
   $normalized = $Client.Trim().ToLowerInvariant().Replace('_', '-')
   if ($normalized -notin @('all', 'claude', 'claude-code', 'anthropic')) { return }
 
-  $hook = Join-Path $Project $GuardHookRelPath
+  $hook = Join-Path $Dir $GuardHookRelPath
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $hook) | Out-Null
   # LF endings on purpose: `sh` chokes on a CRLF shebang line, and Git Bash/WSL run this file.
   $body = $GuardScript.Replace("`r`n", "`n")
@@ -676,11 +683,64 @@ function Install-GuardHook([string]$Project, [string]$Client, [bool]$StrictEdits
     [Console]::Error.WriteLine("scalasemantic-mcp: $verb $hook")
   }
 
-  $settings = Join-Path $Project '.claude/settings.json'
+  $settings = Join-Path $Dir '.claude/settings.json'
   $current = if (Test-Path $settings) { [System.IO.File]::ReadAllText($settings) } else { '' }
   if ($current -match 'scala-semantic-guard') { return }
-  [System.IO.File]::WriteAllText($settings, (Merge-GuardSettings $current))
+  [System.IO.File]::WriteAllText($settings, (Merge-GuardSettings $current $Command))
   [Console]::Error.WriteLine("scalasemantic-mcp: registered guard hook in $settings")
+}
+
+# Keeps an install that is already there current, without creating one.
+function Refresh-GuardHook([string]$Dir, [string]$Client, [bool]$StrictEdits = $false, [string]$Command = $GuardProjectCommand) {
+  if (Test-Path (Join-Path $Dir $GuardHookRelPath)) { Install-GuardHook $Dir $Client $StrictEdits $Command }
+}
+
+# Removes the hook and its PreToolUse entry from $Dir/.claude, leaving every other setting
+# where it was. Returns whether anything was there to remove.
+function Uninstall-GuardHook([string]$Dir) {
+  $removed = $false
+
+  $hook = Join-Path $Dir $GuardHookRelPath
+  if (Test-Path $hook) {
+    Remove-Item -Force $hook
+    [Console]::Error.WriteLine("scalasemantic-mcp: removed $hook")
+    $removed = $true
+  }
+
+  $settings = Join-Path $Dir '.claude/settings.json'
+  if (Test-Path $settings) {
+    $current = [System.IO.File]::ReadAllText($settings)
+    if ($current -match 'scala-semantic-guard') {
+      $doc = $null
+      try { $doc = $current | ConvertFrom-Json } catch { $doc = $null }
+      if ($doc -and ($doc.PSObject.Properties.Name -contains 'hooks') -and
+          ($doc.hooks.PSObject.Properties.Name -contains 'PreToolUse')) {
+        $kept = @($doc.hooks.PreToolUse | Where-Object {
+          -not ("$($_.hooks.command)" -match 'scala-semantic-guard')
+        })
+        $doc.hooks.PSObject.Properties.Remove('PreToolUse')
+        # Nothing this install created is left behind as an empty shell.
+        if ($kept.Count -gt 0) {
+          $doc.hooks | Add-Member -NotePropertyName PreToolUse -NotePropertyValue $kept
+        }
+        if ($doc.hooks.PSObject.Properties.Name.Count -eq 0) {
+          $doc.PSObject.Properties.Remove('hooks')
+        }
+        if ($doc.PSObject.Properties.Name.Count -eq 0) {
+          # A settings file that held nothing but this hook is scaffolding the install created;
+          # leaving {} behind would be litter, not a setting anyone chose.
+          Remove-Item -Force $settings
+          [Console]::Error.WriteLine("scalasemantic-mcp: removed $settings (it configured nothing else)")
+        } else {
+          [System.IO.File]::WriteAllText($settings, ($doc | ConvertTo-Json -Depth 10) + "`n")
+          [Console]::Error.WriteLine("scalasemantic-mcp: unregistered guard hook in $settings")
+        }
+        $removed = $true
+      }
+    }
+  }
+
+  return $removed
 }
 
 function Setup-Main {
@@ -690,7 +750,10 @@ function Setup-Main {
   $Client = 'all'
   $Command = @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Self)
   $SkipSemanticdb = $false
-  $Guard = $true
+  # Installing the guard changes how every later agent session in that directory reads Scala, so
+  # it is never a side effect of setup: 'keep' installs nothing, and only refreshes one already
+  # there. See LauncherSetup.GuardHookAction.
+  $GuardAction = 'keep'
   $StrictEdits = $false
 
   $i = 0
@@ -704,8 +767,10 @@ function Setup-Main {
       { $_ -in @('--client', '-c', '-ClientName') } { $Client = $Rest[$i + 1]; $i += 2 }
       { $_ -in @('--command', '-Command') } { $Command = @($Rest[$i + 1]); $i += 2 }
       { $_ -in @('--skip-semanticdb-config', '-SkipSemanticdbConfig') } { $SkipSemanticdb = $true; $i += 1 }
-      { $_ -in @('--no-guard', '-NoGuard') } { $Guard = $false; $i += 1 }
-      { $_ -in @('--guard', '-Guard') } { $Guard = $true; $i += 1 }
+      { $_ -in @('--no-guard', '-NoGuard') } { $GuardAction = 'keep'; $i += 1 }
+      { $_ -in @('--rwhook-local', '--rwhook-project', '--guard', '-RwHookLocal', '-Guard') } { $GuardAction = 'project'; $i += 1 }
+      { $_ -in @('--rwhook-user', '-RwHookUser') } { $GuardAction = 'user'; $i += 1 }
+      { $_ -in @('--rw-hook-remove', '--rwhook-remove', '-RwHookRemove') } { $GuardAction = 'remove'; $i += 1 }
       { $_ -in @('--strict-edits', '-StrictEdits') } { $StrictEdits = $true; $i += 1 }
       { $_ -in @('--no-strict-edits', '-NoStrictEdits') } { $StrictEdits = $false; $i += 1 }
       { $_ -in @('--help', '-h') } { Show-Usage; return }
@@ -722,18 +787,44 @@ function Setup-Main {
 
   $argv = @($Command) + @('serve', '.')
   Write-ClientConfigs $Project $Client $argv
-  if ($Guard) { Install-GuardHook $Project $Client $StrictEdits }
+
+  # --strict-edits is a property of the hook and does nothing without one, so asking for it is
+  # asking for the hook.
+  if ($StrictEdits -and $GuardAction -eq 'keep') { $GuardAction = 'project' }
+  $userHome = [Environment]::GetFolderPath('UserProfile')
+  switch ($GuardAction) {
+    'keep'    { Refresh-GuardHook $Project $Client $StrictEdits }
+    'project' { Install-GuardHook $Project $Client $StrictEdits }
+    'user'    {
+      $userHook = Join-Path $userHome $GuardHookRelPath
+      Install-GuardHook $userHome $Client $StrictEdits ('"' + $userHook + '"')
+    }
+    'remove'  {
+      # Both, always: which scope an install went into is not something the person uninstalling
+      # it should have to remember.
+      $fromProject = Uninstall-GuardHook $Project
+      $fromUser = Uninstall-GuardHook $userHome
+      if (-not $fromProject -and -not $fromUser) {
+        [Console]::Error.WriteLine('scalasemantic-mcp: no guard hook installed in this project or in your user config')
+      }
+    }
+  }
 }
 
 function Show-Usage {
   [Console]::Error.WriteLine(@"
 Usage:
-  scalasemantic-mcp.ps1 setup [-ClientName all|claude|codex|gemini|cline|roo|continue|antigravity] [-Project DIR] [-NoGuard] [-StrictEdits]
+  scalasemantic-mcp.ps1 setup [-ClientName all|claude|codex|gemini|cline|roo|continue|antigravity] [-Project DIR] [-RwHookLocal|-RwHookUser|-RwHookRemove] [-StrictEdits]
   scalasemantic-mcp.ps1 serve <semanticdb-root> [classpath-file] [--log] [--log-output]
 
-For Claude Code, setup also installs a PreToolUse guard hook that denies text tools on .scala
-sources (.claude/hooks/scala-semantic-guard.sh); pass -NoGuard to skip it. Editing a Scala
-source is only reminded about; pass -StrictEdits to deny that too, so edits go through
+For Claude Code there is a PreToolUse guard hook (.claude/hooks/scala-semantic-guard.sh) that
+denies text tools on .scala sources. It is NOT installed by default -- it changes how every
+later session in that directory behaves, so ask for it by name:
+  -RwHookLocal   install it for this project
+  -RwHookUser    install it for this user (%USERPROFILE%\.claude), covering every project
+  -RwHookRemove  remove it from both, leaving the rest of settings.json alone
+A plain setup run installs nothing, but keeps a hook already there up to date. Editing a Scala
+source is only reminded about; pass -StrictEdits to deny that too (it implies -RwHookLocal), so edits go through
 annotated_source's write mode.
 
 setup writes MCP client config that launches this same script:

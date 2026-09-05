@@ -50,7 +50,7 @@ somewhere real with the `set_workspace_root` tool, or pass a root explicitly
 
 ## Claude Code: the guard hook
 
-A **project** install additionally installs `.claude/hooks/scala-semantic-guard.sh` and registers it as a
+`setup --rwhook-local` installs `.claude/hooks/scala-semantic-guard.sh` and registers it as a
 `PreToolUse` hook, so text tools (`Read`, `Grep`, `Glob`, and shell `grep`/`rg`/`cat`/`sed`/…) are
 **denied** on `.scala` files and the agent is told which MCP tool to use instead. It fails open when
 no `*.semanticdb` has been emitted yet, when the MCP server is not configured for the project, or
@@ -70,7 +70,16 @@ annotated_source(uri, write=<edited text>, baseHash=<sha256>)
 Write mode strips the SEM blocks before saving, and `baseHash` rejects the write if the file changed
 meanwhile. Pass `--strict-edits` to setup to make Scala edits a denial instead of a reminder.
 
-Opt out of the whole hook with `./scalasemantic-mcp.sh setup --no-guard`. Background:
+The hook is opt-in — a plain `setup` installs none, since it changes how every later session in
+that directory reads Scala:
+
+```sh
+./scalasemantic-mcp.sh setup --rwhook-local    # this project
+./scalasemantic-mcp.sh setup --rwhook-user     # ~/.claude, every project you open
+./scalasemantic-mcp.sh setup --rw-hook-remove  # remove it from both
+```
+
+A plain run still keeps a hook that is already installed up to date. Background:
 [ADR 0001](../adr/0001-claude-code-guard-hook.md).
 
 ### Checking that the guard actually fires

@@ -170,7 +170,9 @@ object TestEditGuard {
   }
 
   /** A project set up before this change carries the old matcher. Re-running setup must widen it,
-    * or the whole edit branch is dead code on every existing install.
+    * or the whole edit branch is dead code on every existing install. No flag: a plain setup run
+    * installs no hook, but does keep one that is already installed (here, by the install above)
+    * up to date.
     */
   def assertMatcherUpgrade(project: Path, launcher: Path, env: Map[String, String]): Unit = {
     val settings = project.resolve(".claude/settings.json")
@@ -324,7 +326,9 @@ object TestEditGuard {
     )
     val launcher = project.resolve("scalasemantic-mcp.sh")
 
-    val installCmd = Seq("sh", "-c", s"cat ${Installer.toString} | sh -s -- --project")
+    // The guard is opt-in: the installer forwards its extra arguments to `setup`.
+    val installCmd =
+      Seq("sh", "-c", s"cat ${Installer.toString} | sh -s -- --project --rwhook-local")
     val (code, out, err) = run(installCmd, project, env)
     check(code == 0, s"install exited $code\n--- stdout ---\n$out\n--- stderr ---\n$err")
     check(Files.exists(launcher), s"launcher missing after install: $launcher")

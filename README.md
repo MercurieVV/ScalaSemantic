@@ -32,14 +32,24 @@ iwr https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/sc
 
 ### Guard hook (Claude Code)
 
-For Claude Code, `setup` also installs `.claude/hooks/scala-semantic-guard.sh` and registers it as a
-`PreToolUse` hook. It **denies** `grep`/`cat`/`Read`/`Grep` aimed at `.scala` files and points the
-agent at the MCP tools instead — steering files only ask, a hook enforces. It fails open when the
-semantic answer isn't available (no MCP entry, no compiled `*.semanticdb`, no `jq`/`python3`), and
-an explicit `# semantic-fallback: <reason>` marker on a shell command always passes (and is logged
-to `.claude/semantic-fallback.log`).
+For Claude Code there is `.claude/hooks/scala-semantic-guard.sh`, registered as a `PreToolUse` hook.
+It **denies** `grep`/`cat`/`Read`/`Grep` aimed at `.scala` files and points the agent at the MCP
+tools instead — steering files only ask, a hook enforces. It fails open when the semantic answer
+isn't available (no MCP entry, no compiled `*.semanticdb`, no `jq`/`python3`), and an explicit
+`# semantic-fallback: <reason>` marker on a shell command always passes (and is logged to
+`.claude/semantic-fallback.log`).
 
-Skip it with `setup --no-guard` (`-NoGuard` on PowerShell). Rationale and alternatives:
+It is **not installed by default** — it changes how every later agent session in that directory
+reads Scala, so it has to be asked for:
+
+| Flag (PowerShell) | Effect |
+|---|---|
+| `--rwhook-local` (`-RwHookLocal`) | install for this project (`.claude/` in the project) |
+| `--rwhook-user` (`-RwHookUser`) | install for this user (`~/.claude/`), covering every project |
+| `--rw-hook-remove` (`-RwHookRemove`) | remove it from both, leaving the rest of `settings.json` alone |
+
+A plain `setup` run installs nothing, but does keep a hook that is already there up to date.
+Rationale and alternatives:
 [docs/adr/0001-claude-code-guard-hook.md](docs/adr/0001-claude-code-guard-hook.md).
 
 ## Tools

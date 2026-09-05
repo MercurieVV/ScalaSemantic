@@ -35,7 +35,7 @@ class DoctorSuite extends munit.FunSuite:
 
   test("a fresh install without a compiled project is reported as failing open") {
     val root = tempProject("ss-doctor-no-index")
-    runSetup(root)
+    runSetup(root, "--rwhook-local")
 
     val report = LauncherDoctor.inspect(root)
     assert(report.installed, report.lines.mkString("\n"))
@@ -64,7 +64,7 @@ class DoctorSuite extends munit.FunSuite:
   test("a compiled project with the guard installed is healthy") {
     assume(hasJsonReader, "needs jq or python3")
     val root = tempProject("ss-doctor-healthy")
-    runSetup(root)
+    runSetup(root, "--rwhook-local")
     emitSemanticdb(root, "out/core/semanticDbData.dest/classes/META-INF/semanticdb/com/example")
 
     val report = LauncherDoctor.inspect(root)
@@ -75,9 +75,9 @@ class DoctorSuite extends munit.FunSuite:
     assertEquals(report.failures, Vector.empty)
   }
 
-  test("--no-guard is not a failure: nothing is installed, so nothing fails open") {
+  test("no hook is not a failure: nothing is installed, so nothing fails open") {
     val root = tempProject("ss-doctor-optout")
-    runSetup(root, "--no-guard")
+    runSetup(root)
 
     val report = LauncherDoctor.inspect(root)
     assert(!report.installed)
@@ -86,7 +86,7 @@ class DoctorSuite extends munit.FunSuite:
 
   test("a hook body from an older release is reported as stale") {
     val root = tempProject("ss-doctor-stale")
-    runSetup(root)
+    runSetup(root, "--rwhook-local")
     emitSemanticdb(root, "out/core/semanticDbData.dest/classes/META-INF/semanticdb")
     val hook = root.resolve(LauncherGuardHook.HookRelPath)
     // The pre-fix probe: it pruned `out`/`target`, so it never found the index it was looking for.
@@ -107,7 +107,7 @@ class DoctorSuite extends munit.FunSuite:
 
   test("an unregistered hook is reported: the script exists but Claude Code never runs it") {
     val root = tempProject("ss-doctor-unregistered")
-    runSetup(root)
+    runSetup(root, "--rwhook-local")
     emitSemanticdb(root, "out/core/semanticDbData.dest/classes/META-INF/semanticdb")
     Files.writeString(root.resolve(".claude/settings.json"), "{}\n")
 

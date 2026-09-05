@@ -1,7 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
+import com.github.mercurievv.scalasemantic.GuardHookAction
 import com.github.mercurievv.scalasemantic.Launcher
 import com.github.mercurievv.scalasemantic.LauncherGuardHook
+import com.github.mercurievv.scalasemantic.LauncherSetup
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -22,9 +24,9 @@ class GuardHookSuite extends munit.FunSuite:
     root.toFile.nn.deleteOnExit()
     root
 
-  test("setup installs the guard hook and registers it as a PreToolUse hook") {
+  test("--rwhook-local installs the guard hook and registers it as a PreToolUse hook") {
     val root = tempProject("ss-guard-install")
-    runSetup(root)
+    runSetup(root, "--rwhook-local")
 
     val hook = root.resolve(LauncherGuardHook.HookRelPath)
     assert(Files.exists(hook), s"expected $hook")
@@ -40,19 +42,36 @@ class GuardHookSuite extends munit.FunSuite:
     )
   }
 
-  test("--no-guard skips the hook entirely") {
-    val root = tempProject("ss-guard-optout")
-    runSetup(root, "--no-guard")
+  // Installing the hook changes how every later session in that directory reads Scala, so it is
+  // opt-in: a plain `setup` (or the legacy --no-guard) must leave the directory hook-free.
+  test("no guard hook is installed unless one is asked for") {
+    Seq(Seq.empty[String], Seq("--no-guard")).foreach { flags =>
+      val root = tempProject("ss-guard-optout")
+      runSetup(root, flags*)
 
-    assert(!Files.exists(root.resolve(LauncherGuardHook.HookRelPath)))
-    assert(!Files.exists(root.resolve(".claude/settings.json")))
+      assert(!Files.exists(root.resolve(LauncherGuardHook.HookRelPath)), flags.toString)
+      assert(!Files.exists(root.resolve(".claude/settings.json")), flags.toString)
+    }
+  }
+
+  // ...but an install that IS there must keep being upgraded by a plain setup run, or a guard
+  // written by an older launcher silently stays behind forever.
+  test("a plain setup run regenerates a guard hook that is already installed") {
+    val root = tempProject("ss-guard-refresh")
+    runSetup(root, "--rwhook-local")
+    val hook = root.resolve(LauncherGuardHook.HookRelPath)
+    Files.writeString(hook, "#!/bin/sh\n# scala-semantic-guard from an older release\nexit 0\n")
+
+    runSetup(root)
+
+    assertEquals(Files.readString(hook), LauncherGuardHook.script(strictEdits = false))
   }
 
   test("re-running setup neither duplicates nor rewrites the registration") {
     val root = tempProject("ss-guard-idempotent")
-    runSetup(root)
+    runSetup(root, "--rwhook-local")
     val first = Files.readString(root.resolve(".claude/settings.json"))
-    runSetup(root)
+    runSetup(root, "--rwhook-local")
     val second = Files.readString(root.resolve(".claude/settings.json"))
 
     assertEquals(second, first)
@@ -103,6 +122,129 @@ class GuardHookSuite extends munit.FunSuite:
     assertEquals("PreToolUse".r.findAllIn(merged).size, 1, merged)
   }
 
+  // --- user scope, and removal ---------------------------------------------------------------
+
+  test("--rwhook-user installs into the user's own .claude, addressed by absolute path") {
+    val home = tempProject("ss-guard-home")
+    LauncherGuardHook.installUser(home, "claude", strictEdits = false)
+
+    val hook = home.resolve(LauncherGuardHook.HookRelPath)
+    assert(Files.exists(hook), s"expected $hook")
+    assert(Files.isExecutable(hook), s"$hook must be executable")
+
+    val settings = Files.readString(home.resolve(".claude/settings.json"))
+    // $CLAUDE_PROJECT_DIR points at the project being edited, which holds no copy of this script.
+    assert(!settings.contains("CLAUDE_PROJECT_DIR"), settings)
+    assert(settings.contains(hook.toAbsolutePath.normalize().toString), settings)
+    assert(settings.contains(LauncherGuardHook.Matcher), settings)
+  }
+
+  // `--rwhook-user` and `--rw-hook-remove` end up in $HOME, which a test must not touch: drive the
+  // one step that decides where the hook goes, with `home` pointed at a temp directory.
+  private def applyHook(project: Path, home: Path, action: GuardHookAction): Unit =
+    LauncherSetup.applyGuardHook(
+      LauncherSetup.Options(project = project, home = home, client = "claude", guardHook = action)
+    )
+
+  test("--rwhook-user puts the hook in the user's config, and leaves the project alone") {
+    val project = tempProject("ss-guard-user-scope")
+    val home = tempProject("ss-guard-user-home")
+    applyHook(project, home, GuardHookAction.User)
+
+    assert(Files.exists(home.resolve(LauncherGuardHook.HookRelPath)))
+    assert(!Files.exists(project.resolve(LauncherGuardHook.HookRelPath)))
+  }
+
+  test("--rw-hook-remove clears the hook from the project and the user config at once") {
+    val project = tempProject("ss-guard-remove-project")
+    val home = tempProject("ss-guard-remove-home")
+    applyHook(project, home, GuardHookAction.Project)
+    applyHook(project, home, GuardHookAction.User)
+    assert(Files.exists(project.resolve(LauncherGuardHook.HookRelPath)))
+    assert(Files.exists(home.resolve(LauncherGuardHook.HookRelPath)))
+
+    // Which scope an install went into is not something the person uninstalling has to remember.
+    applyHook(project, home, GuardHookAction.Remove)
+
+    assert(!Files.exists(project.resolve(LauncherGuardHook.HookRelPath)))
+    assert(!Files.exists(home.resolve(LauncherGuardHook.HookRelPath)))
+    Seq(project, home).foreach { dir =>
+      assert(!Files.exists(dir.resolve(".claude/settings.json")), dir.toString)
+    }
+  }
+
+  test(
+    "uninstall removes the hook and its registration, and says it found nothing when it did not"
+  ) {
+    val root = tempProject("ss-guard-uninstall")
+    runSetup(root, "--rwhook-local")
+
+    assert(LauncherGuardHook.uninstall(root), "uninstall must report what it removed")
+    assert(!Files.exists(root.resolve(LauncherGuardHook.HookRelPath)))
+    // Nothing this install created is left behind as an empty shell: settings.json held the guard
+    // entry and nothing else, so it goes too.
+    assert(!Files.exists(root.resolve(".claude/settings.json")))
+    assert(!Files.exists(root.resolve(".claude/hooks")))
+
+    assert(!LauncherGuardHook.uninstall(root), "a second uninstall has nothing left to remove")
+  }
+
+  test("removal takes the guard entry and nothing else") {
+    val installed = LauncherGuardHook
+      .mergeSettings(
+        Some(
+          """|{
+             |  "model": "opus",
+             |  "hooks": {
+             |    "PreToolUse": [
+             |      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "other.sh" }] }
+             |    ],
+             |    "PostToolUse": [
+             |      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "log.sh" }] }
+             |    ]
+             |  }
+             |}
+             |""".stripMargin
+        )
+      )
+      .getOrElse(fail("expected the guard entry to be added"))
+
+    val removed = LauncherGuardHook
+      .removeSettings(installed)
+      .getOrElse(fail("expected the guard entry to be removed"))
+
+    assert(!removed.contains("scala-semantic-guard"), removed)
+    assert(removed.contains("\"model\": \"opus\""), removed)
+    assert(removed.contains("other.sh"), removed)
+    assert(removed.contains("log.sh"), removed)
+    // The PreToolUse array still has a tenant, so it stays.
+    assert(removed.contains("PreToolUse"), removed)
+    assertEquals(LauncherGuardHook.removeSettings(removed), None, "nothing left to remove")
+    // And what is left is still the same JSON: re-installing over it settles in one pass.
+    val reinstalled = LauncherGuardHook
+      .mergeSettings(Some(removed))
+      .getOrElse(fail("expected the guard entry to be added back"))
+    assertEquals(LauncherGuardHook.mergeSettings(Some(reinstalled)), None)
+  }
+
+  test("removing the last PreToolUse entry takes the empty scaffolding with it") {
+    val installed = LauncherGuardHook
+      .mergeSettings(Some("""{ "model": "opus" }"""))
+      .getOrElse(fail("expected the guard entry to be added"))
+
+    val removed = LauncherGuardHook
+      .removeSettings(installed)
+      .getOrElse(fail("expected the guard entry to be removed"))
+
+    assert(!removed.contains("PreToolUse"), removed)
+    assert(!removed.contains("hooks"), removed)
+    assert(removed.contains("\"model\": \"opus\""), removed)
+  }
+
+  test("removeSettings leaves a file that never registered the guard alone") {
+    assertEquals(LauncherGuardHook.removeSettings("""{ "model": "opus" }"""), None)
+  }
+
   // --- the standalone installer must ship the same hook ------------------------------------
 
   // The scala-cli installer (scripts/scalasemantic-mcp.scala) was deleted in ADR-0004: it
@@ -135,7 +277,7 @@ class GuardHookSuite extends munit.FunSuite:
     */
   private def guardedProject(name: String): Path =
     val root = tempProject(name)
-    runSetup(root)
+    runSetup(root, "--rwhook-local")
     emitSemanticdb(root, "out/core/semanticDbData.dest/classes/META-INF/semanticdb")
     root
 
@@ -358,7 +500,7 @@ class GuardHookSuite extends munit.FunSuite:
     )
     layouts.foreach { rel =>
       val root = tempProject("ss-guard-index-layout")
-      runSetup(root)
+      runSetup(root, "--rwhook-local")
       emitSemanticdb(root, rel)
       assertEquals(
         hookExit(root, """{"tool_name":"Read","tool_input":{"file_path":"src/Main.scala"}}"""),
@@ -371,7 +513,7 @@ class GuardHookSuite extends munit.FunSuite:
   test("guard fails open when no SemanticDB has been emitted yet") {
     assume(hasJsonReader, "needs jq or python3")
     val root = tempProject("ss-guard-no-index")
-    runSetup(root)
+    runSetup(root, "--rwhook-local")
 
     assertEquals(
       hookExit(root, """{"tool_name":"Read","tool_input":{"file_path":"src/Main.scala"}}"""),

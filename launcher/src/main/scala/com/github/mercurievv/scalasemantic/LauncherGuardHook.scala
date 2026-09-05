@@ -3,8 +3,10 @@ package com.github.mercurievv.scalasemantic
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermission
+import scala.annotation.tailrec
 import scala.jdk.CollectionConverters.*
 import scala.util.Try
+import scala.util.Using
 
 /** Claude Code `PreToolUse` guard hook.
   *
@@ -27,24 +29,84 @@ private[scalasemantic] object LauncherGuardHook:
     */
   val Matcher = "Read|Grep|Glob|Bash|Edit|Write|MultiEdit|mcp__scala-semantic__annotated_source"
 
+  /** Install into a project. The registered command goes through `$CLAUDE_PROJECT_DIR`, so the copy
+    * that runs is always the one sitting next to the sources it guards.
+    */
   def install(project: Path, client: String, strictEdits: Boolean = false): Unit =
-    if claudeSelected(client) then
-      val hook = project.resolve(HookRelPath)
-      Files.createDirectories(hook.getParent)
-      val body = script(strictEdits)
-      val existing = if Files.exists(hook) then Some(Files.readString(hook)) else None
-      if !existing.contains(body) then
-        Files.writeString(hook, body)
-        LauncherMessages.err(s"${if existing.isEmpty then "created" else "updated"} $hook")
-      makeExecutable(hook)
+    if claudeSelected(client) then installAt(project, HookCommand, strictEdits)
 
-      val settings = project.resolve(SettingsRelPath)
-      val current = if Files.exists(settings) then Some(Files.readString(settings)) else None
-      mergeSettings(current) match
-        case Some(merged) =>
-          Files.writeString(settings, merged)
-          LauncherMessages.err(s"registered guard hook in $settings")
-        case None => ()
+  /** Install into `$HOME/.claude`, which Claude Code reads for every project this user opens.
+    * `$CLAUDE_PROJECT_DIR` is no use here -- it points at the project being edited, which has no
+    * copy of the script -- so the user-scope entry carries the absolute path of the user's copy.
+    */
+  def installUser(home: Path, client: String, strictEdits: Boolean = false): Unit =
+    if claudeSelected(client) then installAt(home, quote(home.resolve(HookRelPath)), strictEdits)
+
+  /** Keep an install that is already there current, without creating one: an out-of-date script is
+    * regenerated and an out-of-date matcher widened, so upgrades keep working even though a
+    * directory that never asked for the guard no longer gets one.
+    */
+  def refreshIfInstalled(dir: Path, client: String, strictEdits: Boolean): Unit =
+    if Files.exists(dir.resolve(HookRelPath)) then install(dir, client, strictEdits)
+
+  /** Remove the hook and its registration from `dir/.claude`, leaving every other setting exactly
+    * where it was. `false` when nothing was installed there.
+    */
+  def uninstall(dir: Path): Boolean =
+    val hook = dir.resolve(HookRelPath)
+    val hookRemoved =
+      if Files.exists(hook) then
+        Files.delete(hook)
+        LauncherMessages.err(s"removed $hook")
+        deleteIfEmpty(hook.getParent)
+        true
+      else false
+
+    val settings = dir.resolve(SettingsRelPath)
+    val unregistered =
+      if !Files.exists(settings) then false
+      else
+        removeSettings(Files.readString(settings)) match
+          case Some(updated) =>
+            // A settings file that held nothing but this hook is scaffolding the install created;
+            // leaving `{}` behind would be litter, not a setting anyone chose.
+            if updated.replaceAll("\\s", "") == "{}" then
+              Files.delete(settings)
+              LauncherMessages.err(s"removed $settings (it configured nothing else)")
+            else
+              Files.writeString(settings, updated)
+              LauncherMessages.err(s"unregistered guard hook in $settings")
+            true
+          case None => false
+
+    hookRemoved || unregistered
+
+  private def deleteIfEmpty(dir: Path): Unit =
+    val _ = Try(Using.resource(Files.list(dir))(entries => entries.findAny().isPresent)).map {
+      case false => Files.delete(dir)
+      case true  => ()
+    }
+
+  private def quote(path: Path): String =
+    "\"" + path.toAbsolutePath.normalize().toString + "\""
+
+  private def installAt(dir: Path, command: String, strictEdits: Boolean): Unit =
+    val hook = dir.resolve(HookRelPath)
+    Files.createDirectories(hook.getParent)
+    val body = script(strictEdits)
+    val existing = if Files.exists(hook) then Some(Files.readString(hook)) else None
+    if !existing.contains(body) then
+      Files.writeString(hook, body)
+      LauncherMessages.err(s"${if existing.isEmpty then "created" else "updated"} $hook")
+    makeExecutable(hook)
+
+    val settings = dir.resolve(SettingsRelPath)
+    val current = if Files.exists(settings) then Some(Files.readString(settings)) else None
+    mergeSettings(current, command) match
+      case Some(merged) =>
+        Files.writeString(settings, merged)
+        LauncherMessages.err(s"registered guard hook in $settings")
+      case None => ()
 
   private def claudeSelected(client: String): Boolean =
     client.trim.toLowerCase.replace('_', '-') match
@@ -70,19 +132,19 @@ private[scalasemantic] object LauncherGuardHook:
     * Returns [[None]] when the file already registers the hook, so a re-run of `setup` neither
     * rewrites the file nor appends a duplicate entry.
     */
-  def mergeSettings(existing: Option[String]): Option[String] =
+  def mergeSettings(existing: Option[String], command: String = HookCommand): Option[String] =
     val src = existing.getOrElse("")
     if src.contains(Marker) then upgradeMatcher(src)
-    else if src.trim.isEmpty then Some(freshSettings)
+    else if src.trim.isEmpty then Some(freshSettings(command))
     else
       val rootOpen = src.indexOf('{')
       val rootClose = if rootOpen < 0 then -1 else LauncherConfigMerge.matchBracket(src, rootOpen)
-      if rootClose < 0 then Some(freshSettings)
+      if rootClose < 0 then Some(freshSettings(command))
       else
         val hooksKey = LauncherConfigMerge.findJsonKey(src, rootOpen + 1, rootClose, "hooks")
         if hooksKey < 0 then
           val hadEntries = src.substring(rootOpen + 1, rootClose).trim.nonEmpty
-          val block = s"\n  \"hooks\": {\n    \"PreToolUse\": [\n$entry\n    ]\n  }"
+          val block = s"\n  \"hooks\": {\n    \"PreToolUse\": [\n${entry(command)}\n    ]\n  }"
           val comma = if hadEntries then "," else ""
           Some(src.substring(0, rootOpen + 1) + block + comma + src.substring(rootOpen + 1))
         else
@@ -95,7 +157,10 @@ private[scalasemantic] object LauncherGuardHook:
               LauncherConfigMerge.findJsonKey(src, hooksOpen + 1, hooksClose, "PreToolUse")
             if preKey < 0 then
               val hadEntries = src.substring(hooksOpen + 1, hooksClose).trim.nonEmpty
-              val ins = s"\n    \"PreToolUse\": [\n$entry\n    ]${if hadEntries then "," else ""}"
+              val ins =
+                s"\n    \"PreToolUse\": [\n${entry(command)}\n    ]${
+                    if hadEntries then "," else ""
+                  }"
               Some(src.substring(0, hooksOpen + 1) + ins + src.substring(hooksOpen + 1))
             else
               val arrOpen = src.indexOf('[', src.indexOf(':', preKey))
@@ -104,7 +169,7 @@ private[scalasemantic] object LauncherGuardHook:
               if arrClose < 0 then None
               else
                 val hadEntries = src.substring(arrOpen + 1, arrClose).trim.nonEmpty
-                val ins = s"\n$entry${if hadEntries then "," else ""}"
+                val ins = s"\n${entry(command)}${if hadEntries then "," else ""}"
                 Some(src.substring(0, arrOpen + 1) + ins + src.substring(arrOpen + 1))
 
   /** An install that predates a change to [[Matcher]] carries the old tool list, so the hook would
@@ -122,19 +187,120 @@ private[scalasemantic] object LauncherGuardHook:
       if close < 0 || src.substring(open + 1, close) == Matcher then None
       else Some(src.substring(0, open + 1) + Matcher + src.substring(close))
 
-  private def entry: String =
+  /** The inverse of [[mergeSettings]]: drop the guard's `PreToolUse` entry and nothing else.
+    *
+    * `None` when this file does not register the guard, so an uninstall can tell "removed" from
+    * "there was nothing here". Scaffolding that an install created and this empties -- the
+    * `PreToolUse` array, then the `hooks` object -- goes with it, so what is left is the file as it
+    * was before the install rather than a nest of empty containers.
+    */
+  def removeSettings(src: String): Option[String] =
+    guardEntrySpan(src).map { (from, to) =>
+      pruneEmpty(pruneEmpty(cut(src, from, to), "PreToolUse"), "hooks")
+    }
+
+  /** Bounds of the one `PreToolUse` entry that carries the guard command, `[start, end)`. */
+  private def guardEntrySpan(src: String): Option[(Int, Int)] =
+    val marker = src.indexOf(Marker)
+    if marker < 0 then None
+    else
+      keySpan(src, "PreToolUse").flatMap { (_, _, contentFrom, contentTo) =>
+        if marker < contentFrom || marker > contentTo then None
+        else element(src, contentFrom, contentTo, marker)
+      }
+
+  /** The array element containing `marker`, found by scanning the elements rather than
+    * bracket-matching backwards from it: the marker sits inside a nested object (the `command`
+    * string), and what has to come out is the whole outer entry.
+    */
+  @tailrec
+  private def element(src: String, from: Int, limit: Int, marker: Int): Option[(Int, Int)] =
+    val start = skipWs(src, from)
+    if start >= limit then None
+    else if src.charAt(start) == ',' then element(src, start + 1, limit, marker)
+    else if src.charAt(start) != '{' then None
+    else
+      val end = LauncherConfigMerge.matchBracket(src, start)
+      if end < 0 then None
+      else if marker >= start && marker <= end then Some((start, end + 1))
+      else element(src, end + 1, limit, marker)
+
+  /** `(keyStart, valueEnd, contentStart, contentEnd)` for an object- or array-valued key, at any
+    * nesting depth. Only ever called on a file already known to register the guard, so a *value*
+    * that happens to read `"hooks":` is not a case worth defending against.
+    */
+  private def keySpan(src: String, key: String): Option[(Int, Int, Int, Int)] =
+    val at = findKey(src, key)
+    if at < 0 then None
+    else
+      val colon = src.indexOf(':', at)
+      if colon < 0 then None
+      else
+        val open = skipWs(src, colon + 1)
+        if open >= src.length || (src.charAt(open) != '{' && src.charAt(open) != '[') then None
+        else
+          val close = LauncherConfigMerge.matchBracket(src, open)
+          if close < 0 then None else Some((at, close + 1, open + 1, close))
+
+  private def findKey(src: String, key: String): Int =
+    val target = "\"" + key + "\""
+    @tailrec def loop(i: Int): Int =
+      val at = src.indexOf(target, i)
+      if at < 0 then -1
+      else if src.charAt(skipWs(src, at + target.length)) == ':' then at
+      else loop(at + target.length)
+    loop(0)
+
+  /** Drop `key` when what it holds has become empty. */
+  private def pruneEmpty(src: String, key: String): String =
+    keySpan(src, key) match
+      case Some((from, to, contentFrom, contentTo))
+          if src.substring(contentFrom, contentTo).trim.isEmpty =>
+        cut(src, from, to)
+      case _ => src
+
+  /** Remove `[from, to)` together with the one comma that separated it from its neighbours and the
+    * indentation left stranded on its own line, so what remains is still valid JSON and still looks
+    * hand-written.
+    */
+  private def cut(src: String, from: Int, to: Int): String =
+    val afterWs = skipWs(src, to)
+    val end = if afterWs < src.length && src.charAt(afterWs) == ',' then afterWs + 1 else to
+    // A trailing comma is the separator to take; without one this was the last element, and the
+    // comma that has to go is the one in front of it.
+    val start0 =
+      if end != to then from
+      else
+        val before = backWs(src, from)
+        if before > 0 && src.charAt(before - 1) == ',' then before - 1 else from
+    val lineStart = src.lastIndexOf('\n', start0 - 1)
+    val start =
+      if lineStart >= 0 && src.substring(lineStart + 1, start0).forall(_.isWhitespace) then
+        lineStart
+      else start0
+    src.substring(0, start) + src.substring(end)
+
+  @tailrec
+  private def skipWs(s: String, i: Int): Int =
+    if i < s.length && s.charAt(i).isWhitespace then skipWs(s, i + 1) else i
+
+  @tailrec
+  private def backWs(s: String, i: Int): Int =
+    if i > 0 && s.charAt(i - 1).isWhitespace then backWs(s, i - 1) else i
+
+  private def entry(command: String): String =
     s"""|      {
         |        "matcher": "$Matcher",
         |        "hooks": [
-        |          { "type": "command", "command": "${HookCommand.replace("\"", "\\\"")}" }
+        |          { "type": "command", "command": "${command.replace("\"", "\\\"")}" }
         |        ]
         |      }""".stripMargin
 
-  private def freshSettings: String =
+  private def freshSettings(command: String): String =
     s"""|{
         |  "hooks": {
         |    "PreToolUse": [
-        |$entry
+        |${entry(command)}
         |    ]
         |  }
         |}

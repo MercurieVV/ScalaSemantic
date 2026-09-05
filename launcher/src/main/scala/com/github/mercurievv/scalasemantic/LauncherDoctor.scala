@@ -92,9 +92,10 @@ private[scalasemantic] object LauncherDoctor:
       Check(
         hookBody.isDefined,
         GuardLabel,
-        hookBody.fold(s"missing: $hook (run setup, or --no-guard if that is deliberate)")(_ =>
-          LauncherGuardHook.HookRelPath
-        )
+        hookBody.fold(
+          s"not installed: $hook (install it with `setup --rwhook-local`, or " +
+            "`--rwhook-user` for every project; not having it is a valid choice)"
+        )(_ => LauncherGuardHook.HookRelPath)
       ),
       Check(
         hookBody.forall(isCurrent),
