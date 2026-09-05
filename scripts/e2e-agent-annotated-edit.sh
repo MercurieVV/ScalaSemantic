@@ -100,7 +100,7 @@ cat >"$proj/.claude/settings.json" <<'EOF'
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Read|Grep|Glob|Bash|Edit|Write|MultiEdit",
+        "matcher": "Read|Grep|Glob|Bash|Edit|Write|MultiEdit|mcp__scala-semantic__annotated_source",
         "hooks": [
           { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/scala-semantic-guard.sh" }
         ]
@@ -171,20 +171,40 @@ try jq -e '.message.content[]? | select(.type=="tool_result")
        | select(test("SEM:"))' "$log"
 check $assert_rc "the buffer the agent READ carried /*SEM:...:SEM*/ enrichment"
 
-# The WRITE must have gone back through annotated_source, enrichment still in the payload.
+# Whatever the agent asked for, the buffer it got back must be an editable one. When the call
+# already said format=compilable + sentinel=true there was nothing to upgrade; otherwise the
+# hook's updatedInput rewrite is the only thing that can have produced SEM blocks.
+try jq -e 'select(.type=="assistant") | .message.content[]?
+       | select(.type=="tool_use" and .name=="mcp__scala-semantic__annotated_source")
+       | select(.input | type == "object" and (has("write") | not))
+       | select(.input.format != "compilable" or .input.sentinel != true)' "$log"
+if [ "$assert_rc" = 0 ]; then
+  echo "  i a read asked for a non-buffer format; the hook upgraded it (see SEM check above)"
+fi
+
+# The WRITE must have gone back through annotated_source.
+try jq -e 'select(.type=="assistant") | .message.content[]?
+       | select(.type=="tool_use" and .name=="mcp__scala-semantic__annotated_source")
+       | select(.input | type == "object" and has("write"))' "$log"
+wrote_annotated=$assert_rc
+if [ "$strict_edits" = 1 ]; then
+  check $wrote_annotated "agent WROTE back through annotated_source"
+elif [ "$wrote_annotated" = 0 ]; then
+  check 0 "agent WROTE back through annotated_source"
+else
+  echo "  ~ agent edited without the annotated write path (allowed: guard only reminds;"
+  echo "    re-run with --strict-edits to make this a hard requirement)"
+fi
+
+# Informational, not a failure: the agent may strip the SEM blocks itself before writing.
+# Leaving them in is the intended flow — the server strips them — and it keeps the agent
+# from hand-editing comments it did not author.
 try jq -e 'select(.type=="assistant") | .message.content[]?
        | select(.type=="tool_use" and .name=="mcp__scala-semantic__annotated_source")
        | select((.input.write? // "") | test("SEM:"))' "$log"
-wrote_annotated=$assert_rc
-if [ "$strict_edits" = 1 ]; then
-  check $wrote_annotated "agent WROTE the enriched buffer back through annotated_source"
-else
-  if [ "$wrote_annotated" = 0 ]; then
-    check 0 "agent WROTE the enriched buffer back through annotated_source"
-  else
-    echo "  ~ agent edited without the annotated write path (allowed: guard only reminds;"
-    echo "    re-run with --strict-edits to make this a hard requirement)"
-  fi
+if [ "$wrote_annotated" = 0 ] && [ "$assert_rc" != 0 ]; then
+  echo "  ~ the write payload carried no SEM blocks — the agent stripped them itself rather"
+  echo "    than leaving that to the server (works, but not the intended flow)"
 fi
 
 after_hash=$(shasum -a 256 "$proj/Fixture.scala" | cut -d' ' -f1)
