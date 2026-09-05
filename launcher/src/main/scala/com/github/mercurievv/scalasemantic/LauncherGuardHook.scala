@@ -508,7 +508,7 @@ private[scalasemantic] object LauncherGuardHook:
        |path, so the edit is made against the compiler's view of the file:
        |  1. annotated_source(uri, format="compilable", sentinel=true)
        |     -> the source with inferred types, implicit args and conversions inline as
-       |        blocks (no line-number gutter), plus its sha256
+       |        /*SEM:...:SEM*/ blocks (no line-number gutter), plus its sha256
        |  2. edit that buffer, leaving every SEM block exactly where it is -- they are stripped
        |     for you, and taking them out by hand edits lines your change does not concern
        |  3. annotated_source(uri, write=<edited text>, baseHash=<that sha256>)
@@ -526,7 +526,7 @@ private[scalasemantic] object LauncherGuardHook:
        |ScalaSemantic: editing a Scala source. For an annotation-aware edit, work on the annotated
        |buffer instead of the raw text:
        |  1. annotated_source(uri, format="compilable", sentinel=true)
-       |     -> inferred types, implicit args and conversions inline as blocks
+       |     -> inferred types, implicit args and conversions inline as /*SEM:...:SEM*/ blocks
        |        (no line-number gutter), plus its sha256
        |  2. edit that buffer, leaving every SEM block exactly where it is -- they are stripped
        |     for you, and taking them out by hand edits lines your change does not concern
@@ -552,7 +552,7 @@ private[scalasemantic] object LauncherGuardHook:
        |To EDIT one, read it as a buffer and write that buffer back:
        |  annotated_source(uri, format="compilable", sentinel=true)   -> text + its sha256
        |  annotated_source(uri, write=<edited text>, baseHash=<that sha256>)
-       |     -> the blocks are stripped before the file is saved
+       |     -> the /*SEM:...:SEM*/ blocks are stripped before the file is saved
        |Leave those blocks where they are in the text you send: the server removes them, and
        |removing them yourself edits lines your change does not concern.
        |For anything else, pick the tool that fits the question:
