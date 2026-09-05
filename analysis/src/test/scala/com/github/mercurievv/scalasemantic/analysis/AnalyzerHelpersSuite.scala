@@ -312,3 +312,42 @@ class AnalyzerHelpersSuite extends munit.FunSuite:
       typeSig(lo = NothingT, hi = AnyT, tparams = List(typeParam("T")))
     )
     assertEquals(rendered, "[T] >: Nothing <: Any")
+
+  // --- originalText: splicing inferred type args back into the source slice --------------------
+
+  private val TotalLine = """  val total = sizes(List("a", "bb", "ccc")).sum"""
+  private val TotalLines = IndexedSeq(TotalLine)
+
+  /** The whole `sizes(…).sum` expression: chars 14..47 of [[TotalLine]]. */
+  private val TotalRange = Some(s.Range(0, 14, 0, 47))
+
+  test("originalText splices one type application at the end of its range"):
+    val typeApps = Map((0, 20, 24) -> ".apply[String]") // the `List` qualifier
+    assertEquals(
+      h.originalText(TotalRange, TotalLines, typeApps),
+      """sizes(List.apply[String]("a", "bb", "ccc")).sum"""
+    )
+
+  /** Two type applications where one range ENCLOSES the other: `sizes(…).sum[Int]` starts before
+    * `List.apply[String]` but ends after it. Splicing is done at `end`, so ordering the fold by
+    * start put the inner splice first and shifted the outer index 14 characters to the left —
+    * landing `[Int]` inside a string literal (`"bb[Int]"`) and yielding text that is neither valid
+    * Scala nor true. Ordering by end keeps every index valid.
+    */
+  test("originalText keeps both splices on their marks when one range encloses the other"):
+    val typeApps = Map(
+      (0, 14, 47) -> "[Int]", // the enclosing `sizes(…).sum`
+      (0, 20, 24) -> ".apply[String]" // the nested `List`
+    )
+    assertEquals(
+      h.originalText(TotalRange, TotalLines, typeApps),
+      """sizes(List.apply[String]("a", "bb", "ccc")).sum[Int]"""
+    )
+
+  test("originalText ignores a type application whose range escapes the slice"):
+    val typeApps = Map((0, 20, 99) -> ".apply[String]")
+    assertEquals(h.originalText(TotalRange, TotalLines, typeApps), TotalLine.slice(14, 47))
+
+  test("originalText is empty for a multi-line or absent range"):
+    assertEquals(h.originalText(Some(s.Range(0, 1, 1, 2)), TotalLines, Map.empty), "")
+    assertEquals(h.originalText(None, TotalLines, Map.empty), "")

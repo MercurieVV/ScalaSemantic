@@ -45,7 +45,7 @@ val pi = render(3.14) /*SEM:type: String; elaborated: render[Double](3.14)(using
 val flo = render(1.0f) /*SEM:type: String; elaborated: render[Float](1.0f)(using floatShow):SEM*/
 val out = render(nums) /*SEM:type: String; elaborated: render[List[Int]](nums)(using listShow(using intShow)):SEM*/
 val sorted = nums.sorted /*SEM:type: List[Int]; elaborated: nums.sorted[Int](using Ordering[Int]):SEM*/
-val ranked = List("b" -> 2, "a" -> 1).sortBy(_._1) /*SEM:type: List[Tuple2[String, Int]]; elaborated: List.apply[Tuple2[String, Int]]("b" ->[Int] 2, "a" ->[Int][String] 1).sortBy(_._1)(using Ordering[String]):SEM*/
+val ranked = List("b" -> 2, "a" -> 1).sortBy(_._1) /*SEM:type: List[Tuple2[String, Int]]; elaborated: List.apply[Tuple2[String, Int]]("b" ->[Int] 2, "a" ->[Int] 1).sortBy[String](_._1)(using Ordering[String]):SEM*/
 val labeled = nums.map(n => n -> render(n)) /*SEM:type: List[Tuple2[Int, String]]; elaborated: ArrowAssoc[Int](n); elaborated: render[Int](n)(using intShow):SEM*/
 val total = nums.foldLeft(0)(_ + _) /*SEM:type: Int; nums.foldLeft[Int]:SEM*/
 val ratio: Double = nums.size /*SEM:elaborated: int2double(nums.size):SEM*/

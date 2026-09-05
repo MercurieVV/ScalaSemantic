@@ -45,7 +45,7 @@ val pi = render(3.14)  // ⟹ type: String; render[Double](3.14)(using doubleSho
 val flo = render(1.0f)  // ⟹ type: String; render[Float](1.0f)(using floatShow)
 val out = render(nums)  // ⟹ type: String; render[List[Int]](nums)(using listShow(using intShow))
 val sorted = nums.sorted  // ⟹ type: List[Int]; nums.sorted[Int](using Ordering[Int])
-val ranked = List("b" -> 2, "a" -> 1).sortBy(_._1)  // ⟹ type: List[Tuple2[String, Int]]; List.apply[Tuple2[String, Int]]("b" ->[Int] 2, "a" ->[Int][String] 1).sortBy(_._1)(using Ordering[String])
+val ranked = List("b" -> 2, "a" -> 1).sortBy(_._1)  // ⟹ type: List[Tuple2[String, Int]]; List.apply[Tuple2[String, Int]]("b" ->[Int] 2, "a" ->[Int] 1).sortBy[String](_._1)(using Ordering[String])
 val labeled = nums.map(n => n -> render(n))  // ⟹ type: List[Tuple2[Int, String]]; ArrowAssoc[Int](n); render[Int](n)(using intShow)
 val total = nums.foldLeft(0)(_ + _)  // ⟹ type: Int
 val ratio: Double = nums.size  // ⟹ int2double(nums.size)

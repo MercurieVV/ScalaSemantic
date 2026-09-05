@@ -55,3 +55,26 @@ class SourceSentinelSuite extends munit.FunSuite:
     val lines = Vector("object Foo:", "  def bar = 1", "  val z = 2")
     val notes = List(SourceSentinel.Note(1, "type=Int"), SourceSentinel.Note(2, "type=Int"))
     assertEquals(SourceSentinel.strip(SourceSentinel.inject(lines, notes)), lines)
+
+  test("strip leaves a marker that is string DATA, not an injected block"):
+    // A source may legitimately contain the marker as text. Stripping it wrote the file back as
+    // `val marker = ""` — silent loss of the author's own content, the worst failure this path has.
+    val lines = Vector("""  val marker = "/*SEM:in-a-string:SEM*/"""")
+    assertEquals(SourceSentinel.strip(lines), lines)
+
+  test("strip removes the injected block but keeps an identical-looking one inside a literal"):
+    val lines = Vector("""  val marker = "/*SEM:data:SEM*/" /*SEM:type: String:SEM*/""")
+    assertEquals(SourceSentinel.strip(lines), Vector("""  val marker = "/*SEM:data:SEM*/""""))
+
+  test("strip removes two injected blocks on one line without eating the code between them"):
+    val lines = Vector("val a = 1 /*SEM:x:SEM*/ + f() /*SEM:y:SEM*/")
+    assertEquals(SourceSentinel.strip(lines), Vector("val a = 1 + f()"))
+
+  test("strip is not fooled by an escaped quote before the marker"):
+    val lines = Vector("""  val s = "a\"b" /*SEM:type: String:SEM*/""")
+    assertEquals(SourceSentinel.strip(lines), Vector("""  val s = "a\"b""""))
+
+  test("inject then strip is the identity on a line whose text already contains the marker"):
+    val lines = Vector("""val marker = "/*SEM:data:SEM*/"""")
+    val notes = List(SourceSentinel.Note(0, "type: String"))
+    assertEquals(SourceSentinel.strip(SourceSentinel.inject(lines, notes)), lines)
