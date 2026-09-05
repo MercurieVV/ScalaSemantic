@@ -83,6 +83,14 @@ background_fetch() {
 
 jar_to_run() {
   if [ -n "${SCALASEMANTIC_JAR:-}" ]; then printf '%s' "$SCALASEMANTIC_JAR"; return 0; fi
+  # An explicit version pin is a deliberate, stronger signal than an installed local dev jar, and
+  # always wins over it — only an *unpinned* run defers to the local jar below.
+  if [ -n "${SCALASEMANTIC_VERSION:-}" ]; then
+    tag="$SCALASEMANTIC_VERSION"
+    download_release "$tag" || true
+    jar="$DATA/scalasemantic-mcp-$tag.jar"
+    [ -f "$jar" ] && { printf '%s' "$jar"; return 0; }
+  fi
   # A locally built jar owns the machine while it is installed: no release resolution, no
   # background fetch, so an auto-update cannot silently revert the developer to a release. It wins
   # regardless of mtime — a release downloaded later is still newer, and must not take the slot.

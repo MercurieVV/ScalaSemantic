@@ -452,6 +452,12 @@ private[scalasemantic] object LauncherGuardHook:
        |      then
        |        mode=
        |      fi
+       |      # `git log/show/diff/blame ... -- foo.scala` names the file only as a pathspec/rev
+       |      # filter -- git reads its own object store, not the working-tree source text, so this
+       |      # is not the text-scraping the guard exists to stop.
+       |      if printf '%s' "$command_line" | grep -Eq '(^|[|;&(`]|[[:space:]])git([[:space:]]|$)'; then
+       |        mode=
+       |      fi
        |      # A redirect or in-place edit whose TARGET is the Scala file is a write, not a read --
        |      # and it outranks a reader that appears on the same line (`cat > A.scala`).
        |      if printf '%s' "$command_line" | grep -Eq \
@@ -502,7 +508,7 @@ private[scalasemantic] object LauncherGuardHook:
        |path, so the edit is made against the compiler's view of the file:
        |  1. annotated_source(uri, format="compilable", sentinel=true)
        |     -> the source with inferred types, implicit args and conversions inline as
-       |        /*SEM:...:SEM*/ blocks (no line-number gutter), plus its sha256
+       |        blocks (no line-number gutter), plus its sha256
        |  2. edit that buffer, leaving every SEM block exactly where it is -- they are stripped
        |     for you, and taking them out by hand edits lines your change does not concern
        |  3. annotated_source(uri, write=<edited text>, baseHash=<that sha256>)
@@ -520,7 +526,7 @@ private[scalasemantic] object LauncherGuardHook:
        |ScalaSemantic: editing a Scala source. For an annotation-aware edit, work on the annotated
        |buffer instead of the raw text:
        |  1. annotated_source(uri, format="compilable", sentinel=true)
-       |     -> inferred types, implicit args and conversions inline as /*SEM:...:SEM*/ blocks
+       |     -> inferred types, implicit args and conversions inline as blocks
        |        (no line-number gutter), plus its sha256
        |  2. edit that buffer, leaving every SEM block exactly where it is -- they are stripped
        |     for you, and taking them out by hand edits lines your change does not concern
@@ -546,7 +552,7 @@ private[scalasemantic] object LauncherGuardHook:
        |To EDIT one, read it as a buffer and write that buffer back:
        |  annotated_source(uri, format="compilable", sentinel=true)   -> text + its sha256
        |  annotated_source(uri, write=<edited text>, baseHash=<that sha256>)
-       |     -> the /*SEM:...:SEM*/ blocks are stripped before the file is saved
+       |     -> the blocks are stripped before the file is saved
        |Leave those blocks where they are in the text you send: the server removes them, and
        |removing them yourself edits lines your change does not concern.
        |For anything else, pick the tool that fits the question:
