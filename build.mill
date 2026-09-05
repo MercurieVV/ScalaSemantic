@@ -657,6 +657,9 @@ def checkScalafixFirstParty() = Task.Command {
 def sentinelLeakExclusions: Seq[String] = Seq(
   "analysis/src/test/scala/com/github/mercurievv/scalasemantic/analysis/SourceSentinelSuite.scala",
   "mcp/src/main/scala/com/github/mercurievv/scalasemantic/mcp/McpTools.scala",
+  // The file that defines the marker: its scaladoc shows the marker-as-data case that `strip`
+  // deliberately leaves alone.
+  "analysis/src/main/scala/com/github/mercurievv/scalasemantic/analysis/SourceSentinel.scala",
   // Tool descriptions and guard-hook copy that tell an agent what a sentinel block looks like:
   // deliberate mentions in string literals, not annotated source that escaped stripping.
   "mcp/src/main/scala/com/github/mercurievv/scalasemantic/mcp/Mcp.scala",
