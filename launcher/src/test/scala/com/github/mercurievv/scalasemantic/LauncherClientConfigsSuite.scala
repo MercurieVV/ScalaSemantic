@@ -72,6 +72,33 @@ class LauncherClientConfigsSuite extends munit.FunSuite:
     }
   }
 
+  // `project` and `home` are the same directory on purpose: if user-scope writes were still routed
+  // through project relativization, the command would come out as "./.local/bin/scalasemantic-mcp".
+  test("write under user scope emits an absolute command and writes under home") {
+    withTempProject { home =>
+      val launcher = home.resolve(".local/bin/scalasemantic-mcp")
+      Files.createDirectories(launcher.getParent)
+      Files.writeString(launcher, "#!/bin/sh\n")
+      val opts = LauncherSetup.Options(
+        project = home,
+        client = "claude",
+        command = launcher.toAbsolutePath.toString,
+        scope = LauncherScope.User,
+        home = home
+      )
+      LauncherClientConfigs.write(home, opts)
+      val written = Files.readString(home.resolve(".claude.json"))
+      assert(
+        written.contains(launcher.toAbsolutePath.toString),
+        s"expected the absolute launcher path in a user-scope config, got:\n$written"
+      )
+      assert(
+        !Files.exists(home.resolve(".mcp.json")),
+        "user scope must not write a project .mcp.json"
+      )
+    }
+  }
+
   test("write emits a project-relative command for an in-project absolute launcher path") {
     withTempProject { project =>
       val script = project.resolve("scalasemantic-mcp.sh")

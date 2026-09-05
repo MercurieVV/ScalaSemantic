@@ -243,7 +243,8 @@ class McpPcSuite extends munit.FunSuite:
     processEnv.put("SCALASEMANTIC_TEST_CP", currentRuntimeClasspath)
     processEnv.put("SCALASEMANTIC_LOG_FILE", logFile.toString)
     processEnv.put("SCALASEMANTIC_VERSION", "local")
-    processEnv.put("XDG_CACHE_HOME", cache.toString)
+    // ADR-0004 moved the jar from a cache directory to installed data under SCALASEMANTIC_HOME.
+    processEnv.put("SCALASEMANTIC_HOME", jarCache.toString)
     val process = builder.start()
 
     val initializeReq = ujson.Obj(
@@ -369,7 +370,8 @@ class McpPcSuite extends munit.FunSuite:
     )
     processEnv.put("SCALASEMANTIC_TEST_CP", currentRuntimeClasspath)
     processEnv.put("SCALASEMANTIC_VERSION", "local")
-    processEnv.put("XDG_CACHE_HOME", cache.toString)
+    // ADR-0004 moved the jar from a cache directory to installed data under SCALASEMANTIC_HOME.
+    processEnv.put("SCALASEMANTIC_HOME", jarCache.toString)
     val process = builder.start()
 
     val requests = List(
@@ -505,7 +507,8 @@ class McpPcSuite extends munit.FunSuite:
     processEnv.put("SCALASEMANTIC_TEST_CP", currentRuntimeClasspath)
     processEnv.put("SCALASEMANTIC_LOG_FILE", logFile.toString)
     processEnv.put("SCALASEMANTIC_VERSION", "local")
-    processEnv.put("XDG_CACHE_HOME", cache.toString)
+    // ADR-0004 moved the jar from a cache directory to installed data under SCALASEMANTIC_HOME.
+    processEnv.put("SCALASEMANTIC_HOME", jarCache.toString)
     val process = builder.start()
 
     val initializeReq = ujson.Obj(

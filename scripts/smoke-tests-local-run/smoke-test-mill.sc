@@ -4,7 +4,7 @@
 //> using dep com.lihaoyi::upickle::4.2.1
 
 // End-to-end launcher smoke test for ScalaSemantic MCP server against a real Mill project.
-// Unlike scripts/smoke-test.sh (synthetic scala-cli fixture, PC-backed type_at_position), this
+// Unlike scripts/smoke-tests-local-run/smoke-test.sh (synthetic scala-cli fixture, PC-backed type_at_position), this
 // dogfoods the launcher directly against THIS repo's own build.mill — Mill's own DSL/config code,
 // compiled by Mill's meta-build into out/mill-build/.../wrapped/build_/build.mill.semanticdb — run
 // from the project root, proving index-based tools work against real Mill build-script code (not
@@ -67,7 +67,10 @@ object SmokeTestMill {
       case Some(p) => println(s"Found Mill meta-build SemanticDB for build.mill: $p")
     }
 
-    val cacheDir = Paths.get(sys.env.getOrElse("XDG_CACHE_HOME", sys.env("HOME") + "/.cache"), "scalasemantic-mcp")
+    // ADR-0004: the launcher keeps its jar under SCALASEMANTIC_HOME, not in a cache directory.
+    val cacheDir = Paths.get(
+      sys.env.getOrElse("SCALASEMANTIC_HOME", sys.env("HOME") + "/.local/share/scalasemantic-mcp")
+    )
     Files.createDirectories(cacheDir)
     println("Copying local assembly jar to cache...")
     Files.copy(assemblyJar, cacheDir.resolve("scalasemantic-mcp-local.jar"), StandardCopyOption.REPLACE_EXISTING)

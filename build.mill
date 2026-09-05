@@ -3,7 +3,7 @@
 //| - com.lihaoyi::mill-contrib-buildinfo:$MILL_VERSION
 //| - com.goyeau::mill-scalafix::0.6.0
 //| bspScriptIgnore: [scripts/**, .scala-build/**]
-// scripts/scalasemantic-mcp.scala is a scala-cli script (own `//> using dep`, own .bsp/scala-cli.json
+// scripts/*.sc are scala-cli scripts (own `//> using dep`, own .bsp/scala-cli.json
 // connection) — NOT a Mill module. Without bspScriptIgnore above, Mill's BSP support walks the
 // workspace for loose .java/.scala/.kt files and wraps it in a synthetic single-file module using
 // Mill's OWN build classpath, ignoring the script's using-directives entirely and breaking IDE
@@ -657,6 +657,10 @@ def checkScalafixFirstParty() = Task.Command {
 def sentinelLeakExclusions: Seq[String] = Seq(
   "analysis/src/test/scala/com/github/mercurievv/scalasemantic/analysis/SourceSentinelSuite.scala",
   "mcp/src/main/scala/com/github/mercurievv/scalasemantic/mcp/McpTools.scala",
+  // Tool descriptions and guard-hook copy that tell an agent what a sentinel block looks like:
+  // deliberate mentions in string literals, not annotated source that escaped stripping.
+  "mcp/src/main/scala/com/github/mercurievv/scalasemantic/mcp/Mcp.scala",
+  "launcher/src/main/scala/com/github/mercurievv/scalasemantic/LauncherGuardHook.scala",
   "mcp/src/test/resources/docs-golden/annotated_source_enrich_sentinel.scala",
   "mcp/src/test/scala/com/github/mercurievv/scalasemantic/mcp/AnnotatedSourceWriteSuite.scala"
 )
@@ -679,10 +683,75 @@ def checkNoSentinelLeak() = Task.Command {
   }
 }
 
+// Local development channel: build the fat jar and make it THE installed server on this machine.
+// The `-local` suffix is the channel marker the launcher keys on — while such a jar exists it does
+// no release resolution and no background fetch, so an auto-update cannot revert the developer to
+// a release. `scalasemantic-mcp --use-release` removes it. See ADR-0005.
+//
+//   ./mill installLocal                  # jar + launcher + MCP client configs
+//   ./mill installLocal --skip-clients   # jar + launcher only, leave client configs alone
+def installLocal(skipClients: mainargs.Flag) = Task.Command {
+  val jar = mcp.assembly().path
+  val version = publishVersion()
+
+  // Task.env, not sys.env: the Mill daemon outlives any one invocation, so sys.env is whatever
+  // environment happened to start it. Task.env is the calling client's, which is what BIN_DIR and
+  // SCALASEMANTIC_HOME must be read from.
+  val env = Task.env
+  val home = os.Path(env.getOrElse("HOME", sys.error("HOME is not set")))
+  val binDir = env.get("BIN_DIR").map(os.Path(_, os.pwd)).getOrElse(home / ".local" / "bin")
+  val dataDir = env
+    .get("SCALASEMANTIC_HOME")
+    .map(os.Path(_, os.pwd))
+    .getOrElse(home / ".local" / "share" / "scalasemantic-mcp")
+
+  os.makeDir.all(binDir)
+  os.makeDir.all(dataDir)
+
+  // Same destination the launcher's own self_install uses, so a machine installed via the curl
+  // one-liner is upgraded in place instead of gaining a second binary.
+  val launcher = binDir / "scalasemantic-mcp"
+  os.copy.over(build.moduleDir / "scripts" / "scalasemantic-mcp.sh", launcher)
+  os.perms.set(launcher, "rwxr-xr-x")
+
+  // Exactly one local jar at a time: "which local build is active" must have one answer.
+  os.list(dataDir).filter(_.last.endsWith("-local.jar")).foreach(os.remove)
+  val localJar = dataDir / s"scalasemantic-mcp-$version-local.jar"
+  os.copy.over(jar, localJar)
+
+  if (!skipClients.value) {
+    // Client configs, SemanticDB setup and the guard hook stay in the launcher/ module inside the
+    // jar. This task adds no install logic of its own.
+    val res = os
+      .proc("java", "-jar", localJar.toString, "install", "--scope", "user")
+      .call(
+        cwd = build.moduleDir,
+        env = Map(
+          "SCALASEMANTIC_JAR" -> localJar.toString,
+          "SCALASEMANTIC_LAUNCHER" -> launcher.toString
+        ),
+        stdout = os.Inherit,
+        stderr = os.Inherit,
+        check = false
+      )
+    if (res.exitCode != 0) {
+      sys.error(
+        s"`install --scope user` failed with exit status ${res.exitCode}. The launcher " +
+          s"($launcher) and jar ($localJar) ARE installed; only MCP client configuration " +
+          "failed. Re-running `./mill installLocal` is safe."
+      )
+    }
+  }
+
+  println(s"installed launcher: $launcher")
+  println(s"installed jar:      $localJar")
+  println("restart your MCP clients to pick it up; `scalasemantic-mcp --use-release` reverts")
+}
+
 def smokeTest() = Task.Command {
   mcp.assembly()
 
-  val scalaCliScript = build.moduleDir / "scripts" / "smoke-test.sh"
+  val scalaCliScript = build.moduleDir / "scripts" / "smoke-tests-local-run" / "smoke-test.sh"
   val scalaCliRes = os
     .proc("sh", scalaCliScript.toString)
     .call(
@@ -695,7 +764,7 @@ def smokeTest() = Task.Command {
     sys.error(s"E2E Smoke Test (scala-cli fixture) failed with exit status ${scalaCliRes.exitCode}")
   }
 
-  val millScript = build.moduleDir / "scripts" / "smoke-test-mill.sc"
+  val millScript = build.moduleDir / "scripts" / "smoke-tests-local-run" / "smoke-test-mill.sc"
   val millRes = os
     .proc("scala-cli", "run", "--server=false", millScript.toString)
     .call(
@@ -708,7 +777,8 @@ def smokeTest() = Task.Command {
     sys.error(s"E2E Smoke Test (Mill project) failed with exit status ${millRes.exitCode}")
   }
 
-  val scriptsScript = build.moduleDir / "scripts" / "smoke-test-scripts.sc"
+  val scriptsScript =
+    build.moduleDir / "scripts" / "smoke-tests-local-run" / "smoke-test-scripts.sc"
   val scriptsRes = os
     .proc("scala-cli", "run", "--server=false", scriptsScript.toString)
     .call(
@@ -721,6 +791,22 @@ def smokeTest() = Task.Command {
     sys.error(
       s"E2E Smoke Test (standalone scripts/ scala-cli scripts) failed with exit status ${scriptsRes.exitCode}"
     )
+  }
+
+  // Launcher-only half of the local channel tests (ADR-0005): hermetic, no network, no auth. Its
+  // `with-mill` half re-enters Mill and so is deliberately left out of this task.
+  val localChannelScript =
+    build.moduleDir / "scripts" / "smoke-tests-local-run" / "test-local-channel.sc"
+  val localChannelRes = os
+    .proc("scala-cli", "run", "--server=false", localChannelScript.toString)
+    .call(
+      cwd = build.moduleDir,
+      stdout = os.Inherit,
+      stderr = os.Inherit,
+      check = false
+    )
+  if (localChannelRes.exitCode != 0) {
+    sys.error(s"local channel test failed with exit status ${localChannelRes.exitCode}")
   }
 }
 

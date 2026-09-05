@@ -38,7 +38,7 @@ rename-plan, move-plan, extract-method-plan.
 - Result types are `upickle` case classes with derived `ReadWriter`.
 - Validate every feature by dogfooding against this repo's own SemanticDB.
 - New scripts under `scripts/` should preferably be written as scala-cli scripts (`.sc`, `#!/usr/bin/env scala-cli`
-  shebang, `//> using scala 3.8.4`), not shell — see `scripts/smoke-test-mill.sc` or `scripts/compare_grep.sc` for
+  shebang, `//> using scala 3.8.4`), not shell — see `scripts/smoke-tests-local-run/smoke-test-mill.sc` or `scripts/compare_grep.sc` for
   the house style. Plain `.sh` remains fine for thin wrappers/glue that only shell out to other tools.
 
 ## LLM task design

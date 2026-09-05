@@ -11,30 +11,23 @@ Works with Scala 2.13.* and 3.*.*, any sbt/Mill/Gradle project, and any MCP-comp
 
 ## Quick setup
 
-Needs only `java` (no sbt, no Scala CLI). Install the launcher once — it's shared across every
-project on the machine, not copied per-project — then run `setup` from the project you want to
-analyze. `setup` idempotently enables SemanticDB, writes the agent steering files, and merges an
-MCP server entry into every client config it finds — re-running is always safe:
+Needs only `java` (no sbt, no Scala CLI). One command, nothing to run per project — this registers
+the MCP server for your user, so every Scala project on the machine has it:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/install.sh | sh
-cd /path/to/your-project && scalasemantic-mcp setup
+curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.sh | sh
 ```
 
-Prefer a launcher version pinned inside the project instead of a shared machine-wide binary?
+Or install into a single project, so the launcher and config can be committed for your team. Run
+from the project root — this mode also enables SemanticDB in the build, writes the agent steering
+files and installs the Claude guard hook. It is idempotent; re-running is always safe:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.sh -o scalasemantic-mcp.sh && chmod +x scalasemantic-mcp.sh && ./scalasemantic-mcp.sh setup
+curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.sh | sh -s -- --project
 ```
 
 ```powershell
 iwr https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.ps1 -OutFile scalasemantic-mcp.ps1; .\scalasemantic-mcp.ps1 setup
-```
-
-If you already have Scala CLI installed, the equivalent `setup` is also available as a script:
-
-```sh
-scala-cli https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.scala setup
 ```
 
 ### Guard hook (Claude Code)

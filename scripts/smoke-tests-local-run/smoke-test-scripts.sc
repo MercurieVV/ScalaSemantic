@@ -5,8 +5,8 @@
 
 // End-to-end launcher smoke test proving ScalaSemantic MCP tools work against this repo's own
 // standalone scala-cli scripts under scripts/ (e.g. smoke-test-mill.sc itself) — a THIRD kind of
-// target distinct from scripts/smoke-test.sh (synthetic scala-cli fixture, PC-backed) and
-// scripts/smoke-test-mill.sc (Mill's own build.mill DSL code). Run from the project root.
+// target distinct from scripts/smoke-tests-local-run/smoke-test.sh (synthetic scala-cli fixture, PC-backed) and
+// scripts/smoke-tests-local-run/smoke-test-mill.sc (Mill's own build.mill DSL code). Run from the project root.
 //
 // Key discovery this test locks in: scala-cli writes semanticdb under the HIDDEN
 // scripts/.scala-build/ directory. SemanticIndex.fromProject skips hidden directories while
@@ -39,9 +39,10 @@ object SmokeTestScripts {
   }
 
   def main(args: Array[String]): Unit = {
-    // Must be run from the repo root (scripts/ is a direct child).
+    // Must be run from the repo root. The target script lives in scripts/smoke-tests-local-run/ alongside
+    // this one; its SemanticDB lands in that directory's own .scala-build.
     val repoRoot = Paths.get(".").toAbsolutePath.normalize()
-    val scriptsDir = repoRoot.resolve("scripts")
+    val scriptsDir = repoRoot.resolve("scripts/smoke-tests-local-run")
     if (!Files.isDirectory(scriptsDir)) {
       System.err.println(s"Error: $scriptsDir does not exist — run this script from the repo root.")
       sys.exit(1)

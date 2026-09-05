@@ -117,30 +117,62 @@ Each release publishes both a self-contained fat jar attached to the [GitHub Rel
 
 ## Three ways to launch
 
-| | B — global install (default, see [ADR-0003](../adr/0003-global-install-default-and-root-discovery.md)) | A — Scala CLI remote script | C — plain `java -jar` |
+One script serves both installs; see
+[ADR-0004](../adr/0004-single-launcher-script-and-user-scope-install.md).
+
+| | User scope (default) | Project scope (`--project`) | Plain `java -jar` |
 |---|---|---|---|
-| Get the jar | one shared launcher + jar cache for the whole machine | scala-cli/coursier resolve + cache the published artifact | you download once |
-| Write client config | `scalasemantic-mcp setup` (run from the project) | `scala-cli ... setup` | by hand |
-| Enable SemanticDB | you add one line | script creates sbt config if missing | you add one line |
-| Stays up to date | yes | yes (`latest.release`) | manual |
-| Works with | any build tool | any build tool with Scala CLI installed | any build tool |
+| Command | `curl … \| sh` | `curl … \| sh -s -- --project` | you download the jar |
+| Launcher | `~/.local/bin/scalasemantic-mcp` | `./scalasemantic-mcp.sh`, committable | none |
+| Jar | `~/.local/share/scalasemantic-mcp/`, shared | same shared directory | you manage it |
+| Client config | per-user, every project at once | per-project, committable | by hand |
+| Enables SemanticDB / rules / guard hook | no | yes | no |
+| `command` written | absolute | relative (ADR-0002) | absolute |
+| Stays up to date | yes | yes | manual |
+
+Pick **user** unless you want the launcher version pinned and the config committed with the repo, or
+you use Cline or Roo (which have no user-level config location this installer can write). Pick
+**project** for a repo that has not been set up for SemanticDB yet — only that mode configures the
+build, writes `SCALA_SEMANTIC_RULES.md` and installs the Claude guard hook.
 
 ### Option B — auto-download launcher (default)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/install.sh | sh
+# user scope
+curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.sh | sh
+
+# project scope, from the project root
+curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.sh | sh -s -- --project
 ```
 
-Installs the launcher to `~/.local/bin/scalasemantic-mcp`, shared by every project on the machine.
-It downloads and caches the fat jar from GitHub Releases (uses coursier if available). Pin a
-version with `SCALASEMANTIC_VERSION=vX.Y.Z`.
+Piped to `sh` the script cannot resolve its own path, so it installs a copy of itself to the target
+location and re-execs it — one URL, both flows. It then downloads and caches the fat jar from GitHub
+Releases. Pin a version with `SCALASEMANTIC_VERSION=vX.Y.Z`; move the jar directory with
+`SCALASEMANTIC_HOME`; move the user-scope launcher with `BIN_DIR`.
 
-Run `setup` from the project you want to analyze so it writes that project's client config:
+To (re-)register later without reinstalling:
 
 ```sh
-cd /path/to/your-project
-scalasemantic-mcp setup --client all
+scalasemantic-mcp setup --scope user                     # or: --scope project, from the project
+scalasemantic-mcp setup --scope project --client claude  # one client only
 ```
+
+Config file written per client and scope:
+
+| client | project scope | user scope |
+|---|---|---|
+| claude | `.mcp.json` | `~/.claude.json` |
+| codex | `.codex/config.toml` | `~/.codex/config.toml` |
+| gemini | `.gemini/settings.json` | `~/.gemini/settings.json` |
+| continue | `.continue/config.yaml` | `~/.continue/config.yaml` |
+| antigravity | `.agents/mcp_config.json` | `~/.gemini/config/mcp_config.json` |
+| cline | `.cline/mcp.json` | — skipped, no known location |
+| roo | `.roo/mcp.json` | — skipped, no known location |
+
+> **Codex caveat.** `codex` loads config from `~/.codex/config.toml`, overridable only via
+> `$CODEX_HOME`; it does not discover a project-local `.codex/config.toml`. The project-scope file is
+> written but not read — use the user scope for Codex, or point `CODEX_HOME` at the project's
+> `.codex` directory.
 
 Or register manually — run from inside the project so the client's own cwd = project root:
 
@@ -155,41 +187,21 @@ Or register manually — run from inside the project so the client's own cwd = p
 }
 ```
 
-Since `command` is a single machine-wide binary (not something living inside the project), the
+Since `command` may be a single machine-wide binary (not something living inside the project), the
 server validates that `.` (the default root) actually looks like a Scala project before trusting it
 — see [ADR-0003](../adr/0003-global-install-default-and-root-discovery.md). If your build tool uses
 none of the recognized markers (`build.mill`, `build.sbt`, `pom.xml`, `build.gradle[.kts]`,
 `project/build.properties`, `project.scala`), either add one or set
 `SCALASEMANTIC_SKIP_ROOT_CHECK=1`.
 
-### Option A — Scala CLI remote script
+### Launching from a directory that is not a Scala project
 
-If `scala-cli` is already installed, one command can configure a project without installing a
-separate launcher:
-
-```sh
-scala-cli https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.scala -- setup --client claude
-```
-
-Use `--client codex`, `gemini`, `cline`, `roo`, `continue`, `antigravity`, `generic-json`, or
-`all`. The script writes/merges the MCP client config, creates `SCALA_SEMANTIC_RULES.md`, creates a
-small `scala-semantic.sbt` file with `semanticdbEnabled := true` when it finds an sbt project that
-does not already configure SemanticDB, and registers this command:
-
-```sh
-scala-cli run --dependency "io.github.mercurievv::scalasemantic-mcp:latest.release" \
-  --main-class com.github.mercurievv.scalasemantic.mcpServer \
-  -- .
-```
-
-The MCP client runs that command over stdio. Note this does **not** invoke the setup script itself —
-the generated config skips it entirely so that every server launch (which happens far more often than
-`setup`, e.g. on every editor restart) is just a coursier-cached jar load: no network fetch, no
-recompile. The dependency version is `latest.release`, a coursier magic version that always
-re-resolves to the newest published release.
-
-To pin a specific version instead of `latest.release`, edit `ServerDependency` in a local copy of the
-script and re-run `setup`.
+A user-scope registration means MCP clients start the server in your Python, Node and docs repos
+too. Nothing breaks: the server connects, `tools/list` returns the full set, and each tool call
+answers `could not detect a Scala project root at or above …` instead of a confident empty result.
+Fix it in band with `set_workspace_root`, or launch with an explicit root
+(`scalasemantic-mcp serve /path/to/project`). This replaces the earlier behaviour of exiting at
+startup — see [ADR-0004](../adr/0004-single-launcher-script-and-user-scope-install.md).
 
 ### Worktrees and cwd changes
 
@@ -219,6 +231,29 @@ Download `scalasemantic-mcp.jar` from the [latest release](https://github.com/Me
 ```
 
 > Do not use `runMain` (sbt or Mill) — it writes build logs to stdout and corrupts the JSON-RPC stream. To build the jar locally: `./mill mcp.assembly`.
+
+## Developing on ScalaSemantic
+
+To run your own build of the server in every project on your machine:
+
+```bash
+./mill installLocal
+```
+
+This builds the fat jar, installs the launcher to `~/.local/bin/scalasemantic-mcp`, places the jar
+as the single `*-local.jar` in `~/.local/share/scalasemantic-mcp/`, and configures your MCP clients
+through the same code path the release install uses. Restart your MCP clients to pick it up.
+
+While a local jar is installed the launcher never resolves or downloads a release, so an
+auto-update cannot revert you mid-change. Go back to releases with:
+
+```bash
+scalasemantic-mcp --use-release
+```
+
+`./mill installLocal --skip-clients` installs the jar and launcher without touching client configs —
+useful once your configs are already written. `BIN_DIR` and `SCALASEMANTIC_HOME` override both
+destinations. See [ADR-0005](../adr/0005-local-jar-channel.md).
 
 ## Logging
 
@@ -277,7 +312,7 @@ If you import your project and live-buffer typechecking is not working (e.g., yo
    ```sh
    ./mill scalaSemanticWriteClasspath
    ```
-3. **For Scala CLI projects:** Re-run the setup command to regenerate the classpath metadata:
+3. **For Scala CLI projects:** Re-run setup to regenerate the classpath metadata:
    ```sh
-   scala-cli https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.scala -- setup --client <your-client>
+   scalasemantic-mcp setup --scope project --client <your-client>
    ```

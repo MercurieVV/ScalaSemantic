@@ -53,6 +53,18 @@ class McpSuite extends munit.FunSuite:
     assert(instr.contains("find_symbol"), instr)
   }
 
+  test("initialize instructions describe the annotation-aware edit path") {
+    val r = Mcp.handle(req("initialize", ujson.Obj("protocolVersion" -> "2025-06-18")), tools).get
+    val instr = r("result")("instructions").str
+    // Reading annotated is already covered above; editing is the part agents never find.
+    assert(instr.contains("sentinel"), instr)
+    // sentinel alone keeps the line-number gutter, which write mode does not strip — the writable
+    // buffer is the compilable+sentinel pair, so the prompt must say so.
+    assert(instr.contains("compilable"), instr)
+    assert(instr.contains("write"), instr)
+    assert(instr.contains("baseHash"), instr)
+  }
+
   test("tools/list exposes all tools with schemas") {
     val r = Mcp.handle(req("tools/list", ujson.Obj()), tools).get
     val names = r("result")("tools").arr.map(_("name").str).toSet
