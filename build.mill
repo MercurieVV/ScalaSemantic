@@ -657,6 +657,10 @@ def checkScalafixFirstParty() = Task.Command {
 def sentinelLeakExclusions: Seq[String] = Seq(
   "analysis/src/test/scala/com/github/mercurievv/scalasemantic/analysis/SourceSentinelSuite.scala",
   "mcp/src/main/scala/com/github/mercurievv/scalasemantic/mcp/McpTools.scala",
+  // Tool descriptions and guard-hook copy that tell an agent what a sentinel block looks like:
+  // deliberate mentions in string literals, not annotated source that escaped stripping.
+  "mcp/src/main/scala/com/github/mercurievv/scalasemantic/mcp/Mcp.scala",
+  "launcher/src/main/scala/com/github/mercurievv/scalasemantic/LauncherGuardHook.scala",
   "mcp/src/test/resources/docs-golden/annotated_source_enrich_sentinel.scala",
   "mcp/src/test/scala/com/github/mercurievv/scalasemantic/mcp/AnnotatedSourceWriteSuite.scala"
 )
