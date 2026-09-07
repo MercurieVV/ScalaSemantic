@@ -27,7 +27,10 @@ object Show:
 // `[A: Show]` again — the using-param and the `Show[A]` summon are both invisible in the text
 def render[A: Show](a: A): String = Show[A].show(a) /*SEM:elaborated: Show[A](using Show[A]):SEM*/
 
-extension (n: Int) def shown(using Show[Int]): String = render(n) /*SEM:elaborated: render[Int](n)(using Show[Int]):SEM*/
+extension (n: Int)
+  def shown(using Show[Int]): String = render(
+    n
+  ) /*SEM:elaborated: render[Int](n)(using Show[Int]):SEM*/
 
 object Instances:
   given doubleShow: Show[Double] with
@@ -43,10 +46,17 @@ import Instances.given
 val nums = List(1, 2, 3) /*SEM:type: List[Int]; elaborated: List.apply[Int](1, 2, 3):SEM*/
 val pi = render(3.14) /*SEM:type: String; elaborated: render[Double](3.14)(using doubleShow):SEM*/
 val flo = render(1.0f) /*SEM:type: String; elaborated: render[Float](1.0f)(using floatShow):SEM*/
-val out = render(nums) /*SEM:type: String; elaborated: render[List[Int]](nums)(using listShow(using intShow)):SEM*/
-val sorted = nums.sorted /*SEM:type: List[Int]; elaborated: nums.sorted[Int](using Ordering[Int]):SEM*/
-val ranked = List("b" -> 2, "a" -> 1).sortBy(_._1) /*SEM:type: List[Tuple2[String, Int]]; elaborated: List.apply[Tuple2[String, Int]]("b" ->[Int] 2, "a" ->[Int] 1).sortBy[String](_._1)(using Ordering[String]):SEM*/
-val labeled = nums.map(n => n -> render(n)) /*SEM:type: List[Tuple2[Int, String]]; elaborated: ArrowAssoc[Int](n); elaborated: render[Int](n)(using intShow):SEM*/
+val out = render(
+  nums
+) /*SEM:type: String; elaborated: render[List[Int]](nums)(using listShow(using intShow)):SEM*/
+val sorted =
+  nums.sorted /*SEM:type: List[Int]; elaborated: nums.sorted[Int](using Ordering[Int]):SEM*/
+val ranked = List("b" -> 2, "a" -> 1).sortBy(
+  _._1
+) /*SEM:type: List[Tuple2[String, Int]]; elaborated: List.apply[Tuple2[String, Int]]("b" ->[Int] 2, "a" ->[Int] 1).sortBy[String](_._1)(using Ordering[String]):SEM*/
+val labeled = nums.map(n =>
+  n -> render(n)
+) /*SEM:type: List[Tuple2[Int, String]]; elaborated: ArrowAssoc[Int](n); elaborated: render[Int](n)(using intShow):SEM*/
 val total = nums.foldLeft(0)(_ + _) /*SEM:type: Int; nums.foldLeft[Int]:SEM*/
 val ratio: Double = nums.size /*SEM:elaborated: int2double(nums.size):SEM*/
 val shownFive = 5.shown /*SEM:type: String; elaborated: 5.shown(using intShow):SEM*/
@@ -54,4 +64,6 @@ val firstTwo = /*SEM:type: Option[String]:SEM*/
   for
     a <- nums.headOption
     b <- sorted.headOption
-  yield render(a) + render(b) /*SEM:elaborated: render[Int](a)(using intShow); elaborated: render[Int](b)(using intShow):SEM*/
+  yield render(a) + render(
+    b
+  ) /*SEM:elaborated: render[Int](a)(using intShow); elaborated: render[Int](b)(using intShow):SEM*/
