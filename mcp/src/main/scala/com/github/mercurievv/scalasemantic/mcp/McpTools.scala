@@ -11,6 +11,7 @@ import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 import upickle.default.ReadWriter
 
 import scala.jdk.CollectionConverters.*
+import scala.meta.internal.semanticdb.Scala.*
 
 /** One `search_text` hit: a plain (not symbol-resolved) match of the query on `line` (0-based) of
   * `uri`, with the full matching line's text.
