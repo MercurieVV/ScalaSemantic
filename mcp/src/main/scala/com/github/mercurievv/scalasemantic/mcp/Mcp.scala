@@ -165,7 +165,7 @@ object Mcp:
       |    contextLines param returns surrounding source lines; for a case class it also
       |    returns construction/copy/accessor sites under `related`)
       |  subtypes / supertypes / implementers of a type       → class_hierarchy
-      |  a method's signature / parameters / return           → method_signature
+      |  a def/val/var's signature / params / return          → method_signature
       |  the overloads of a method                            → find_overloads
       |  members a type declares vs. inherits                 → members
       |  which givens/implicits apply, the implicit chain     → resolve_implicits, trace_implicit_chain

@@ -37,6 +37,16 @@ final class Analyzer(
     */
   def isIndexEmpty: Boolean = index.documents.isEmpty
 
+  /** True when the index holds a compiled document for `uri` — distinguishes "file not
+    * compiled/indexed" from "compiled but nothing matched" without running the query.
+    */
+  def isDocumentIndexed(uri: DocumentUri): Boolean = index.document(uri.value).isDefined
+
+  /** True when the index holds a `SymbolInformation` for `symbol` (any kind) — for callers that
+    * need to tell "wrong kind of symbol" apart from "no such symbol at all".
+    */
+  def hasSymbol(symbol: String): Boolean = index.info(symbol).isDefined
+
   /** An analyzer whose index has `code` (the live contents of the file at `fileUri`) overlaid via
     * the presentation compiler, the overlaid document keyed by `docUri` so it replaces the matching
     * disk document. `fileUri` must point at a real on-disk path (the PC reads `code`, but needs a
@@ -863,28 +873,51 @@ final class Analyzer(
   def methodSignature(symbol: MethodSymbol): Option[MethodSignature] =
     methodSignatureOf(symbol.value)
 
+  /** Full signature of a term that is a `def`, `val` or `var` — the union `method_signature`
+    * accepts, since a caller pointing at an identifier with a symbol often does not know (or care)
+    * which keyword declared it. A method renders exactly as [[methodSignature]]; a value renders
+    * its resolved type as `val <name>: <T>` (or `var` / `lazy val`, from the symbol's property
+    * flags) with empty type-parameter/parameter lists, so the result's wire shape matches a
+    * method's.
+    */
+  def methodOrTermSignature(symbol: MethodOrTermSymbol): Option[MethodSignature] =
+    methodSignatureOf(symbol.value)
+
   private def methodSignatureOf(sym: String): Option[MethodSignature] =
-    index.info(sym).map(_.signature).collect { case m: s.MethodSignature =>
+    index.info(sym).flatMap { info =>
       val name = index.displayName(sym)
-      val tparams = h.scopeInfos(m.typeParameters).map(_.displayName).toList
-      val plists = m.parameterLists.map { scope =>
-        val params = h
-          .scopeInfos(Some(scope))
-          .map { p =>
-            Parameter(p.displayName, h.renderType(h.valueType(p)), h.isImplicit(p))
-          }
-          .toList
-        ParameterList(params, params.nonEmpty && params.forall(_.isImplicit))
-      }.toList
-      val ret = h.renderType(m.returnType)
-      MethodSignature(
-        sym,
-        name,
-        tparams,
-        plists,
-        ret,
-        h.renderMethod(name, tparams, plists, ret)
-      )
+      info.signature match
+        case m: s.MethodSignature =>
+          val tparams = h.scopeInfos(m.typeParameters).map(_.displayName).toList
+          val plists = m.parameterLists.map { scope =>
+            val params = h
+              .scopeInfos(Some(scope))
+              .map { p =>
+                Parameter(p.displayName, h.renderType(h.valueType(p)), h.isImplicit(p))
+              }
+              .toList
+            ParameterList(params, params.nonEmpty && params.forall(_.isImplicit))
+          }.toList
+          val ret = h.renderType(m.returnType)
+          Some(
+            MethodSignature(
+              sym,
+              name,
+              tparams,
+              plists,
+              ret,
+              h.renderMethod(name, tparams, plists, ret)
+            )
+          )
+        case v: s.ValueSignature =>
+          val props = info.properties
+          val keyword =
+            if (props & s.SymbolInformation.Property.VAR.value) != 0 then "var"
+            else if (props & s.SymbolInformation.Property.LAZY.value) != 0 then "lazy val"
+            else "val"
+          val tpe = h.renderType(v.tpe)
+          Some(MethodSignature(sym, name, Nil, Nil, tpe, s"$keyword $name: $tpe"))
+        case _ => None
     }
 
   // --- class-hierarchy ------------------------------------------------------

@@ -1027,6 +1027,44 @@ class McpSuite extends munit.FunSuite:
     assertEquals(full("parameterLists").arr.last("implicit").bool, true)
   }
 
+  test("method_signature renders a val's signature from its term symbol (no def needed)") {
+    // A caller pointing at an identifier with its SemanticDB symbol does not know (or care) whether
+    // it was declared `def` or `val` — the tool must answer either (regression: the val symbol used
+    // to be misdiagnosed as a file path and rejected with "file not indexed").
+    val first = "com/github/mercurievv/scalasemantic/fixtures/OrderUses.first."
+    val lean = call("method_signature", ujson.Obj("symbol" -> first))
+    assertEquals(lean("signature").str, "val first: Order")
+    assert(!lean.obj.contains("parameterLists"), "lean result must not expand parameter lists")
+
+    val full = call("method_signature", ujson.Obj("symbol" -> first, "detailed" -> true))
+    assertEquals(full("returnType").str, "Order")
+    assert(!full.obj.contains("parameterLists"), full.render())
+    assert(!full.obj.contains("typeParameters"), full.render())
+  }
+
+  test("method_signature reports a type symbol as a type, not a method or value") {
+    val e = intercept[Exception](call("method_signature", ujson.Obj("symbol" -> Animal)))
+    assert(e.getMessage.contains("symbol is a type, not a method or value"), e.getMessage)
+  }
+
+  test("method_signature reports a missing symbol as not found in the index, not as a file") {
+    val missing = "com/github/mercurievv/scalasemantic/fixtures/NoSuchThing#"
+    val e = intercept[Exception](call("method_signature", ujson.Obj("symbol" -> missing)))
+    assert(e.getMessage.contains("symbol not found in index"), e.getMessage)
+    assert(!e.getMessage.contains("file not indexed"), e.getMessage)
+  }
+
+  test("find_overloads reports a val symbol as a term, not a method") {
+    val first = "com/github/mercurievv/scalasemantic/fixtures/OrderUses.first."
+    val e = intercept[Exception](call("find_overloads", ujson.Obj("symbol" -> first)))
+    assert(e.getMessage.contains("symbol is a term"), e.getMessage)
+  }
+
+  test("class_hierarchy reports a method symbol as a method, not a type") {
+    val e = intercept[Exception](call("class_hierarchy", ujson.Obj("symbol" -> Render)))
+    assert(e.getMessage.contains("symbol is a method, not a type"), e.getMessage)
+  }
+
   test("class_hierarchy reports known subtypes as display names by default") {
     val r = call("class_hierarchy", ujson.Obj("symbol" -> Animal))
     assertEquals(r("knownSubtypes").arr.map(_.str).toList, List("Dog", "Fish"))

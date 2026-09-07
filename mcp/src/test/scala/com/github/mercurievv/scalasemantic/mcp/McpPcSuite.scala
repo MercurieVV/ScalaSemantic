@@ -104,8 +104,18 @@ class McpPcSuite extends munit.FunSuite:
         )
         ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
 
-      // Nothing is compiled and the disk index is empty, so without `source` there is no outline.
-      assertEquals(outline(ujson.Obj("uri" -> "Shapes.scala"))("found").bool, false)
+      // Nothing is compiled and the disk index is empty, so without `source` the tool falls back
+      // to the presentation compiler automatically (the file exists on disk) — it outlines, marked
+      // pcFallback, instead of answering found:false.
+      val fallback = outline(ujson.Obj("uri" -> "Shapes.scala"))
+      assertEquals(fallback("found").bool, true, fallback.render())
+      assertEquals(fallback("pcFallback").bool, true)
+      assertEquals(
+        fallback("outline").arr.map(_("name").str).toList.sorted,
+        List("Circle", "Square")
+      )
+      assert(!fallback.obj.contains("liveSource"), fallback.render())
+      assert(!fallback.obj.contains("filtered"), fallback.render())
 
       val full = outline(ujson.Obj("uri" -> "Shapes.scala", "source" -> source))
       assertEquals(full("liveSource").bool, true)
@@ -587,12 +597,17 @@ class McpPcSuite extends munit.FunSuite:
           Mcp.handle(req("tools/call", ujson.Obj("name" -> tool, "arguments" -> args)), pcTools)
         ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
 
-      // type_at_position (PC-only): without `source`, the empty disk index knows nothing.
+      // type_at_position without `source`: the empty disk index has nothing for this file, so the
+      // tool falls back to the presentation compiler automatically (the file exists on disk). The
+      // PC best-effort-typechecks even the broken tail, and the answer is marked pcFallback.
       val cold = pcCall(
         "type_at_position",
         ujson.Obj("uri" -> "Widget.scala", "line" -> 3, "character" -> 6)
       )
-      assertEquals(cold("found").bool, false)
+      assertEquals(cold("found").bool, true, cold.render())
+      assertEquals(cold("name").str, "area")
+      assertEquals(cold("type").str, "Int")
+      assertEquals(cold("pcFallback").bool, true)
       // With `source`, the PC regenerates SemanticDB and the position resolves — despite the error.
       val live = pcCall(
         "type_at_position",
