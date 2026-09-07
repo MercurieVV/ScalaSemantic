@@ -11,6 +11,7 @@ import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 import upickle.default.ReadWriter
 
 import scala.jdk.CollectionConverters.*
+import scala.meta.internal.semanticdb.Scala.*
 
 /** One `search_text` hit: a plain (not symbol-resolved) match of the query on `line` (0-based) of
   * `uri`, with the full matching line's text.
@@ -29,7 +30,9 @@ object McpTools:
   //                    the buffer alone. When `source` is given, query ONLY the PC-regenerated
   //                    document (Analyzer.bufferOnly); the stale disk index is not consulted. The PC
   //                    is authoritative for the file, so falling back to disk would only add wrong
-  //                    answers on edited buffers. → type_at_position, document_outline
+  //                    answers on edited buffers. Without `source`, an on-disk file missing from the
+  //                    compiled index falls back to the PC automatically (answers marked
+  //                    `pcFallback`) instead of a bare not-found. → type_at_position, document_outline
   //   • overlay      — a query that needs the whole-project index but wants ONE file fresher (e.g. to
   //                    resolve names referenced from other files). When `source`+`uri` are given,
   //                    overlay the buffer onto the index (Analyzer.withBuffer). → method_signature
@@ -66,7 +69,9 @@ object McpTools:
     // every index-only/overlay tool will otherwise return misleadingly plain "no results" JSON that
     // reads the same as a genuine empty match. Attach a one-line hint so the caller fixes setup
     // instead of concluding the symbol doesn't exist (or falling back to grep). type_at_position is
-    // PC-only (see the category comment above `all`) and never touches `az.index`, so it's exempt.
+    // exempt: with an empty index it either answers from the automatic PC fallback (on-disk file +
+    // backend — where a "index is empty, compile it" hint on a live answer would be noise) or from a
+    // found:false, and its own empty-index guidance already names passing `source`.
     if az.isIndexEmpty then
       tools.map(t =>
         if t.name == "type_at_position" then t
@@ -411,7 +416,9 @@ private[mcp] object McpToolsSupport:
     * then slice lines and annotations down to `range` before handing off to [[SourceView.result]].
     * The gutter is kept at the file's real (absolute) 1-based line numbers via `lineOffset` —
     * callers jump straight to the real file, never a re-based one. `None` when the file is missing
-    * or `uri` is not indexed (callers render `notFoundUri`).
+    * or `uri` is not indexed (callers render `notFoundUri`). An on-disk-but-unindexed file falls
+    * back to a PC-only typecheck (when a backend exists) and the result then carries the
+    * `pcFallback`/`pcFallbackHint` pair.
     */
   private[mcp] def renderRange(
       az: Analyzer,
@@ -423,16 +430,17 @@ private[mcp] object McpToolsSupport:
     val file = root.resolve(uri.value)
     if !java.nio.file.Files.isRegularFile(file) then None
     else
-      val rawLines0 = java.nio.file.Files.readString(file).split("\n", -1).toIndexedSeq
+      val rawText = java.nio.file.Files.readString(file)
+      val rawLines0 = rawText.split("\n", -1).toIndexedSeq
       val docs = argStr(a, "docs")
       val lines = if docs == "strip" then az.stripComments(rawLines0) else rawLines0
       val detail = argDetail(a, "detail")
-      az.sourceAnnotations(uri, lines, detail).map { allAnns =>
+      annotationsOf(az, root, uri, rawText, lines, detail).map { (engine, pcFallback, allAnns) =>
         val symbolsOn = argBool(a, "symbols", false)
-        val legendSymbols = if symbolsOn then az.symbolLegend(uri) else Nil
+        val legendSymbols = if symbolsOn then engine.symbolLegend(uri) else Nil
         val fmt = argFormat(a, "format")
         val explode = symbolsOn && (fmt == SourceFormat.Compilable || fmt == SourceFormat.Diff)
-        val displayLines = if explode then az.explodeImports(uri, lines) else lines
+        val displayLines = if explode then engine.explodeImports(uri, lines) else lines
         val start = range.startLine
         val endExclusive = math.min(range.endLine, rawLines0.length)
         val slicedRaw = lines.slice(start, endExclusive)
@@ -440,7 +448,7 @@ private[mcp] object McpToolsSupport:
         val slicedAnns = allAnns
           .filter(ann => ann.line >= start && ann.line < endExclusive)
           .map(ann => ann.copy(line = ann.line - start))
-        SourceView.result(
+        val res = SourceView.result(
           uri.value,
           slicedRaw,
           slicedDisplay,
@@ -451,6 +459,7 @@ private[mcp] object McpToolsSupport:
           lineOffset = start,
           sentinel = argBool(a, "sentinel", false)
         )
+        if pcFallback then ujson.Obj.from(res.obj.toSeq ++ pcFallbackFields(uri.value)) else res
       }
 
   /** Enriched source for exactly `range` of `uri`, splicing the compiler's insertions directly into
@@ -459,7 +468,9 @@ private[mcp] object McpToolsSupport:
     * `compilable` format) or a bare `⟹` line note (its `annotated` format). This is
     * `source_ranges`' own rendering, not shared with `symbol_source`/`source_around_position`: the
     * whole point of naming a few chosen lines in full detail is to see the compiler's elaboration
-    * in place, not bolted on. `None` when the file is missing or `uri` is not indexed.
+    * in place, not bolted on. `None` when the file is missing or `uri` is not indexed. An
+    * on-disk-but-unindexed file falls back to a PC-only typecheck (when a backend exists); the
+    * result then carries the `pcFallback`/`pcFallbackHint` pair.
     */
   private[mcp] def renderRangeEnriched(
       az: Analyzer,
@@ -471,11 +482,12 @@ private[mcp] object McpToolsSupport:
     val file = root.resolve(uri.value)
     if !java.nio.file.Files.isRegularFile(file) then None
     else
-      val rawLines0 = java.nio.file.Files.readString(file).split("\n", -1).toIndexedSeq
+      val rawText = java.nio.file.Files.readString(file)
+      val rawLines0 = rawText.split("\n", -1).toIndexedSeq
       val docs = argStr(a, "docs")
       val lines = if docs == "strip" then az.stripComments(rawLines0) else rawLines0
       val detail = argDetail(a, "detail")
-      az.sourceAnnotations(uri, lines, detail).map { allAnns =>
+      annotationsOf(az, root, uri, rawText, lines, detail).map { (_, pcFallback, allAnns) =>
         val start = range.startLine
         val endExclusive = math.min(range.endLine, rawLines0.length)
         val slicedRaw = lines.slice(start, endExclusive)
@@ -489,7 +501,7 @@ private[mcp] object McpToolsSupport:
             val spliced = InlineEnrich.spliceLine(line, byLine.getOrElse(i, Nil))
             f"$ln%5d  $spliced"
         }
-        ujson.Obj(
+        val res = ujson.Obj(
           "uri" -> ujson.Str(uri.value),
           "format" -> ujson.Str("enriched"),
           "annotationCount" -> ujson.Num(byLine.valuesIterator.map(_.size).sum),
@@ -502,7 +514,45 @@ private[mcp] object McpToolsSupport:
           ),
           "source" -> ujson.Str(renderedLines.mkString("\n"))
         )
+        if pcFallback then ujson.Obj.from(res.obj.toSeq ++ pcFallbackFields(uri.value)) else res
       }
+
+  /** The `pcFallback`/`pcFallbackHint` field pair marking an answer derived from a PC-only
+    * typecheck of the on-disk file rather than the project's compiled index.
+    */
+  private[mcp] def pcFallbackFields(uri: String): Seq[(String, ujson.Value)] =
+    Seq(
+      "pcFallback" -> ujson.Bool(true),
+      "pcFallbackHint" -> ujson.Str(
+        s"'$uri' has no compiled SemanticDB entry (it may not compile, or hasn't been built yet), " +
+          "so this answer comes from the presentation compiler's best-effort typecheck of the file " +
+          "alone, not the project's compiled index — expect gaps where the PC also can't resolve a " +
+          "type."
+      )
+    )
+
+  /** (engine, usedPcFallback, annotations) for `uri` against `lines` (the current source text,
+    * after any `docs=strip` handling) — the compiled index first, else a PC-only typecheck of the
+    * on-disk text. These renderers read the file themselves rather than being passed `source`, so
+    * this fallback is what keeps an uncompiled-but-on-disk file annotatable. `None` when neither
+    * the index nor a PC backend can answer.
+    */
+  private[mcp] def annotationsOf(
+      az: Analyzer,
+      root: java.nio.file.Path,
+      uri: DocumentUri,
+      rawText: String,
+      lines: IndexedSeq[String],
+      detail: SourceDetail
+  ): Option[(Analyzer, Boolean, List[SourceAnnotation])] =
+    az.sourceAnnotations(uri, lines, detail) match
+      case Some(anns) => Some((az, false, anns))
+      case None       =>
+        val file = root.resolve(uri.value)
+        if !java.nio.file.Files.isRegularFile(file) then None
+        else
+          az.bufferOnly(file.toUri, rawText, uri.value)
+            .flatMap(pc => pc.sourceAnnotations(uri, lines, detail).map(anns => (pc, true, anns)))
 
   /** The source lines a [[Location]] spans, gutter-numbered exactly like `annotated_source`'s
     * `plain` format (1-based, absolute file line numbers) — reuses [[SourceView.result]] on the
@@ -700,14 +750,72 @@ private[mcp] object McpToolsSupport:
             case (None, Nil) => None
         }
 
-  /** Whether an arg VALUE looks like a file path rather than a SemanticDB symbol: contains a `/`,
-    * ends in a recognized source-file extension, or actually exists as a regular file under `root`.
-    * Used by [[resolveTypeArg]]/[[resolveMethodArg]] to decide the file-path branch — tried only
-    * AFTER the value already failed to parse as the symbol type the caller wants.
+  /** Whether an arg VALUE looks like a file path rather than a SemanticDB symbol. A value that
+    * parses as a [[SemanticDbSymbol]] is NEVER a file path — almost every global symbol contains
+    * `/`, so a `/` check alone misclassifies symbols (e.g. `pkg/Type.valName.`) as files and the
+    * subsequent outline lookup fails with the misleading "file not indexed" instead of answering
+    * about the symbol. Otherwise: contains a `/`, ends in a recognized source-file extension, or
+    * actually exists as a regular file under `root`. Used by
+    * [[resolveTypeArg]]/[[resolveMethodArg]] and [[resolveRangeTarget]] to decide the file-path
+    * branch — tried only AFTER the value already failed to parse as the symbol type the caller
+    * wants.
     */
   private[mcp] def looksLikeFilePath(value: String, root: java.nio.file.Path): Boolean =
-    value.contains("/") || value.endsWith(".scala") || value.endsWith(".sc") ||
-      value.endsWith(".mill") || java.nio.file.Files.isRegularFile(root.resolve(value))
+    SemanticDbSymbol.from(value).isLeft && (
+      value.contains("/") || value.endsWith(".scala") || value.endsWith(".sc") ||
+        value.endsWith(".mill") || java.nio.file.Files.isRegularFile(root.resolve(value))
+    )
+
+  /** Best-effort read of `file`'s UTF-8 text — `None` when it cannot be read (deleted between the
+    * existence check and the read, permissions, etc.) rather than letting the tool crash.
+    */
+  private[mcp] def readFileText(file: java.nio.file.Path): Option[String] =
+    try Some(java.nio.file.Files.readString(file))
+    catch case _: java.io.IOException => None
+
+  /** A PC-only analyzer over the ON-DISK text of `uri` (the file must exist), `None` without a PC
+    * backend — the automatic fallback for a file that exists but has no compiled index entry. The
+    * caller decides when to consult it (only for uris [[Analyzer.isDocumentIndexed]] says are not
+    * indexed).
+    */
+  private[mcp] def diskPcAnalyzer(
+      az: Analyzer,
+      root: java.nio.file.Path,
+      uri: DocumentUri
+  ): Option[Analyzer] =
+    val file = root.resolve(uri.value)
+    if !java.nio.file.Files.isRegularFile(file) then None
+    else readFileText(file).flatMap(src => az.bufferOnly(file.toUri, src, uri.value))
+
+  /** The analyzer that can answer about `uri`: the compiled index when it holds the document,
+    * otherwise a PC-only typecheck of the on-disk text (file must exist AND a PC backend must be
+    * available). The `usedPcFallback` flag tells the caller to mark the answer as PC-derived.
+    */
+  private[mcp] def outlineEngine(
+      az: Analyzer,
+      root: java.nio.file.Path,
+      uri: DocumentUri
+  ): (Analyzer, Boolean) =
+    if az.isDocumentIndexed(uri) then (az, false)
+    else
+      diskPcAnalyzer(az, root, uri) match
+        case Some(pc) => (pc, true)
+        case None     => (az, false)
+
+  /** A kind-precise reason why `raw` is not a `<wanted>` symbol, replacing the old blanket "not a
+    * symbol or an existing file" for values that ARE symbols of the wrong kind. `wanted` is the
+    * full phrase, e.g. `"a method"` or `"a type"`, so messages read "symbol is a type, not a
+    * method: …".
+    */
+  private[mcp] def notWantedSymbolError(az: Analyzer, wanted: String, raw: String): String =
+    SemanticDbSymbol.from(raw) match
+      case Right(sym) =>
+        val v = sym.value
+        if !az.hasSymbol(v) then s"symbol not found in index: $v"
+        else if v.desc.isType then s"symbol is a type, not $wanted: $v"
+        else if v.desc.isMethod then s"symbol is a method, not $wanted: $v"
+        else s"symbol is a term (a val/var/object), not $wanted: $v"
+      case Left(_) => s"not a symbol or an existing file: $raw"
 
   /** Resolve a `RangeSelector.Entry.target` to the `DocumentUri` `source_ranges` should read: a
     * literal file path (appending `.scala` when the given path doesn't already exist as-is) for a
@@ -762,13 +870,17 @@ private[mcp] object McpToolsSupport:
       case Left(_)    =>
         if looksLikeFilePath(raw, root) then
           val uri = argUri(a, key)
-          az.outline(uri) match
-            case None          => error(s"file not indexed: $raw")
-            case Some(entries) =>
-              entries
-                .filter(e => TypeOutlineKinds.contains(e.kind))
-                .flatMap(e => TypeSymbol.from(e.symbol).toOption)
-        else error(s"not a symbol or an existing file: $raw")
+          if !java.nio.file.Files.isRegularFile(root.resolve(uri.value)) then
+            error(s"not a symbol or an existing file: $raw")
+          else
+            val (engine, _) = outlineEngine(az, root, uri)
+            engine.outline(uri) match
+              case None          => error(s"file not indexed: $raw")
+              case Some(entries) =>
+                entries
+                  .filter(e => TypeOutlineKinds.contains(e.kind))
+                  .flatMap(e => TypeSymbol.from(e.symbol).toOption)
+        else error(notWantedSymbolError(az, "a type", raw))
 
   /** Same as [[resolveTypeArg]] but for tools whose primary input is a METHOD symbol
     * (`method_signature`, `find_overloads`). A file's methods are not top-level outline entries
@@ -787,13 +899,47 @@ private[mcp] object McpToolsSupport:
       case Left(_)    =>
         if looksLikeFilePath(raw, root) then
           val uri = argUri(a, key)
-          az.outline(uri) match
-            case None          => error(s"file not indexed: $raw")
-            case Some(entries) =>
-              flattenOutline(entries)
-                .filter(_.kind == SymbolKind.Method)
-                .flatMap(e => MethodSymbol.from(e.symbol).toOption)
-        else error(s"not a symbol or an existing file: $raw")
+          if !java.nio.file.Files.isRegularFile(root.resolve(uri.value)) then
+            error(s"not a symbol or an existing file: $raw")
+          else
+            val (engine, _) = outlineEngine(az, root, uri)
+            engine.outline(uri) match
+              case None          => error(s"file not indexed: $raw")
+              case Some(entries) =>
+                flattenOutline(entries)
+                  .filter(_.kind == SymbolKind.Method)
+                  .flatMap(e => MethodSymbol.from(e.symbol).toOption)
+        else error(notWantedSymbolError(az, "a method", raw))
+
+  /** Same as [[resolveMethodArg]] but the symbol parse accepts the union [[MethodOrTermSymbol]] (a
+    * `def`, `val` or `var`) — `method_signature`'s input surface, where rejecting a val/term symbol
+    * up front is precisely the bug this resolver exists to avoid (it was misdiagnosed as a file
+    * path and reported "file not indexed"). The file-path branch is unchanged (methods only; values
+    * are addressable by symbol).
+    */
+  private[mcp] def resolveMethodOrTermArg(
+      az: Analyzer,
+      root: java.nio.file.Path,
+      a: ujson.Value,
+      key: String
+  ): List[MethodOrTermSymbol] =
+    val raw = argStr(a, key)
+    MethodOrTermSymbol.from(raw) match
+      case Right(sym) => List(sym)
+      case Left(_)    =>
+        if looksLikeFilePath(raw, root) then
+          val uri = argUri(a, key)
+          if !java.nio.file.Files.isRegularFile(root.resolve(uri.value)) then
+            error(s"not a symbol or an existing file: $raw")
+          else
+            val (engine, _) = outlineEngine(az, root, uri)
+            engine.outline(uri) match
+              case None          => error(s"file not indexed: $raw")
+              case Some(entries) =>
+                flattenOutline(entries)
+                  .filter(_.kind == SymbolKind.Method)
+                  .flatMap(e => MethodOrTermSymbol.from(e.symbol).toOption)
+        else error(notWantedSymbolError(az, "a method or value", raw))
 
   /** The `{ candidates, note }` disambiguation object [[resolveTypeArg]]/[[resolveMethodArg]]
     * callers return in place of running the tool when a file path resolved to MORE than one symbol.
@@ -1105,17 +1251,20 @@ private[mcp] object McpToolsGroupA:
       toolDef(
         tool(
           "method_signature",
-          "A method's full signature: type parameters, (implicit/using) parameter lists, and return " +
-            "type. Pass `uri` + `source` (the defining file's path and CURRENT text) to read it from a " +
-            "buffer edited since — or never — compiled: the presentation compiler regenerates it, " +
-            "error-tolerant, and overlays it on the index so types referenced from other files still " +
-            "resolve. (The server must have been started with a classpath for `source` to take effect.)",
+          "The full signature of a term declared with `def`, `val` or `var` (a caller pointing at " +
+            "an identifier often does not know — or care — which keyword declared it): for a method, " +
+            "type parameters, (implicit/using) parameter lists, and return type; for a value, its " +
+            "resolved type rendered as `val <name>: <T>` (or `var`/`lazy val`). Pass `uri` + " +
+            "`source` (the defining file's path and CURRENT text) to read it from a buffer edited " +
+            "since — or never — compiled: the presentation compiler regenerates it, error-tolerant, " +
+            "and overlays it on the index so types referenced from other files still resolve. (The " +
+            "server must have been started with a classpath for `source` to take effect.)",
           List(
             (
               "symbol",
               "string",
-              "method symbol, OR a file path — a file with exactly one method returns its signature; " +
-                "several methods return `{ candidates }` to re-call with one"
+              "method/val/var symbol, OR a file path — a file with exactly one method returns its " +
+                "signature; several methods return `{ candidates }` to re-call with one"
             ),
             ("detailed", "boolean", "include structured parameter breakdown (default false)"),
             (
@@ -1131,7 +1280,7 @@ private[mcp] object McpToolsGroupA:
           ),
           List("symbol")
         ) { a =>
-          resolveMethodArg(az, root, a, "symbol") match
+          resolveMethodOrTermArg(az, root, a, "symbol") match
             case Nil           => notFound(argStr(a, "symbol"))
             case symbol :: Nil =>
               // overlay category: a referenced return/param type may be defined in another file, so
@@ -1141,7 +1290,7 @@ private[mcp] object McpToolsGroupA:
                   val uri = argUri(a, "uri")
                   az.withBuffer(root.resolve(uri.value).toUri, src, uri.value)
                 case _ => az
-              engine.methodSignature(symbol) match
+              engine.methodOrTermSignature(symbol) match
                 case None    => notFound(symbol.value)
                 case Some(m) =>
                   if !argBool(a, "detailed", false) then
@@ -1324,7 +1473,9 @@ private[mcp] object McpToolsGroupB:
             "way to turn a source location into a symbol string for the other tools. Pass `source` with " +
             "the file's CURRENT text to resolve against a buffer edited since — or never — compiled: the " +
             "presentation compiler regenerates SemanticDB in memory, error-tolerant. Without `source` it " +
-            "reads the last compiled SemanticDB. (`source` needs the server started with a classpath.)",
+            "reads the last compiled SemanticDB, and falls back to the presentation compiler for a file " +
+            "that exists on disk but was never compiled into the index (marked `pcFallback`). (`source` " +
+            "needs the server started with a classpath.)",
           List(
             (
               "uri",
@@ -1345,18 +1496,27 @@ private[mcp] object McpToolsGroupB:
           // PC-only category: a position in one file is fully answered by the PC's regenerated document,
           // so with `source` we query THAT alone — not an overlay on the (stale-for-this-file) disk
           // index. `uri` is the index-form (relative) key; the PC needs the absolute on-disk path.
-          val engine = a.obj.get("source").map(_.str) match
+          // Without `source`, the compiled index answers when it has the file; an on-disk-but-unindexed
+          // file falls back to the PC automatically (marking the answer `pcFallback`).
+          val (engine, pcFallback) = a.obj.get("source").map(_.str) match
             case Some(src) =>
-              az.bufferOnly(root.resolve(uri.value).toUri, src, uri.value).getOrElse(az)
-            case None => az
+              (az.bufferOnly(root.resolve(uri.value).toUri, src, uri.value).getOrElse(az), false)
+            case None =>
+              if az.isDocumentIndexed(uri) then (az, false)
+              else
+                diskPcAnalyzer(az, root, uri) match
+                  case Some(pc) => (pc, true)
+                  case None     => (az, false)
           engine.typeAtPosition(uri, argPosition(a, "line", "character")) match
             case None    => jobj(Some("found" -> ujson.Bool(false)))
             case Some(t) =>
-              jobj(
+              val base = jobj(
                 Some("symbol" -> ujson.Str(t.symbol)),
                 Some("name" -> ujson.Str(t.displayName)),
                 Some("type" -> ujson.Str(t.tpe))
               )
+              if pcFallback then ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
+              else base
         }
       ),
       toolDef(
@@ -1666,7 +1826,9 @@ private[mcp] object McpToolsGroupC:
             "find_symbol), `symbol`, `kind` and `maxDepth` — by default the enclosing scopes of a " +
             "match come back as context, so you see where it lives. Pass `source` (the file's CURRENT " +
             "text) to outline a buffer edited since — or never — compiled, instead of the last " +
-            "compiled SemanticDB. (The server must have been started with a classpath for `source` to " +
+            "compiled SemanticDB. Without `source`, a file that exists on disk but has no compiled " +
+            "SemanticDB entry falls back to the presentation compiler automatically (marked " +
+            "`pcFallback`). (The server must have been started with a classpath for `source` to " +
             "take effect.)",
           List(
             (
@@ -1697,34 +1859,48 @@ private[mcp] object McpToolsGroupC:
         ) { a =>
           val uri = argUri(a, "uri")
           // PC-only category: an outline is a single-file structural question, so the buffer is
-          // queried on its own rather than overlaid on the whole index.
-          val engine = a.obj.get("source").map(_.str) match
-            case Some(src) => az.bufferOnly(root.resolve(uri.value).toUri, src, uri.value)
-            case None      => None
+          // queried on its own rather than overlaid on the whole index. With `source`, the given
+          // text is authoritative (liveSource). Without it, the compiled index answers when it has
+          // the file; an on-disk-but-unindexed file falls back to the PC automatically (pcFallback),
+          // so a never-compiled file still outlines instead of a bare `found: false`.
+          val sourceOpt = a.obj.get("source").map(_.str)
+          val explicit =
+            sourceOpt.flatMap(src => az.bufferOnly(root.resolve(uri.value).toUri, src, uri.value))
+          val autoFallback =
+            if explicit.isDefined || az.isDocumentIndexed(uri) then None
+            else diskPcAnalyzer(az, root, uri)
+          val engine = explicit.orElse(autoFallback).getOrElse(az)
           val query = a.obj.get("query").map(_.str)
           val symbol = a.obj.get("symbol").map(_.str)
           val kind = a.obj.get("kind").map(_.str)
           val maxDepth = a.obj.get("maxDepth").map(_ => argPositiveInt(a, "maxDepth", 1).value)
           val narrowed = query.nonEmpty || symbol.nonEmpty || kind.nonEmpty || maxDepth.nonEmpty
-          engine
-            .getOrElse(az)
-            .outlineFiltered(
-              uri,
-              query,
-              symbol,
-              argBool(a, "includeParents", true),
-              maxDepth,
-              kind
-            ) match
+          engine.outlineFiltered(
+            uri,
+            query,
+            symbol,
+            argBool(a, "includeParents", true),
+            maxDepth,
+            kind
+          ) match
             case None =>
-              jobj(Some("uri" -> ujson.Str(uri.value)), Some("found" -> ujson.Bool(false)))
-            case Some(entries) =>
-              jobj(
+              val base = jobj(
                 Some("uri" -> ujson.Str(uri.value)),
-                opt(engine.isDefined, "liveSource" -> ujson.Bool(true)),
+                Some("found" -> ujson.Bool(false))
+              )
+              if autoFallback.isDefined then
+                ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
+              else base
+            case Some(entries) =>
+              val base = jobj(
+                Some("uri" -> ujson.Str(uri.value)),
+                opt(explicit.isDefined, "liveSource" -> ujson.Bool(true)),
                 opt(narrowed, "filtered" -> ujson.Bool(true)),
                 Some("outline" -> ujson.Arr.from(entries.map(outlineJson)))
               )
+              if autoFallback.isDefined then
+                ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
+              else base
         }
       ),
       toolDef(

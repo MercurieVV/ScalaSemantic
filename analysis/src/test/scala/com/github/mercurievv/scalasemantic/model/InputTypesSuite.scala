@@ -36,6 +36,10 @@ class InputTypesSuite extends munit.ScalaCheckSuite:
     assertLeft(MethodSymbol.from("com/example/Foo#"), "expected method symbol")
     assertLeft(TypeSymbol.from("com/example/Foo#bar()."), "expected type symbol")
 
+  test("MethodOrTermSymbol.from reports the expected-kind in its error message"):
+    assertLeft(MethodOrTermSymbol.from("com/example/Foo#"), "expected method or term symbol")
+    assertLeft(MethodOrTermSymbol.from("local0"), "expected method or term symbol")
+
   test("PackageSymbol.from: blank -> empty, appends slash, rejects non-package"):
     assertEquals(PackageSymbol.from("").toOption.map(_.value), Some(""))
     assertEquals(PackageSymbol.from("  ").toOption.map(_.value), Some(""))
@@ -240,6 +244,16 @@ class InputTypesSuite extends munit.ScalaCheckSuite:
       MethodSymbol.from(s"com/example/$name#").isLeft &&
       MethodSymbol.from(s"com/example/$name.").isLeft &&
       MethodSymbol.from(s"local$name").isLeft
+    }
+
+  property(
+    "MethodOrTermSymbol.from accepts exactly a global method or term descriptor, for any name"
+  ):
+    forAll(Gen.alphaLowerStr.suchThat(_.nonEmpty)) { name =>
+      MethodOrTermSymbol.from(s"com/example/Foo#$name().").isRight &&
+      MethodOrTermSymbol.from(s"com/example/$name.").isRight &&
+      MethodOrTermSymbol.from(s"com/example/$name#").isLeft &&
+      MethodOrTermSymbol.from(s"local$name").isLeft
     }
 
   property(

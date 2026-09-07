@@ -46,6 +46,22 @@ object InputTypes:
 
     extension (symbol: MethodSymbol) def value: String = nonEmptyValue(symbol)
 
+  opaque type MethodOrTermSymbol = SemanticDbSymbol
+  object MethodOrTermSymbol:
+    /** A global method (`foo().`) or term (`foo.` — a val/var/object) symbol. This is the union a
+      * caller pointing at an identifier with a symbol usually means: whether the identifier was
+      * declared with `def` or `val` is exactly what they are asking the tool to tell them, so the
+      * boundary cannot reject one of the two up front.
+      */
+    def from(value: String): Either[String, MethodOrTermSymbol] =
+      SemanticDbSymbol.from(value).flatMap { symbol =>
+        val raw = symbol.value
+        if raw.isGlobal && (raw.desc.isMethod || raw.desc.isTerm) then Right(symbol)
+        else Left(s"expected method or term symbol: $value")
+      }
+
+    extension (symbol: MethodOrTermSymbol) def value: String = nonEmptyValue(symbol)
+
   opaque type TypeSymbol = SemanticDbSymbol
   object TypeSymbol:
     def from(value: String): Either[String, TypeSymbol] =

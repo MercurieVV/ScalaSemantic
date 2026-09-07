@@ -1027,6 +1027,57 @@ class McpSuite extends munit.FunSuite:
     assertEquals(full("parameterLists").arr.last("implicit").bool, true)
   }
 
+  test("method_signature renders a val's signature from its term symbol (no def needed)") {
+    // A caller pointing at an identifier with its SemanticDB symbol does not know (or care) whether
+    // it was declared `def` or `val` — the tool must answer either (regression: the val symbol used
+    // to be misdiagnosed as a file path and rejected with "file not indexed").
+    val first = "com/github/mercurievv/scalasemantic/fixtures/OrderUses.first."
+    val lean = call("method_signature", ujson.Obj("symbol" -> first))
+    assertEquals(lean("signature").str, "val first: Order")
+    assert(!lean.obj.contains("parameterLists"), "lean result must not expand parameter lists")
+
+    val full = call("method_signature", ujson.Obj("symbol" -> first, "detailed" -> true))
+    assertEquals(full("returnType").str, "Order")
+    assert(!full.obj.contains("parameterLists"), full.render())
+    assert(!full.obj.contains("typeParameters"), full.render())
+  }
+
+  test("method_signature reports a type symbol as a type, not a method or value") {
+    val resp = callResponse("method_signature", ujson.Obj("symbol" -> Animal))
+      .getOrElse(fail("no response"))
+    assertEquals(resp("result")("isError").bool, true)
+    val text = resp("result")("content")(0)("text").str
+    assert(text.contains("symbol is a type, not a method or value"), text)
+    assert(!text.contains("file not indexed"), text)
+  }
+
+  test("method_signature reports a missing symbol as not found in the index, not as a file") {
+    val missing = "com/github/mercurievv/scalasemantic/fixtures/NoSuchThing#"
+    val resp = callResponse("method_signature", ujson.Obj("symbol" -> missing))
+      .getOrElse(fail("no response"))
+    assertEquals(resp("result")("isError").bool, true)
+    val text = resp("result")("content")(0)("text").str
+    assert(text.contains("symbol not found in index"), text)
+    assert(!text.contains("file not indexed"), text)
+  }
+
+  test("find_overloads reports a val symbol as a term, not a method") {
+    val first = "com/github/mercurievv/scalasemantic/fixtures/OrderUses.first."
+    val resp = callResponse("find_overloads", ujson.Obj("symbol" -> first))
+      .getOrElse(fail("no response"))
+    assertEquals(resp("result")("isError").bool, true)
+    val text = resp("result")("content")(0)("text").str
+    assert(text.contains("symbol is a term"), text)
+  }
+
+  test("class_hierarchy reports a method symbol as a method, not a type") {
+    val resp = callResponse("class_hierarchy", ujson.Obj("symbol" -> Render))
+      .getOrElse(fail("no response"))
+    assertEquals(resp("result")("isError").bool, true)
+    val text = resp("result")("content")(0)("text").str
+    assert(text.contains("symbol is a method, not a type"), text)
+  }
+
   test("class_hierarchy reports known subtypes as display names by default") {
     val r = call("class_hierarchy", ujson.Obj("symbol" -> Animal))
     assertEquals(r("knownSubtypes").arr.map(_.str).toList, List("Dog", "Fish"))

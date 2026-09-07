@@ -11,6 +11,10 @@
       ">: Nothing <: Any"
     ],
     [
+      "MethodOrTermSymbol",
+      ">: Nothing <: Any"
+    ],
+    [
       "MethodSymbol",
       ">: Nothing <: Any"
     ],
