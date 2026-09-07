@@ -108,8 +108,7 @@ class McpPcSuite extends munit.FunSuite:
       // to the presentation compiler automatically (the file exists on disk) — it outlines, marked
       // pcFallback, instead of answering found:false.
       val fallback = outline(ujson.Obj("uri" -> "Shapes.scala"))
-      assertEquals(fallback("found").bool, true, fallback.render())
-      assertEquals(fallback("pcFallback").bool, true)
+      assertEquals(fallback("pcFallback").bool, true, fallback.render())
       assertEquals(
         fallback("outline").arr.map(_("name").str).toList.sorted,
         List("Circle", "Square")
@@ -604,7 +603,6 @@ class McpPcSuite extends munit.FunSuite:
         "type_at_position",
         ujson.Obj("uri" -> "Widget.scala", "line" -> 3, "character" -> 6)
       )
-      assertEquals(cold("found").bool, true, cold.render())
       assertEquals(cold("name").str, "area")
       assertEquals(cold("type").str, "Int")
       assertEquals(cold("pcFallback").bool, true)

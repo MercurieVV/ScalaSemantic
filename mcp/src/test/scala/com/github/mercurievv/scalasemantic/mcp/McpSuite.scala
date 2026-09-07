@@ -1043,26 +1043,39 @@ class McpSuite extends munit.FunSuite:
   }
 
   test("method_signature reports a type symbol as a type, not a method or value") {
-    val e = intercept[Exception](call("method_signature", ujson.Obj("symbol" -> Animal)))
-    assert(e.getMessage.contains("symbol is a type, not a method or value"), e.getMessage)
+    val resp = callResponse("method_signature", ujson.Obj("symbol" -> Animal))
+      .getOrElse(fail("no response"))
+    assertEquals(resp("result")("isError").bool, true)
+    val text = resp("result")("content")(0)("text").str
+    assert(text.contains("symbol is a type, not a method or value"), text)
+    assert(!text.contains("file not indexed"), text)
   }
 
   test("method_signature reports a missing symbol as not found in the index, not as a file") {
     val missing = "com/github/mercurievv/scalasemantic/fixtures/NoSuchThing#"
-    val e = intercept[Exception](call("method_signature", ujson.Obj("symbol" -> missing)))
-    assert(e.getMessage.contains("symbol not found in index"), e.getMessage)
-    assert(!e.getMessage.contains("file not indexed"), e.getMessage)
+    val resp = callResponse("method_signature", ujson.Obj("symbol" -> missing))
+      .getOrElse(fail("no response"))
+    assertEquals(resp("result")("isError").bool, true)
+    val text = resp("result")("content")(0)("text").str
+    assert(text.contains("symbol not found in index"), text)
+    assert(!text.contains("file not indexed"), text)
   }
 
   test("find_overloads reports a val symbol as a term, not a method") {
     val first = "com/github/mercurievv/scalasemantic/fixtures/OrderUses.first."
-    val e = intercept[Exception](call("find_overloads", ujson.Obj("symbol" -> first)))
-    assert(e.getMessage.contains("symbol is a term"), e.getMessage)
+    val resp = callResponse("find_overloads", ujson.Obj("symbol" -> first))
+      .getOrElse(fail("no response"))
+    assertEquals(resp("result")("isError").bool, true)
+    val text = resp("result")("content")(0)("text").str
+    assert(text.contains("symbol is a term"), text)
   }
 
   test("class_hierarchy reports a method symbol as a method, not a type") {
-    val e = intercept[Exception](call("class_hierarchy", ujson.Obj("symbol" -> Render)))
-    assert(e.getMessage.contains("symbol is a method, not a type"), e.getMessage)
+    val resp = callResponse("class_hierarchy", ujson.Obj("symbol" -> Render))
+      .getOrElse(fail("no response"))
+    assertEquals(resp("result")("isError").bool, true)
+    val text = resp("result")("content")(0)("text").str
+    assert(text.contains("symbol is a method, not a type"), text)
   }
 
   test("class_hierarchy reports known subtypes as display names by default") {
