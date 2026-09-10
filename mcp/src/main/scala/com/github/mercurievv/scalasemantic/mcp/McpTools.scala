@@ -2013,20 +2013,9 @@ private[mcp] object McpToolsGroupC:
                 val docs = argStr(a, "docs")
                 val lines = if docs == "strip" then az.stripComments(rawLines) else rawLines
                 val detail = argDetail(a, "detail")
-                // The compiled SemanticDB index has nothing for this file when it never compiled
-                // (syntax error, not yet built, excluded from the classpath) — the PC still
-                // best-effort-typechecks a broken/uncompiled buffer, so fall back to it instead of
-                // refusing to show the file at all.
-                val primary = az.sourceAnnotations(uri, lines, detail)
-                val (engine, pcFallback, annsOpt) = primary match
-                  case Some(anns) => (az, false, Some(anns))
-                  case None       =>
-                    az.bufferOnly(file.toUri, rawText, uri.value) match
-                      case Some(pc) => (pc, true, pc.sourceAnnotations(uri, lines, detail))
-                      case None     => (az, false, None)
-                annsOpt match
-                  case None       => notFoundUri(uri.value)
-                  case Some(anns) =>
+                annotationsOf(az, root, uri, rawText, lines, detail) match
+                  case None                             => notFoundUri(uri.value)
+                  case Some((engine, pcFallback, anns)) =>
                     val symbolsOn = argBool(a, "symbols", false)
                     val symbols = if symbolsOn then engine.symbolLegend(uri) else Nil
                     val fmt = argFormat(a, "format")
@@ -2052,8 +2041,8 @@ private[mcp] object McpToolsGroupC:
                     // code that is no longer there. Silence would be worse than a stale note: the
                     // agent would reason from it. Reported only when the index actually carries a
                     // digest to compare against; a missing one means "cannot tell", not "current".
-                    // Skipped entirely under a PC fallback: there is no compiled digest at all, by
-                    // definition of having taken that path.
+                    // Skipped under a PC fallback: pcFallbackFields covers that case, and there is
+                    // no compiled digest at all to compare against.
                     val staleFields =
                       if pcFallback then Nil
                       else
@@ -2070,24 +2059,10 @@ private[mcp] object McpToolsGroupC:
                             )
                           case Some(false) => Seq("staleIndex" -> ujson.Bool(false))
                           case None        => Nil
-                    val pcFallbackFields =
-                      if pcFallback then
-                        Seq(
-                          "pcFallback" -> ujson.Bool(true),
-                          "pcFallbackHint" -> ujson.Str(
-                            s"'${uri.value}' has no compiled SemanticDB entry (it may not compile, " +
-                              "or hasn't been built yet), so these annotations come from the " +
-                              "presentation compiler's best-effort typecheck of this file alone, not " +
-                              "the project's compiled index — expect gaps where the PC also can't " +
-                              "resolve a type."
-                          )
-                        )
-                      else Nil
+                    val pcFields = if pcFallback then pcFallbackFields(uri.value) else Nil
                     ujson.Obj.from(
                       res.obj.toSeq ++
-                        (("sha256" -> ujson.Str(
-                          sha256Hex(rawBytes)
-                        )) +: (staleFields ++ pcFallbackFields))
+                        (("sha256" -> ujson.Str(sha256Hex(rawBytes))) +: (staleFields ++ pcFields))
                     )
         }
       ),
