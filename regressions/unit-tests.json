@@ -298,6 +298,8 @@
   "com.github.mercurievv.scalasemantic.analysis.graph.StructureMetricsSuite.stronglyConnectedComponents detects a 3-node cycle as one component",
   "com.github.mercurievv.scalasemantic.analysis.graph.StructureMetricsSuite.stronglyConnectedComponents groups a cycle, isolates acyclic nodes",
   "com.github.mercurievv.scalasemantic.analysis.graph.StructureMetricsSuite.typeRefGraph: type definition RHS occurrence creates an edge even when bounds are empty",
+  "com.github.mercurievv.scalasemantic.mcp.AnnotatedSourcePcFallbackSuite.a file with a compiled index entry does not take the PC fallback",
+  "com.github.mercurievv.scalasemantic.mcp.AnnotatedSourcePcFallbackSuite.a file with no compiled SemanticDB entry falls back to the presentation compiler",
   "com.github.mercurievv.scalasemantic.mcp.AnnotatedSourceStaleSuite.a file edited since that compile is stale, and says what to do about it",
   "com.github.mercurievv.scalasemantic.mcp.AnnotatedSourceStaleSuite.a file matching the digest the index recorded is not stale",
   "com.github.mercurievv.scalasemantic.mcp.AnnotatedSourceStaleSuite.no recorded digest means the question is unanswerable, so the field is absent",
