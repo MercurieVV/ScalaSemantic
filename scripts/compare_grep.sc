@@ -1,7 +1,7 @@
 #!/usr/bin/env scala-cli
 
 //> using scala 3.8.4
-//> using dep com.lihaoyi::upickle::3.1.0
+//> using dep com.lihaoyi::upickle::3.1.4
 
 import java.io.File
 import java.nio.file.*
@@ -11,17 +11,30 @@ import java.util.regex.Pattern
 import scala.sys.process.Process
 
 object CompareGrep {
-  val excludedDirs = Set("target", "out", ".git", ".idea", ".bsp", ".scala-build", ".gemini", ".worktrees", "worktrees")
+  val excludedDirs = Set(
+    "target",
+    "out",
+    ".git",
+    ".idea",
+    ".bsp",
+    ".scala-build",
+    ".gemini",
+    ".worktrees",
+    "worktrees"
+  )
 
   def findScalaFiles(dir: Path): Seq[Path] = {
     if (Files.exists(dir)) {
       val stream = Files.walk(dir)
       try {
-        stream.iterator().asScala
+        stream
+          .iterator()
+          .asScala
           .filter(path => {
             val relPath = dir.relativize(path)
             val elements = relPath.iterator().asScala.map(_.toString).toSet
-            elements.intersect(excludedDirs).isEmpty && Files.isRegularFile(path) && path.toString.endsWith(".scala")
+            elements.intersect(excludedDirs).isEmpty && Files.isRegularFile(path) && path.toString
+              .endsWith(".scala")
           })
           .toList
       } finally {
@@ -163,10 +176,10 @@ object CompareGrep {
     }
 
     case class LogEntry(
-      toolName: String,
-      paramsStr: String,
-      mcpSize: Int,
-      grepSize: Int
+        toolName: String,
+        paramsStr: String,
+        mcpSize: Int,
+        grepSize: Int
     )
 
     val entries = scala.collection.mutable.ListBuffer[LogEntry]()
@@ -188,13 +201,16 @@ object CompareGrep {
 
               val mcpSize = try {
                 val outJson = ujson.read(outJsonStr)
-                outJson.obj.get("result").flatMap { r =>
-                  r.obj.get("content").flatMap { c =>
-                    c.arr.headOption.flatMap { item =>
-                      item.obj.get("text").map(_.str.length)
+                outJson.obj
+                  .get("result")
+                  .flatMap { r =>
+                    r.obj.get("content").flatMap { c =>
+                      c.arr.headOption.flatMap { item =>
+                        item.obj.get("text").map(_.str.length)
+                      }
                     }
                   }
-                }.getOrElse(outJsonStr.length)
+                  .getOrElse(outJsonStr.length)
               } catch {
                 case _: Exception => outJsonStr.length
               }
@@ -213,17 +229,23 @@ object CompareGrep {
     }
 
     // Print table
-    val headers = Seq("Tool Name", "Params Preview", "MCP Size (chars)", "Grep Size (chars)", "Saving Ratio")
+    val headers =
+      Seq("Tool Name", "Params Preview", "MCP Size (chars)", "Grep Size (chars)", "Saving Ratio")
     val rows: List[Seq[String]] = entries.map { entry =>
-      val paramPreview = if (entry.paramsStr.length > 50) entry.paramsStr.take(47) + "..." else entry.paramsStr
-      val ratio = if (entry.grepSize == 0) "N/A" else f"${(1.0 - entry.mcpSize.toDouble / entry.grepSize) * 100.0}%.1f%%"
+      val paramPreview =
+        if (entry.paramsStr.length > 50) entry.paramsStr.take(47) + "..." else entry.paramsStr
+      val ratio =
+        if (entry.grepSize == 0) "N/A"
+        else f"${(1.0 - entry.mcpSize.toDouble / entry.grepSize) * 100.0}%.1f%%"
       Seq(entry.toolName, paramPreview, entry.mcpSize.toString, entry.grepSize.toString, ratio)
     }.toList
 
     val totalMcp = entries.map(_.mcpSize).sum
     val totalGrep = entries.map(_.grepSize).sum
-    val totalRatio = if (totalGrep == 0) "N/A" else f"${(1.0 - totalMcp.toDouble / totalGrep) * 100.0}%.1f%%"
-    val totalRow = Seq("Total", s"${entries.size} calls", totalMcp.toString, totalGrep.toString, totalRatio)
+    val totalRatio =
+      if (totalGrep == 0) "N/A" else f"${(1.0 - totalMcp.toDouble / totalGrep) * 100.0}%.1f%%"
+    val totalRow =
+      Seq("Total", s"${entries.size} calls", totalMcp.toString, totalGrep.toString, totalRatio)
 
     val allRows: List[Seq[String]] = rows :+ totalRow
 
@@ -232,9 +254,12 @@ object CompareGrep {
     }
 
     def printRow(row: Seq[String]): Unit = {
-      val formatted = row.zip(colWidths).map { case (cell, width) =>
-        cell.padTo(width, ' ')
-      }.mkString(" | ")
+      val formatted = row
+        .zip(colWidths)
+        .map { case (cell, width) =>
+          cell.padTo(width, ' ')
+        }
+        .mkString(" | ")
       println(formatted)
     }
 
@@ -248,7 +273,11 @@ object CompareGrep {
     println("-" * totalWidth)
   }
 
-  def computeGrepSize(toolName: String, params: scala.collection.mutable.Map[String, ujson.Value], filesCache: Map[String, (Seq[String], String)]): Int = {
+  def computeGrepSize(
+      toolName: String,
+      params: scala.collection.mutable.Map[String, ujson.Value],
+      filesCache: Map[String, (Seq[String], String)]
+  ): Int = {
     toolName match {
       case "annotated_source" =>
         val uri = params.get("uri").map(_.str).getOrElse("")
@@ -256,13 +285,16 @@ object CompareGrep {
 
       case "document_outline" =>
         val uri = params.get("uri").map(_.str).getOrElse("")
-        filesCache.get(uri).map { case (lines, _) =>
-          val defPattern = """\b(class|trait|object|def|val|var|type)\s""".r
-          lines.zipWithIndex.collect {
-            case (line, idx) if defPattern.findFirstIn(line).isDefined =>
-              formatGrepLine(uri, idx + 1, line).length
-          }.sum
-        }.getOrElse(0)
+        filesCache
+          .get(uri)
+          .map { case (lines, _) =>
+            val defPattern = """\b(class|trait|object|def|val|var|type)\s""".r
+            lines.zipWithIndex.collect {
+              case (line, idx) if defPattern.findFirstIn(line).isDefined =>
+                formatGrepLine(uri, idx + 1, line).length
+            }.sum
+          }
+          .getOrElse(0)
 
       case "find_symbol" =>
         val query = params.get("query").orElse(params.get("name")).map(_.str).getOrElse("")
@@ -314,7 +346,8 @@ object CompareGrep {
           val regexExt = s"\\b(extends|with)\\s+${Pattern.quote(name)}\\b".r
           filesCache.map { case (relPath, (lines, _)) =>
             lines.zipWithIndex.collect {
-              case (line, idx) if regexDef.findFirstIn(line).isDefined || regexExt.findFirstIn(line).isDefined =>
+              case (line, idx)
+                  if regexDef.findFirstIn(line).isDefined || regexExt.findFirstIn(line).isDefined =>
                 formatGrepLine(relPath, idx + 1, line).length
             }.sum
           }.sum
@@ -326,13 +359,19 @@ object CompareGrep {
         else {
           val name = extractSimpleName(symbol)
           val defRegex = s"\\b(class|trait|object)\\s+${Pattern.quote(name)}\\b".r
-          val targetFiles = filesCache.filter { case (_, (_, content)) =>
-            defRegex.findFirstIn(content).isDefined
-          }.keys.toList
+          val targetFiles = filesCache
+            .filter { case (_, (_, content)) =>
+              defRegex.findFirstIn(content).isDefined
+            }
+            .keys
+            .toList
 
           targetFiles.map { uri =>
             filesCache(uri)._1.zipWithIndex.collect {
-              case (line, idx) if """\b(class|trait|object|def|val|var|type)\s""".r.findFirstIn(line).isDefined =>
+              case (line, idx)
+                  if """\b(class|trait|object|def|val|var|type)\s""".r
+                    .findFirstIn(line)
+                    .isDefined =>
                 formatGrepLine(uri, idx + 1, line).length
             }.sum
           }.sum
@@ -341,7 +380,8 @@ object CompareGrep {
       case "structure" =>
         filesCache.map { case (relPath, (lines, _)) =>
           lines.zipWithIndex.collect {
-            case (line, idx) if """\b(class|trait|object|package)\s""".r.findFirstIn(line).isDefined =>
+            case (line, idx)
+                if """\b(class|trait|object|package)\s""".r.findFirstIn(line).isDefined =>
               formatGrepLine(relPath, idx + 1, line).length
           }.sum
         }.sum
