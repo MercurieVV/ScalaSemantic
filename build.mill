@@ -34,7 +34,7 @@ object V {
   val slf4jNop = "1.7.36"
   val presentationCompiler = "3.8.4"
   val wartremover = "3.6.0" // must match the compiler-plugin artifact
-  val compatScala = Seq("2.13.16", "3.3.4")
+  val compatScala = Seq("2.13.16", "3.3.8")
 }
 
 def munitDeps = Seq(
