@@ -519,6 +519,12 @@ case "$tool" in
       then
         mode=
       fi
+      # `git log/show/diff/blame ... -- foo.scala` names the file only as a pathspec/rev
+      # filter -- git reads its own object store, not the working-tree source text, so this
+      # is not the text-scraping the guard exists to stop.
+      if printf '%s' "$command_line" | grep -Eq '(^|[|;&(`]|[[:space:]])git([[:space:]]|$)'; then
+        mode=
+      fi
       # A redirect or in-place edit whose TARGET is the Scala file is a write, not a read --
       # and it outranks a reader that appears on the same line (`cat > A.scala`).
       if printf '%s' "$command_line" | grep -Eq \
