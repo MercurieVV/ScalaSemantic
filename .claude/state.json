@@ -8,12 +8,12 @@
     {"issue": 111, "branch": "feat/value-flow-111", "title": "Implement value_flow BFS tool for data-flow analysis", "type": "impl", "engine": "claude", "model": "sonnet", "difficulty": "hard", "touched_areas": ["analysis","semanticdb","mcp-tools"], "depends_on": [], "task": "Implement value_flow BFS tool: trace value propagation across bindings, parameters, returns; track types, co-parameters, leaf termination", "attempts": 0, "status": "pool", "pr_url": ""},
     {"issue": 79, "branch": "docs/restructure-compact-79", "title": "Restructure and compact documentation", "type": "analytic", "engine": "plan", "model": "haiku", "difficulty": "small", "touched_areas": ["documentation"], "depends_on": [], "task": "Audit doc structure, evaluate topics by importance, restructure and shrink", "attempts": 0, "status": "pool", "pr_url": ""}
   ],
-  "inflight": [
-    {"issue": 105, "branch": "fix/disable-plugin-logging-105", "title": "Disable plugin logging by default, update README", "type": "impl", "engine": "codex", "model": "o4-mini", "difficulty": "trivial", "touched_areas": ["sbt-plugin","documentation"], "depends_on": [], "task": "Disable plugin logging by default, document usage in README", "attempts": 0, "status": "inflight", "pr_url": "", "worker_id": "b2bezc844"},
-    {"issue": 80, "branch": "test/code-bundles-80", "title": "Create test code bundles for SemanticDB analysis", "type": "impl", "engine": "codex", "model": "o3", "difficulty": "medium", "touched_areas": ["testing","fixtures"], "depends_on": [], "task": "Create test code bundles for features, research Scala version compatibility, handle deprecations in fixtures", "attempts": 0, "status": "inflight", "pr_url": "", "worker_id": "bq3o25x66"},
-    {"issue": 71, "branch": "test/property-based-71", "title": "Migrate tests to property-based with hedgehog", "type": "impl", "engine": "codex", "model": "o3", "difficulty": "medium", "touched_areas": ["testing"], "depends_on": [], "task": "Migrate unit tests to property-based tests using hedgehog, implement golden value assertions", "attempts": 0, "status": "inflight", "pr_url": "", "worker_id": "b63hx75je"}
+  "inflight": [],
+  "done": [
+    {"issue": 105, "branch": "fix/disable-plugin-logging-105", "title": "Disable plugin logging by default, update README", "type": "impl", "engine": "codex", "model": "o4-mini", "difficulty": "trivial", "touched_areas": ["build-plugin","documentation"], "depends_on": [], "task": "Disable plugin logging by default, document usage in README", "attempts": 0, "status": "done", "pr_url": "https://github.com/MercurieVV/ScalaSemantic/pull/188", "worker_id": "b2bezc844"},
+    {"issue": 80, "branch": "test/code-bundles-80", "title": "Create test code bundles for SemanticDB analysis", "type": "impl", "engine": "codex", "model": "o3", "difficulty": "medium", "touched_areas": ["testing","fixtures"], "depends_on": [], "task": "Create test code bundles for features, research Scala version compatibility, handle deprecations in fixtures", "attempts": 0, "status": "done", "pr_url": "https://github.com/MercurieVV/ScalaSemantic/pull/177", "worker_id": "bq3o25x66"},
+    {"issue": 71, "branch": "test/property-based-71", "title": "Migrate tests to property-based with hedgehog", "type": "impl", "engine": "codex", "model": "o3", "difficulty": "medium", "touched_areas": ["testing"], "depends_on": [], "task": "Migrate unit tests to property-based tests using hedgehog, implement golden value assertions", "attempts": 0, "status": "done", "pr_url": "https://github.com/MercurieVV/ScalaSemantic/pull/97", "worker_id": "b63hx75je"}
   ],
-  "done": [],
   "failed": [],
-  "timestamp": "2026-06-30T21:17:00Z"
+  "timestamp": "2026-09-07T00:00:00Z"
 }

@@ -5,22 +5,19 @@
 [![Docs](https://img.shields.io/badge/docs-site-blue)](https://mercurievv.github.io/ScalaSemantic/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**ScalaSemantic** is an MCP server that gives AI coding agents compiler-resolved Scala facts — exact symbols, types, inheritance, usages, implicits, and call paths — over compiler-emitted **SemanticDB**. Instead of grepping source text, agents query what the compiler already knows.
+**ScalaSemantic** is an MCP server that gives AI coding agents compiler-resolved Scala facts — exact symbols, types, inheritance, usages, implicits, and call paths — from compiler-emitted **SemanticDB**. Instead of grepping source text, agents query what the compiler already knows.
 
 Works with Scala 2.13.* and 3.*.*, any sbt/Mill/Gradle project, and any MCP-compatible agent (Claude Code, Codex, Gemini CLI, Cline, Roo Code, Continue…).
 
 ## Quick setup
 
-Needs only `java` (no sbt, no Scala CLI). One command, nothing to run per project — this registers
-the MCP server for your user, so every Scala project on the machine has it:
+Needs only `java`. One command registers the server for your user, so every Scala project on the machine gets it:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.sh | sh
 ```
 
-Or install into a single project, so the launcher and config can be committed for your team. Run
-from the project root — this mode also enables SemanticDB in the build, writes the agent steering
-files and installs the Claude guard hook. It is idempotent; re-running is always safe:
+Run it from a project root with `--project` to also enable SemanticDB, write the agent steering files and install the Claude guard hook. Re-running is safe:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.sh | sh -s -- --project
@@ -30,44 +27,11 @@ curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scr
 iwr https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.ps1 -OutFile scalasemantic-mcp.ps1; .\scalasemantic-mcp.ps1 setup
 ```
 
-### Guard hook (Claude Code)
-
-For Claude Code there is `.claude/hooks/scala-semantic-guard.sh`, registered as a `PreToolUse` hook.
-It **denies** `grep`/`cat`/`Read`/`Grep` aimed at `.scala` files and points the agent at the MCP
-tools instead — steering files only ask, a hook enforces. It fails open when the semantic answer
-isn't available (no MCP entry, no compiled `*.semanticdb`, no `jq`/`python3`), and an explicit
-`# semantic-fallback: <reason>` marker on a shell command always passes (and is logged to
-`.claude/semantic-fallback.log`).
-
-It is **not installed by default** — it changes how every later agent session in that directory
-reads Scala, so it has to be asked for:
-
-| Flag (PowerShell) | Effect |
-|---|---|
-| `--rwhook-local` (`-RwHookLocal`) | install for this project (`.claude/` in the project) |
-| `--rwhook-user` (`-RwHookUser`) | install for this user (`~/.claude/`), covering every project |
-| `--rw-hook-remove` (`-RwHookRemove`) | remove it from both, leaving the rest of `settings.json` alone |
-
-A plain `setup` run installs nothing, but does keep a hook that is already there up to date.
-Rationale and alternatives:
-[docs/adr/0001-claude-code-guard-hook.md](docs/adr/0001-claude-code-guard-hook.md).
+Launcher, plain jar and logging: [Integration](https://mercurievv.github.io/ScalaSemantic/getting-started/integration/). The optional [guard hook](https://mercurievv.github.io/ScalaSemantic/adr/claude-code-guard-hook/) denies `grep`/`cat`/`Read` on `.scala` files and points agents at the MCP tools; it is not installed by default.
 
 ## Tools
 
-| Tool | Purpose |
-|---|---|
-| `find_symbol` | Resolve a name to a SemanticDB symbol |
-| `find_usages` | Exact references to a symbol (paged) |
-| `class_hierarchy` | Parents and known subtypes |
-| `method_signature` | Full signature with type/implicit params |
-| `members` | Declared and inherited members |
-| `resolve_implicits` | Given definitions for a type |
-| `call_path` | Shortest call route between two methods |
-| `type_at_position` | Symbol and type at a source position |
-| `trace_implicit_chain` | Transitive given dependencies |
-| `find_overloads` | All overloads sharing a name and owner |
-
-Full reference: [docs/reference/tools.md](docs/reference/tools.md)
+`find_symbol` · `find_usages` · `class_hierarchy` · `method_signature` · `members` · `resolve_implicits` · `call_path` · `type_at_position` · `trace_implicit_chain` · `find_overloads` — what each does, plus the symbol grammar: [Tool reference](https://mercurievv.github.io/ScalaSemantic/reference/tools/).
 
 ## SemanticDB vs `grep`
 
@@ -80,21 +44,19 @@ Full reference: [docs/reference/tools.md](docs/reference/tools.md)
 | Comments, TODOs, config files | `grep` |
 | Code that hasn't compiled yet | `grep` |
 
-Measured: semantic tools use ~90% fewer tokens than grep for symbol questions.
-Details: [SemanticDB vs grep](docs/explanation/scala-semantic-vs-grep.md).
+Measured: semantic tools use ~90% fewer tokens than grep for symbol questions. Details: [ScalaSemantic vs grep](https://mercurievv.github.io/ScalaSemantic/explanation/scala-semantic-vs-grep/).
 
 ## Documentation
 
-- [**Quickstart**](docs/getting-started/quickstart.md) — auto-download script, 5 minutes
-- [**Integration**](docs/getting-started/integration.md) — Scala CLI script, launcher, plain jar, logging
-- [**Tool reference**](docs/reference/tools.md) — all MCP tools and SemanticDB symbol grammar
-- [**Examples**](docs/usage/examples.md) — sample MCP calls and responses
-- [**SemanticDB vs grep**](docs/explanation/scala-semantic-vs-grep.md) — trade-offs and token savings
-- [**FAQ**](docs/getting-started/faq.md) — compile freshness, Metals, install choices
-- [**Development**](docs/project/development.md) — modules, build, test, cross-version
-- [**Releasing**](docs/project/releasing.md) — Sonatype Central release process
+- [Quickstart](https://mercurievv.github.io/ScalaSemantic/getting-started/quickstart/) — install in 5 minutes
+- [Integration](https://mercurievv.github.io/ScalaSemantic/getting-started/integration/) — launcher, plain jar, logging
+- [Tool reference](https://mercurievv.github.io/ScalaSemantic/reference/tools/) — all MCP tools and symbol grammar
+- [Tool examples](https://mercurievv.github.io/ScalaSemantic/usage/tool-examples/) — real MCP calls and responses
+- [FAQ](https://mercurievv.github.io/ScalaSemantic/getting-started/faq/) — compile freshness, Metals, install choices
+- [Development](https://mercurievv.github.io/ScalaSemantic/project/development/) — modules, build, test
+- [Releasing](https://mercurievv.github.io/ScalaSemantic/project/releasing/) — Sonatype Central process
 
-Full documentation map: [docs/index.md](docs/index.md)
+Full documentation: **[mercurievv.github.io/ScalaSemantic](https://mercurievv.github.io/ScalaSemantic/)**
 
 ## License
 
