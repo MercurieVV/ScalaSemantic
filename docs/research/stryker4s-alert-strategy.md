@@ -45,7 +45,7 @@ Due to the high runtime cost of running mutation tests (estimated 5-15 mins for 
 - **Nightly Run**: Trigger a full mutation test run on the `master` branch every night via a cron schedule. This records the baseline health of the codebase.
 - **On-Demand PR Run (Label-Gated)**: Run mutation testing on a pull request only if:
    - The PR has the label `ci:run-mutation` applied.
-   - The PR modifies critical business logic inside the [analysis](../../analysis/) module.
+   - The PR modifies critical business logic inside the `analysis` module.
 
 ### Isolation (Avoiding SemanticDB Pollution)
 As identified in the research report, sbt compilation during a Stryker run overwrites target class directories and generates polluted SemanticDB files.
@@ -57,9 +57,9 @@ As identified in the research report, sbt compilation during a Stryker run overw
 
 We recommend rolling out mutation testing in phases:
 
-1. **Phase 1: `analysis` module** ([analysis](../../analysis/)): Focus here first. This contains the semantic analysis engine where logic is dense and test coverage is critical.
-2. **Phase 2: `core` module** ([core](../../core/)): Roll out once `analysis` is stable. Since `core` handles static SemanticDB parsing and has stable structure, its threshold can be set higher (e.g. `85%`).
-3. **Phase 3: `mcp` module** ([mcp](../../mcp/)): The stdio JSON-RPC loop contains infinite loops and blocking network channels that are difficult to mutate without triggering infinite loops or timeouts. We recommend excluding the stdio channel from mutations.
+1. **Phase 1: `analysis` module**: Focus here first. This contains the semantic analysis engine where logic is dense and test coverage is critical.
+2. **Phase 2: `core` module**: Roll out once `analysis` is stable. Since `core` handles static SemanticDB parsing and has stable structure, its threshold can be set higher (e.g. `85%`).
+3. **Phase 3: `mcp` module**: The stdio JSON-RPC loop contains infinite loops and blocking network channels that are difficult to mutate without triggering infinite loops or timeouts. We recommend excluding the stdio channel from mutations.
 
 ### Implementation note from #133
 
@@ -83,7 +83,7 @@ resolved:
 ## 5. Configuration Sketch
 
 ### HOCON Config (`stryker4s.conf`)
-The HOCON configuration file [stryker4s.conf](../../stryker4s.conf) should be structured as follows:
+The HOCON configuration file `stryker4s.conf` should be structured as follows:
 
 ```hocon
 stryker4s {

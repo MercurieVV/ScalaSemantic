@@ -25,9 +25,9 @@ For each compiler feature area and Scala version, we evaluate whether to (a) ven
 The new layout will introduce version-segregated files for newly-vendored and custom code:
 
 Status: this file list was the original plan; the fixtures actually landed under different names
-(see [`compat-fixtures/src/main`](../../compat-fixtures/src/main) for the current layout —
-`CallGraph.scala`, `ProductRecord.scala`, and, Scala-3-only, `VersionSpecific.scala`). Kept as a
-historical record of the intended structure, not a current file listing.
+in `compat-fixtures/src/main` (`CallGraph.scala`, `ProductRecord.scala`, and, Scala-3-only,
+`VersionSpecific.scala`). Kept as a historical record of the intended structure, not a current
+file listing.
 
 ### Scala 2.13 Files (as planned)
 Path: `compat-fixtures/src/main/scala-2.13/com/github/mercurievv/scalasemantic/compat/`
