@@ -49,5 +49,5 @@ Based on a candidate survey:
 
 To steer LLM agents away from grep and toward ScalaSemantic, we use a two-pronged approach:
 1. **Server-Level MCP Instructions**: The server returns custom instructions in the `instructions` field of the MCP `InitializeResult`. Compliant clients inject these instructions directly into the LLM system prompt, ensuring out-of-the-box steering without repository changes.
-2. **Repository Configuration Files**: We generate `SCALA_SEMANTIC_RULES.md` along with client-specific rule file stubs (like `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, etc.) via `sbt mcpClientConfig`. This handles clients that do not support MCP instructions and provides a human-readable source of truth in the repository.
+2. **Repository Configuration Files**: `scalasemantic-mcp setup` generates `SCALA_SEMANTIC_RULES.md` along with client-specific rule file stubs (like `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, etc.). This handles clients that do not support MCP instructions and provides a human-readable source of truth in the repository.
 

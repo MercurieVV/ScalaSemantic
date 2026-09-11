@@ -1,6 +1,6 @@
 # Mill Capability Comparison
 
-This document maps the build capabilities identified in the [sbt build inventory](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/docs/research/sbt-build-inventory.md) to their Mill equivalents, evaluating feasibility, identifying gaps, and outlining the migration path.
+This document maps the build capabilities identified in the [sbt build inventory](sbt-build-inventory.md) to their Mill equivalents, evaluating feasibility, identifying gaps, and outlining the migration path.
 
 ---
 

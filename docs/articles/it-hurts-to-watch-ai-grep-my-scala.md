@@ -58,7 +58,7 @@ The server runs as its own JVM process. stdout is JSON-RPC only; logs go to a fi
 
 ## Setup
 
-For details on adding the sbt plugin, setting up automatic or manual launcher configurations, or integrating with other build tools, see the [Integration guide](../getting-started/integration.md).
+For the launcher script, plain-jar setup, and enabling SemanticDB across build tools (sbt, Mill, Gradle, Scala CLI), see the [Integration guide](../getting-started/integration.md).
 
 
 ---

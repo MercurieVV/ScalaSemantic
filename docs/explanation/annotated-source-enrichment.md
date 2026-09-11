@@ -1,7 +1,7 @@
 # annotated_source enrichment — design
 
-Status: **design locked, not yet implemented.** Governs the enrichment surface of the
-`annotated_source` tool (and any future source-returning tool sharing `SourceView`).
+Status: **implemented.** Governs the enrichment surface of the `annotated_source` tool (and any
+future source-returning tool sharing `SourceView`).
 
 ## 1. Who consumes this and what they pay
 

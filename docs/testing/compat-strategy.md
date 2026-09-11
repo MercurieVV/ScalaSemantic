@@ -1,6 +1,6 @@
 # Compatibility Fixtures Refactoring Strategy
 
-This strategy document synthesizes findings from the [Compatibility Fixtures Coverage Audit](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/docs/testing/compat-audit.md) and [Ecosystem Research](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/docs/research/compat-fixtures-sources.md) to define a clear, actionable plan for refactoring compatibility fixtures in `compat-fixtures`.
+This strategy document synthesizes findings from the [Compatibility Fixtures Coverage Audit](compat-audit.md) and [Ecosystem Research](../research/compat-fixtures-sources.md) to define a clear, actionable plan for refactoring compatibility fixtures in `compat-fixtures`.
 
 ---
 
@@ -24,38 +24,34 @@ For each compiler feature area and Scala version, we evaluate whether to (a) ven
 
 The new layout will introduce version-segregated files for newly-vendored and custom code:
 
-### Scala 2.13 Files
+Status: this file list was the original plan; the fixtures actually landed under different names
+(see [`compat-fixtures/src/main`](../../compat-fixtures/src/main) for the current layout —
+`CallGraph.scala`, `ProductRecord.scala`, and, Scala-3-only, `VersionSpecific.scala`). Kept as a
+historical record of the intended structure, not a current file listing.
+
+### Scala 2.13 Files (as planned)
 Path: `compat-fixtures/src/main/scala-2.13/com/github/mercurievv/scalasemantic/compat/`
-- [BasicClasses.scala](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/compat-fixtures/src/main/scala-2.13/com/github/mercurievv/scalasemantic/compat/BasicClasses.scala) (Keep)
-- [Inheritance.scala](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/compat-fixtures/src/main/scala-2.13/com/github/mercurievv/scalasemantic/compat/Inheritance.scala) (Keep)
-- [Generics.scala](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/compat-fixtures/src/main/scala-2.13/com/github/mercurievv/scalasemantic/compat/Generics.scala) (Keep)
-- [Overloads.scala](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/compat-fixtures/src/main/scala-2.13/com/github/mercurievv/scalasemantic/compat/Overloads.scala) (Keep)
-- [Implicits.scala](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/compat-fixtures/src/main/scala-2.13/com/github/mercurievv/scalasemantic/compat/Implicits.scala) (Keep)
-- [CallGraph.scala](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/compat-fixtures/src/main/scala-2.13/com/github/mercurievv/scalasemantic/compat/CallGraph.scala) (Keep / Expand with custom polymorphic and implicit call paths)
+- `BasicClasses.scala`, `Inheritance.scala`, `Generics.scala`, `Overloads.scala`,
+  `Implicits.scala`, `CallGraph.scala` (Keep)
 - **`VendoredFixtures.scala`** (New): Stores BSD-3 licensed Scalameta integration tests (sealed traits, value classes, implicit classes, procedure syntax, package objects). Contains BSD-3 license header.
 
-### Scala 3 Files
+### Scala 3 Files (as planned)
 Path: `compat-fixtures/src/main/scala-3/com/github/mercurievv/scalasemantic/compat/`
-- [BasicClasses.scala](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/compat-fixtures/src/main/scala-3/com/github/mercurievv/scalasemantic/compat/BasicClasses.scala) (Keep)
-- [Inheritance.scala](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/compat-fixtures/src/main/scala-3/com/github/mercurievv/scalasemantic/compat/Inheritance.scala) (Keep)
-- [Generics.scala](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/compat-fixtures/src/main/scala-3/com/github/mercurievv/scalasemantic/compat/Generics.scala) (Keep)
-- [Overloads.scala](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/compat-fixtures/src/main/scala-3/com/github/mercurievv/scalasemantic/compat/Overloads.scala) (Keep)
-- [Implicits.scala](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/compat-fixtures/src/main/scala-3/com/github/mercurievv/scalasemantic/compat/Implicits.scala) (Keep)
-- [CallGraph.scala](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/compat-fixtures/src/main/scala-3/com/github/mercurievv/scalasemantic/compat/CallGraph.scala) (Keep / Expand with custom polymorphic and implicit call paths)
-- [VersionSpecific.scala](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/compat-fixtures/src/main/scala-3/com/github/mercurievv/scalasemantic/compat/VersionSpecific.scala) (Keep)
+- `BasicClasses.scala`, `Inheritance.scala`, `Generics.scala`, `Overloads.scala`,
+  `Implicits.scala`, `CallGraph.scala`, `VersionSpecific.scala` (Keep)
 - **`VendoredFixtures.scala`** (New): Stores Apache 2.0 licensed Scala 3 expect tests (enums, opaque types, trait parameters). Contains Apache 2.0 license header.
 
 ---
 
 ## 3. Golden-File Regeneration and Testing
 
-1. **Generation Method**: To update the golden target directories `analysis/src/test/resources/compat/scala-2.13` and `analysis/src/test/resources/compat/scala-3`, run the sbt command alias:
+1. **Generation Method**: To update the golden target directories `analysis/src/test/resources/compat/scala-2.13` and `analysis/src/test/resources/compat/scala-3`, run:
    ```bash
-   sbt compatGoldenAll
+   ./mill compatGoldenAll
    ```
    This will clean old golden directories, cross-compile the new `compat-fixtures` on Scala `2.13.16` and `3.3.4` with SemanticDB enabled, and copy their outputs into the `analysis` resource folder.
 2. **CompatSuite Verification**:
-   The [CompatSuite.scala](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/analysis/src/test/scala/com/github/mercurievv/scalasemantic/analysis/CompatSuite.scala) will be expanded in the next phase to include test assertions verifying:
+   `CompatSuite.scala` (`analysis/src/test/scala/com/github/mercurievv/scalasemantic/analysis/CompatSuite.scala`) will be expanded in the next phase to include test assertions verifying:
    - Enum hierarchy resolutions (both Scala 3 `enum` and Scala 2.13 `sealed trait` + `case object` structures).
    - Opaque type signatures and value class signatures.
    - Parameterized trait structure (for Scala 3).

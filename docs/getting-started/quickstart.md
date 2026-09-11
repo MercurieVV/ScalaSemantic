@@ -28,13 +28,12 @@ Shortest path for any project.
 
    Cline and Roo have no user-level config location this installer can write (their global MCP
    settings live inside VS Code's own storage), so those two need a project install.
-2. **Compile the project**:
+2. **Compile the project** with your build tool (`sbt compile`, `./mill __.compile`, `gradle
+   compileScala`, …) — this is what emits the SemanticDB the server reads.
+3. **Refresh live-buffer classpath metadata after dependency/build changes** — the project install
+   wires this into a task named `scalaSemanticWriteClasspath` (sbt or Mill):
    ```sh
-   sbt compile
-   ```
-3. **Refresh live-buffer classpath metadata after dependency/build changes**:
-   ```sh
-   sbt scalaSemanticWriteClasspath
+   sbt scalaSemanticWriteClasspath   # or: ./mill scalaSemanticWriteClasspath
    ```
 
 For manual configurations or other integration options (Scala CLI remote script, plain `java -jar`), see [Integration](integration.md).

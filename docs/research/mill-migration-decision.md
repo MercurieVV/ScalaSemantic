@@ -1,6 +1,6 @@
 # Mill Migration Decision: Recommend, Defer, or Reject
 
-This decision document synthesizes the [sbt build inventory](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/docs/research/sbt-build-inventory.md) and [Mill capability comparison](file:///Users/viktorskalinins/IdeaProjects/my/ScalaSemanticMCP/docs/research/mill-capability-comparison.md) to evaluate whether ScalaSemantic should migrate its build from sbt to Mill.
+This decision document synthesizes the [sbt build inventory](sbt-build-inventory.md) and [Mill capability comparison](mill-capability-comparison.md) to evaluate whether ScalaSemantic should migrate its build from sbt to Mill.
 
 ---
 

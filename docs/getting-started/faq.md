@@ -24,7 +24,11 @@ No. Metals is editor-facing and optimized for live coding: completions, diagnost
 
 ## Which install option should I choose?
 
-For sbt projects, use Option A (sbt plugin) from the [Integration guide](integration.md) — it enables SemanticDB and generates the client config automatically. For non-sbt projects, use Option B (auto-download launcher) or Option C (plain `java -jar`).
+Works the same regardless of build tool (sbt, Mill, Gradle, Scala CLI, plain `scalac`). Pick
+**project scope** for a repo that hasn't been set up for SemanticDB yet — it's the only mode that
+enables SemanticDB, writes `SCALA_SEMANTIC_RULES.md`, and installs the Claude guard hook. Pick
+**user scope** to register the server once for every project on the machine. See
+[Integration](integration.md) for the exact commands and the scope comparison table.
 
 ## What is the presentation compiler, and how is it used?
 

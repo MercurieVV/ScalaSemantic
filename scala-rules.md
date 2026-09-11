@@ -39,12 +39,7 @@ You are acting as an expert Scala engineer. When writing, refactoring, or review
 * **Wartremover**: Pure functional programming safety is checked via Wartremover's Unsafe warts. Ensure your code does not trigger any unsafe warts (such as `Null`, `Var`, `Throw`, `Return`, `IsInstanceOf`, `AsInstanceOf`).
 
 ## 18. ScalaSemantic MCP Rules
-* For any Scala (`.scala`) source questions, file operations, search, or analysis, use ScalaSemantic MCP tools before shell text tools.
-* Preferably compile code before usage, therefore more ScalaSemantic functions could be used with better result.
-* **NEVER** use generic text/file-reading, viewing, or searching tools (like `view_file`, `grep_search`, or shell commands like `rg`/`grep`/`cat`/`sed`) on `.scala` files unless the MCP tools are unavailable or failing.
-* **ALWAYS** use the custom tools provided by the `scala-semantic` MCP server:
-  * **To read/view the contents of a file**: Use the `annotated_source` MCP tool.
-  * **For all other queries** (searching, finding usages, hierarchies, etc.): Select the appropriate tool from the registered `scala-semantic` MCP tools.
+See [SCALA_SEMANTIC_RULES.md](SCALA_SEMANTIC_RULES.md) (also `@`-imported by root `CLAUDE.md`).
 
 ## 17. Project Maintenance
 * **Scala Steward**: Periodically run Scala Steward updates to keep the project's dependencies and compiler plugins up-to-date.

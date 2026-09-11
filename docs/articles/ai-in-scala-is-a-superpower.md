@@ -55,7 +55,7 @@ ScalaSemantic requires **no sbt or Mill plugin installation**. It automatically 
 
 ```bash
 # Run automatically via launcher
-curl -sSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/main/scalasemantic-mcp.sh | bash
+curl -fsSL https://raw.githubusercontent.com/MercurieVV/ScalaSemantic/master/scripts/scalasemantic-mcp.sh | sh
 ```
 
 ### Try It Today

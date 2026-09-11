@@ -5,8 +5,8 @@ It reads compiler-emitted **SemanticDB**, so answers reflect what the compiler r
 
 ## Get started
 
-- [Quickstart](getting-started/quickstart.md) — sbt setup in 5 minutes
-- [Integration](getting-started/integration.md) — sbt plugin, launcher, plain jar, logging
+- [Quickstart](getting-started/quickstart.md) — install in 5 minutes
+- [Integration](getting-started/integration.md) — launcher, plain jar, logging
 - [FAQ](getting-started/faq.md) — compile freshness, Metals/LSP, install choices
 
 ## Reference
@@ -31,8 +31,8 @@ It reads compiler-emitted **SemanticDB**, so answers reflect what the compiler r
 
 - [Claude interaction study](research/claude-interaction-study.md) — measured tool usage, tool recommendations
 - [Token metrics methodology](research/token-metrics-methodology.md) — measurement definitions and generated results
-- [Token metrics findings (live run)](research/token-metrics-findings.md) — end-to-end agent token usage, coverage, and limitations
+- [Token metrics live run](research/token-metrics-live-run.md) — raw agent-session token counts, with/without MCP
+- [Token metrics findings](research/token-metrics-findings.md) — end-to-end agent token usage, coverage, and limitations
+- [ScalaSemantic vs grep response metrics](research/scala-semantic-vs-grep-metrics.md) — 337-call log analysis of tool vs grep token cost
 - [Compat fixture sources](research/compat-fixtures-sources.md) — reusable Scala/SemanticDB fixture corpora
-- [sbt build inventory](research/sbt-build-inventory.md) — baseline for sbt-to-Mill comparison
-- [Docs audit](audit-results.md) — pre-shrink catalog and duplication map
-- [Docs prioritization plan](prioritization-plan.md) — shrink budgets, canonical homes, and merge plan
+- [sbt build inventory](research/sbt-build-inventory.md) — baseline for the sbt-to-Mill migration
