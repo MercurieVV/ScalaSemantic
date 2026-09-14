@@ -88,7 +88,9 @@ object DemoAnnotatedWrite {
   }
 
   val Jar: Path =
-    Paths.get(sys.env.getOrElse("SCALASEMANTIC_JAR", "out/mcp/assembly.dest/out.jar")).toAbsolutePath
+    Paths
+      .get(sys.env.getOrElse("SCALASEMANTIC_JAR", "out/mcp/assembly.dest/out.jar"))
+      .toAbsolutePath
 
   /** One batch of tools/call requests against a real server process, over real stdio JSON-RPC —
     * exactly the wire an agent uses. Returns the parsed responses.
@@ -98,10 +100,18 @@ object DemoAnnotatedWrite {
       """{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18",""" +
         """"capabilities":{},"clientInfo":{"name":"demo","version":"0"}}}"""
     val lines = init +: calls.zipWithIndex.map { case (c, i) =>
-      ujson.write(ujson.Obj("jsonrpc" -> "2.0", "id" -> (i + 1), "method" -> "tools/call", "params" -> c))
+      ujson.write(
+        ujson.Obj("jsonrpc" -> "2.0", "id" -> (i + 1), "method" -> "tools/call", "params" -> c)
+      )
     }
     val cmd =
-      Seq("java", "-cp", Jar.toString, "com.github.mercurievv.scalasemantic.mcpServer", root.toString)
+      Seq(
+        "java",
+        "-cp",
+        Jar.toString,
+        "com.github.mercurievv.scalasemantic.mcpServer",
+        root.toString
+      )
     val pb = new ProcessBuilder(cmd.asJava)
     pb.directory(root.toFile)
     val proc = pb.start()
@@ -135,7 +145,10 @@ object DemoAnnotatedWrite {
 
   def annotatedRead(root: Path, uri: String): (String, String) = {
     val resp =
-      rpc(root, Seq(call("annotated_source", "uri" -> uri, "format" -> "compilable", "sentinel" -> true)))
+      rpc(
+        root,
+        Seq(call("annotated_source", "uri" -> uri, "format" -> "compilable", "sentinel" -> true))
+      )
     val p = payload(resp.last)
     if (!p.obj.get("found").forall(_.bool))
       fail(s"$uri is not in the index — compile the project first, then re-run.\n${ujson.write(p)}")
@@ -144,7 +157,10 @@ object DemoAnnotatedWrite {
 
   def annotatedWrite(root: Path, uri: String, text: String, baseHash: String): ujson.Value =
     payload(
-      rpc(root, Seq(call("annotated_source", "uri" -> uri, "write" -> text, "baseHash" -> baseHash))).last
+      rpc(
+        root,
+        Seq(call("annotated_source", "uri" -> uri, "write" -> text, "baseHash" -> baseHash))
+      ).last
     )
 
   def sha256(p: Path): String = {
@@ -233,8 +249,16 @@ object DemoAnnotatedWrite {
     */
   def compile(dir: Path): Unit = {
     val (code, out, err) = run(
-      Seq("scala-cli", "compile", "--semanticdb", "--semanticdb-sourceroot", ".",
-        "--semanticdb-targetroot", "semanticdb", "."),
+      Seq(
+        "scala-cli",
+        "compile",
+        "--semanticdb",
+        "--semanticdb-sourceroot",
+        ".",
+        "--semanticdb-targetroot",
+        "semanticdb",
+        "."
+      ),
       dir
     )
     if (code != 0) fail(s"fixture failed to compile\n--- stdout ---\n$out\n--- stderr ---\n$err")
@@ -291,9 +315,12 @@ object DemoAnnotatedWrite {
     // Reading must not touch the file, and the annotations must be RIGHT, not merely present.
     val goldenOk = golden match {
       case None                         => true
-      case Some(want) if buffer == want => verdict(true, "the annotations match the pinned golden text")
+      case Some(want) if buffer == want =>
+        verdict(true, "the annotations match the pinned golden text")
       case Some(want) if updateGolden =>
-        println(yellow("  ! annotation golden drifted; --update-golden, so here is the actual text:"))
+        println(
+          yellow("  ! annotation golden drifted; --update-golden, so here is the actual text:")
+        )
         println(buffer)
         true
       case Some(want) =>
@@ -317,7 +344,9 @@ object DemoAnnotatedWrite {
         step(3, s"Edit the annotated buffer: '$from' -> '$to'  (SEM blocks left in place)")
         show(edited)
         println()
-        println(dim("  An agent edits THIS. It has the compiler's view in front of it while doing so."))
+        println(
+          dim("  An agent edits THIS. It has the compiler's view in front of it while doing so.")
+        )
 
         step(4, "annotated_source(write=<edited buffer>, baseHash=…)  ← what the agent WRITES")
         val res = annotatedWrite(root, uri, edited, hash)
@@ -344,11 +373,18 @@ object DemoAnnotatedWrite {
           expectedDisk match {
             case Some(want) =>
               val ok =
-                verdict(rawAfter == want, "disk == the original source with just that edit, byte for byte")
+                verdict(
+                  rawAfter == want,
+                  "disk == the original source with just that edit, byte for byte"
+                )
               if (!ok) diff(want, rawAfter)
               ok
             case None =>
-              println(yellow("  ~ the edit touches annotation text only, so the independent oracle is skipped"))
+              println(
+                yellow(
+                  "  ~ the edit touches annotation text only, so the independent oracle is skipped"
+                )
+              )
               true
           }
         )
@@ -363,7 +399,10 @@ object DemoAnnotatedWrite {
         println(dim("  replaying the same write with the now-stale baseHash:"))
         println(dim("  " + staleMsg))
         val staleOk =
-          verdict(refusedForDrift, "a stale baseHash is refused as a concurrent edit, not some other error")
+          verdict(
+            refusedForDrift,
+            "a stale baseHash is refused as a concurrent edit, not some other error"
+          )
         val untouched = verdict(
           Files.readString(file) == rawAfter,
           "the refused write left the file exactly as the accepted one wrote it"
@@ -408,7 +447,7 @@ object DemoAnnotatedWrite {
       case "--keep" :: t          => keepSandbox = true; parse(t)
       case "--no-color" :: t      => color = false; parse(t)
       case "--update-golden" :: t => updateGolden = true; parse(t)
-      case "--replace" :: v :: t =>
+      case "--replace" :: v :: t  =>
         v.split("=>", 2) match {
           case Array(from, to) => replace = Some(from.trim -> to.trim)
           case _               => fail(s"--replace expects 'old=>new', got '$v'")
@@ -426,7 +465,9 @@ object DemoAnnotatedWrite {
     parse(args.toList.dropWhile(_ == "--"))
 
     if (!Files.exists(Jar))
-      fail(s"server jar not found at $Jar — build it with: ./mill mcp.assembly  (or set SCALASEMANTIC_JAR)")
+      fail(
+        s"server jar not found at $Jar — build it with: ./mill mcp.assembly  (or set SCALASEMANTIC_JAR)"
+      )
 
     val ok = file match {
       // Your own project, your own file. Read-only unless you explicitly ask for a write.
@@ -435,7 +476,9 @@ object DemoAnnotatedWrite {
         if (!Files.exists(root.resolve(f))) fail(s"no such file: ${root.resolve(f)}")
         if (replace.isDefined)
           println(
-            yellow(s"about to modify ${root.resolve(f)} for real — Ctrl-C now if that is not what you want")
+            yellow(
+              s"about to modify ${root.resolve(f)} for real — Ctrl-C now if that is not what you want"
+            )
           )
         roundtrip(root, f, replace)
 
@@ -447,7 +490,12 @@ object DemoAnnotatedWrite {
         // need its call sites updated too (that is what rename_plan is for).
         val default = "xs.map(s => s.length)" -> "xs.map(s => s.length * 2)"
         val demo =
-          roundtrip(root, "Fixture.scala", replace.orElse(Some(default)), Some(FixtureAnnotatedGolden))
+          roundtrip(
+            root,
+            "Fixture.scala",
+            replace.orElse(Some(default)),
+            Some(FixtureAnnotatedGolden)
+          )
 
         step(7, "And it still compiles")
         compile(root)

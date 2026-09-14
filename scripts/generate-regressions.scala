@@ -15,9 +15,9 @@ object GenerateRegressions:
   )
 
   case class Args(
-    mode: String = "",
-    base: String = "origin/master",
-    categories: List[String] = List("unit", "e2e", "stryker")
+      mode: String = "",
+      base: String = "origin/master",
+      categories: List[String] = List("unit", "e2e", "stryker")
   )
 
   def parseArgs(args: List[String]): Args =
@@ -50,14 +50,13 @@ object GenerateRegressions:
         case other =>
           System.err.println(s"Error: Unknown argument: $other")
           sys.exit(1)
-    
+
     if mode.isEmpty then
       System.err.println("Error: One of --write, --check, or --check-regression is required.")
       sys.exit(1)
-    
-    if categories.isEmpty then
-      categories = List("unit", "e2e", "stryker")
-      
+
+    if categories.isEmpty then categories = List("unit", "e2e", "stryker")
+
     Args(mode, base, categories)
 
   def collectUnitTests(): List[String] =
@@ -68,7 +67,11 @@ object GenerateRegressions:
 
     if os.exists(os.pwd / "out") then
       val outDirs = os.walk(os.pwd / "out")
-      for path <- outDirs if path.last == "out.json" && (path.toString.contains("testForked.dest") || path.toString.contains("testOnly.dest")) do
+      for
+        path <- outDirs if path.last == "out.json" && (path.toString.contains(
+          "testForked.dest"
+        ) || path.toString.contains("testOnly.dest"))
+      do
         try
           val json = ujson.read(os.read(path))
           if json.arr.length > 1 && json(1).isInstanceOf[ujson.Arr] then
@@ -108,8 +111,7 @@ object GenerateRegressions:
     // from the live report keep showing up as "present" via the stale root copy, masking a real
     // coverage regression. reports/mutation/<module>/report.json is the sole source of truth.
     if os.exists(os.pwd / "reports" / "mutation") then
-      for p <- os.walk(os.pwd / "reports" / "mutation") if p.last == "report.json" do
-        paths += p
+      for p <- os.walk(os.pwd / "reports" / "mutation") if p.last == "report.json" do paths += p
 
     for path <- paths do
       val moduleName = path.toIO.getParentFile.getName
@@ -124,7 +126,8 @@ object GenerateRegressions:
                 val repl = mutant.obj.get("replacement").map(_.str).getOrElse("")
 
                 val replClean = repl.replace("\n", "\\n").take(50)
-                val statusMapped = if status == "Survived" || status == "NoCoverage" then "Survived" else status
+                val statusMapped =
+                  if status == "Survived" || status == "NoCoverage" then "Survived" else status
                 val desc = s"Stryker:$moduleName:$filePath:$mutator:$replClean -> $statusMapped"
                 strykerMutants += desc
       catch
@@ -136,26 +139,21 @@ object GenerateRegressions:
     val modules = mutable.Set.empty[String]
     if os.exists(os.pwd / "reports" / "mutation") then
       for p <- os.list(os.pwd / "reports" / "mutation") if os.isDir(p) do
-        if os.exists(p / "report.json") then
-          modules += p.last
+        if os.exists(p / "report.json") then modules += p.last
     modules.toList
 
   def generateAll(categories: List[String]): Map[String, List[String]] =
     val results = mutable.Map.empty[String, List[String]]
-    if categories.contains("unit") then
-      results("unit") = collectUnitTests()
-    if categories.contains("e2e") then
-      results("e2e") = collectE2eTests()
-    if categories.contains("stryker") then
-      results("stryker") = collectStrykerMutants()
+    if categories.contains("unit") then results("unit") = collectUnitTests()
+    if categories.contains("e2e") then results("e2e") = collectE2eTests()
+    if categories.contains("stryker") then results("stryker") = collectStrykerMutants()
     results.toMap
 
   def getBaseFileContent(baseRef: String, path: String): Option[String] =
     try
       val res = os.proc("git", "show", s"$baseRef:$path").call(stderr = os.Pipe, check = false)
       if res.exitCode == 0 then Some(res.out.text()) else None
-    catch
-      case _: Exception => None
+    catch case _: Exception => None
 
   def isApproved(): Boolean =
     val envApp = sys.env.get("REGRESSION_APPROVED").map(_.toLowerCase)
@@ -172,8 +170,7 @@ object GenerateRegressions:
         val res = os.proc("git", "log", "-1", "--pretty=%B", commitRef).call()
         val msg = res.out.text().toLowerCase
         msg.contains("[approve-regression]") || msg.contains("[approve regression]")
-      catch
-        case _: Exception => false
+      catch case _: Exception => false
 
     val byPrLabel =
       sys.env.get("GITHUB_EVENT_PATH").map(os.Path(_)).filter(os.exists).exists { eventPath =>
@@ -189,13 +186,14 @@ object GenerateRegressions:
 
     byEnv || byCommit || byPrLabel
 
-
   def checkConsistency(generated: Map[String, List[String]], categories: List[String]): Boolean =
     var mismatch = false
     for category <- categories do
       val path = FilesMap(category)
       if !os.exists(path) then
-        System.err.println(s"Error: Regression file $path does not exist. Please generate it first.")
+        System.err.println(
+          s"Error: Regression file $path does not exist. Please generate it first."
+        )
         mismatch = true
       else
         try
@@ -248,7 +246,9 @@ object GenerateRegressions:
       val relPath = path.relativeTo(os.pwd).toString
       getBaseFileContent(baseRef, relPath) match
         case None =>
-          println(s"Info: File $path does not exist on base ref $baseRef. Skipping category '$category'.")
+          println(
+            s"Info: File $path does not exist on base ref $baseRef. Skipping category '$category'."
+          )
         case Some(baseContent) =>
           try
             val baseData = ujson.read(baseContent).arr.map(_.str).toList
@@ -279,11 +279,12 @@ object GenerateRegressions:
       println("The following tests/mutants disappeared compared to the base branch:")
       for (category, items) <- missingItemsByCat do
         println(s"\n[$category] - ${items.size} items removed:")
-        for item <- items do
-          println(s"  - $item")
+        for item <- items do println(s"  - $item")
 
       if isApproved() then
-        println("\n✅ Regression was explicitly approved (via PR label, commit message, or environment variable).")
+        println(
+          "\n✅ Regression was explicitly approved (via PR label, commit message, or environment variable)."
+        )
         true
       else
         println("\n❌ Check failed. Action required:")
@@ -313,11 +314,9 @@ object GenerateRegressions:
 
       case "check" =>
         val generated = generateAll(args.categories)
-        if !checkConsistency(generated, args.categories) then
-          sys.exit(1)
+        if !checkConsistency(generated, args.categories) then sys.exit(1)
         sys.exit(0)
 
       case "check-regression" =>
-        if !checkRegressions(args.base, args.categories) then
-          sys.exit(1)
+        if !checkRegressions(args.base, args.categories) then sys.exit(1)
         sys.exit(0)

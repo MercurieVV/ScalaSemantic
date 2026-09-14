@@ -111,7 +111,8 @@ object TestEditGuard {
       s"the reminder must name format=compilable — sentinel alone keeps the gutter:\n$out"
     )
 
-    val (wCode, wOut, _) = hook(project, """{"tool_name":"Write","tool_input":{"file_path":"a.sc"}}""")
+    val (wCode, wOut, _) =
+      hook(project, """{"tool_name":"Write","tool_input":{"file_path":"a.sc"}}""")
     check(wCode == 0, s"Write of a .sc file must not be blocked by default (exit $wCode)")
     check(wOut.contains("annotated_source"), s"expected the reminder for .sc too:\n$wOut")
 
@@ -140,7 +141,8 @@ object TestEditGuard {
   }
 
   def assertReadsStillDenied(project: Path): Unit = {
-    val (code, _, err) = hook(project, """{"tool_name":"Read","tool_input":{"file_path":"Fixture.scala"}}""")
+    val (code, _, err) =
+      hook(project, """{"tool_name":"Read","tool_input":{"file_path":"Fixture.scala"}}""")
     check(code == 2, s"reading a .scala file must still be denied (exit $code)")
     check(err.contains("BLOCKED"), s"expected the deny message on stderr:\n$err")
     println("[ok] read-side deny unchanged")
@@ -148,7 +150,11 @@ object TestEditGuard {
 
   def assertStrictDenies(project: Path, launcher: Path, env: Map[String, String]): Unit = {
     val (code, out, err) =
-      run(Seq(launcher.toString, "setup", "--project", ".", "--client", "claude", "--strict-edits"), project, env)
+      run(
+        Seq(launcher.toString, "setup", "--project", ".", "--client", "claude", "--strict-edits"),
+        project,
+        env
+      )
     check(code == 0, s"--strict-edits setup exited $code\n$out\n$err")
 
     val (eCode, _, eErr) = hook(project, edit("Fixture.scala"))
@@ -171,8 +177,8 @@ object TestEditGuard {
 
   /** A project set up before this change carries the old matcher. Re-running setup must widen it,
     * or the whole edit branch is dead code on every existing install. No flag: a plain setup run
-    * installs no hook, but does keep one that is already installed (here, by the install above)
-    * up to date.
+    * installs no hook, but does keep one that is already installed (here, by the install above) up
+    * to date.
     */
   def assertMatcherUpgrade(project: Path, launcher: Path, env: Map[String, String]): Unit = {
     val settings = project.resolve(".claude/settings.json")
@@ -208,11 +214,18 @@ object TestEditGuard {
   // --- the isomorphic roundtrip the reminder points at ----------------------------------------
 
   /** Speaks JSON-RPC to the server, returning the parsed result of each tools/call. */
-  def rpc(launcher: Path, project: Path, env: Map[String, String], calls: Seq[ujson.Value]): Seq[ujson.Value] = {
+  def rpc(
+      launcher: Path,
+      project: Path,
+      env: Map[String, String],
+      calls: Seq[ujson.Value]
+  ): Seq[ujson.Value] = {
     val init =
       """{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"""
     val lines = init +: calls.zipWithIndex.map { case (c, i) =>
-      ujson.write(ujson.Obj("jsonrpc" -> "2.0", "id" -> (i + 1), "method" -> "tools/call", "params" -> c))
+      ujson.write(
+        ujson.Obj("jsonrpc" -> "2.0", "id" -> (i + 1), "method" -> "tools/call", "params" -> c)
+      )
     }
     val pb = new ProcessBuilder(Seq(launcher.toString, "serve", ".").asJava)
     pb.directory(project.toFile)
@@ -253,7 +266,14 @@ object TestEditGuard {
       launcher,
       project,
       env,
-      Seq(call("annotated_source", "uri" -> "Fixture.scala", "format" -> "compilable", "sentinel" -> true))
+      Seq(
+        call(
+          "annotated_source",
+          "uri" -> "Fixture.scala",
+          "format" -> "compilable",
+          "sentinel" -> true
+        )
+      )
     )
     val read = payload(reads.last)
     val buffer = read("source").str
@@ -297,7 +317,13 @@ object TestEditGuard {
       launcher,
       project,
       env,
-      Seq(call("annotated_source", "uri" -> "Fixture.scala", "write" -> "object Fixture: // ⟹ : Int\n"))
+      Seq(
+        call(
+          "annotated_source",
+          "uri" -> "Fixture.scala",
+          "write" -> "object Fixture: // ⟹ : Int\n"
+        )
+      )
     )
     val leakedText = ujson.write(leaked.last)
     check(

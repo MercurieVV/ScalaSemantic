@@ -56,8 +56,8 @@ object TestInstall {
     * distinctively-named symbol, compiled so an actual SemanticDB exists — without it every
     * `find_symbol` below would answer "not found" no matter how correct the install was.
     *
-    * Compiled with the ambient environment on purpose: the toolchain download is not what this
-    * test exercises, and forcing it through the sandbox HOME would refetch all of Scala.
+    * Compiled with the ambient environment on purpose: the toolchain download is not what this test
+    * exercises, and forcing it through the sandbox HOME would refetch all of Scala.
     */
   def fixtureProject(parent: Path): Path = {
     val dir = parent.resolve("fixture-project")
@@ -158,7 +158,7 @@ object TestInstall {
       "--patch",
       dshOverlay.toAbsolutePath.toString,
       prompt
-    ),
+    )
     // agy: disabled until antigravity-cli#548 is fixed — headless mode ignores permissions.allow
     // entirely, so the only way to drive it is --dangerously-skip-permissions. Re-enable with:
     //
@@ -180,9 +180,10 @@ object TestInstall {
     * already writes — the alternative to auto-approving everything with
     * --dangerously-skip-permissions.
     *
-    * UNUSED for now: agy's headless (`-p`) mode never consults `permissions.allow` in any scope,
-    * so no rule set can work there yet — https://github.com/google-antigravity/antigravity-cli/issues/548.
-    * Kept ready so agy can be re-enabled in `clientCommands` the moment that lands.
+    * UNUSED for now: agy's headless (`-p`) mode never consults `permissions.allow` in any scope, so
+    * no rule set can work there yet —
+    * https://github.com/google-antigravity/antigravity-cli/issues/548. Kept ready so agy can be
+    * re-enabled in `clientCommands` the moment that lands.
     */
   def seedAgyPermissions(project: Path): Unit = {
     val file = project.resolve(".gemini/settings.json")
@@ -254,7 +255,10 @@ object TestInstall {
     val out = new String(proc.getInputStream.readAllBytes(), "UTF-8")
     val code = proc.waitFor()
 
-    check(code == 0, s"server exited $code in a non-Scala directory; it must stay connectable\n$out")
+    check(
+      code == 0,
+      s"server exited $code in a non-Scala directory; it must stay connectable\n$out"
+    )
     check(out.contains("\"tools\""), s"tools/list returned nothing:\n$out")
     check(out.contains("find_symbol"), s"tool list is missing find_symbol:\n$out")
     check(
@@ -266,7 +270,9 @@ object TestInstall {
 
   def main(args: Array[String]): Unit = {
     // scala-cli forwards the `--` separator itself; drop it so both invocation styles work.
-    val mode = args.filterNot(_ == "--").headOption
+    val mode = args
+      .filterNot(_ == "--")
+      .headOption
       .getOrElse(fail("usage: test-install.sc -- user|project"))
     check(mode == "user" || mode == "project", s"unknown mode '$mode'")
     check(Files.exists(Installer), s"installer not found at $Installer")
