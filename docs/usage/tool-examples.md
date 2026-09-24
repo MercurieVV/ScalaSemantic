@@ -733,7 +733,6 @@ not start).* On a scratch file with one good and one bad reference (`trimm` is a
         }
       ],
       "omitted": 0,
-      "pcFallback": false,
       "error": null
     }
   ]
@@ -743,6 +742,21 @@ not start).* On a scratch file with one good and one bad reference (`trimm` is a
 `trimm` comes back `resolved: false` with no suggestion here because this call's index is empty and
 `trim` (the near-miss) has no other occurrence in the buffer to draw a suggestion from — a richer
 index would surface it.
+
+**Parse it defensively.** A file entry comes in one of three shapes: the full object above
+(plus `"pcFallback": true` when the text was read from disk and the file is not in the index),
+`{"uri": …, "error": "no presentation compiler"}` with no `references`/`omitted` keys, or
+`{"uri": …, "references": [], "omitted": 0, "error": "no source: …"}`. `symbol`, `origin` and
+`error` are written as explicit `null` when absent. At most 200 rows are returned per file:
+**unresolved rows are never dropped**, resolved ones fill what is left in source order, and
+`omitted` counts only the resolved rows that did not fit.
+
+**Known blind spots.** A name the compiler emits no occurrence for cannot be joined, so it is not
+reported at all rather than reported as a hallucination: a `derives` clause's type, a named
+`export` selector, a macro quote's spliced name, and every name of a statement carrying an
+annotated type ascription (`(o: @unchecked) match …`, which the compiler covers only partly).
+Suggestions are not restricted to the unresolved name's own owner, so an unrelated owner's
+near-miss can appear beside the right one.
 
 **Replaces:** grepping a diff for plausible-looking names → a resolved-or-not verdict per name,
 straight from SemanticDB. Run it one-shot from a shell hook via `scalasemantic-mcp call

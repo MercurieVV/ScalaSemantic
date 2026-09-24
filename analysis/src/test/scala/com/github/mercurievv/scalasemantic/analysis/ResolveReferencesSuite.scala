@@ -176,3 +176,75 @@ class ResolveReferencesSuite extends munit.FunSuite:
     assertEquals(typo.suggestions.count(_.endsWith(")")), 0, typo.suggestions.toString)
     assertEquals(typo.suggestions.count(_.endsWith("]")), 0, typo.suggestions.toString)
     assertEquals(typo.suggestions.count(_.endsWith("/")), 0, typo.suggestions.toString)
+
+  // --- ordinary Scala 3 that must NOT be reported as hallucinated -----------
+  // A `resolved: false` row blocks a turn, so each construct here is correct code that the join
+  // reported as unresolved before this suite existed.
+
+  private def refsOf(name: String, text: String) =
+    val f = workspace.resolve(name).nn
+    java.nio.file.Files.writeString(f, text)
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(workspace)) { backend =>
+      Analyzer(new SemanticIndex(Vector.empty), Some(backend))
+        .resolveReferences(f.toUri, text, name, Nil)
+        .getOrElse(fail("no PC backend"))
+    }
+
+  test("a `derives` clause is not a hallucination"):
+    val text = "package demo\n\ncase class Pt(x: Int, y: Int) derives CanEqual\n"
+    val r = refsOf("Derives.scala", text)
+    assertEquals(r.error, None)
+    assertEquals(r.references.filterNot(_.resolved), Nil)
+
+  test("a backticked definition is not a hallucination"):
+    val text =
+      "package demo\n\nobject Ticks:\n  val `ok`: Int = 1\n  def `type`: Int = 2\n  def use: Int = `ok` + `type`\n"
+    val r = refsOf("Ticks.scala", text)
+    assertEquals(r.error, None)
+    assertEquals(r.references.filterNot(_.resolved), Nil)
+    val defn = r.references.find(x => x.name == "ok" && x.line == 3).getOrElse(fail(r.toString))
+    assertEquals(defn.role, "definition")
+    assert(defn.resolved, defn.toString)
+
+  test("a named export is not a hallucination"):
+    val text = "package demo\n\nobject Exp:\n  val inner: String = \"x\"\n  export inner.trim\n"
+    val r = refsOf("Exp.scala", text)
+    assertEquals(r.error, None)
+    assertEquals(r.references.filterNot(_.resolved), Nil)
+
+  test("an annotated type ascription is not a hallucination"):
+    // The PC covers this statement only partly (no occurrence for the val's `Int`, for `unchecked`
+    // or for the pattern binder `n`), so joining inside it can only invent hallucinations.
+    val text =
+      """package demo
+        |
+        |object Unchecked:
+        |  val o: Option[Int] = None
+        |  val w: Int = (o: @unchecked) match { case Some(n) => n }
+        |""".stripMargin
+    val r = refsOf("Unchecked.scala", text)
+    assertEquals(r.error, None)
+    assertEquals(r.references.filterNot(_.resolved), Nil)
+
+  test("a classpath symbol is origin=classpath, not stdlib or project"):
+    val text = "package demo\n\nobject Cp:\n  val v: ujson.Value = ujson.Null\n"
+    val r = refsOf("Cp.scala", text)
+    assertEquals(r.error, None)
+    assertEquals(r.references.filterNot(_.resolved), Nil)
+    val value = r.references.find(_.name == "Value").getOrElse(fail(r.references.toString))
+    assertEquals(value.origin, Some("classpath"))
+
+  test("the bound never drops an unresolved row, however late it is"):
+    // 120 resolved-heavy lines put the only hallucination well past the 200th token: capping in
+    // source order would fill the quota with resolved rows and silently drop it.
+    val filler = (1 to 120).map(i => s"  val v$i: String = label").mkString("\n")
+    val text =
+      s"package demo\n\nobject Late:\n  val label: String = \"x\"\n$filler\n  def tail: String = label.trimmm\n"
+    val r = refsOf("Late.scala", text)
+    assert(r.references.size >= Analyzer.MaxReferences, r.references.size.toString)
+    assert(r.omitted > 0, r.omitted.toString)
+    val late =
+      r.references.find(_.name == "trimmm").getOrElse(fail("the late hallucination was dropped"))
+    assert(!late.resolved, late.toString)
+    // Only resolved rows are ever dropped.
+    assertEquals(r.references.count(!_.resolved), 1)

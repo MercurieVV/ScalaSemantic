@@ -1538,12 +1538,23 @@ private[mcp] object McpToolsGroupB:
             "index defines it, `stdlib` for scala/java, `classpath` otherwise) or `resolved: false` " +
             "with deterministic near-miss `suggestions`. A suggestion is drawn only from symbols the " +
             "project index or the buffer's own occurrences already know, so a typo of an otherwise " +
-            "unused stdlib name may come back with no suggestion. `ranges` are [startLine, " +
+            "unused stdlib name may come back with no suggestion; suggestions are also not " +
+            "restricted to the unresolved name's own owner, so unrelated owners' near-misses can " +
+            "appear beside the right one. `ranges` are [startLine, " +
             "endLineExclusive], 0-based, as `git diff -U0` yields; an empty list means the whole " +
             "file, and a reference outside every range never appears. Pass `source` with the file's " +
             "CURRENT text (uncompiled is fine); without it the on-disk file is read and the result is " +
             "marked `pcFallback`. Needs the server started with a classpath. Policy — which symbols a " +
-            "module MAY use — is the caller's, never this tool's.",
+            "module MAY use — is the caller's, never this tool's. " +
+            "OUTPUT: `files` holds one entry per requested file, in one of three shapes — " +
+            "(a) {uri, references, omitted, error: null} (the normal answer; `pcFallback: true` is " +
+            "added when the text came from disk and the file is not indexed), " +
+            "(b) {uri, error: \"no presentation compiler\"} with NO `references`/`omitted` key, " +
+            "(c) {uri, references: [], omitted: 0, error: \"no source: …\"}. Rows carry `symbol`, " +
+            "`origin` and the file-level `error` as explicit JSON `null` when absent, so parse " +
+            "defensively. At most 200 rows per file: UNRESOLVED rows are never dropped, resolved " +
+            "ones fill what is left in source order, and `omitted` counts only the resolved rows " +
+            "that did not fit.",
           List(
             (
               "files",

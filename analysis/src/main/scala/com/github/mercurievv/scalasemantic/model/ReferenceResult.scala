@@ -26,17 +26,21 @@ final case class Reference(
     suggestions: List[String]
 ) derives ReadWriter
 
-/** Every reference of one file's requested ranges. `omitted` counts rows dropped by the output
-  * bound (the kept rows are the first in source order). `pcFallback` records that the answer came
-  * from a weaker backend than the presentation compiler. `error` is set — with `references` empty —
-  * when the file could not be read as Scala at all; zero references and a syntax error are
-  * different answers and must not be confused.
+/** Every reference of one file's requested ranges. `omitted` counts the RESOLVED rows dropped by
+  * the output bound: an unresolved row is never dropped, because it is the only kind of row a
+  * caller acts on. Within each group the kept rows are in source order. `error` is set — with
+  * `references` empty — when the file could not be read as Scala at all; zero references and a
+  * syntax error are different answers and must not be confused.
+  *
+  * There is deliberately no `pcFallback` here: whether the answer came from a weaker backend is a
+  * fact about how the SERVER obtained the text (on-disk vs `source` argument), not about the
+  * analysis, so the MCP layer appends that field to the written object
+  * (`McpTools.pcFallbackFields`, the same convention `hole_context` and `source_ranges` use).
   */
 final case class FileReferences(
     uri: String,
     references: List[Reference],
     omitted: Int,
-    pcFallback: Boolean,
     error: Option[String]
 ) derives ReadWriter
 

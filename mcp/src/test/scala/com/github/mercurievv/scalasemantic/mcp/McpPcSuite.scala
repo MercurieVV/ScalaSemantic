@@ -864,6 +864,49 @@ class McpPcSuite extends munit.FunSuite:
     }
   }
 
+  test("resolve_references: the envelope carries `role` and a classpath `origin`") {
+    // `role` and `origin` are the two fields the harness's policy matcher reads, and `classpath`
+    // is the origin value no other test pins: `ujson` is on the PC classpath and in neither the
+    // scala/java namespaces nor this (empty) index.
+    val root = java.nio.file.Files.createTempDirectory("mcp-refs-origin").nn
+    val file = root.resolve("Origin.scala").nn
+    val source =
+      """package demo
+        |object Origin:
+        |  val v: ujson.Value = ujson.Null
+        |""".stripMargin
+    java.nio.file.Files.writeString(file, source)
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+      val tools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
+      val resp = Mcp.handle(
+        req(
+          "tools/call",
+          ujson.Obj(
+            "name" -> "resolve_references",
+            "arguments" -> ujson.Obj(
+              "files" -> ujson.Arr(
+                ujson.Obj(
+                  "uri" -> "Origin.scala",
+                  "ranges" -> ujson.Arr(ujson.Arr(ujson.Num(2), ujson.Num(3))),
+                  "source" -> source
+                )
+              )
+            )
+          )
+        ),
+        tools
+      )
+      val json = ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
+      val refs = json("files")(0)("references").arr.toList
+      val value = refs.find(_("name").str == "Value").getOrElse(fail(refs.toString))
+      assertEquals(value("origin").str, "classpath", refs.toString)
+      assertEquals(value("role").str, "use", refs.toString)
+      val v = refs.find(r => r("name").str == "v").getOrElse(fail(refs.toString))
+      assertEquals(v("role").str, "definition", refs.toString)
+      assert(refs.forall(r => !r("resolved").bool || r("symbol").str.nonEmpty), refs.toString)
+    }
+  }
+
   test("resolve_references: several files in one call") {
     val root = java.nio.file.Files.createTempDirectory("mcp-refs-batch").nn
     val file1 = root.resolve("Refs1.scala").nn

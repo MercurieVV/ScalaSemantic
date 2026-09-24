@@ -1090,7 +1090,7 @@ final class Analyzer(
     bufferOnly(fileUri, code, docUri).map { buffer =>
       NameTokens.in(code, ranges) match
         case None =>
-          FileReferences(docUri, Nil, 0, pcFallback = false, Some("the file does not parse"))
+          FileReferences(docUri, Nil, 0, Some("the file does not parse"))
         case Some(tokens) =>
           val occurrences = buffer.documentOccurrences(docUri)
           val bufferSymbols = buffer.documentSymbols(docUri)
@@ -1144,13 +1144,22 @@ final class Analyzer(
                   suggestionsFor(t.name, candidates)
                 )
           }
-          FileReferences(
-            docUri,
-            rows.take(Analyzer.MaxReferences),
-            math.max(0, rows.size - Analyzer.MaxReferences),
-            pcFallback = false,
-            None
-          )
+          // The bound NEVER drops an unresolved row: those are the only rows a caller acts on, and
+          // dropping one in source order (the previous behaviour) silently hides a hallucination
+          // behind 200 resolved names — two 40-line ranges over a real file already reach the cap.
+          // Unresolved rows are kept whatever their number; resolved ones fill what is left, in
+          // source order, and `omitted` counts only resolved rows that did not fit.
+          val unresolvedCount = rows.count(!_.resolved)
+          val resolvedBudget = math.max(0, Analyzer.MaxReferences - unresolvedCount)
+          val keptResolved = rows.iterator.zipWithIndex
+            .filter(_._1.resolved)
+            .take(resolvedBudget)
+            .map(_._2)
+            .toSet
+          val kept = rows.zipWithIndex.collect {
+            case (row, i) if !row.resolved || keptResolved.contains(i) => row
+          }
+          FileReferences(docUri, kept, math.max(0, rows.size - kept.size), None)
     }
 
   /** The occurrences of one document of THIS analyzer's index. For a [[bufferOnly]] analyzer that
