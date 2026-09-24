@@ -1546,6 +1546,12 @@ private[mcp] object McpToolsGroupB:
             "CURRENT text (uncompiled is fine); without it the on-disk file is read and the result is " +
             "marked `pcFallback`. Needs the server started with a classpath. Policy — which symbols a " +
             "module MAY use — is the caller's, never this tool's. " +
+            "BLIND SPOT: a few names carry no compiler occurrence and are therefore not checked at " +
+            "all (they are absent from `references` rather than reported unresolved) — an " +
+            "annotation on a type ascription (`(x: @unchecked)`), and, when such an ascription is " +
+            "the right-hand side of a val/var, that val's declared type and the binders its " +
+            "right-hand side introduces. A missing name spelled like one of those is not reported; " +
+            "the surrounding signature and the rest of the right-hand side still are. " +
             "OUTPUT: `files` holds one entry per requested file, in one of three shapes — " +
             "(a) {uri, references, omitted, error: null} (the normal answer; `pcFallback: true` is " +
             "added when the text came from disk and the file is not indexed), " +

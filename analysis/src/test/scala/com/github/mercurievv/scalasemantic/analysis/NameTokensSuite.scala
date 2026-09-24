@@ -133,7 +133,7 @@ class NameTokensSuite extends munit.FunSuite:
     // The splice's own call is an ordinary reference and stays reportable.
     assert(toks.exists(_.name == "impl"), toks.toString)
 
-  test("an annotated type ascription blanks its own statement and nothing else"):
+  test("an annotated ascription in a val costs its declared type and the rhs's binders"):
     val src =
       """package p
         |object O:
@@ -142,23 +142,64 @@ class NameTokensSuite extends munit.FunSuite:
         |  val v: Int = 2
         |""".stripMargin
     val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
-    assert(!toks.exists(_.line == 3), toks.filter(_.line == 3).toString)
+    val line3 = toks.filter(_.line == 3)
+    // Lost to the compiler, so not reportable: the declared type, the annotation, the binder.
+    assert(!line3.exists(_.name == "Int"), line3.toString)
+    assert(!line3.exists(_.name == "unchecked"), line3.toString)
+    assert(!line3.exists(_.name == "n"), line3.toString)
+    // Everything else on the same statement is still checked.
+    assert(line3.exists(_.name == "w"), line3.toString)
+    assert(line3.exists(_.name == "o"), line3.toString)
+    assert(line3.exists(_.name == "Some"), line3.toString)
     assert(toks.exists(t => t.line == 2 && t.name == "Option"), toks.toString)
     assert(toks.exists(t => t.line == 4 && t.name == "v"), toks.toString)
+
+  test("an annotated ascription in a def body costs only the annotation"):
+    // The signature must stay reportable: blanking it would ship a hallucinated parameter type.
+    val src =
+      """package p
+        |object O:
+        |  val o: Option[Int] = None
+        |  def f(p: Bogus): Int = (o: @unchecked) match { case Some(n) => n }
+        |""".stripMargin
+    val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
+    val line3 = toks.filter(_.line == 3)
+    assert(line3.exists(_.name == "Bogus"), line3.toString)
+    assert(line3.exists(_.name == "f"), line3.toString)
+    assert(line3.exists(_.name == "p"), line3.toString)
+    assert(line3.exists(_.name == "Int"), line3.toString)
+    assert(line3.exists(_.name == "n"), line3.toString)
+    assert(!line3.exists(_.name == "unchecked"), line3.toString)
 
   test("a blind spot stops at the statement, not at the enclosing method"):
     val src =
       """package p
         |object O:
-        |  def f(o: Option[Int]): Int =
+        |  def f(o: Option[Int], q: Bogus): Int =
         |    val a: Int = 1
         |    val w: Int = (o: @unchecked) match { case Some(n) => n }
         |    a + w
         |""".stripMargin
     val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
-    assert(!toks.exists(_.line == 4), toks.filter(_.line == 4).toString)
+    assert(toks.exists(t => t.line == 2 && t.name == "Bogus"), toks.toString)
     assert(toks.exists(t => t.line == 3 && t.name == "a"), toks.toString)
     assert(toks.exists(t => t.line == 5 && t.name == "a"), toks.toString)
+    val line4 = toks.filter(_.line == 4)
+    assert(!line4.exists(_.name == "Int"), line4.toString)
+    assert(!line4.exists(_.name == "n"), line4.toString)
+    assert(line4.exists(_.name == "w"), line4.toString)
+    assert(line4.exists(_.name == "Some"), line4.toString)
+
+  test("an unrelated name in an annotated val's rhs is still reported"):
+    // The net is per-binder-name, not per-statement, so a hallucination in the rhs survives it.
+    val src =
+      """package p
+        |object O:
+        |  val o: Option[Int] = None
+        |  val w: Int = (o: @unchecked) match { case Some(n) => n.bogusMember }
+        |""".stripMargin
+    val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
+    assert(toks.exists(_.name == "bogusMember"), toks.toString)
 
   test("Scala 3 definition forms carry role=definition"):
     val src =

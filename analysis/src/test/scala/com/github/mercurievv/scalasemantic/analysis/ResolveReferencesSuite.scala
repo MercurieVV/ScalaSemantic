@@ -226,6 +226,46 @@ class ResolveReferencesSuite extends munit.FunSuite:
     assertEquals(r.error, None)
     assertEquals(r.references.filterNot(_.resolved), Nil)
 
+  test("an annotated ascription in a def body, a lambda or a bare statement is clean"):
+    val text =
+      """package demo
+        |
+        |object Shapes:
+        |  val o: Option[Int] = None
+        |  def bare: Unit = (o: @unchecked) match { case Some(n) => println(n) }
+        |  def lam: List[Int] = List(o).map(x => (x: @unchecked) match { case Some(n) => n })
+        |  def deep(q: String): Int =
+        |    val inner: Int = (o: @unchecked) match { case Some(n) => n }
+        |    inner
+        |""".stripMargin
+    val r = refsOf("Shapes.scala", text)
+    assertEquals(r.error, None)
+    assertEquals(r.references.filterNot(_.resolved), Nil)
+
+  test("an annotated ascription never hides a hallucinated parameter type"):
+    // The blind spot must not swallow the signature: blanking the whole statement would ship
+    // `Bogus` silently, which is the failure this tool exists to prevent.
+    val text =
+      """package demo
+        |
+        |object Sig:
+        |  val o: Option[Int] = None
+        |  def f(p: Bogus): Int = (o: @unchecked) match { case Some(n) => n }
+        |""".stripMargin
+    val r = refsOf("Sig.scala", text)
+    assertEquals(r.references.filterNot(_.resolved).map(_.name), List("Bogus"))
+
+  test("an annotated ascription never hides a hallucination in the rhs"):
+    val text =
+      """package demo
+        |
+        |object Rhs:
+        |  val o: Option[Int] = None
+        |  val w: String = (o: @unchecked) match { case Some(n) => n.bogusMember }
+        |""".stripMargin
+    val r = refsOf("Rhs.scala", text)
+    assertEquals(r.references.filterNot(_.resolved).map(_.name), List("bogusMember"))
+
   test("a classpath symbol is origin=classpath, not stdlib or project"):
     val text = "package demo\n\nobject Cp:\n  val v: ujson.Value = ujson.Null\n"
     val r = refsOf("Cp.scala", text)

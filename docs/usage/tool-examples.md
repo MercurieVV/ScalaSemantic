@@ -753,10 +753,13 @@ index would surface it.
 
 **Known blind spots.** A name the compiler emits no occurrence for cannot be joined, so it is not
 reported at all rather than reported as a hallucination: a `derives` clause's type, a named
-`export` selector, a macro quote's spliced name, and every name of a statement carrying an
-annotated type ascription (`(o: @unchecked) match …`, which the compiler covers only partly).
-Suggestions are not restricted to the unresolved name's own owner, so an unrelated owner's
-near-miss can appear beside the right one.
+`export` selector, a macro quote's spliced name, an annotation on a type ascription
+(`(o: @unchecked)`) and — when such an ascription is a val's or var's right-hand side — that
+statement's declared type and the binders its right-hand side introduces. Everything else stays
+checked, the enclosing signature included, so
+`def f(p: Bogus): Int = (o: @unchecked) match { … }` still reports `Bogus`. Suggestions are not
+restricted to the unresolved name's own owner, so an unrelated owner's near-miss can appear beside
+the right one.
 
 **Replaces:** grepping a diff for plausible-looking names → a resolved-or-not verdict per name,
 straight from SemanticDB. Run it one-shot from a shell hook via `scalasemantic-mcp call
