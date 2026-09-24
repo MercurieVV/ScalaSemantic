@@ -6,7 +6,6 @@ import dotty.tools.dotc.core.Flags
 import dotty.tools.dotc.core.NameOps.stripModuleClassSuffix
 import dotty.tools.dotc.core.Symbols.Symbol
 import dotty.tools.dotc.core.Symbols.defn
-import dotty.tools.dotc.core.Types.ExprType
 import dotty.tools.dotc.core.Types.Type
 import dotty.tools.dotc.core.Types.TypeParamRef
 import dotty.tools.dotc.interactive.Interactive
@@ -68,7 +67,9 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
               val hole =
                 Hole(if isUndefined(head) then "???" else "expression", holeText(head, code))
               val expectedTpe = InferCompletionType.inferType(path) match
-                case Some(tpe) if !tpe.isErroneous && !prescribedByInferredTpt(path) =>
+                case Some(tpe)
+                    if !tpe.isErroneous && !prescribedByInferredTpt(path) &&
+                      !inStatementPosition(path) =>
                   Some(tpe.widenTermRefExpr)
                 case _ => None
               val expected = expectedTpe match
@@ -115,8 +116,7 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
         def resultOf(s: Symbol) = s.info.widen.finalResultType
         def isValueLike(s: Symbol) =
           s.isTerm && !s.is(Flags.Package) && !s.is(Flags.Module) && !s.isConstructor &&
-            (!s.is(Flags.Method) || s.info.widen.isInstanceOf[ExprType] ||
-              s.info.widen.paramInfoss.isEmpty)
+            (!s.is(Flags.Method) || s.info.widen.paramInfoss.isEmpty)
         def conforms(res: Type) = !res.isErroneous && !res.isNothingType && res <:< want
         def kindOf(s: Symbol) =
           if s.is(Flags.Param) then "param" else if s.is(Flags.Method) then "def" else "val"
@@ -125,27 +125,59 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
           if s.is(Flags.Param) || s.owner.is(Flags.Method) then s"enclosing def ${ownerName(s)}"
           else if s.owner.is(Flags.Module) || s.owner.isClass then s"member of ${ownerName(s)}"
           else "in scope"
+
+        // --- how a candidate can be WRITTEN here ---------------------------------------------
+        // Never the raw `symbol.name`: a name is only offered when this same `IndexedContext`
+        // says it resolves back to that symbol at this position — a renaming import's alias when
+        // there is one, else the short name only when every symbol that name finds here is this
+        // one (so a shadowed binding is not offered under a name that means something else).
+        // A statically reachable symbol that fails both is emitted fully qualified
+        // (`cats.effect.IO.unit` for an un-imported `IO`); anything else is dropped.
+        def relatedTo(s: Symbol)(o: Symbol) =
+          o == s || o == s.companionModule || o == s.companionClass
+        def shortNameOf(s: Symbol): Option[String] =
+          indexed
+            .rename(s)
+            .orElse(indexed.findSymbol(s.name).collect {
+              case syms if syms.distinct.forall(relatedTo(s)) => s.name.show
+            })
+        def isStatic(s: Symbol): Boolean =
+          val o = s.owner
+          o.exists && (o.is(Flags.Package) || (o.is(Flags.Module) && isStatic(o)))
+        def fullNameOf(s: Symbol) = s.fullName.stripModuleClassSuffix.show
+        def writableName(s: Symbol): Option[String] =
+          shortNameOf(s).orElse(Option.when(isStatic(s))(fullNameOf(s)))
+
         val allBindings = pool
           .filter(isValueLike)
           .filter(s => conforms(resultOf(s)))
-          .map(s => Binding(s.name.show, printer.tpe(resultOf(s)), kindOf(s), fromOf(s)))
+          .flatMap(s =>
+            shortNameOf(s).map(n => Binding(n, printer.tpe(resultOf(s)), kindOf(s), fromOf(s)))
+          )
+          .distinctBy(_.name)
 
         // --- producers: methods whose result fits (exact) or is the same class (shape) ----------
-        val companions: List[(Symbol, String)] =
+        // Accessibility is the compiler's own answer from THIS position (`m.termRef` is the
+        // prefix the call would be written with), so a package-private or private companion
+        // member — `String.newStringUTF8NoRepl` and friends — is never offered. `Artifact` (not
+        // `Synthetic`) is the flag that marks compiler bookkeeping: a case class's `apply` is
+        // Synthetic and is exactly the producer the agent wants.
+        val companions: List[(Symbol, String, Option[Symbol])] =
           wantClasses
             .map(_.companionModule)
             .filter(_.exists)
             .flatMap(m =>
               m.info.decls.toList
                 .filter(d =>
-                  d.isTerm && d.is(Flags.Method) && !d.isConstructor && !d.is(Flags.Synthetic)
+                  d.isTerm && d.is(Flags.Method) && !d.isConstructor && !d.is(Flags.Artifact) &&
+                    !d.name.show.contains("$default$") && d.isAccessibleFrom(m.termRef)
                 )
-                .map(d => d -> s"companion ${m.name.show}")
+                .map(d => (d, s"companion ${m.name.show}", Some(m)))
             )
-        val methods: List[(Symbol, String)] =
+        val methods: List[(Symbol, String, Option[Symbol])] =
           pool
             .filter(s => s.isTerm && s.is(Flags.Method) && s.info.widen.paramInfoss.nonEmpty)
-            .map(s => s -> fromOf(s))
+            .map(s => (s, fromOf(s), None))
         def matchKind(s: Symbol): Option[String] =
           val res = resultOf(s)
           if res.isErroneous || res.isNothingType then None
@@ -154,9 +186,9 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
             res.classSymbol.derivesFrom(want.classSymbol)
           then Some("shape")
           else None
-        def nameOf(s: Symbol, from: String) =
-          if from.startsWith("companion ") then s"${from.stripPrefix("companion ")}.${s.name.show}"
-          else s.name.show
+        def producerName(s: Symbol, qualifier: Option[Symbol]): Option[String] = qualifier match
+          case Some(m) => writableName(m).map(q => s"$q.${s.name.show}")
+          case None    => writableName(s)
         // A shape match whose result still carries the method's own type parameters (`pure[A]: IO[A]`)
         // can be instantiated to the expected type; one whose arguments are already fixed
         // (`monotonic: IO[FiniteDuration]`) never can, so it ranks last.
@@ -164,17 +196,17 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
           resultOf(s).argInfos.exists(_.isInstanceOf[TypeParamRef])
         val ranked = (companions ++ methods)
           .distinctBy(_._1)
-          .flatMap((s, from) =>
-            matchKind(s).map(k =>
-              (
-                k,
-                if instantiable(s) then 0 else 1,
-                Producer(nameOf(s, from), printer.defaultMethodSignature(s, s.info.widen), from, k)
-              )
-            )
+          .flatMap((s, from, qualifier) =>
+            for
+              k <- matchKind(s)
+              n <- producerName(s, qualifier)
+            yield (k, s, Producer(n, printer.defaultMethodSignature(s, s.info.widen), from, k))
           )
-        val exactProducers = ranked.filter(_._1 == "exact").map(_._3)
-        val shapeProducers = ranked.filter(_._1 == "shape").sortBy(_._2).map(_._3)
+        val exactProducers = ranked.collect { case ("exact", _, p) => p }
+        val shapeProducers = ranked
+          .collect { case ("shape", s, p) => (if instantiable(s) then 0 else 1, p) }
+          .sortBy(_._1)
+          .map(_._2)
         // The budget is per match kind, so a companion with dozens of exact members (cats-effect's
         // `IO` has 17) can never crowd every shape match out of the answer.
         val shownProducers = exactProducers.take(maxProducers) ++ shapeProducers.take(maxProducers)
@@ -193,11 +225,9 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
               .filter(!_.isConversion)
               .map(_.ref)
               .distinctBy(_.symbol)
-              .map(ref =>
-                Given(
-                  ref.symbol.name.show,
-                  printer.tpe(ref.underlying.widen.finalResultType),
-                  s"from ${ownerName(ref.symbol)}"
+              .flatMap(ref =>
+                writableName(ref.symbol).map(n =>
+                  Given(n, printer.tpe(ref.underlying.widen.finalResultType), fromOf(ref.symbol))
                 )
               )
           else Nil
@@ -267,10 +297,24 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
 
   /** The construct whose type the hole must satisfy: the first enclosing tree that is not a
     * transparent wrapper (`Block`, `Typed`-less parens). Mirrors the walk `InferCompletionType`
-    * performs so `whyOf` and the inferred type agree on the prescriber.
+    * performs so `whyOf` and the inferred type agree on the prescriber. A `Block` is transparent
+    * only for its RESULT expression — `def f: String = { ???; "x" }` puts the hole in a statement
+    * position, which the def's result type does not prescribe (spec §2), so the walk stops.
     */
   private def prescriber(path: List[tpd.Tree]): List[tpd.Tree] =
-    path.drop(1).dropWhile(_.isInstanceOf[tpd.Block])
+    def walk(below: tpd.Tree, rest: List[tpd.Tree]): List[tpd.Tree] = rest match
+      case (b: tpd.Block) :: more if b.expr eq below => walk(b, more)
+      case (_: tpd.Block) :: _                       => Nil
+      case _                                         => rest
+    path match
+      case below :: rest => walk(below, rest)
+      case Nil           => Nil
+
+  /** True when the hole is a statement of a block rather than the block's result: nothing
+    * prescribes a type there, so the answer is `unconstrained`.
+    */
+  private def inStatementPosition(path: List[tpd.Tree]): Boolean =
+    path.nonEmpty && path.tail.exists(_.isInstanceOf[tpd.Block]) && prescriber(path).isEmpty
 
   /** `val x = ???` types `???` against an inferred `Nothing` — the compiler has an answer, but it
     * is the hole's own type, not a demand on it. Treat an inferred `tpt` as unconstrained. Walks
@@ -281,7 +325,7 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
   private def prescribedByInferredTpt(path: List[tpd.Tree]): Boolean =
     val holeSpan = path.headOption.map(_.span).getOrElse(Span(0))
     def walk(rest: List[tpd.Tree]): Boolean = rest match
-      case (_: tpd.Block) :: more                                        => walk(more)
+      case (b: tpd.Block) :: more if b.expr.span.contains(holeSpan)      => walk(more)
       case tpd.If(cond, _, _) :: more if !cond.span.contains(holeSpan)   => walk(more)
       case (_: tpd.CaseDef) :: (_: tpd.Match) :: more                    => walk(more)
       case (_: tpd.CaseDef) :: (_: tpd.Try) :: more                      => walk(more)
@@ -305,15 +349,23 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
       case tpd.NamedArg(name, _) :: (a: tpd.Apply) :: _ =>
         s"argument $name of ${a.fun.symbol.name.show}"
       case (a: tpd.Apply) :: _ =>
+        // -1: the hole is not inside any written argument (a desugared or implicit argument list),
+        // so there is no argument number to name.
         val idx = a.args.indexWhere(_.span.contains(holeSpan))
-        s"argument ${idx + 1} of ${a.fun.symbol.name.show}"
+        val which = if idx < 0 then "an argument" else s"argument ${idx + 1}"
+        s"$which of ${a.fun.symbol.name.show}"
       case (_: tpd.If) :: _      => "propagated from the enclosing if"
       case (_: tpd.CaseDef) :: _ => "propagated from the enclosing match"
       case (_: tpd.Typed) :: _   => "the ascribed type"
       case _                     => "prescribed by the enclosing expression"
 
+  /** Releases what the driver exposes: the opened files and their typed trees. The driver's
+    * `ClassPath` — and the jar handles its zip entries hold — is NOT released: `InteractiveDriver`
+    * offers no API for that, so a module backend's hole driver keeps its classpath open for as long
+    * as the backend lives.
+    */
   def close(): Unit =
-    () // InteractiveDriver holds no external resources; kept for symmetry with the backend
+    driver.compilationUnits.keys.toList.foreach(driver.close)
 
 object HoleContext:
   enum Confidence:

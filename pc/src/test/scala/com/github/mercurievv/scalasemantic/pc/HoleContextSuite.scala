@@ -191,3 +191,101 @@ class HoleContextSuite extends munit.FunSuite:
     assert(r.found)
     assertEquals(r.expected.flatMap(_.tpe), Some("String"))
   }
+
+  test("I1: an inaccessible companion member is never offered as a producer") {
+    val code = "object Str:\n  def f: String = ???\n"
+    val r = holes.at(uri, code, code.indexOf("???"))
+    // package-private JDK internals on java.lang.String's companion
+    assert(!r.producers.exists(_.name.contains("newStringUTF8NoRepl")), r.producers.toString)
+    val code2 =
+      """object Secret:
+        |  class Cfg(val n: Int)
+        |  object Cfg:
+        |    private def hidden: Cfg = new Cfg(0)
+        |    def visible: Cfg = new Cfg(1)
+        |object UseSecret:
+        |  def make: Secret.Cfg = ???
+        |""".stripMargin
+    val r2 = holes.at(uri, code2, code2.indexOf("???"))
+    assert(r2.producers.exists(_.name.endsWith(".visible")), r2.producers.toString)
+    assert(!r2.producers.exists(_.name.endsWith(".hidden")), r2.producers.toString)
+  }
+
+  test("I4: a case class's synthetic apply is the exact producer for its own type") {
+    val code =
+      """object Cases:
+        |  case class P(n: Int)
+        |  val p: P = ???
+        |""".stripMargin
+    val r = holes.at(uri, code, code.indexOf("???"))
+    assert(
+      r.producers.exists(p => p.name.endsWith("P.apply") && p.matchKind == "exact"),
+      r.producers.toString
+    )
+  }
+
+  test("I2: an un-imported companion is offered under a name that compiles (qualified)") {
+    val code =
+      """object NoImport:
+        |  def effect: cats.effect.IO[Unit] = ???
+        |""".stripMargin
+    val r = holes.at(uri, code, code.indexOf("???"))
+    assert(r.producers.exists(_.name == "cats.effect.IO.unit"), r.producers.toString)
+    assert(!r.producers.exists(_.name == "IO.unit"), r.producers.toString)
+    // and with the import in scope the short name is used
+    assertEquals(at(5).producers.map(_.name).find(_.endsWith("IO.unit")), Some("IO.unit"))
+  }
+
+  test("I2: a shadowed binding is not listed under a name that resolves elsewhere") {
+    val code =
+      """object Shadow:
+        |  val v: String = "outer"
+        |  def f(v: Int): String =
+        |    val x: String = ???
+        |    x
+        |""".stripMargin
+    val r = holes.at(uri, code, code.indexOf("???"))
+    // the enclosing `v: Int` shadows the String member: `v` must not be offered as a String
+    assert(!r.bindings.exists(_.name == "v"), r.bindings.toString)
+    assertEquals(r.bindings.map(_.name).distinct.size, r.bindings.size, r.bindings.toString)
+  }
+
+  test("I5: a hole in a non-last block statement is unconstrained; the result expression is not") {
+    val stat = "object Stat:\n  def f: String =\n    ???\n    \"x\"\n"
+    val rs = holes.at(uri, stat, stat.indexOf("???"))
+    assertEquals(rs.expected.map(_.confidence), Some(Confidence.Unconstrained))
+    assertEquals(rs.expected.flatMap(_.tpe), None)
+    assertEquals(rs.producers, Nil)
+    val last = "object Last:\n  def f: String =\n    val a = 1\n    ???\n"
+    val rl = holes.at(uri, last, last.indexOf("???"))
+    assertEquals(rl.expected.map(_.confidence), Some(Confidence.Exact))
+    assertEquals(rl.expected.flatMap(_.tpe), Some("String"))
+    assertEquals(rl.expected.map(_.why), Some("result type of def f"))
+  }
+
+  test("??? as an argument of a generic method: the parameter type after instantiation") {
+    val code =
+      """object Generic:
+        |  def use[A](a: A, f: A => String): String = f(a)
+        |  def call: String = use(1, ???)
+        |""".stripMargin
+    val r = holes.at(uri, code, code.indexOf("???"))
+    assertEquals(r.expected.flatMap(_.tpe), Some("Int => String"))
+    assertEquals(r.expected.map(_.why), Some("argument 2 of use"))
+  }
+
+  test("omitted.producers counts what the per-match-kind budget cut") {
+    val r = at(5) // expected IO[Unit]: IO's companion has more than the budget of exact members
+    val shown = r.producers.count(_.matchKind == "exact")
+    assert(shown <= HoleContext.maxProducers, r.producers.size.toString)
+    assert(r.producers.count(_.matchKind == "shape") <= HoleContext.maxProducers)
+    assert(r.omitted.producers >= 0)
+    // arithmetic: nothing is reported omitted unless a budget actually bit
+    if r.omitted.producers > 0 then
+      assertEquals(
+        shown == HoleContext.maxProducers || r.producers.count(
+          _.matchKind == "shape"
+        ) == HoleContext.maxProducers,
+        true
+      )
+  }
