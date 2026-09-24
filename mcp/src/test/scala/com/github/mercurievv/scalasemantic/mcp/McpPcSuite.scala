@@ -628,3 +628,127 @@ class McpPcSuite extends munit.FunSuite:
       assertEquals(sig("signature").str, "def area(w: Int): Int")
     }
   }
+
+  test("hole_context: ??? as a def result answers expected type, bindings and producers") {
+    val root = java.nio.file.Files.createTempDirectory("mcp-hole").nn
+    val file = root.resolve("Holes.scala").nn
+    val source =
+      """package demo
+        |object Holes:
+        |  val label: String = "x"
+        |  def render(a: Int, s: String): String = ???
+        |""".stripMargin
+    java.nio.file.Files.writeString(file, source)
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+      val tools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
+      val line = 3; val character = source.linesIterator.toList(3).indexOf("???")
+      val resp = Mcp.handle(
+        req(
+          "tools/call",
+          ujson.Obj(
+            "name" -> "hole_context",
+            "arguments" -> ujson
+              .Obj(
+                "uri" -> "Holes.scala",
+                "line" -> line,
+                "character" -> character,
+                "source" -> source
+              )
+          )
+        ),
+        tools
+      )
+      val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
+      val json = ujson.read(text)
+      assertEquals(json("expected")("type").str, "String")
+      assertEquals(json("expected")("confidence").str, "exact")
+      assert(json("bindings").arr.exists(_("name").str == "s"), text)
+      assert(json("bindings").arr.exists(_("name").str == "label"), text)
+      assert(json.obj.keySet.contains("omitted"))
+    }
+  }
+
+  test("hole_context: without source reads the disk file and marks pcFallback") {
+    val root = java.nio.file.Files.createTempDirectory("mcp-hole-disk").nn
+    val file = root.resolve("Holes.scala").nn
+    val source =
+      """package demo
+        |object Holes:
+        |  val label: String = "x"
+        |  def render(a: Int, s: String): String = ???
+        |""".stripMargin
+    java.nio.file.Files.writeString(file, source)
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+      val tools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
+      val line = 3; val character = source.linesIterator.toList(3).indexOf("???")
+      val resp = Mcp.handle(
+        req(
+          "tools/call",
+          ujson.Obj(
+            "name" -> "hole_context",
+            "arguments" -> ujson
+              .Obj("uri" -> "Holes.scala", "line" -> line, "character" -> character)
+          )
+        ),
+        tools
+      )
+      val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
+      val json = ujson.read(text)
+      assertEquals(json("pcFallback").bool, true, text)
+      assertEquals(json("expected")("type").str, "String")
+    }
+  }
+
+  test("hole_context: a position in a comment is found=false with a why") {
+    val root = java.nio.file.Files.createTempDirectory("mcp-hole-comment").nn
+    val file = root.resolve("Holes.scala").nn
+    val source =
+      """package demo
+        |object Holes:
+        |  // just a comment, no hole here
+        |  val label: String = "x"
+        |""".stripMargin
+    java.nio.file.Files.writeString(file, source)
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+      val tools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
+      val line = 2; val character = source.linesIterator.toList(2).indexOf("comment")
+      val resp = Mcp.handle(
+        req(
+          "tools/call",
+          ujson.Obj(
+            "name" -> "hole_context",
+            "arguments" -> ujson
+              .Obj(
+                "uri" -> "Holes.scala",
+                "line" -> line,
+                "character" -> character,
+                "source" -> source
+              )
+          )
+        ),
+        tools
+      )
+      val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
+      val json = ujson.read(text)
+      assertEquals(json("found").bool, false, text)
+      assert(json("why").str.nonEmpty, text)
+    }
+  }
+
+  test("hole_context: without a classpath the tool returns the no-classpath error") {
+    val root = java.nio.file.Files.createTempDirectory("mcp-hole-nocp").nn
+    val tools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty)), root)
+    val resp = Mcp.handle(
+      req(
+        "tools/call",
+        ujson.Obj(
+          "name" -> "hole_context",
+          "arguments" -> ujson
+            .Obj("uri" -> "X.scala", "line" -> 0, "character" -> 0, "source" -> "object X")
+        )
+      ),
+      tools
+    )
+    val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
+    assert(text.toLowerCase.contains("classpath"), text)
+  }

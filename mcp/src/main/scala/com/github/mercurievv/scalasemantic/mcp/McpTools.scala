@@ -773,6 +773,12 @@ private[mcp] object McpToolsSupport:
     try Some(java.nio.file.Files.readString(file))
     catch case _: java.io.IOException => None
 
+  /** The character offset into `text` of 0-based (`line`, `character`) — the sum of the lengths
+    * (plus one for the `\n`) of the lines before `line`, plus `character`.
+    */
+  private[mcp] def offsetOf(text: String, line: Int, character: Int): Int =
+    text.split("\n", -1).nn.take(line).map(_.nn.length + 1).sum + character
+
   /** A PC-only analyzer over the ON-DISK text of `uri` (the file must exist), `None` without a PC
     * backend — the automatic fallback for a file that exists but has no compiled index entry. The
     * caller decides when to consult it (only for uris [[Analyzer.isDocumentIndexed]] says are not
@@ -1517,6 +1523,52 @@ private[mcp] object McpToolsGroupB:
               )
               if pcFallback then ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
               else base
+        }
+      ),
+      toolDef(
+        tool(
+          "hole_context",
+          "Typed-hole context: the type the compiler expects at a 0-based (line, character) — a `???` " +
+            "or any expression — with `confidence` (`exact` when the enclosing code prescribes it, " +
+            "`unconstrained` when nothing does, then no candidates are guessed), and what in reach " +
+            "satisfies it: `bindings` (in-scope values that conform), `producers` (methods/companion " +
+            "members whose result fits — `match` exact or shape), `givens` (instances the compiler would " +
+            "pick), `types` (the expected type's definitions; project types carry an excerpt). Pass " +
+            "`source` with the file's CURRENT text (uncompiled is fine); without it the on-disk file is " +
+            "read (marked `pcFallback`). Needs the server started with a classpath. Use it one hole at a " +
+            "time — see the typed-holes skill.",
+          List(
+            (
+              "uri",
+              "string",
+              "document uri as it appears in SemanticDB (path relative to project root)"
+            ),
+            ("line", "integer", "0-based line"),
+            ("character", "integer", "0-based column"),
+            ("source", "string", "current full text of the file at `uri`")
+          ),
+          List("uri", "line", "character")
+        ) { a =>
+          val uri = argUri(a, "uri")
+          val file = root.resolve(uri.value)
+          val (code, fromDisk) = a.obj.get("source").map(_.str) match
+            case Some(src) => (Some(src), false)
+            case None      => (readFileText(file), true)
+          code match
+            case None => notFound(s"no source: pass `source` or make ${uri.value} exist on disk")
+            case Some(text) =>
+              val pos = argPosition(a, "line", "character")
+              val offset = offsetOf(text, pos.lineValue, pos.characterValue)
+              az.holeContext(root, file.toUri, text, uri.value, offset) match
+                case None =>
+                  error(
+                    "hole_context needs the presentation compiler: start the server with a " +
+                      "classpath (see README → classpath)"
+                  )
+                case Some(r) =>
+                  val base = upickle.default.writeJs(r)
+                  if fromDisk then ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
+                  else base
         }
       ),
       toolDef(
