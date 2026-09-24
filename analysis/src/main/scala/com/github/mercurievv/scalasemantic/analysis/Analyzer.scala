@@ -1074,6 +1074,12 @@ final class Analyzer(
     * gives EVERY name token, the PC gives an occurrence per name it RESOLVED — so a token with no
     * occurrence over it is exactly a name the compiler could not resolve, which neither source can
     * say on its own. `None` when there is no PC backend for `docUri`.
+    *
+    * CASCADES: one mistake can unresolve more than one name, because the compiler stops emitting
+    * occurrences for the sub-trees it could not type. `f(param = 1, nope = 2)` reports `param`
+    * beside `nope`, and `List(1).mapp(_ + 1)` reports the `+` inside the lambda beside `mapp`. A
+    * caller counting hallucinations must therefore treat the rows of one expression as ONE finding,
+    * not as several — the row set is evidence about a position, not a tally.
     */
   def resolveReferences(
       fileUri: URI,
@@ -1087,8 +1093,9 @@ final class Analyzer(
           FileReferences(docUri, Nil, 0, pcFallback = false, Some("the file does not parse"))
         case Some(tokens) =>
           val occurrences = buffer.documentOccurrences(docUri)
-          // Computed once per call, and lazily: scanning the whole index for near-misses is only
-          // worth paying for when at least one name actually failed to resolve.
+          val bufferSymbols = buffer.documentSymbols(docUri)
+          // Merged (not rebuilt) per call, and lazily: the index half is computed once per
+          // Analyzer, and the merge is only worth paying for when some name failed to resolve.
           lazy val candidates = suggestionCandidates(occurrences)
           val rows = tokens.map { t =>
             // Smallest covering occurrence, exactly as [[typeAtPosition]] picks one: an enclosing
@@ -1121,7 +1128,7 @@ final class Analyzer(
                   t.role,
                   resolved = true,
                   Some(occ.symbol),
-                  Some(originOf(occ.symbol)),
+                  Some(originOf(occ.symbol, bufferSymbols)),
                   Nil
                 )
               case None =>
@@ -1153,39 +1160,98 @@ final class Analyzer(
   private def documentOccurrences(uri: String): Seq[s.SymbolOccurrence] =
     index.document(uri).toSeq.flatMap(_.occurrences)
 
-  /** `project` when the index holds the symbol's defining document, `stdlib` for the Scala and Java
-    * namespaces, `classpath` for everything else. The harness's policy reads this; the tool itself
-    * has no policy.
+  /** The symbols one document of THIS analyzer's index DEFINES (not the ones it mentions). */
+  private def documentSymbols(uri: String): Set[String] =
+    index.document(uri).toSeq.flatMap(_.symbols).map(_.symbol).toSet
+
+  /** `stdlib` for the Scala and Java namespaces, `project` when the symbol is defined by this index
+    * or by the buffer under analysis, `classpath` for everything else. The harness's policy reads
+    * this; the tool itself has no policy.
+    *
+    * `bufferSymbols` is not an optimisation but a correctness fix: the file being analysed is
+    * usually NOT in the index (that is the whole point of asking the presentation compiler), so
+    * without it every name the file itself defines would be labelled `classpath` — contradicting
+    * the `project` already given to locals. An enclosing prefix counts too, so the file's own
+    * package (`demo/`, which no document lists among its `symbols`) is `project` as well.
     */
-  private def originOf(symbol: String): String =
+  private def originOf(symbol: String, bufferSymbols: Set[String]): String =
     if symbol.startsWith("scala/") || symbol.startsWith("java/") then "stdlib"
     else if h.definitionUri(symbol).isDefined then "project"
+    else if bufferSymbols.exists(_.startsWith(symbol)) then "project"
     else "classpath"
 
-  /** The global symbols a near-miss may be drawn from: this index's own symbols PLUS every symbol
-    * the buffer document mentions. The second half is what makes a typo of a member the buffer
-    * already uses correctly elsewhere (`label.trim` above, `label.trimm` here) suggestible at all —
-    * `java/lang/String#trim().` is not defined by any project document, so the index alone would
-    * never offer it.
+  /** Every global symbol of THIS index that a near-miss may be drawn from, paired with its display
+    * name and that name's [[AnalyzerHelpers.charMask]], bucketed by the name's length. All three
+    * are the fix for a per-name cost: the display name and the mask are resolved ONCE here instead
+    * of once per candidate per unresolved name, the buckets mean a name of length n only ever
+    * visits candidates of length n±2 (any greater difference already exceeds the edit bound), and
+    * the mask rejects most of what survives that without running the DP. Computed once per
+    * Analyzer, so a caller sweeping a batch of files pays for it once, not once per file.
     */
-  private def suggestionCandidates(occurrences: Seq[s.SymbolOccurrence]): List[String] =
-    (index.symbols.keysIterator ++ occurrences.iterator.map(_.symbol))
-      .filter(sym => sym.nonEmpty && index.isGlobal(sym))
-      .toList
-      .distinct
+  private lazy val indexCandidates: Map[Int, Vector[Analyzer.Candidate]] =
+    candidatesOf(index.symbols.keysIterator)
 
-  /** Deterministic near-misses for a name that did not resolve: a candidate symbol whose simple
-    * name is within edit distance 2 of it. Never more than three, always sorted, so the output is
-    * stable across runs. Names shorter than three characters are not worth guessing about — at that
-    * length everything is within distance 2 of everything.
+  private def candidatesOf(symbols: Iterator[String]): Map[Int, Vector[Analyzer.Candidate]] =
+    symbols
+      .filter(isSuggestable)
+      .map { symbol =>
+        val displayName = index.displayName(symbol)
+        Analyzer.Candidate(symbol, displayName, AnalyzerHelpers.charMask(displayName))
+      }
+      .toVector
+      .distinct
+      .groupBy(_.displayName.length)
+
+  /** Whether a symbol is worth offering as a near-miss. Parameters (`(x)`), type parameters (`[T]`)
+    * and packages (`foo/`) are excluded: no one writes a typo of a package segment or of someone
+    * else's parameter name, and because such descriptors are short and numerous they crowd the real
+    * candidate out of a three-row answer (`symbolz` used to suggest three unrelated `(symbol)`
+    * parameters). `build_/` is the build file's own synthetic namespace, never something a source
+    * file meant to mention.
     */
-  private def suggestionsFor(name: String, candidates: List[String]): List[String] =
-    if name.length < 3 then Nil
+  private def isSuggestable(symbol: String): Boolean =
+    index.isGlobal(symbol) && !symbol.startsWith("build_/") &&
+      !symbol.endsWith("/") && !symbol.endsWith(")") && !symbol.endsWith("]")
+
+  /** [[indexCandidates]] plus every global symbol the buffer document MENTIONS. The second half is
+    * what makes a typo of a member the buffer already uses correctly elsewhere (`label.trim` above,
+    * `label.trimm` here) suggestible at all — `java/lang/String#trim().` is defined by no project
+    * document, so the index alone would never offer it.
+    */
+  private def suggestionCandidates(
+      occurrences: Seq[s.SymbolOccurrence]
+  ): Map[Int, Vector[Analyzer.Candidate]] =
+    candidatesOf(occurrences.iterator.map(_.symbol)).foldLeft(indexCandidates) {
+      case (acc, (length, extra)) =>
+        acc.updated(length, (acc.getOrElse(length, Vector.empty) ++ extra).distinct)
+    }
+
+  /** Deterministic near-misses for a name that did not resolve, CLOSEST FIRST: the edit distance
+    * ranks, the symbol only breaks ties, so the answer is stable across runs without letting the
+    * alphabet decide. Ranking is the point — sorting by symbol alone buried `trim` behind
+    * `java/time/` for `trimm`. Names shorter than three characters are not worth guessing about; at
+    * that length everything is within distance two of everything.
+    */
+  private def suggestionsFor(
+      name: String,
+      candidates: Map[Int, Vector[Analyzer.Candidate]]
+  ): List[String] =
+    if name.length < Analyzer.MinSuggestableLength then Nil
     else
-      candidates
-        .filter(sym => AnalyzerHelpers.editDistanceAtMost(index.displayName(sym), name, 2))
+      val mask = AnalyzerHelpers.charMask(name)
+      (name.length - Analyzer.MaxEditDistance to name.length + Analyzer.MaxEditDistance).iterator
+        .flatMap(length => candidates.getOrElse(length, Vector.empty))
+        .filter(c => AnalyzerHelpers.maskWithin(c.mask, mask, Analyzer.MaxEditDistance))
+        .flatMap(c =>
+          AnalyzerHelpers
+            .editDistanceWithin(c.displayName, name, Analyzer.MaxEditDistance)
+            .map(distance => (distance, c.symbol))
+        )
+        .toVector
         .sorted
-        .take(3)
+        .map((_, symbol) => symbol)
+        .take(Analyzer.MaxSuggestions)
+        .toList
 
   // --- resolve-implicits ----------------------------------------------------
 
@@ -1689,3 +1755,15 @@ object Analyzer:
     * would otherwise be unbounded. Rows past it are counted in `omitted`, never silently dropped.
     */
   private[analysis] val MaxReferences: Int = 200
+
+  /** The edit bound a near-miss must fit in, the most suggestions ever returned, and the shortest
+    * name worth suggesting for — see [[Analyzer.suggestionsFor]].
+    */
+  private[analysis] val MaxEditDistance: Int = 2
+  private[analysis] val MaxSuggestions: Int = 3
+  private[analysis] val MinSuggestableLength: Int = 3
+
+  /** A suggestion candidate with everything the ranking needs precomputed — see
+    * [[Analyzer.indexCandidates]].
+    */
+  private[analysis] final case class Candidate(symbol: String, displayName: String, mask: Int)

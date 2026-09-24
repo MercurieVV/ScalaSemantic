@@ -31,12 +31,27 @@ object NameTokens:
           NameToken(t.pos.startLine, t.pos.startColumn, t.value, "type", roleOf(t))
         case t: Term.Name if inRange(t.pos) =>
           NameToken(t.pos.startLine, t.pos.startColumn, t.value, kindOfTerm(t), roleOf(t))
-        case t: Name.Indeterminate if inRange(t.pos) =>
+        case t: Name.Indeterminate if inRange(t.pos) && !isImportAlias(t) =>
           NameToken(t.pos.startLine, t.pos.startColumn, t.value, "package", "use")
       }
       // Source order, as the traversal produced it: a caller joining these against compiler
       // occurrences walks both in position order, so inverting here would only surprise it.
       tokens.distinctBy(t => (t.line, t.character, t.name))
+    }
+
+  /** The NEW name a renaming import introduces: the `Q` of `import p.{Queue => Q}`, the `S` of
+    * `import p.{Seq as S}`. It is a binding, not a reference — the compiler puts an occurrence on
+    * the source name (`Queue`) and none on the alias — so a caller joining tokens against
+    * occurrences would report every renaming import in ordinary code as an unresolved name. The
+    * alias's later USE sites are untouched: they carry an occurrence for the symbol they alias, and
+    * resolve normally. A `given` import (`import p.given`, `import p.{given Bar}`) needs no such
+    * rule: it introduces no `Name.Indeterminate`, and the `Bar` of the second form is a real type
+    * reference that resolves.
+    */
+  private def isImportAlias(t: Name.Indeterminate): Boolean =
+    t.parent.exists {
+      case r: Importee.Rename => r.rename eq t
+      case _                  => false
     }
 
   /** A `Term.Name` that is the callee of an application is a method reference; anything else in a

@@ -72,3 +72,11 @@ class NameTokensSuite extends munit.FunSuite:
     assert(names.contains("IO"), names.toString)
     assert(names.contains("cats"), names.toString)
   }
+
+  test("a renaming import contributes the source name, never the alias"):
+    val src = "import scala.collection.immutable.{Queue => Q, Seq as S}\n"
+    val names = NameTokens.in(src, Nil).getOrElse(fail("did not parse")).map(_.name)
+    assert(names.contains("Queue"), names.toString)
+    assert(names.contains("Seq"), names.toString)
+    assert(!names.contains("Q"), names.toString)
+    assert(!names.contains("S"), names.toString)
