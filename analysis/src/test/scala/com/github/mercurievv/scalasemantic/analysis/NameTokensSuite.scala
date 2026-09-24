@@ -201,6 +201,55 @@ class NameTokensSuite extends munit.FunSuite:
     val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
     assert(toks.exists(_.name == "bogusMember"), toks.toString)
 
+  test("an annotation nested one level inside the rhs (a call argument) costs nothing"):
+    // Measured: the annotation is not the val's rhs itself here (the rhs is `id(...)`, a call), so
+    // the compiler covers the declared type and the binder normally — only the annotation is blind.
+    val src =
+      """package p
+        |object O:
+        |  val o: Option[Int] = None
+        |  def id[A](x: A): A = x
+        |  val w: Int = id((o: @unchecked) match { case Some(n) => n })
+        |""".stripMargin
+    val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
+    val line4 = toks.filter(_.line == 4)
+    assert(line4.exists(_.name == "Int"), line4.toString)
+    assert(line4.exists(_.name == "n"), line4.toString)
+    assert(line4.exists(_.name == "Some"), line4.toString)
+    assert(!line4.exists(_.name == "unchecked"), line4.toString)
+
+  test("two independent matches on one rhs, only one annotated: the other's binder is untouched"):
+    val src =
+      """package p
+        |object O:
+        |  val o: Option[Int] = None
+        |  val p: Option[Int] = None
+        |  val w: Int = ((o: @unchecked) match {case Some(n)=>n}) + (p match {case Some(m)=>m})
+        |""".stripMargin
+    val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
+    val line4 = toks.filter(_.line == 4)
+    // Not the direct rhs (the rhs is the `+`), so nothing here is blind but the annotation itself.
+    assert(line4.exists(_.name == "Int"), line4.toString)
+    assert(line4.exists(_.name == "n"), line4.toString)
+    assert(line4.exists(_.name == "m"), line4.toString)
+    assert(!line4.exists(_.name == "unchecked"), line4.toString)
+
+  test("a `var` with an ascribed rhs behaves like the `val` case"):
+    val src =
+      """package p
+        |object O:
+        |  val o: Option[Int] = None
+        |  var w: Int = (o: @unchecked) match { case Some(n) => n }
+        |""".stripMargin
+    val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
+    val line3 = toks.filter(_.line == 3)
+    assert(!line3.exists(_.name == "Int"), line3.toString)
+    assert(!line3.exists(_.name == "unchecked"), line3.toString)
+    assert(!line3.exists(_.name == "n"), line3.toString)
+    assert(line3.exists(_.name == "w"), line3.toString)
+    assert(line3.exists(_.name == "o"), line3.toString)
+    assert(line3.exists(_.name == "Some"), line3.toString)
+
   test("Scala 3 definition forms carry role=definition"):
     val src =
       """package p

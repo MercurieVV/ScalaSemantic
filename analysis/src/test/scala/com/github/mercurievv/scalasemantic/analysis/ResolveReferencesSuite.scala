@@ -266,6 +266,49 @@ class ResolveReferencesSuite extends munit.FunSuite:
     val r = refsOf("Rhs.scala", text)
     assertEquals(r.references.filterNot(_.resolved).map(_.name), List("bogusMember"))
 
+  test(
+    "an annotation nested one level inside the rhs still surfaces its hallucinated declared type"
+  ):
+    // The annotation is not the val's rhs itself (the rhs is the call `id(...)`), so the compiler
+    // covers the declared type normally — a hallucination there must come back `resolved: false`,
+    // not vanish from `references` the way a direct-rhs annotation's declared type does.
+    val text =
+      """package demo
+        |
+        |object Nested:
+        |  val o: Option[Int] = None
+        |  def id[A](x: A): A = x
+        |  val w: Bogus = id((o: @unchecked) match { case Some(n) => n })
+        |""".stripMargin
+    val r = refsOf("Nested.scala", text)
+    assertEquals(r.references.filterNot(_.resolved).map(_.name), List("Bogus"))
+
+  test("two independent matches on one rhs, only one annotated: the unannotated binder resolves"):
+    val text =
+      """package demo
+        |
+        |object TwoMatches:
+        |  val o: Option[Int] = None
+        |  val p: Option[Int] = None
+        |  val w: Int = ((o: @unchecked) match {case Some(n)=>n}) + (p match {case Some(m)=>m})
+        |""".stripMargin
+    val r = refsOf("TwoMatches.scala", text)
+    assertEquals(r.error, None)
+    assertEquals(r.references.filterNot(_.resolved), Nil)
+    assert(r.references.exists(_.name == "m"), r.references.toString)
+
+  test("a `var` with an ascribed rhs is not a hallucination, same as a `val`"):
+    val text =
+      """package demo
+        |
+        |object VarUnchecked:
+        |  val o: Option[Int] = None
+        |  var w: Int = (o: @unchecked) match { case Some(n) => n }
+        |""".stripMargin
+    val r = refsOf("VarUnchecked.scala", text)
+    assertEquals(r.error, None)
+    assertEquals(r.references.filterNot(_.resolved), Nil)
+
   test("a classpath symbol is origin=classpath, not stdlib or project"):
     val text = "package demo\n\nobject Cp:\n  val v: ujson.Value = ujson.Null\n"
     val r = refsOf("Cp.scala", text)

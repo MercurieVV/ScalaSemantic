@@ -89,23 +89,32 @@ object NameTokens:
     * type, and every binder the rhs introduces together with that binder's uses. Matched by NAME
     * inside the rhs, because a binder's use is an ordinary `Term.Name` with nothing to mark it — a
     * deliberately small net, so any other unresolved name in the rhs is still reported.
+    *
+    * Fires only when `a` IS that statement's rhs — reference equality, or `a` a direct child of the
+    * rhs term (the shape of `val w: T = (o: @unchecked) match { ... }`, where the rhs is the
+    * `Match` and `a` is its scrutinee). Measured on Scala 3.8.4: nest the annotation one level
+    * deeper — as a call argument (`id((o: @unchecked) match { ... })`), or inside one operand of an
+    * unrelated infix expression (`(... ) + (p match { ... })`) — and the compiler covers the
+    * declared type and every binder normally; only the direct-rhs shape is actually blind.
     */
   private def valRhsSpans(a: Term.Annotate): List[(Int, Int)] =
     val stat = enclosingStat(a)
-    val isValLike =
-      stat.is[Defn.Val] || stat.is[Defn.Var] || stat.is[Decl.Val] || stat.is[Decl.Var]
+    val isValLike = stat.is[Defn.Val] || stat.is[Defn.Var]
     if !isValLike then Nil
     else
-      val declared = stat.children.collectFirst { case t: Type => span(t) }.toList
       val rhs = stat.children.reverse.collectFirst { case t: Term => t }
-      val bound = rhs.toList.flatMap { body =>
-        val binders = body.collect { case p: Pat.Var => p.name.value }.toSet
-        body.collect {
-          case p: Pat.Var if binders.contains(p.name.value) => span(p.name)
-          case t: Term.Name if binders.contains(t.value)    => span(t)
+      val isRhsAnnotation = rhs.exists(r => (r eq a) || r.children.exists(_ eq a))
+      if !isRhsAnnotation then Nil
+      else
+        val declared = stat.children.collectFirst { case t: Type => span(t) }.toList
+        val bound = rhs.toList.flatMap { body =>
+          val binders = body.collect { case p: Pat.Var => p.name.value }.toSet
+          body.collect {
+            case p: Pat.Var if binders.contains(p.name.value) => span(p.name)
+            case t: Term.Name if binders.contains(t.value)    => span(t)
+          }
         }
-      }
-      declared ++ bound
+        declared ++ bound
 
   private def span(t: Tree): (Int, Int) = (t.pos.start, t.pos.end)
 
