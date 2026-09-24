@@ -250,6 +250,36 @@ class NameTokensSuite extends munit.FunSuite:
     assert(line3.exists(_.name == "o"), line3.toString)
     assert(line3.exists(_.name == "Some"), line3.toString)
 
+  test("the annotation wrapping an already-built match is not the blind shape"):
+    // Measured on the real PC: only the bare-scrutinee form `(o: @unchecked) match {...}` is blind.
+    // Wrap the whole match instead and the compiler covers the declared type and the binder
+    // normally, so both must still be reported — otherwise a hallucinated `Bogus` ships silently.
+    val src =
+      """package p
+        |object O:
+        |  val o: Option[Int] = None
+        |  val w: Int = (o match { case Some(n) => n }: @unchecked)
+        |""".stripMargin
+    val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
+    val line3 = toks.filter(_.line == 3)
+    assert(line3.exists(_.name == "Int"), line3.toString)
+    assert(line3.exists(_.name == "n"), line3.toString)
+    assert(line3.exists(_.name == "Some"), line3.toString)
+    assert(!line3.exists(_.name == "unchecked"), line3.toString)
+
+  test("a block-wrapped ascribed rhs is not the blind shape"):
+    val src =
+      """package p
+        |object O:
+        |  val o: Option[Int] = None
+        |  val w: Int = { (o: @unchecked) match { case Some(n) => n } }
+        |""".stripMargin
+    val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
+    val line3 = toks.filter(_.line == 3)
+    assert(line3.exists(_.name == "Int"), line3.toString)
+    assert(line3.exists(_.name == "n"), line3.toString)
+    assert(!line3.exists(_.name == "unchecked"), line3.toString)
+
   test("Scala 3 definition forms carry role=definition"):
     val src =
       """package p

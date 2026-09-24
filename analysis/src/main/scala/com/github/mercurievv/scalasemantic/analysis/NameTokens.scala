@@ -90,12 +90,13 @@ object NameTokens:
     * inside the rhs, because a binder's use is an ordinary `Term.Name` with nothing to mark it — a
     * deliberately small net, so any other unresolved name in the rhs is still reported.
     *
-    * Fires only when `a` IS that statement's rhs — reference equality, or `a` a direct child of the
-    * rhs term (the shape of `val w: T = (o: @unchecked) match { ... }`, where the rhs is the
-    * `Match` and `a` is its scrutinee). Measured on Scala 3.8.4: nest the annotation one level
-    * deeper — as a call argument (`id((o: @unchecked) match { ... })`), or inside one operand of an
-    * unrelated infix expression (`(... ) + (p match { ... })`) — and the compiler covers the
-    * declared type and every binder normally; only the direct-rhs shape is actually blind.
+    * Fires on exactly one shape: the rhs is a `Term.Match` whose scrutinee is `a`, as in
+    * `val w: T = (o: @unchecked) match { ... }`. Measured on Scala 3.8.4, every neighbouring shape
+    * is covered normally by the compiler and so stays reported — the annotation nested one level
+    * deeper as a call argument (`id((o: @unchecked) match { ... })`) or inside one operand of an
+    * unrelated infix expression; a block-wrapped or `if`/`else` rhs; and the annotation wrapping an
+    * already-built match (`val w: T = (o match { ... }: @unchecked)`), where only the
+    * bare-scrutinee form is blind.
     */
   private def valRhsSpans(a: Term.Annotate): List[(Int, Int)] =
     val stat = enclosingStat(a)
@@ -103,8 +104,11 @@ object NameTokens:
     if !isValLike then Nil
     else
       val rhs = stat.children.reverse.collectFirst { case t: Term => t }
-      val isRhsAnnotation = rhs.exists(r => (r eq a) || r.children.exists(_ eq a))
-      if !isRhsAnnotation then Nil
+      val isAnnotatedScrutinee = rhs.exists {
+        case m: Term.Match => m.expr eq a
+        case _             => false
+      }
+      if !isAnnotatedScrutinee then Nil
       else
         val declared = stat.children.collectFirst { case t: Type => span(t) }.toList
         val bound = rhs.toList.flatMap { body =>
