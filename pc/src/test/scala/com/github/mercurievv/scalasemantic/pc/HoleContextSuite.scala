@@ -145,6 +145,16 @@ class HoleContextSuite extends munit.FunSuite:
     assert(r.types.exists(_.signature.contains("IO")))
   }
 
+  test("rendered text carries no ANSI escapes (the driver runs with -color:never)") {
+    // Every rendered string lands in a JSON field; dotty colours its output by default, so an escape
+    // here would reach the agent (and make the docs example a lie).
+    val r = at(5)
+    val rendered = r.expected.flatMap(_.tpe).toList ++ r.types.map(_.signature) ++
+      r.producers.map(_.signature) ++ r.bindings.map(_.tpe) ++ r.givens.map(_.tpe)
+    assert(rendered.nonEmpty, "nothing rendered to check")
+    assert(rendered.forall(!_.contains('\u001b')), rendered.filter(_.contains('\u001b')).toString)
+  }
+
   test("bounds honoured with omitted counts") {
     val many = (1 to 30).map(i => s"  val s$i: String = \"\"").mkString("\n")
     val code = s"object Many:\n$many\n  def f: String = ???\n"

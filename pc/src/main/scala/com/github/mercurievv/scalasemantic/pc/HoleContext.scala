@@ -35,10 +35,13 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
   import HoleContext.*
 
   private given ReportContext = new EmptyReportContext()
+  // `-color:never`: dotty defaults to `always`, and the rendered types/signatures below go into JSON
+  // string fields, where an ANSI escape is noise the agent has to strip (and the docs example lies).
   private val driver = new InteractiveDriver(
     List(
       "-classpath",
-      classpath.map(_.toAbsolutePath.toString).mkString(java.io.File.pathSeparator)
+      classpath.map(_.toAbsolutePath.toString).mkString(java.io.File.pathSeparator),
+      "-color:never"
     ) ++ options
   )
 
