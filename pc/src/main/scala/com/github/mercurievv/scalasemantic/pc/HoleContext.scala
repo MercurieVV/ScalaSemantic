@@ -3,7 +3,12 @@ package com.github.mercurievv.scalasemantic.pc
 import dotty.tools.dotc.ast.tpd
 import dotty.tools.dotc.core.Contexts.Context
 import dotty.tools.dotc.core.Flags
+import dotty.tools.dotc.core.NameOps.stripModuleClassSuffix
+import dotty.tools.dotc.core.Symbols.Symbol
 import dotty.tools.dotc.core.Symbols.defn
+import dotty.tools.dotc.core.Types.ExprType
+import dotty.tools.dotc.core.Types.Type
+import dotty.tools.dotc.core.Types.TypeParamRef
 import dotty.tools.dotc.interactive.Interactive
 import dotty.tools.dotc.interactive.InteractiveDriver
 import dotty.tools.dotc.util.SourceFile
@@ -58,27 +63,170 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
             val indexed = IndexedContext(pos)(using located)
             val printer =
               ShortenedTypePrinter(EmptySymbolSearch, IncludeDefaultParam.Never)(using indexed)
-            val hole = Hole(if isUndefined(head) then "???" else "expression", head.show.take(80))
-            val expected = InferCompletionType.inferType(path) match
+            val hole = Hole(if isUndefined(head) then "???" else "expression", holeText(head, code))
+            val expectedTpe = InferCompletionType.inferType(path) match
               case Some(tpe) if !tpe.isErroneous && !prescribedByInferredTpt(path) =>
-                Expected(Some(printer.tpe(tpe.widenTermRefExpr)), Confidence.Exact, whyOf(path))
-              case _ =>
+                Some(tpe.widenTermRefExpr)
+              case _ => None
+            val expected = expectedTpe match
+              case Some(tpe) => Expected(Some(printer.tpe(tpe)), Confidence.Exact, whyOf(path))
+              case None      =>
                 Expected(
                   None,
                   Confidence.Unconstrained,
                   "no type prescribed here — declare the val's type or the def's result type first"
                 )
-            Result(
-              found = true,
-              why = None,
-              hole = Some(hole),
-              expected = Some(expected),
-              bindings = Nil,
-              producers = Nil,
-              givens = Nil,
-              types = Nil,
-              omitted = Omitted(0, 0, 0, 0)
+            candidates(hole, expected, expectedTpe, indexed, printer)(using located)
+
+  /** The hole as written: the source slice under the tree's span, not the typed tree's `show`
+    * (which qualifies names).
+    */
+  private def holeText(t: tpd.Tree, code: String)(using Context): String =
+    val span = t.span
+    val slice =
+      if span.exists && span.start >= 0 && span.end <= code.length && span.start <= span.end then
+        code.substring(span.start, span.end).nn
+      else t.show
+    slice.take(80)
+
+  /** Fill the candidate lists for an `expected` type: every check is the compiler's `<:<` on the
+    * dealiased expected type; nothing compares rendered strings.
+    */
+  private def candidates(
+      hole: Hole,
+      expected: Expected,
+      expectedTpe: Option[Type],
+      indexed: IndexedContext,
+      printer: ShortenedTypePrinter
+  )(using Context): Result =
+    expectedTpe match
+      case None =>
+        Result(true, None, Some(hole), Some(expected), Nil, Nil, Nil, Nil, Omitted(0, 0, 0, 0))
+      case Some(want0) =>
+        val want = want0.dealias
+        val pool: List[Symbol] = indexed.scopeSymbols.distinct
+        val wantClasses =
+          (want.classSymbol :: want.argInfos.map(_.classSymbol)).filter(_.exists).distinct
+
+        // --- bindings: values (and parameterless defs) whose own type conforms -------------------
+        def resultOf(s: Symbol) = s.info.widen.finalResultType
+        def isValueLike(s: Symbol) =
+          s.isTerm && !s.is(Flags.Package) && !s.is(Flags.Module) && !s.isConstructor &&
+            (!s.is(Flags.Method) || s.info.widen.isInstanceOf[ExprType] ||
+              s.info.widen.paramInfoss.isEmpty)
+        def conforms(res: Type) = !res.isErroneous && !res.isNothingType && res <:< want
+        def kindOf(s: Symbol) =
+          if s.is(Flags.Param) then "param" else if s.is(Flags.Method) then "def" else "val"
+        def ownerName(s: Symbol) = s.owner.name.stripModuleClassSuffix.show
+        def fromOf(s: Symbol) =
+          if s.is(Flags.Param) || s.owner.is(Flags.Method) then s"enclosing def ${ownerName(s)}"
+          else if s.owner.is(Flags.Module) || s.owner.isClass then s"member of ${ownerName(s)}"
+          else "in scope"
+        val allBindings = pool
+          .filter(isValueLike)
+          .filter(s => conforms(resultOf(s)))
+          .map(s => Binding(s.name.show, printer.tpe(resultOf(s)), kindOf(s), fromOf(s)))
+
+        // --- producers: methods whose result fits (exact) or is the same class (shape) ----------
+        val companions: List[(Symbol, String)] =
+          wantClasses
+            .map(_.companionModule)
+            .filter(_.exists)
+            .flatMap(m =>
+              m.info.decls.toList
+                .filter(d =>
+                  d.isTerm && d.is(Flags.Method) && !d.isConstructor && !d.is(Flags.Synthetic)
+                )
+                .map(d => d -> s"companion ${m.name.show}")
             )
+        val methods: List[(Symbol, String)] =
+          pool
+            .filter(s => s.isTerm && s.is(Flags.Method) && s.info.widen.paramInfoss.nonEmpty)
+            .map(s => s -> fromOf(s))
+        def matchKind(s: Symbol): Option[String] =
+          val res = resultOf(s)
+          if res.isErroneous || res.isNothingType then None
+          else if res <:< want then Some("exact")
+          else if res.classSymbol.exists && want.classSymbol.exists &&
+            res.classSymbol.derivesFrom(want.classSymbol)
+          then Some("shape")
+          else None
+        def nameOf(s: Symbol, from: String) =
+          if from.startsWith("companion ") then s"${from.stripPrefix("companion ")}.${s.name.show}"
+          else s.name.show
+        // A shape match whose result still carries the method's own type parameters (`pure[A]: IO[A]`)
+        // can be instantiated to the expected type; one whose arguments are already fixed
+        // (`monotonic: IO[FiniteDuration]`) never can, so it ranks last.
+        def instantiable(s: Symbol): Boolean =
+          resultOf(s).argInfos.exists(_.isInstanceOf[TypeParamRef])
+        val ranked = (companions ++ methods)
+          .distinctBy(_._1)
+          .flatMap((s, from) =>
+            matchKind(s).map(k =>
+              (
+                k,
+                if instantiable(s) then 0 else 1,
+                Producer(nameOf(s, from), printer.defaultMethodSignature(s, s.info.widen), from, k)
+              )
+            )
+          )
+        val exactProducers = ranked.filter(_._1 == "exact").map(_._3)
+        val shapeProducers = ranked.filter(_._1 == "shape").sortBy(_._2).map(_._3)
+        // The budget is per match kind, so a companion with dozens of exact members (cats-effect's
+        // `IO` has 17) can never crowd every shape match out of the answer.
+        val shownProducers = exactProducers.take(maxProducers) ++ shapeProducers.take(maxProducers)
+        val omittedProducers = exactProducers.size + shapeProducers.size - shownProducers.size
+
+        // --- givens: what the compiler would pick for the expected type -------------------------
+        // Lexical scope (`ctx.implicits`) plus the type's own implicit scope (companions).
+        val allGivens =
+          if want.classSymbol.exists && want.classSymbol.isClass && want.argInfos.nonEmpty then
+            val ctx = summon[Context]
+            val lexical = ctx.implicits.eligible(want)
+            val ofType = ctx.run.nn.implicitScope(want).eligible
+            (lexical ++ ofType)
+              .filter(!_.isConversion)
+              .map(_.ref)
+              .distinctBy(_.symbol)
+              .map(ref =>
+                Given(
+                  ref.symbol.name.show,
+                  printer.tpe(ref.underlying.widen.finalResultType),
+                  s"from ${ownerName(ref.symbol)}"
+                )
+              )
+          else Nil
+
+        // --- types: the expected type's classes, in SemanticDB symbol form ----------------------
+        val allTypes = wantClasses.map(cls =>
+          TypeRef(semanticdbSymbol(cls), cls.name.show, printer.hoverSymbol(cls, cls.info))
+        )
+
+        Result(
+          found = true,
+          why = None,
+          hole = Some(hole),
+          expected = Some(expected),
+          bindings = allBindings.take(maxBindings),
+          producers = shownProducers,
+          givens = allGivens.take(maxGivens),
+          types = allTypes.take(maxTypes),
+          omitted = Omitted(
+            (allBindings.size - maxBindings).max(0),
+            omittedProducers,
+            (allGivens.size - maxGivens).max(0),
+            (allTypes.size - maxTypes).max(0)
+          )
+        )
+
+  /** SemanticDB symbol of a class: `a/b/C#`, nested `a/b/C#D#`, in an object `a/b/O.D#`. */
+  private def semanticdbSymbol(cls: Symbol)(using Context): String =
+    def owners(s: Symbol): String =
+      if !s.exists || s.isRoot || s.isEffectiveRoot || s == defn.EmptyPackageClass then ""
+      else if s.is(Flags.Package) then owners(s.owner) + s.name.show + "/"
+      else if s.is(Flags.Module) then owners(s.owner) + s.name.stripModuleClassSuffix.show + "."
+      else owners(s.owner) + s.name.show + "#"
+    owners(cls)
 
   private def notFound(why: String): Result =
     Result(false, Some(why), None, None, Nil, Nil, Nil, Nil, Omitted(0, 0, 0, 0))
@@ -103,15 +251,26 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
     path.drop(1).dropWhile(_.isInstanceOf[tpd.Block])
 
   /** `val x = ???` types `???` against an inferred `Nothing` — the compiler has an answer, but it
-    * is the hole's own type, not a demand on it. Treat an inferred `tpt` as unconstrained.
+    * is the hole's own type, not a demand on it. Treat an inferred `tpt` as unconstrained. Walks
+    * the same transparent wrappers `InferCompletionType.inferType` descends through (`Block`, `If`
+    * branches, `CaseDef` of a `Match`/`Try`, `Try`, `NamedArg`) so `def f = if c then ??? else 1`
+    * is unconstrained too.
     */
   private def prescribedByInferredTpt(path: List[tpd.Tree]): Boolean =
-    prescriber(path) match
-      case (d: tpd.ValOrDefDef) :: _ =>
+    val holeSpan = path.headOption.map(_.span).getOrElse(Span(0))
+    def walk(rest: List[tpd.Tree]): Boolean = rest match
+      case (_: tpd.Block) :: more                                        => walk(more)
+      case tpd.If(cond, _, _) :: more if !cond.span.contains(holeSpan)   => walk(more)
+      case (_: tpd.CaseDef) :: (_: tpd.Match) :: more                    => walk(more)
+      case (_: tpd.CaseDef) :: (_: tpd.Try) :: more                      => walk(more)
+      case tpd.Try(block, _, _) :: more if block.span.contains(holeSpan) => walk(more)
+      case (_: tpd.NamedArg) :: more                                     => walk(more)
+      case (d: tpd.ValOrDefDef) :: _                                     =>
         d.tpt match
           case tt: tpd.TypeTree => tt.isInferred
           case _                => false
       case _ => false
+    walk(path.drop(1))
 
   /** Which enclosing construct prescribed the type: mirrors the cases
     * `InferCompletionType.inferType` matches.
@@ -170,6 +329,8 @@ object HoleContext:
       omitted: Omitted
   )
   val maxBindings = 20
+
+  /** Per match kind: up to this many exact, plus up to this many shape matches. */
   val maxProducers = 15
   val maxGivens = 10
   val maxTypes = 5
