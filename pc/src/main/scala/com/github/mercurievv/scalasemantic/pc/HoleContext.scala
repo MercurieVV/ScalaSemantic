@@ -183,7 +183,9 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
           if want.classSymbol.exists && want.classSymbol.isClass && want.argInfos.nonEmpty then
             val ctx = summon[Context]
             val lexical = ctx.implicits.eligible(want)
-            val ofType = ctx.run.nn.implicitScope(want).eligible
+            // `ctx.run` can be `null` outside a full compilation run; degrade to lexical-scope
+            // givens only rather than NPE, so the error-tolerance guarantee still holds.
+            val ofType = Option(ctx.run).map(_.implicitScope(want).eligible).getOrElse(Nil)
             (lexical ++ ofType)
               .filter(!_.isConversion)
               .map(_.ref)
@@ -198,8 +200,13 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
           else Nil
 
         // --- types: the expected type's classes, in SemanticDB symbol form ----------------------
-        val allTypes = wantClasses.map(cls =>
-          TypeRef(semanticdbSymbol(cls), cls.name.show, printer.hoverSymbol(cls, cls.info))
+        // A method-local (or otherwise term-owned) class has no stable SemanticDB symbol we can
+        // spell here (SemanticDB numbers `local0`, `local1`, ... per-file; we have no such counter),
+        // so it is left out of `types` rather than rendered as a bogus `...foo#`.
+        val allTypes = wantClasses.flatMap(cls =>
+          semanticdbSymbol(cls).map(sym =>
+            TypeRef(sym, cls.name.show, printer.hoverSymbol(cls, cls.info))
+          )
         )
 
         Result(
@@ -219,13 +226,25 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
           )
         )
 
-  /** SemanticDB symbol of a class: `a/b/C#`, nested `a/b/C#D#`, in an object `a/b/O.D#`. */
-  private def semanticdbSymbol(cls: Symbol)(using Context): String =
-    def owners(s: Symbol): String =
-      if !s.exists || s.isRoot || s.isEffectiveRoot || s == defn.EmptyPackageClass then ""
-      else if s.is(Flags.Package) then owners(s.owner) + s.name.show + "/"
-      else if s.is(Flags.Module) then owners(s.owner) + s.name.stripModuleClassSuffix.show + "."
-      else owners(s.owner) + s.name.show + "#"
+  /** SemanticDB symbol of a class: `a/b/C#`, nested `a/b/C#D#`, in an object `a/b/O.D#`. A
+    * descriptor that is not a plain identifier (an operator name such as `::`) is backtick-escaped.
+    * `None` when the class is owned by a method or other term — SemanticDB spells those `local0`,
+    * `local1`, ... per-file, a counter this query has no access to, so it is better to omit the
+    * type than to emit a symbol that does not resolve to anything.
+    */
+  private def semanticdbSymbol(cls: Symbol)(using Context): Option[String] =
+    def isPlainIdentifier(name: String): Boolean =
+      name.nonEmpty && (name.head.isLetter || name.head == '_') &&
+        name.forall(c => c.isLetterOrDigit || c == '_' || c == '$')
+    def descriptor(name: String): String =
+      if isPlainIdentifier(name) then name else s"`$name`"
+    def owners(s: Symbol): Option[String] =
+      if !s.exists || s.isRoot || s.isEffectiveRoot || s == defn.EmptyPackageClass then Some("")
+      else if s.is(Flags.Method) then None
+      else if s.is(Flags.Package) then owners(s.owner).map(_ + s.name.show + "/")
+      else if s.is(Flags.Module) then
+        owners(s.owner).map(_ + s.name.stripModuleClassSuffix.show + ".")
+      else owners(s.owner).map(_ + descriptor(s.name.show) + "#")
     owners(cls)
 
   private def notFound(why: String): Result =

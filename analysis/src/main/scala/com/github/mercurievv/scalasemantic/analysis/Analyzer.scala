@@ -76,6 +76,44 @@ final class Analyzer(
       new Analyzer(SemanticIndex(Vector(backend.semanticdb(fileUri, code, docUri))))
     )
 
+  /** The typed-hole query (spec 2026-09-21-typed-hole-context-design §1) for the live `code` of the
+    * file at `fileUri` (keyed `docUri`) at a 0-based character `offset`, answered by the module
+    * backend's `HoleContext`. Project-owned types (a document in this index defines them) carry an
+    * excerpt of their definition's first lines, read from disk under `root`; classpath types the
+    * signature alone. `None` without a PC backend for `docUri`.
+    */
+  def holeContext(
+      root: java.nio.file.Path,
+      fileUri: URI,
+      code: String,
+      docUri: String,
+      offset: Int
+  ): Option[HoleContextResult] =
+    backendFor(docUri).map { backend =>
+      val r = backend.holes.at(fileUri, code, offset)
+      HoleContextResult.from(r, sym => definitionExcerpt(root, sym, maxLines = 12))
+    }
+
+  /** The first `maxLines` lines of `symbol`'s definition (via [[symbolDefinitionRange]]), read from
+    * its file under `root`. `None` when `symbol` has no definition in this index, or its file is
+    * not on disk under `root` (e.g. a classpath symbol, which has no document in this index at
+    * all).
+    */
+  private def definitionExcerpt(
+      root: java.nio.file.Path,
+      symbol: String,
+      maxLines: Int
+  ): Option[String] =
+    for
+      (uri, range) <- symbolDefinitionRange(symbol)
+      file = root.resolve(uri.value)
+      if java.nio.file.Files.isRegularFile(file)
+      text <- scala.util.Try(java.nio.file.Files.readString(file)).toOption
+      lines = text.split("\n", -1).toIndexedSeq
+      endLine = math.min(math.min(range.endLine, lines.length), range.startLine + maxLines)
+      if range.startLine < endLine
+    yield lines.slice(range.startLine, endLine).mkString("\n")
+
   // --- smart-code-duplications ----------------------------------------------
 
   def analyzeDuplications(

@@ -154,6 +154,25 @@ class HoleContextSuite extends munit.FunSuite:
     assert(r.omitted.bindings >= 10, r.omitted.toString)
   }
 
+  test("a method-local type is omitted from types rather than a bogus symbol") {
+    val code =
+      """object LocalTypes:
+        |  def use(): Unit =
+        |    case class Local(x: Int)
+        |    val v: Local = ???
+        |""".stripMargin
+    val off = code.indexOf("???")
+    val r = holes.at(uri, code, off)
+    assertEquals(r.types, Nil)
+  }
+
+  test("a type name that is not a plain identifier is backtick-escaped in its symbol") {
+    val code = "object ConsTypes:\n  val v: ::[Int] = ???\n"
+    val off = code.indexOf("???")
+    val r = holes.at(uri, code, off)
+    assert(r.types.exists(_.symbol.contains("`::`")), r.types.toString)
+  }
+
   test("a type error elsewhere in the buffer does not stop the answer") {
     // the injected error sits before the hole, so the offset is re-derived from the marker
     val (broken, off) =
