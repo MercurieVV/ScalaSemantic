@@ -754,9 +754,11 @@ index would surface it.
 **Known blind spots.** A name the compiler emits no occurrence for cannot be joined, so it is not
 reported at all rather than reported as a hallucination: a `derives` clause's type, a named
 `export` selector, a macro quote's spliced name, an annotation on a type ascription
-(`(o: @unchecked)`) and — when such an ascription is a val's or var's right-hand side — that
-statement's declared type and the binders its right-hand side introduces. Everything else stays
-checked, the enclosing signature included, so
+(`(o: @unchecked)`) and — in the one shape `val w: T = (o: @unchecked) match { … }`, an annotated
+ascription as the scrutinee of a match that is the whole right-hand side of a val or var — that
+statement's declared type and the binders its right-hand side introduces. Any other placement of
+the ascription (nested in a call argument, wrapping the whole match, inside a block or an
+`if`/`else`) is checked normally. Everything else stays checked, the enclosing signature included, so
 `def f(p: Bogus): Int = (o: @unchecked) match { … }` still reports `Bogus`. Suggestions are not
 restricted to the unresolved name's own owner, so an unrelated owner's near-miss can appear beside
 the right one.
