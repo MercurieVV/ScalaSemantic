@@ -14,6 +14,7 @@ ScalaSemantic exposes MCP tools over stdio JSON-RPC. For most workflows, start w
 | `members` | List declared and inherited members, override-aware. |
 | `type_at_position` | Return the symbol and type at a 0-based source position. |
 | `hole_context` | Expected type at a position (with confidence) and the in-scope bindings, producers and givens that satisfy it. |
+| `resolve_references` | Every name the given line ranges refer to, resolved or not, with origin and near-miss suggestions. |
 | `resolve_implicits` | Find given definitions that can produce a requested type. |
 | `trace_implicit_chain` | Follow a given's transitive implicit dependencies. |
 | `call_path` | Find the shortest known call path between two methods. |
@@ -54,3 +55,7 @@ Use `find_symbol` to resolve a human name to its symbol; use `type_at_position` 
 ## Request shape
 
 MCP clients call tools automatically. For manual stdio checks, direct integrations, and full request/response JSON examples for every tool, see <a href="../../usage/tool-examples">Tool Examples</a>.
+
+## One-shot calls (no MCP session)
+
+`scalasemantic-mcp call <tool> '<json-args>' [root] [classpath]` runs a single tool and prints its JSON result to stdout, then exits — for a shell hook or script that cannot hold an MCP session open.

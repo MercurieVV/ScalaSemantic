@@ -1576,46 +1576,49 @@ private[mcp] object McpToolsGroupB:
                   // error below), not a per-file detail, so probe it even without real text.
                   az.resolveReferences(file.toUri, "", uri.value, ranges) match
                     case None =>
-                      ujson.Obj(
-                        "uri" -> ujson.Str(uri.value),
-                        "error" -> ujson.Str("no presentation compiler")
+                      (
+                        ujson.Obj(
+                          "uri" -> ujson.Str(uri.value),
+                          "error" -> ujson.Str("no presentation compiler")
+                        ),
+                        true
                       )
                     case Some(_) =>
-                      ujson.Obj(
-                        "uri" -> ujson.Str(uri.value),
-                        "references" -> ujson.Arr(),
-                        "omitted" -> ujson.Num(0),
-                        "error" -> ujson.Str(
-                          s"no source: pass `source` or make ${uri.value} exist on disk"
-                        )
+                      (
+                        ujson.Obj(
+                          "uri" -> ujson.Str(uri.value),
+                          "references" -> ujson.Arr(),
+                          "omitted" -> ujson.Num(0),
+                          "error" -> ujson.Str(
+                            s"no source: pass `source` or make ${uri.value} exist on disk"
+                          )
+                        ),
+                        false
                       )
                 case Some(text) =>
                   az.resolveReferences(file.toUri, text, uri.value, ranges) match
                     case None =>
-                      ujson.Obj(
-                        "uri" -> ujson.Str(uri.value),
-                        "error" -> ujson.Str("no presentation compiler")
+                      (
+                        ujson.Obj(
+                          "uri" -> ujson.Str(uri.value),
+                          "error" -> ujson.Str("no presentation compiler")
+                        ),
+                        true
                       )
                     case Some(res) =>
                       val base = upickle.default.writeJs(res)
-                      if fromDisk && !az.isDocumentIndexed(uri) then
-                        ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
-                      else base
+                      val json =
+                        if fromDisk && !az.isDocumentIndexed(uri) then
+                          ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
+                        else base
+                      (json, false)
             }
-            if results.forall(r =>
-                r.obj
-                  .get("error")
-                  .collect { case ujson.Str(s) => s }
-                  .contains(
-                    "no presentation compiler"
-                  )
-              )
-            then
+            if results.forall(_._2) then
               error(
                 "resolve_references needs the presentation compiler: start the server with a " +
                   "classpath (see README → classpath)"
               )
-            else ujson.Obj("files" -> ujson.Arr(results*))
+            else ujson.Obj("files" -> ujson.Arr(results.map(_._1)*))
         }
       ),
       toolDef(

@@ -42,6 +42,7 @@ Every tool example on this page is **executed at docs build time** by the real S
 | `method_signature` | Full signature with implicit/using params |
 | `type_at_position` | Type of code at a source location |
 | `hole_context` | Expected type at a hole and what in scope satisfies it |
+| `resolve_references` | Every name a diff's line ranges refer to, and whether it resolves |
 
 ## Find & resolve symbols
 
@@ -697,6 +698,55 @@ object Wiring:
 
 **Replaces:** Guessing an API from memory → the compiler's own answer at that exact position. See
 the `typed-holes` skill for the full skeleton-first, one-hole-at-a-time procedure.
+
+---
+
+### resolve_references
+
+**What it tells you:** every name the given LINE RANGES of the given files refer to, and whether it
+resolves — the deterministic check for hallucinated symbols. Each row carries the name as written,
+its `kind` (type/term/method/package) and `role` (use/definition), and either `resolved: true` with
+the SemanticDB `symbol` and its `origin` (`project`/`stdlib`/`classpath`), or `resolved: false` with
+deterministic near-miss `suggestions`. `ranges` are `[startLine, endLineExclusive]`, 0-based — the
+shape `git diff -U0` yields — so it slots straight into a diff-scoped review hook.
+
+*This example is a captured run (the tool needs a presentation compiler, which the docs build does
+not start).* On a scratch file with one good and one bad reference (`trimm` is a typo of `trim`):
+
+```json
+{
+  "files": [
+    {
+      "uri": "Refs.scala",
+      "references": [
+        {
+          "line": 3, "character": 6, "name": "bad", "kind": "term", "role": "definition",
+          "resolved": true, "symbol": "demo/Refs.bad().", "origin": "project", "suggestions": []
+        },
+        {
+          "line": 3, "character": 20, "name": "label", "kind": "term", "role": "use",
+          "resolved": true, "symbol": "demo/Refs.label.", "origin": "project", "suggestions": []
+        },
+        {
+          "line": 3, "character": 26, "name": "trimm", "kind": "term", "role": "use",
+          "resolved": false, "symbol": null, "origin": null, "suggestions": []
+        }
+      ],
+      "omitted": 0,
+      "pcFallback": false,
+      "error": null
+    }
+  ]
+}
+```
+
+`trimm` comes back `resolved: false` with no suggestion here because this call's index is empty and
+`trim` (the near-miss) has no other occurrence in the buffer to draw a suggestion from — a richer
+index would surface it.
+
+**Replaces:** grepping a diff for plausible-looking names → a resolved-or-not verdict per name,
+straight from SemanticDB. Run it one-shot from a shell hook via `scalasemantic-mcp call
+resolve_references '<json-args>' [root] [classpath]` — no MCP session needed.
 
 ---
 
