@@ -1530,6 +1530,96 @@ private[mcp] object McpToolsGroupB:
       ),
       toolDef(
         tool(
+          "resolve_references",
+          "Every name the given LINE RANGES of the given files refer to, and whether it resolves — " +
+            "the deterministic check for hallucinated symbols. Each row carries the name as written, " +
+            "its `kind` (type/term/method/package) and `role` (use/definition), and either " +
+            "`resolved: true` with the SemanticDB `symbol` and its `origin` (`project` when this " +
+            "index defines it, `stdlib` for scala/java, `classpath` otherwise) or `resolved: false` " +
+            "with deterministic near-miss `suggestions`. A suggestion is drawn only from symbols the " +
+            "project index or the buffer's own occurrences already know, so a typo of an otherwise " +
+            "unused stdlib name may come back with no suggestion. `ranges` are [startLine, " +
+            "endLineExclusive], 0-based, as `git diff -U0` yields; an empty list means the whole " +
+            "file, and a reference outside every range never appears. Pass `source` with the file's " +
+            "CURRENT text (uncompiled is fine); without it the on-disk file is read and the result is " +
+            "marked `pcFallback`. Needs the server started with a classpath. Policy — which symbols a " +
+            "module MAY use — is the caller's, never this tool's.",
+          List(
+            (
+              "files",
+              "array",
+              "objects: {uri: string, ranges: [[startLine, endLineExclusive], …], source?: string}"
+            )
+          ),
+          List("files")
+        ) { a =>
+          val entries = a.obj.get("files").toList.flatMap(_.arr)
+          if entries.isEmpty then
+            error("resolve_references: `files` must hold at least one {uri, ranges} object")
+          else
+            val results = entries.map { entry =>
+              val uri = argUri(entry, "uri")
+              val file = root.resolve(uri.value)
+              val ranges = entry.obj.get("ranges").toSeq.flatMap(_.arr).flatMap { r =>
+                val pair = r.arr.toVector.map(_.num.toInt)
+                (pair.lift(0), pair.lift(1)) match
+                  case (Some(from), Some(until)) => Some((from, until))
+                  case _                         => None
+              }
+              val (code, fromDisk) = entry.obj.get("source").map(_.str) match
+                case Some(src) => (Some(src), false)
+                case None      => (readFileText(file), true)
+              code match
+                case None =>
+                  // Distinguish "no PC backend at all" from "this one file has no source": a
+                  // missing backend is the whole call's problem (surfaced as the no-classpath
+                  // error below), not a per-file detail, so probe it even without real text.
+                  az.resolveReferences(file.toUri, "", uri.value, ranges) match
+                    case None =>
+                      ujson.Obj(
+                        "uri" -> ujson.Str(uri.value),
+                        "error" -> ujson.Str("no presentation compiler")
+                      )
+                    case Some(_) =>
+                      ujson.Obj(
+                        "uri" -> ujson.Str(uri.value),
+                        "references" -> ujson.Arr(),
+                        "omitted" -> ujson.Num(0),
+                        "error" -> ujson.Str(
+                          s"no source: pass `source` or make ${uri.value} exist on disk"
+                        )
+                      )
+                case Some(text) =>
+                  az.resolveReferences(file.toUri, text, uri.value, ranges) match
+                    case None =>
+                      ujson.Obj(
+                        "uri" -> ujson.Str(uri.value),
+                        "error" -> ujson.Str("no presentation compiler")
+                      )
+                    case Some(res) =>
+                      val base = upickle.default.writeJs(res)
+                      if fromDisk && !az.isDocumentIndexed(uri) then
+                        ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
+                      else base
+            }
+            if results.forall(r =>
+                r.obj
+                  .get("error")
+                  .collect { case ujson.Str(s) => s }
+                  .contains(
+                    "no presentation compiler"
+                  )
+              )
+            then
+              error(
+                "resolve_references needs the presentation compiler: start the server with a " +
+                  "classpath (see README → classpath)"
+              )
+            else ujson.Obj("files" -> ujson.Arr(results*))
+        }
+      ),
+      toolDef(
+        tool(
           "hole_context",
           "Typed-hole context: the type the compiler expects at a 0-based (line, character) — a `???` " +
             "or any expression — with `confidence` (`exact` when the enclosing code prescribes it, " +
