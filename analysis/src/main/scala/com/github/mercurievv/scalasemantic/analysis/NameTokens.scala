@@ -24,20 +24,97 @@ object NameTokens:
         if ranges.isEmpty then _ => true
         else pos => ranges.exists((from, until) => pos.startLine >= from && pos.startLine < until)
 
+      // The compiler emits NO occurrence anywhere inside a statement carrying an annotated type
+      // ascription, for part of that statement (see [[blindSpots]]); a name there cannot be joined
+      // at all, so it is not reported rather than reported as a hallucination.
+      val blind = blindSpots(tree)
+      val visible: Position => Boolean =
+        pos => !blind.exists((from, until) => pos.start >= from && pos.start < until)
+
       // `collect` over the whole tree, then filter by position: scalameta's traversal is cheap and
       // a tree-pruning walk would have to re-implement the containment logic for every node type.
       val tokens = tree.collect {
-        case t: Type.Name if inRange(t.pos) =>
-          NameToken(t.pos.startLine, t.pos.startColumn, t.value, "type", roleOf(t))
-        case t: Term.Name if inRange(t.pos) =>
-          NameToken(t.pos.startLine, t.pos.startColumn, t.value, kindOfTerm(t), roleOf(t))
-        case t: Name.Indeterminate if inRange(t.pos) && !isImportAlias(t) =>
-          NameToken(t.pos.startLine, t.pos.startColumn, t.value, "package", "use")
+        case t: Type.Name if inRange(t.pos) && visible(t.pos) && !isDerived(t) =>
+          NameToken(t.pos.startLine, startColumn(text, t.pos), t.value, "type", roleOf(t))
+        case t: Term.Name
+            if inRange(t.pos) && visible(t.pos) && !isQuotedBinding(t) &&
+              !isDerived(t) =>
+          NameToken(t.pos.startLine, startColumn(text, t.pos), t.value, kindOfTerm(t), roleOf(t))
+        case t: Name.Indeterminate
+            if inRange(t.pos) && visible(t.pos) && !isImportAlias(t) && !isExportSelector(t) =>
+          NameToken(t.pos.startLine, startColumn(text, t.pos), t.value, "package", "use")
       }
       // Source order, as the traversal produced it: a caller joining these against compiler
       // occurrences walks both in position order, so inverting here would only surprise it.
       tokens.distinctBy(t => (t.line, t.character, t.name))
     }
+
+  /** The token's 0-based start column, advanced past a leading backtick. scalameta's position for a
+    * backticked name (`` val `ok` ``) starts AT the backtick, while the compiler's DEFINITION
+    * occurrence starts one character later, inside the quotes — so joining on the raw column misses
+    * by one and reports every backticked definition as a hallucination. Uses are unaffected either
+    * way: their occurrence spans the whole backticked name, so the advanced column is still inside
+    * it. Backticked identifiers (`` `type` ``, Java interop names) are ordinary Scala.
+    */
+  private def startColumn(text: String, pos: Position): Int =
+    if text.startsWith("`", pos.start) then pos.startColumn + 1 else pos.startColumn
+
+  /** The character spans of statements the presentation compiler only PARTLY covers with
+    * occurrences: a statement containing an annotated type ascription (`(o: @unchecked) match …`).
+    * Measured on Scala 3.8.4: for `val w: Int = (o: @unchecked) match { case Some(n) => n }` the
+    * compiler emits occurrences for `w`, `o` and `Some` but NONE for the val's own `Int`, for
+    * `unchecked`, or for the pattern binder `n` and its use — while the identical statement without
+    * the annotation is covered completely. Those four names are correct code, so joining inside
+    * such a statement can only produce false hallucinations; the whole statement is therefore
+    * dropped from the token list. The cost is that a real hallucination inside an
+    * annotated-ascription statement is not reported — a false negative traded for four false
+    * positives on a compiler-sanctioned idiom.
+    */
+  private def blindSpots(tree: Tree): List[(Int, Int)] =
+    tree.collect { case a: Term.Annotate => enclosingStat(a) }.map(t => (t.pos.start, t.pos.end))
+
+  /** The innermost enclosing STATEMENT of `t`: the ancestor that sits directly in a statement list
+    * (a block, a template or package body, a case body, the source). Climbing no further keeps a
+    * blind spot to the one statement that produced it rather than to the whole enclosing method.
+    */
+  private def enclosingStat(t: Tree): Tree =
+    t.parent match
+      case Some(_: Term.Block | _: Template.Body | _: Pkg.Body | _: Source | _: Case) => t
+      case Some(p)                                                                    =>
+        enclosingStat(p)
+      case None => t
+
+  /** A name in a `derives` clause (`case class C(x: Int) derives Eq`, `derives q.Eq`). The compiler
+    * emits no occurrence over it — the synthesized given is what it records — so joining would
+    * report every `derives` in ordinary Scala 3 code as an unresolved name. The climb goes through
+    * the whole type path, so a qualified clause's qualifier is skipped with its type.
+    */
+  private def isDerived(t: Tree): Boolean =
+    def up(node: Tree): Boolean =
+      node.parent match
+        case Some(tmpl: Template) => tmpl.derives.exists(_ eq node)
+        case Some(p: Type)        => up(p)
+        case Some(p: Term.Select) => up(p)
+        case _                    => false
+    up(t)
+
+  /** A named selector of an `export` clause (the `v` of `export i.v`). The compiler puts an
+    * occurrence on the qualifier (`i`) and none on the selector — the export introduces a NEW
+    * member here, it does not reference one — so it is a binding, like a renaming import's alias,
+    * and reporting it would flag every named export in correct code. `export i.*` has no such name.
+    */
+  private def isExportSelector(t: Name.Indeterminate): Boolean =
+    t.parent.exists {
+      case n: Importee.Name => n.parent.exists(_.parent.exists(_.is[Export]))
+      case _                => false
+    }
+
+  /** The spliced name of a macro quote (the `x` of `'x`). A quote binding is not a reference the
+    * caller can act on, and the compiler emits no occurrence over it, so it would be reported as a
+    * hallucination in ordinary Scala 3 macro code.
+    */
+  private def isQuotedBinding(t: Term.Name): Boolean =
+    t.parent.exists(_.is[Term.QuotedMacroExpr])
 
   /** The NEW name a renaming import introduces: the `Q` of `import p.{Queue => Q}`, the `S` of
     * `import p.{Seq as S}`. It is a binding, not a reference — the compiler puts an occurrence on
@@ -82,7 +159,9 @@ object NameTokens:
       case _                                => false
 
   /** `definition` when the token IS the name being introduced (a def/val/var/class/object/type's
-    * own name, a parameter's name, a pattern variable); `use` otherwise.
+    * own name, a given's or enum's or enum case's own name, a parameter's name, a pattern
+    * variable); `use` otherwise. An `extension` group introduces no name of its own — the `def`s
+    * inside it are ordinary `Defn.Def`s and are covered by that case.
     */
   private def roleOf(t: Tree): String =
     t.parent match
@@ -98,4 +177,10 @@ object NameTokens:
       case Some(p: Term.Param) if p.name eq t => "definition"
       case Some(p: Type.Param) if p.name eq t => "definition"
       case Some(p: Pat.Var) if p.name eq t    => "definition"
-      case _                                  => "use"
+      // Scala 3 definition forms: without these a given/enum/enum-case/extension declaration's own
+      // name would be reported `use`, which is wrong about a whole family of declarations.
+      case Some(p: Defn.Given) if p.name eq t      => "definition"
+      case Some(p: Defn.GivenAlias) if p.name eq t => "definition"
+      case Some(p: Defn.Enum) if p.name eq t       => "definition"
+      case Some(p: Defn.EnumCase) if p.name eq t   => "definition"
+      case _                                       => "use"

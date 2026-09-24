@@ -80,3 +80,98 @@ class NameTokensSuite extends munit.FunSuite:
     assert(names.contains("Seq"), names.toString)
     assert(!names.contains("Q"), names.toString)
     assert(!names.contains("S"), names.toString)
+
+  // --- constructs the compiler emits no occurrence for -----------------------
+  // Each of these is ORDINARY, CORRECT Scala 3. A token the compiler never covers joins to nothing
+  // and would be reported `resolved: false`, i.e. as a hallucination that blocks a turn.
+
+  test("a `derives` clause's type name is not a token"):
+    val src = "package p\ncase class C(x: Int) derives E\n"
+    val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
+    assert(!toks.exists(_.name == "E"), toks.toString)
+    assert(toks.exists(_.name == "C"), toks.toString)
+    assert(toks.exists(_.name == "Int"), toks.toString)
+
+  test("a qualified `derives` clause is skipped through the whole type path"):
+    val src = "package p\ncase class C(x: Int) derives q.E\n"
+    val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
+    assert(!toks.exists(_.name == "E"), toks.toString)
+    assert(!toks.exists(_.name == "q"), toks.toString)
+
+  test("a backticked definition's column points inside the backticks"):
+    val src = "package p\nobject O:\n  val `ok`: Int = 1\n  def f: Int = `ok` + 1\n"
+    val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
+    val defn = toks.find(t => t.name == "ok" && t.line == 2).getOrElse(fail(toks.toString))
+    // The backtick is at column 6; the compiler's DEFINITION occurrence starts at 7.
+    assertEquals(defn.character, 7)
+    val use = toks.find(t => t.name == "ok" && t.line == 3).getOrElse(fail(toks.toString))
+    val line3 = src.linesIterator.toList.lift(3).getOrElse(fail("no line"))
+    assertEquals(use.character, line3.indexOf("`ok`") + 1)
+
+  test("a plain definition's column is untouched"):
+    val src = "package p\nobject O:\n  val ok: Int = 1\n"
+    val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
+    assertEquals(toks.find(_.name == "ok").map(_.character), Some(6))
+
+  test("a named export selector is a binding, not a reference"):
+    val src = "package p\nobject O:\n  val i = 1\n  export i.v\n  export i.*\n"
+    val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
+    assert(!toks.exists(t => t.name == "v"), toks.toString)
+    // The export's qualifier IS a reference and stays.
+    assert(toks.exists(t => t.line == 3 && t.name == "i"), toks.toString)
+    assert(toks.exists(t => t.line == 4 && t.name == "i"), toks.toString)
+
+  test("an ordinary import selector is still a reference"):
+    val src = "import scala.collection.immutable.Queue\n"
+    val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
+    assert(toks.exists(_.name == "Queue"), toks.toString)
+
+  test("a macro quote's spliced name is not a token"):
+    val src = "package p\nobject O:\n  inline def s(inline x: Int): String = ${ impl('x) }\n"
+    val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
+    assert(!toks.exists(t => t.name == "x" && t.character > 30), toks.toString)
+    // The splice's own call is an ordinary reference and stays reportable.
+    assert(toks.exists(_.name == "impl"), toks.toString)
+
+  test("an annotated type ascription blanks its own statement and nothing else"):
+    val src =
+      """package p
+        |object O:
+        |  val o: Option[Int] = None
+        |  val w: Int = (o: @unchecked) match { case Some(n) => n }
+        |  val v: Int = 2
+        |""".stripMargin
+    val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
+    assert(!toks.exists(_.line == 3), toks.filter(_.line == 3).toString)
+    assert(toks.exists(t => t.line == 2 && t.name == "Option"), toks.toString)
+    assert(toks.exists(t => t.line == 4 && t.name == "v"), toks.toString)
+
+  test("a blind spot stops at the statement, not at the enclosing method"):
+    val src =
+      """package p
+        |object O:
+        |  def f(o: Option[Int]): Int =
+        |    val a: Int = 1
+        |    val w: Int = (o: @unchecked) match { case Some(n) => n }
+        |    a + w
+        |""".stripMargin
+    val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
+    assert(!toks.exists(_.line == 4), toks.filter(_.line == 4).toString)
+    assert(toks.exists(t => t.line == 3 && t.name == "a"), toks.toString)
+    assert(toks.exists(t => t.line == 5 && t.name == "a"), toks.toString)
+
+  test("Scala 3 definition forms carry role=definition"):
+    val src =
+      """package p
+        |given g: Int = 1
+        |given h(using x: Int): Long = 1L
+        |enum E:
+        |  case A
+        |""".stripMargin
+    val toks = NameTokens.in(src, Nil).getOrElse(fail("did not parse"))
+    def roleOfName(n: String): Option[String] = toks.find(_.name == n).map(_.role)
+    assertEquals(roleOfName("g"), Some("definition"))
+    assertEquals(roleOfName("h"), Some("definition"))
+    assertEquals(roleOfName("E"), Some("definition"))
+    assertEquals(roleOfName("A"), Some("definition"))
+    assertEquals(roleOfName("Int"), Some("use"))
