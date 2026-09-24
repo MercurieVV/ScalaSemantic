@@ -658,28 +658,40 @@ confidence, plus the in-scope bindings, producers, givens and types that satisfy
 body gets filled from what the compiler already knows instead of a guessed API.
 
 *This example is a captured run (the tool needs a presentation compiler, which the docs build does
-not start).* On `def render(a: Int, s: String): String = ???`:
+not start).* On the hole in
+
+```scala
+final case class Config(host: String, port: Int)
+
+object Wiring:
+  val fallback: Config = Config("localhost", 80)
+  def config(port: Int): Config = ???
+```
 
 ```json
 {
   "found": true,
   "why": null,
   "hole": {"kind": "???", "text": "???"},
-  "expected": {"type": "String", "confidence": "exact", "why": "result type of def render"},
+  "expected": {"type": "Config", "confidence": "exact", "why": "result type of def config"},
   "bindings": [
-    {"name": "s", "type": "String", "kind": "param", "from": "enclosing def render"},
-    {"name": "label", "type": "String", "kind": "val", "from": "member of Holes"}
+    {"name": "fallback", "type": "Config", "kind": "val", "from": "member of Wiring"}
   ],
   "producers": [
-    {"name": "String.newStringUTF8NoRepl", "signature": "def newStringUTF8NoRepl(...): String",
-     "from": "companion String", "match": "exact"}
+    {"name": "Config.apply", "signature": "def apply(host: String, port: Int): Config",
+     "from": "companion Config", "match": "exact"},
+    {"name": "Config.unapply", "signature": "def unapply(x$1: Config): Config",
+     "from": "companion Config", "match": "exact"},
+    {"name": "config", "signature": "def config(port: Int): Config",
+     "from": "member of Wiring", "match": "exact"}
   ],
   "givens": [],
   "types": [
-    {"symbol": "java/lang/String#", "source": "classpath",
-     "signature": "final class String: Object with Serializable with ... {...}", "excerpt": null}
+    {"symbol": "demo/Config#", "source": "project",
+     "signature": "final case class Config: Object with Product with Serializable {...}",
+     "excerpt": "final case class Config(host: String, port: Int)"}
   ],
-  "omitted": {"bindings": 0, "producers": 6, "givens": 0, "types": 0}
+  "omitted": {"bindings": 0, "producers": 0, "givens": 0, "types": 0}
 }
 ```
 

@@ -12,7 +12,8 @@ that are neither in the file nor in training data; `hole_context` puts exactly t
 ## Procedure
 
 1. **Skeleton first.** Write the signature(s) with `???` bodies. Steps inside a body become local
-   `def step: T = ???` with their types declared. Compile (`<module>.compile`): signature errors
+   `def step: T = ???` with their types declared. Compile the module (Mill `./mill <module>.compile`, sbt `sbt compile`, scala-cli
+   `scala-cli compile .`): signature errors
    surface before any body exists.
 2. **One hole at a time.** Call `hole_context(uri, line, character, source)` on the first `???`
    (pass the buffer's current text as `source`). Read `expected`:
@@ -24,7 +25,7 @@ that are neither in the file nor in training data; `hole_context` puts exactly t
      def's result type) and ask again.
    - a body longer than about three expressions → split it into further `???` sub-holes with
      declared types rather than writing it in one go.
-3. **Fill, compile, repeat.** After each fill run `<module>.compile` before the next hole. A red
+3. **Fill, compile, repeat.** After each fill run the module's compile task before the next hole. A red
    compile is fixed at that hole — never by rewriting other holes.
 
 ## Red flags
