@@ -34,9 +34,15 @@ class NameTokensSuite extends munit.FunSuite:
 
   test("kinds: type, term, method") {
     val toks = NameTokens.in(src, Seq((6, 7))).getOrElse(fail("did not parse"))
+    def kindAt(name: String, character: Int): Option[String] =
+      toks.find(t => t.name == name && t.character == character).map(_.kind)
+    val line = src.linesIterator.toList.lift(6).getOrElse(fail("no such line"))
     val byName = toks.map(t => t.name -> t.kind).toMap
     assertEquals(byName.get("Int"), Some("type"))
-    assertEquals(byName.get("IO"), Some("type")) // in `IO[Unit]`, a Type.Name
+    // `IO` is spelled twice on this line — the return-type annotation and the call. Pin the token by
+    // its column; collapsing same-named tokens into a map would assert on whichever parsed last.
+    assertEquals(kindAt("IO", line.indexOf("IO[Unit]")), Some("type"))
+    assertEquals(kindAt("IO", line.indexOf("IO.pure")), Some("term"))
     assertEquals(byName.get("pure"), Some("method")) // the `fun` of an Apply
     assertEquals(byName.get("n"), Some("term"))
   }

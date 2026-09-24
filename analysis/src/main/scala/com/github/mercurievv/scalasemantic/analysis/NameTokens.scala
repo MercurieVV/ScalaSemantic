@@ -34,13 +34,9 @@ object NameTokens:
         case t: Name.Indeterminate if inRange(t.pos) =>
           NameToken(t.pos.startLine, t.pos.startColumn, t.value, "package", "use")
       }
-      // scalameta's preorder `collect` visits a declaration's type annotation before its value
-      // (e.g. `IO[Unit] = IO.pure(...)` yields the `Type.Name("IO")` token, then later a
-      // `Term.Name("IO")` token for the same spelling at a different position). Reversing puts the
-      // earlier-in-source token last, so a caller building a `name -> kind` map with `toMap`
-      // (last-write-wins) resolves same-name collisions to the earliest occurrence rather than
-      // whichever happened to parse last.
-      tokens.distinctBy(t => (t.line, t.character, t.name)).reverse
+      // Source order, as the traversal produced it: a caller joining these against compiler
+      // occurrences walks both in position order, so inverting here would only surprise it.
+      tokens.distinctBy(t => (t.line, t.character, t.name))
     }
 
   /** A `Term.Name` that is the callee of an application is a method reference; anything else in a
