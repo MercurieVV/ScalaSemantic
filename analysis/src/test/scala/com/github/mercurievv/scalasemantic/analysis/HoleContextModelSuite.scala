@@ -22,6 +22,7 @@ class HoleContextModelSuite extends munit.FunSuite:
   test("conversion keeps every field and lower-cases the confidence") {
     val m = HoleContextResult.from(
       pcResult,
+      _ == "demo/Show#",
       s => if s == "demo/Show#" then Some("trait Show[A]:\n  def show(a: A): String") else None
     )
     assertEquals(m.expected.map(_.confidence), Some("exact"))
@@ -32,6 +33,7 @@ class HoleContextModelSuite extends munit.FunSuite:
   test("types: project types get source=project and an excerpt, classpath types source=classpath") {
     val m = HoleContextResult.from(
       pcResult,
+      _ == "demo/Show#",
       s => if s == "demo/Show#" then Some("trait Show[A]") else None
     )
     assertEquals(
@@ -48,10 +50,19 @@ class HoleContextModelSuite extends munit.FunSuite:
         bindings = Nil,
         producers = Nil
       ),
+      _ => false,
       _ => None
     )
     val json = ujson.read(upickle.default.write(m))
     assertEquals(json("expected")("confidence").str, "unconstrained")
     assertEquals(json("bindings").arr.size, 0)
     assert(json.obj.keySet.contains("omitted"))
+  }
+
+  test("a project type whose excerpt cannot be read stays source=project with a null excerpt") {
+    val m = HoleContextResult.from(pcResult, _ == "demo/Show#", _ => None)
+    val show = m.types.find(_.symbol == "demo/Show#").getOrElse(fail("no Show type"))
+    assertEquals(show.source, "project")
+    assertEquals(show.excerpt, None)
+    assertEquals(m.types.find(_.symbol == "cats/effect/IO#").map(_.source), Some("classpath"))
   }

@@ -699,6 +699,40 @@ class McpPcSuite extends munit.FunSuite:
     }
   }
 
+  test("hole_context: an INDEXED document read from disk is not marked pcFallback") {
+    val root = java.nio.file.Files.createTempDirectory("mcp-hole-indexed").nn
+    val file = root.resolve("Holes.scala").nn
+    val source =
+      """package demo
+        |object Holes:
+        |  val label: String = "x"
+        |  def render(a: Int, s: String): String = ???
+        |""".stripMargin
+    java.nio.file.Files.writeString(file, source)
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+      // the same file, compiled into the index: the "no compiled SemanticDB entry" hint is false
+      val index =
+        backend.overlay(new SemanticIndex(Vector.empty), file.toUri, source, "Holes.scala")
+      val tools = McpTools.all(Analyzer(index, Some(backend)), root)
+      val line = 3; val character = source.linesIterator.toList(3).indexOf("???")
+      val resp = Mcp.handle(
+        req(
+          "tools/call",
+          ujson.Obj(
+            "name" -> "hole_context",
+            "arguments" -> ujson
+              .Obj("uri" -> "Holes.scala", "line" -> line, "character" -> character)
+          )
+        ),
+        tools
+      )
+      val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
+      val json = ujson.read(text)
+      assert(!json.obj.keySet.contains("pcFallback"), text)
+      assertEquals(json("expected")("type").str, "String")
+    }
+  }
+
   test("hole_context: a position in a comment is found=false with a why") {
     val root = java.nio.file.Files.createTempDirectory("mcp-hole-comment").nn
     val file = root.resolve("Holes.scala").nn

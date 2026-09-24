@@ -35,11 +35,14 @@ final case class HoleContextResult(
 ) derives ReadWriter
 
 object HoleContextResult:
-  /** Pure conversion from the pc result; `excerptOf` supplies a project type's definition excerpt
-    * (`None` → classpath, so the type is reported with its signature alone).
+  /** Pure conversion from the pc result. `isProject` decides `source` (the index knows the symbol's
+    * definition) and `excerptOf` supplies the excerpt — independently: a project type whose file is
+    * unreadable stays `source: "project"` with `excerpt: null`, rather than claiming to be a
+    * classpath type.
     */
   def from(
       r: com.github.mercurievv.scalasemantic.pc.HoleContext.Result,
+      isProject: String => Boolean,
       excerptOf: String => Option[String]
   ): HoleContextResult =
     HoleContextResult(
@@ -51,10 +54,14 @@ object HoleContextResult:
       bindings = r.bindings.map(b => HoleBinding(b.name, b.tpe, b.kind, b.from)),
       producers = r.producers.map(p => HoleProducer(p.name, p.signature, p.from, p.matchKind)),
       givens = r.givens.map(g => HoleGiven(g.name, g.tpe, g.from)),
-      types = r.types.map { t =>
-        val ex = excerptOf(t.symbol)
-        HoleType(t.symbol, if ex.isDefined then "project" else "classpath", t.signature, ex)
-      },
+      types = r.types.map(t =>
+        HoleType(
+          t.symbol,
+          if isProject(t.symbol) then "project" else "classpath",
+          t.signature,
+          excerptOf(t.symbol)
+        )
+      ),
       omitted =
         HoleOmitted(r.omitted.bindings, r.omitted.producers, r.omitted.givens, r.omitted.types)
     )

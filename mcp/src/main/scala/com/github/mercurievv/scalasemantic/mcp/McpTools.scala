@@ -777,7 +777,10 @@ private[mcp] object McpToolsSupport:
     * (plus one for the `\n`) of the lines before `line`, plus `character`.
     */
   private[mcp] def offsetOf(text: String, line: Int, character: Int): Int =
-    text.split("\n", -1).nn.take(line).map(_.nn.length + 1).sum + character
+    val lines = text.split("\n", -1).nn
+    // A column past the line's end would otherwise silently point into the NEXT line.
+    val clamped = lines.lift(line).map(l => character.min(l.nn.length)).getOrElse(character)
+    lines.take(line).map(_.nn.length + 1).sum + clamped
 
   /** A PC-only analyzer over the ON-DISK text of `uri` (the file must exist), `None` without a PC
     * backend — the automatic fallback for a file that exists but has no compiled index entry. The
@@ -1533,7 +1536,9 @@ private[mcp] object McpToolsGroupB:
             "`unconstrained` when nothing does, then no candidates are guessed), and what in reach " +
             "satisfies it: `bindings` (in-scope values that conform), `producers` (methods/companion " +
             "members whose result fits — `match` exact or shape), `givens` (instances the compiler would " +
-            "pick), `types` (the expected type's definitions; project types carry an excerpt). Pass " +
+            "pick) — every name is one you can write as-is at that position (qualified, e.g. " +
+            "`cats.effect.IO.unit`, when the owner is not imported), plus " +
+            "`types` (the expected type's definitions; project types carry an excerpt). Pass " +
             "`source` with the file's CURRENT text (uncompiled is fine); without it the on-disk file is " +
             "read (marked `pcFallback`). Needs the server started with a classpath. Use it one hole at a " +
             "time — see the typed-holes skill.",
@@ -1551,9 +1556,11 @@ private[mcp] object McpToolsGroupB:
         ) { a =>
           val uri = argUri(a, "uri")
           val file = root.resolve(uri.value)
+          // As for `type_at_position`: the pcFallback hint says the file has no compiled entry,
+          // so it is only true for a disk read of a uri the index does not know.
           val (code, fromDisk) = a.obj.get("source").map(_.str) match
             case Some(src) => (Some(src), false)
-            case None      => (readFileText(file), true)
+            case None      => (readFileText(file), !az.isDocumentIndexed(uri))
           code match
             case None => notFound(s"no source: pass `source` or make ${uri.value} exist on disk")
             case Some(text) =>

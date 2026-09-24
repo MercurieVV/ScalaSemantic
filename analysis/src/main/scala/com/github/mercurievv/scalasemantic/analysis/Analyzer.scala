@@ -91,7 +91,11 @@ final class Analyzer(
   ): Option[HoleContextResult] =
     backendFor(docUri).map { backend =>
       val r = backend.holes.at(fileUri, code, offset)
-      HoleContextResult.from(r, sym => definitionExcerpt(root, sym, maxLines = 12))
+      HoleContextResult.from(
+        r,
+        sym => symbolDefinitionRange(sym).isDefined,
+        sym => definitionExcerpt(root, sym, maxLines = 12)
+      )
     }
 
   /** The first `maxLines` lines of `symbol`'s definition (via [[symbolDefinitionRange]]), read from
