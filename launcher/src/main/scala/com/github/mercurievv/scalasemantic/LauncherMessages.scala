@@ -7,6 +7,11 @@ private[scalasemantic] object LauncherMessages:
           |  scalasemantic-mcp setup [--scope user|project] [--client claude|codex|gemini|cline|roo|continue|antigravity|all] [--project DIR] [--rwhook-local|--rwhook-user|--rw-hook-remove] [--strict-edits]
           |  scalasemantic-mcp doctor [--project DIR]
           |  scalasemantic-mcp serve <semanticdb-root> [classpath-file] [--log] [--log-output]
+          |  scalasemantic-mcp call <tool> '<json-args>' [semanticdb-root] [classpath-file]
+          |
+          |call runs ONE tool without an MCP session -- the entry a shell hook uses -- and prints its
+          |JSON result on stdout; it exits 1 with a message on stderr when the tool is unknown or
+          |fails.
           |
           |doctor re-runs, and reports in words, every condition the guard hook checks before it is
           |willing to deny a text tool: hook installed, up to date and registered, MCP server

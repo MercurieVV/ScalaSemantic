@@ -550,8 +550,13 @@ object Mcp:
     val builtState = buildState(rootPath, classpath, _ => ())
     try
       builtState.tools.find(_.name == tool) match
-        case Some(t) => Right(t.run(args))
-        case None    =>
+        case Some(t) =>
+          // The stdio server wraps dispatch in a `Try`; this entry must too. A tool's argument
+          // parsing (`resolve_references` reads `r.arr` and `_.num`) throws on a malformed shape,
+          // and a shell hook must get a message on stderr and exit 1, not a stack trace out of
+          // `main`.
+          scala.util.Try(t.run(args)).toEither.left.map(e => s"$tool failed: $e")
+        case None =>
           Left(s"unknown tool: $tool (have: ${builtState.tools.map(_.name).mkString(",")})")
     finally builtState.pcBackends.foreach(_.close())
 

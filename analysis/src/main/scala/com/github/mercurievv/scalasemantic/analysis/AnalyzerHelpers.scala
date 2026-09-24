@@ -788,18 +788,13 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
 
 private[analysis] object AnalyzerHelpers:
 
-  /** Whether `a` and `b` are within Levenshtein distance `max` of each other. Bounded twice over: a
-    * length difference greater than `max` already exceeds it (each edit changes the length by at
-    * most one), so the quadratic work is skipped outright. The DP itself keeps only two rows, built
-    * by folding — `prev.zip(prev.drop(1))` hands each column its `(diagonal, above)` pair, which is
-    * all the recurrence needs.
-    */
-  def editDistanceAtMost(a: String, b: String, max: Int): Boolean =
-    editDistanceWithin(a, b, max).isDefined
-
   /** The Levenshtein distance between `a` and `b` when it is at most `max`, else `None`. Callers
-    * that rank near-misses need the distance itself, not just the yes/no: sorting suggestions by
-    * symbol alone lets the alphabet outrank closeness.
+    * that rank near-misses need the distance itself, not just a yes/no: sorting suggestions by
+    * symbol alone lets the alphabet outrank closeness. Bounded twice over: a length difference
+    * greater than `max` already exceeds it (each edit changes the length by at most one), so the
+    * quadratic work is skipped outright. The DP itself keeps only two rows, built by folding —
+    * `prev.zip(prev.drop(1))` hands each column its `(diagonal, above)` pair, which is all the
+    * recurrence needs.
     */
   /** A set-of-characters fingerprint: bit `c & 31` for every character of `s`. Two strings within
     * edit distance `max` can differ in at most `2 * max` bits of it — one edit removes at most one

@@ -352,18 +352,14 @@ class AnalyzerHelpersSuite extends munit.FunSuite:
     assertEquals(h.originalText(Some(s.Range(0, 1, 1, 2)), TotalLines, Map.empty), "")
     assertEquals(h.originalText(None, TotalLines, Map.empty), "")
 
-  test("editDistanceAtMost accepts a near-miss and rejects an unrelated name"):
-    assert(AnalyzerHelpers.editDistanceAtMost("trim", "trimm", 2))
-    assert(!AnalyzerHelpers.editDistanceAtMost("trim", "wholly", 2))
-    // Equal names are distance 0; the length prefilter must not reject an exact match.
-    assert(AnalyzerHelpers.editDistanceAtMost("trim", "trim", 2))
-    // Distance 3 (three substitutions) is past the bound even at equal length.
-    assert(!AnalyzerHelpers.editDistanceAtMost("abcdef", "abcxyz", 2))
-
   test("editDistanceWithin reports the distance, not just the verdict"):
     assertEquals(AnalyzerHelpers.editDistanceWithin("trim", "trimm", 2), Some(1))
     assertEquals(AnalyzerHelpers.editDistanceWithin("Symbol", "symbolz", 2), Some(2))
     assertEquals(AnalyzerHelpers.editDistanceWithin("trim", "wholly", 2), None)
+    // Equal names are distance 0; the length prefilter must not reject an exact match.
+    assertEquals(AnalyzerHelpers.editDistanceWithin("trim", "trim", 2), Some(0))
+    // Distance 3 (three substitutions) is past the bound even at equal length.
+    assertEquals(AnalyzerHelpers.editDistanceWithin("abcdef", "abcxyz", 2), None)
 
   test("the charMask prefilter never rejects a real near-miss"):
     // It is a necessary condition only — it may admit something the DP then rejects, but it must

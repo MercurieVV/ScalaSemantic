@@ -93,7 +93,10 @@ class McpSuite extends munit.FunSuite:
     val root = java.nio.file.Files.createTempDirectory("ss-setup-config").nn
     com.github.mercurievv.scalasemantic.Launcher.run(
       Seq("setup", "--project", root.toString, "--client", "claude", "--skip-semanticdb-config")
-    )(_ => fail("setup must not start the MCP server"))
+    )(
+      _ => fail("setup must not start the MCP server"),
+      _ => fail("setup must not run a one-shot tool call")
+    )
     val config = java.nio.file.Files.readString(root.resolve(".mcp.json"))
     assert(!config.contains(root.toString), "JSON config must not bake project root")
     assert(

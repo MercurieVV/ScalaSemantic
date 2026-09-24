@@ -3,11 +3,12 @@ package com.github.mercurievv.scalasemantic
 private[scalasemantic] object Launcher:
   // Two callbacks rather than an import of `mcp`: `launcher` must not depend on `mcp` (see the
   // module graph in build.mill), so the one-shot `call` entry point is handed in by `Main`, same as
-  // `serve`. `call` defaults to a no-op so existing single-callback call sites (tests exercising
-  // `setup`/`doctor`, which never reach the `call` branch) keep compiling unchanged.
+  // `serve`. Both are REQUIRED: a defaulted `call` makes `scalasemantic-mcp call …` exit 0 having
+  // done nothing for any caller that forgets to pass one, which is indistinguishable from a tool
+  // that found nothing.
   def run(rawArgs: Seq[String])(
       serve: Seq[String] => Unit,
-      call: Seq[String] => Unit = _ => ()
+      call: Seq[String] => Unit
   ): Unit =
     val args = rawArgs.toList match
       case "--" :: rest => rest

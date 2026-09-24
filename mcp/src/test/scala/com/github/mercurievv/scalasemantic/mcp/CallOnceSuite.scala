@@ -17,3 +17,20 @@ class CallOnceSuite extends munit.FunSuite:
     assert(res.isLeft, res.toString)
     assert(res.swap.exists(_.contains("no_such_tool")), res.toString)
   }
+
+  test("callOnce returns a Left when a tool throws on malformed arguments") {
+    // `resolve_references` parses `ranges` with `r.arr`/`_.num`; a shell hook must get a message
+    // and exit 1, not a stack trace out of `main`.
+    val res = Mcp.callOnce(
+      ".",
+      None,
+      "resolve_references",
+      ujson.Obj(
+        "files" -> ujson.Arr(
+          ujson.Obj("uri" -> "X.scala", "ranges" -> ujson.Arr(ujson.Num(5)))
+        )
+      )
+    )
+    assert(res.isLeft, res.toString)
+    assert(res.swap.exists(_.contains("resolve_references")), res.toString)
+  }
