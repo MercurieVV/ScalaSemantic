@@ -13,6 +13,7 @@ ScalaSemantic exposes MCP tools over stdio JSON-RPC. For most workflows, start w
 | `find_overloads` | List overloads that share a name and owner. |
 | `members` | List declared and inherited members, override-aware. |
 | `type_at_position` | Return the symbol and type at a 0-based source position. |
+| `hole_context` | Expected type at a position (with confidence) and the in-scope bindings, producers and givens that satisfy it. |
 | `resolve_implicits` | Find given definitions that can produce a requested type. |
 | `trace_implicit_chain` | Follow a given's transitive implicit dependencies. |
 | `call_path` | Find the shortest known call path between two methods. |

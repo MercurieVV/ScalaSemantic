@@ -735,6 +735,40 @@ class McpPcSuite extends munit.FunSuite:
     }
   }
 
+  test("hole_context: a position past the end of the file is found=false, not an exception") {
+    val root = java.nio.file.Files.createTempDirectory("mcp-hole-oob").nn
+    val file = root.resolve("Holes.scala").nn
+    val source =
+      """package demo
+        |object Holes:
+        |  val label: String = "x"
+        |""".stripMargin
+    java.nio.file.Files.writeString(file, source)
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+      val tools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
+      val resp = Mcp.handle(
+        req(
+          "tools/call",
+          ujson.Obj(
+            "name" -> "hole_context",
+            "arguments" -> ujson
+              .Obj(
+                "uri" -> "Holes.scala",
+                "line" -> 9999,
+                "character" -> 0,
+                "source" -> source
+              )
+          )
+        ),
+        tools
+      )
+      val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
+      val json = ujson.read(text)
+      assertEquals(json("found").bool, false, text)
+      assert(json("why").str.nonEmpty, text)
+    }
+  }
+
   test("hole_context: without a classpath the tool returns the no-classpath error") {
     val root = java.nio.file.Files.createTempDirectory("mcp-hole-nocp").nn
     val tools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty)), root)

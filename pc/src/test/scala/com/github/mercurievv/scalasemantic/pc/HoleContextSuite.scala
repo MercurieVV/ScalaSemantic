@@ -173,6 +173,16 @@ class HoleContextSuite extends munit.FunSuite:
     assert(r.types.exists(_.symbol.contains("`::`")), r.types.toString)
   }
 
+  test("an offset past the end of the file is clamped, not sent to the compiler") {
+    val (code, _) = marker(1)
+    val tooFar = holes.at(uri, code, code.length + 1)
+    assert(!tooFar.found)
+    assert(tooFar.why.exists(_.contains("outside the file")), tooFar.why.toString)
+    val negative = holes.at(uri, code, -1)
+    assert(!negative.found)
+    assert(negative.why.exists(_.contains("outside the file")), negative.why.toString)
+  }
+
   test("a type error elsewhere in the buffer does not stop the answer") {
     // the injected error sits before the hole, so the offset is re-derived from the marker
     val (broken, off) =

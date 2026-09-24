@@ -45,38 +45,41 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
 
   /** `offset` is a 0-based character offset into `code`. */
   def at(fileUri: URI, code: String, offset: Int): Result =
-    val source = SourceFile.virtual(fileUri, code)
-    driver.run(fileUri, source)
-    val ctx0 = driver.currentCtx
-    driver.compilationUnits.get(fileUri) match
-      case None       => notFound("the compiler produced no unit for this file")
-      case Some(unit) =>
-        given Context = ctx0.fresh.setCompilationUnit(unit)
-        val pos = SourcePosition(source, Span(offset))
-        val path = Interactive.pathTo(unit.tpdTree, pos.span)
-        path.headOption match
-          case None                              => notFound("no tree at this position")
-          case Some(head) if !isExpression(head) =>
-            notFound(s"position is not inside an expression (${head.getClass.getSimpleName})")
-          case Some(head) =>
-            val located = Interactive.contextOfPath(path)
-            val indexed = IndexedContext(pos)(using located)
-            val printer =
-              ShortenedTypePrinter(EmptySymbolSearch, IncludeDefaultParam.Never)(using indexed)
-            val hole = Hole(if isUndefined(head) then "???" else "expression", holeText(head, code))
-            val expectedTpe = InferCompletionType.inferType(path) match
-              case Some(tpe) if !tpe.isErroneous && !prescribedByInferredTpt(path) =>
-                Some(tpe.widenTermRefExpr)
-              case _ => None
-            val expected = expectedTpe match
-              case Some(tpe) => Expected(Some(printer.tpe(tpe)), Confidence.Exact, whyOf(path))
-              case None      =>
-                Expected(
-                  None,
-                  Confidence.Unconstrained,
-                  "no type prescribed here — declare the val's type or the def's result type first"
-                )
-            candidates(hole, expected, expectedTpe, indexed, printer)(using located)
+    if offset < 0 || offset > code.length then notFound("position is outside the file")
+    else
+      val source = SourceFile.virtual(fileUri, code)
+      driver.run(fileUri, source)
+      val ctx0 = driver.currentCtx
+      driver.compilationUnits.get(fileUri) match
+        case None       => notFound("the compiler produced no unit for this file")
+        case Some(unit) =>
+          given Context = ctx0.fresh.setCompilationUnit(unit)
+          val pos = SourcePosition(source, Span(offset))
+          val path = Interactive.pathTo(unit.tpdTree, pos.span)
+          path.headOption match
+            case None                              => notFound("no tree at this position")
+            case Some(head) if !isExpression(head) =>
+              notFound(s"position is not inside an expression (${head.getClass.getSimpleName})")
+            case Some(head) =>
+              val located = Interactive.contextOfPath(path)
+              val indexed = IndexedContext(pos)(using located)
+              val printer =
+                ShortenedTypePrinter(EmptySymbolSearch, IncludeDefaultParam.Never)(using indexed)
+              val hole =
+                Hole(if isUndefined(head) then "???" else "expression", holeText(head, code))
+              val expectedTpe = InferCompletionType.inferType(path) match
+                case Some(tpe) if !tpe.isErroneous && !prescribedByInferredTpt(path) =>
+                  Some(tpe.widenTermRefExpr)
+                case _ => None
+              val expected = expectedTpe match
+                case Some(tpe) => Expected(Some(printer.tpe(tpe)), Confidence.Exact, whyOf(path))
+                case None      =>
+                  Expected(
+                    None,
+                    Confidence.Unconstrained,
+                    "no type prescribed here — declare the val's type or the def's result type first"
+                  )
+              candidates(hole, expected, expectedTpe, indexed, printer)(using located)
 
   /** The hole as written: the source slice under the tree's span, not the typed tree's `show`
     * (which qualifies names).

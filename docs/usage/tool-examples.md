@@ -41,6 +41,7 @@ Every tool example on this page is **executed at docs build time** by the real S
 | `annotated_source` | Compiler view — inferred types, implicits, exploded imports, diff (tabbed) |
 | `method_signature` | Full signature with implicit/using params |
 | `type_at_position` | Type of code at a source location |
+| `hole_context` | Expected type at a hole and what in scope satisfies it |
 
 ## Find & resolve symbols
 
@@ -647,6 +648,43 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 ```
 
 **Replaces:** Hand type inference → compiler's answer.
+
+---
+
+### hole_context
+
+**What it tells you:** the expected type at a `???` (or any expression position), with a
+confidence, plus the in-scope bindings, producers, givens and types that satisfy it — so a new
+body gets filled from what the compiler already knows instead of a guessed API.
+
+*This example is a captured run (the tool needs a presentation compiler, which the docs build does
+not start).* On `def render(a: Int, s: String): String = ???`:
+
+```json
+{
+  "found": true,
+  "why": null,
+  "hole": {"kind": "???", "text": "???"},
+  "expected": {"type": "String", "confidence": "exact", "why": "result type of def render"},
+  "bindings": [
+    {"name": "s", "type": "String", "kind": "param", "from": "enclosing def render"},
+    {"name": "label", "type": "String", "kind": "val", "from": "member of Holes"}
+  ],
+  "producers": [
+    {"name": "String.newStringUTF8NoRepl", "signature": "def newStringUTF8NoRepl(...): String",
+     "from": "companion String", "match": "exact"}
+  ],
+  "givens": [],
+  "types": [
+    {"symbol": "java/lang/String#", "source": "classpath",
+     "signature": "final class String: Object with Serializable with ... {...}", "excerpt": null}
+  ],
+  "omitted": {"bindings": 0, "producers": 6, "givens": 0, "types": 0}
+}
+```
+
+**Replaces:** Guessing an API from memory → the compiler's own answer at that exact position. See
+the `typed-holes` skill for the full skeleton-first, one-hole-at-a-time procedure.
 
 ---
 
