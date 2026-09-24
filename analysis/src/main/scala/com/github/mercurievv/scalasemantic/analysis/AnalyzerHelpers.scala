@@ -785,3 +785,25 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
       case s.UnitConstant()     => "Unit"
       case s.NullConstant()     => "null"
       case _                    => ""
+
+private[analysis] object AnalyzerHelpers:
+
+  /** Whether `a` and `b` are within Levenshtein distance `max` of each other. Bounded twice over: a
+    * length difference greater than `max` already exceeds it (each edit changes the length by at
+    * most one), so the quadratic work is skipped outright. The DP itself keeps only two rows, built
+    * by folding — `prev.zip(prev.drop(1))` hands each column its `(diagonal, above)` pair, which is
+    * all the recurrence needs.
+    */
+  def editDistanceAtMost(a: String, b: String, max: Int): Boolean =
+    if math.abs(a.length - b.length) > max then false
+    else
+      val first = Vector.range(0, b.length + 1)
+      val last = a.iterator.zipWithIndex.foldLeft(first) { case (prev, (ca, i)) =>
+        b.iterator.zip(prev.iterator.zip(prev.drop(1).iterator)).foldLeft(Vector(i + 1)) {
+          case (row, (cb, (diagonal, above))) =>
+            val substitution = diagonal + (if ca == cb then 0 else 1)
+            val left = row.lastOption.getOrElse(i + 1)
+            row :+ math.min(math.min(left + 1, above + 1), substitution)
+        }
+      }
+      last.lastOption.exists(_ <= max)

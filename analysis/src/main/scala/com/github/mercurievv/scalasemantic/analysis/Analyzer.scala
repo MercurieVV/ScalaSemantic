@@ -1066,6 +1066,127 @@ final class Analyzer(
       }
       .ensuring(res => res.forall(_.location.uri == uri.value))
 
+  // --- resolve-references ---------------------------------------------------
+
+  /** Every name the given `ranges` of `code` mention (0-based, end exclusive; empty = whole file),
+    * each resolved against the presentation compiler's regenerated view of the buffer and this
+    * index (spec 2026-09-24-diff-scoped-verification-design §1). Two sources are joined: scalameta
+    * gives EVERY name token, the PC gives an occurrence per name it RESOLVED — so a token with no
+    * occurrence over it is exactly a name the compiler could not resolve, which neither source can
+    * say on its own. `None` when there is no PC backend for `docUri`.
+    */
+  def resolveReferences(
+      fileUri: URI,
+      code: String,
+      docUri: String,
+      ranges: Seq[(Int, Int)]
+  ): Option[FileReferences] =
+    bufferOnly(fileUri, code, docUri).map { buffer =>
+      NameTokens.in(code, ranges) match
+        case None =>
+          FileReferences(docUri, Nil, 0, pcFallback = false, Some("the file does not parse"))
+        case Some(tokens) =>
+          val occurrences = buffer.documentOccurrences(docUri)
+          // Computed once per call, and lazily: scanning the whole index for near-misses is only
+          // worth paying for when at least one name actually failed to resolve.
+          lazy val candidates = suggestionCandidates(occurrences)
+          val rows = tokens.map { t =>
+            // Smallest covering occurrence, exactly as [[typeAtPosition]] picks one: an enclosing
+            // occurrence (a select's qualifier, a synthetic apply) must never stand in for the name.
+            val covering = occurrences
+              .filter(occ => occ.range.exists(r => h.rangeContains(r, t.line, t.character)))
+              .minByOption(occ => occ.range.map(h.rangeSpan).getOrElse(Long.MaxValue))
+              .filter(_.symbol.nonEmpty)
+            covering match
+              case Some(occ) if index.isLocal(occ.symbol) =>
+                // A local (a parameter, a local val) resolves but has no global symbol; it is not
+                // a hallucination and must not be reported as one.
+                Reference(
+                  t.line,
+                  t.character,
+                  t.name,
+                  t.kind,
+                  t.role,
+                  resolved = true,
+                  Some(occ.symbol),
+                  Some("project"),
+                  Nil
+                )
+              case Some(occ) =>
+                Reference(
+                  t.line,
+                  t.character,
+                  t.name,
+                  t.kind,
+                  t.role,
+                  resolved = true,
+                  Some(occ.symbol),
+                  Some(originOf(occ.symbol)),
+                  Nil
+                )
+              case None =>
+                Reference(
+                  t.line,
+                  t.character,
+                  t.name,
+                  t.kind,
+                  t.role,
+                  resolved = false,
+                  None,
+                  None,
+                  suggestionsFor(t.name, candidates)
+                )
+          }
+          FileReferences(
+            docUri,
+            rows.take(Analyzer.MaxReferences),
+            math.max(0, rows.size - Analyzer.MaxReferences),
+            pcFallback = false,
+            None
+          )
+    }
+
+  /** The occurrences of one document of THIS analyzer's index. For a [[bufferOnly]] analyzer that
+    * is the presentation compiler's regenerated document and nothing else, which is what
+    * [[resolveReferences]] joins against.
+    */
+  private def documentOccurrences(uri: String): Seq[s.SymbolOccurrence] =
+    index.document(uri).toSeq.flatMap(_.occurrences)
+
+  /** `project` when the index holds the symbol's defining document, `stdlib` for the Scala and Java
+    * namespaces, `classpath` for everything else. The harness's policy reads this; the tool itself
+    * has no policy.
+    */
+  private def originOf(symbol: String): String =
+    if symbol.startsWith("scala/") || symbol.startsWith("java/") then "stdlib"
+    else if h.definitionUri(symbol).isDefined then "project"
+    else "classpath"
+
+  /** The global symbols a near-miss may be drawn from: this index's own symbols PLUS every symbol
+    * the buffer document mentions. The second half is what makes a typo of a member the buffer
+    * already uses correctly elsewhere (`label.trim` above, `label.trimm` here) suggestible at all —
+    * `java/lang/String#trim().` is not defined by any project document, so the index alone would
+    * never offer it.
+    */
+  private def suggestionCandidates(occurrences: Seq[s.SymbolOccurrence]): List[String] =
+    (index.symbols.keysIterator ++ occurrences.iterator.map(_.symbol))
+      .filter(sym => sym.nonEmpty && index.isGlobal(sym))
+      .toList
+      .distinct
+
+  /** Deterministic near-misses for a name that did not resolve: a candidate symbol whose simple
+    * name is within edit distance 2 of it. Never more than three, always sorted, so the output is
+    * stable across runs. Names shorter than three characters are not worth guessing about — at that
+    * length everything is within distance 2 of everything.
+    */
+  private def suggestionsFor(name: String, candidates: List[String]): List[String] =
+    if name.length < 3 then Nil
+    else
+      candidates
+        .filter(sym => AnalyzerHelpers.editDistanceAtMost(index.displayName(sym), name, 2))
+        .sorted
+        .take(3)
+
   // --- resolve-implicits ----------------------------------------------------
 
   /** Implicit/given instances in the index that produce the given type (by symbol). For a `given`
@@ -1562,3 +1683,9 @@ final class Analyzer(
         callees.map { (callee, loc) => callee -> (caller, loc) }
       }
       .groupMap(_._1)(_._2)
+
+object Analyzer:
+  /** The output bound on [[Analyzer.resolveReferences]]: a whole-file answer over a large file
+    * would otherwise be unbounded. Rows past it are counted in `omitted`, never silently dropped.
+    */
+  private[analysis] val MaxReferences: Int = 200

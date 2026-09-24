@@ -351,3 +351,11 @@ class AnalyzerHelpersSuite extends munit.FunSuite:
   test("originalText is empty for a multi-line or absent range"):
     assertEquals(h.originalText(Some(s.Range(0, 1, 1, 2)), TotalLines, Map.empty), "")
     assertEquals(h.originalText(None, TotalLines, Map.empty), "")
+
+  test("editDistanceAtMost accepts a near-miss and rejects an unrelated name"):
+    assert(AnalyzerHelpers.editDistanceAtMost("trim", "trimm", 2))
+    assert(!AnalyzerHelpers.editDistanceAtMost("trim", "wholly", 2))
+    // Equal names are distance 0; the length prefilter must not reject an exact match.
+    assert(AnalyzerHelpers.editDistanceAtMost("trim", "trim", 2))
+    // Distance 3 (three substitutions) is past the bound even at equal length.
+    assert(!AnalyzerHelpers.editDistanceAtMost("abcdef", "abcxyz", 2))
