@@ -71,6 +71,42 @@ class LiteralTokensSuite extends munit.FunSuite:
     assertEquals(lits(src).map(_.line), List(2, 4))
   }
 
+  test("an interpolation part's escapes are resolved, so it equals the same plain string") {
+    // A key written inside an interpolation must compare equal to the same key written plainly,
+    // or a memorising table that interpolates its keys escapes the overlap count.
+    val src =
+      """package p
+        |object O:
+        |  def f(n: Int) = s"tab\there $n"
+        |  def g(n: Int) = s"say \"hi\" $n"
+        |  val a = "tab\there "
+        |  val b = "say \"hi\" "
+        |""".stripMargin
+    val vs = lits(src).map(_.value)
+    assertEquals(vs(0), vs(2))
+    assertEquals(vs(1), vs(3))
+    assertEquals(vs(0), "tab\there ")
+  }
+
+  test("a raw interpolator's parts keep their backslashes") {
+    val src =
+      """package p
+        |object O:
+        |  def f(n: Int) = raw"a\tb $n"
+        |""".stripMargin
+    assertEquals(kv(src), List("string" -> "a\\tb "))
+  }
+
+  test("a given alias is an enclosing construct") {
+    val src =
+      """package p
+        |object O:
+        |  given table: Map[String, Int] = Map("C4" -> 60)
+        |""".stripMargin
+    val c4 = lits(src).find(_.value == "C4").getOrElse(fail("no C4"))
+    assertEquals(c4.enclosing, Some(Enclosing("given", "table", 2)))
+  }
+
   test("a negative literal is one row with a negative value") {
     val src =
       """package p

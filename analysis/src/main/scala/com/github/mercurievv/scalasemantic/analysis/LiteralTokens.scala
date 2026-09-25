@@ -74,8 +74,23 @@ object LiteralTokens:
       case d: Lit.Double => Some("double" -> d.value.toString)
       case f: Lit.Float  => Some("float" -> f.value.toString)
       case Lit.Char(v)   => Some("char" -> v.toString)
-      case Lit.String(v) => Some("string" -> v)
+      case s: Lit.String => Some("string" -> stringValue(s))
       case _             => None // Boolean, Null, Unit, Symbol: no signal
+
+  /** A plain string's `value` is already unescaped by the parser, but an interpolation part is the
+    * raw source text: `s"tab\t$n"` holds a backslash and a `t`. Resolve the escapes the way the `s`
+    * and `f` interpolators do, so a key written inside an interpolation equals the same key written
+    * plainly. `raw` keeps its backslashes by definition; an escape the standard rules reject leaves
+    * the part as written rather than dropping it.
+    */
+  private def stringValue(s: Lit.String): String =
+    val prefix = s.parent.collect {
+      case t: Term.Interpolate => t.prefix.value
+      case t: Pat.Interpolate  => t.prefix.value
+    }
+    prefix match
+      case Some(p) if p != "raw" => Try(StringContext.processEscapes(s.value)).getOrElse(s.value)
+      case _                     => s.value
 
   private def enclosingOf(t: Tree): Option[Enclosing] =
     Iterator
@@ -83,14 +98,15 @@ object LiteralTokens:
       .takeWhile(_.isDefined)
       .flatten
       .collectFirst {
-        case d: Defn.Def    => Enclosing("def", d.name.value, d.pos.startLine)
-        case d: Defn.Val    => Enclosing("val", patName(d.pats), d.pos.startLine)
-        case d: Defn.Var    => Enclosing("var", patName(d.pats), d.pos.startLine)
-        case d: Defn.Object => Enclosing("object", d.name.value, d.pos.startLine)
-        case d: Defn.Class  => Enclosing("class", d.name.value, d.pos.startLine)
-        case d: Defn.Trait  => Enclosing("trait", d.name.value, d.pos.startLine)
-        case d: Defn.Enum   => Enclosing("enum", d.name.value, d.pos.startLine)
-        case d: Defn.Given  => Enclosing("given", givenName(d.name), d.pos.startLine)
+        case d: Defn.Def        => Enclosing("def", d.name.value, d.pos.startLine)
+        case d: Defn.Val        => Enclosing("val", patName(d.pats), d.pos.startLine)
+        case d: Defn.Var        => Enclosing("var", patName(d.pats), d.pos.startLine)
+        case d: Defn.Object     => Enclosing("object", d.name.value, d.pos.startLine)
+        case d: Defn.Class      => Enclosing("class", d.name.value, d.pos.startLine)
+        case d: Defn.Trait      => Enclosing("trait", d.name.value, d.pos.startLine)
+        case d: Defn.Enum       => Enclosing("enum", d.name.value, d.pos.startLine)
+        case d: Defn.Given      => Enclosing("given", givenName(d.name), d.pos.startLine)
+        case d: Defn.GivenAlias => Enclosing("given", givenName(d.name), d.pos.startLine)
       }
 
   private def patName(pats: List[Pat]): String =
