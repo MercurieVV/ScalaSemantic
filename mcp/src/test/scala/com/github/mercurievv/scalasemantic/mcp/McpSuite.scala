@@ -65,14 +65,88 @@ class McpSuite extends munit.FunSuite:
     assert(instr.contains("baseHash"), instr)
   }
 
+  test("literal_tokens answers from `source` without a presentation compiler") {
+    val src = "package p\nobject O:\n  val table = Map(\"C4\" -> 60)\n"
+    val r = call(
+      "literal_tokens",
+      ujson.Obj("files" -> ujson.Arr(ujson.Obj("uri" -> "A.scala", "source" -> src)))
+    )
+    val file = r("files")(0)
+    assertEquals(file("uri").str, "A.scala")
+    assertEquals(file("omitted").num.toInt, 0)
+    val rows = file("literals").arr.map(l => l("kind").str -> l("value").str).toList
+    assertEquals(rows, List("string" -> "C4", "int" -> "60"))
+    assertEquals(file("literals")(0)("enclosing")("name").str, "table")
+  }
+
+  test("literal_tokens honours ranges") {
+    val src = "package p\nobject O:\n  val a = 11\n  val b = 22\n"
+    val r = call(
+      "literal_tokens",
+      ujson.Obj(
+        "files" -> ujson.Arr(
+          ujson.Obj("uri" -> "A.scala", "source" -> src, "ranges" -> ujson.Arr(ujson.Arr(3, 4)))
+        )
+      )
+    )
+    assertEquals(r("files")(0)("literals").arr.map(_("value").str).toList, List("22"))
+  }
+
+  test("an explicit empty ranges list means the whole file") {
+    val src = "package p\nobject O:\n  val a = 11\n  val b = 22\n"
+    val r = call(
+      "literal_tokens",
+      ujson.Obj(
+        "files" -> ujson.Arr(
+          ujson.Obj("uri" -> "A.scala", "source" -> src, "ranges" -> ujson.Arr())
+        )
+      )
+    )
+    assertEquals(r("files")(0)("literals").arr.map(_("value").str).toList, List("11", "22"))
+  }
+
+  test("a missing file is a per-file error, the others still answer") {
+    val r = call(
+      "literal_tokens",
+      ujson.Obj(
+        "files" -> ujson.Arr(
+          ujson.Obj("uri" -> "does/not/Exist.scala"),
+          ujson.Obj("uri" -> "B.scala", "source" -> "package p\nobject B:\n  val x = 7\n")
+        )
+      )
+    )
+    val missing = r("files")(0)
+    assertEquals(missing("literals").arr.size, 0)
+    assert(missing("error").str.contains("no source"), missing.toString)
+    assertEquals(r("files")(1)("literals")(0)("value").str, "7")
+  }
+
+  test("a file that does not parse is a per-file error") {
+    val r = call(
+      "literal_tokens",
+      ujson.Obj(
+        "files" -> ujson.Arr(ujson.Obj("uri" -> "A.scala", "source" -> "object O { val = }"))
+      )
+    )
+    assert(r("files")(0)("error").str.contains("does not parse"), r.toString)
+  }
+
+  test("literal_tokens with an empty files list is an error") {
+    val text = callResponse("literal_tokens", ujson.Obj("files" -> ujson.Arr()))
+      .getOrElse(fail("no response"))("result")("content")(0)("text")
+      .str
+    assert(text.contains("`files` must hold at least one"), text)
+  }
+
   test("tools/list exposes all tools with schemas") {
     val r = Mcp.handle(req("tools/list", ujson.Obj()), tools).get
     val names = r("result")("tools").arr.map(_("name").str).toSet
-    assertEquals(names.size, 29)
+    assertEquals(names.size, 30)
     assert(names.contains("value_flow"), names.toString)
     assert(names.contains("find_symbol"), names.toString)
     assert(names.contains("find_usages"), names.toString)
     assert(names.contains("call_path"), names.toString)
+    assert(names.contains("literal_tokens"), names.toString)
     assert(names.contains("method_call_hierarchy"), names.toString)
     assert(names.contains("structure"), names.toString)
     assert(names.contains("document_outline"), names.toString)
@@ -1192,5 +1266,5 @@ class McpSuite extends munit.FunSuite:
     // 4 lines in (one blank, one notification) → 2 responses out, with matching ids
     assertEquals(out.size, 2)
     assertEquals(ujson.read(out(0))("id").num, 1.0)
-    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 29)
+    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 30)
   }

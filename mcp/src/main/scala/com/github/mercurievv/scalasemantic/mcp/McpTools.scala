@@ -2,6 +2,7 @@ package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
 import com.github.mercurievv.scalasemantic.analysis.InlineEnrich
+import com.github.mercurievv.scalasemantic.analysis.LiteralTokens
 import com.github.mercurievv.scalasemantic.analysis.RangeSelector
 import com.github.mercurievv.scalasemantic.analysis.SourceDiff
 import com.github.mercurievv.scalasemantic.analysis.SourceSentinel
@@ -1015,6 +1016,17 @@ private[mcp] object McpToolsSupport:
   private[mcp] def argUri(a: ujson.Value, k: String): DocumentUri =
     argRefinedString(a, k)(DocumentUri.from)
 
+  /** A `files` entry's `ranges`: `[[startLine, endLineExclusive], …]`, 0-based. Absent, empty, or
+    * made only of malformed pairs, it is empty — which every caller reads as "the whole file".
+    */
+  private[mcp] def argRanges(entry: ujson.Value): Seq[(Int, Int)] =
+    entry.obj.get("ranges").toSeq.flatMap(_.arr).flatMap { r =>
+      val pair = r.arr.toVector.map(_.num.toInt)
+      (pair.lift(0), pair.lift(1)) match
+        case (Some(from), Some(until)) => Some((from, until))
+        case _                         => None
+    }
+
   private[mcp] def argIdentifier(a: ujson.Value, k: String): ScalaIdentifier =
     argRefinedString(a, k)(ScalaIdentifier.from)
 
@@ -1579,12 +1591,7 @@ private[mcp] object McpToolsGroupB:
             val results = entries.map { entry =>
               val uri = argUri(entry, "uri")
               val file = root.resolve(uri.value)
-              val ranges = entry.obj.get("ranges").toSeq.flatMap(_.arr).flatMap { r =>
-                val pair = r.arr.toVector.map(_.num.toInt)
-                (pair.lift(0), pair.lift(1)) match
-                  case (Some(from), Some(until)) => Some((from, until))
-                  case _                         => None
-              }
+              val ranges = argRanges(entry)
               val (code, fromDisk) = entry.obj.get("source").map(_.str) match
                 case Some(src) => (Some(src), false)
                 case None      => (readFileText(file), true)
@@ -1638,6 +1645,55 @@ private[mcp] object McpToolsGroupB:
                   "classpath (see README → classpath)"
               )
             else ujson.Obj("files" -> ujson.Arr(results.map(_._1)*))
+        }
+      ),
+      toolDef(
+        tool(
+          "literal_tokens",
+          "Every LITERAL in the given line ranges of the given files — the syntax fact behind a " +
+            "memorisation check that compares production literals with test literals. Syntax only: " +
+            "no presentation compiler and no classpath, so it answers wherever the file parses. " +
+            "Each row carries `line`/`character` (0-based), `kind` (int/long/double/float/string/" +
+            "char — booleans, null and () are never reported), `value` normalised so the same " +
+            "literal written two ways compares equal (0x10 and 16 are both \"16\", 1_000 is " +
+            "\"1000\", string escapes resolved; an interpolation contributes its literal parts), " +
+            "and `enclosing` {kind, name, line}: the nearest enclosing def/val/var/object/class/" +
+            "trait/enum/given, or null when none encloses it. `ranges` are [startLine, " +
+            "endLineExclusive], 0-based; absent or empty means the whole file. Pass `source` for " +
+            "the buffer's text, else the on-disk file is read. No policy: every literal is " +
+            "returned, including 0 and 1. OUTPUT: `files` holds {uri, literals, omitted, error} " +
+            "per requested file; `error` is null on success, and names the problem (no source, " +
+            "does not parse) with `literals` empty otherwise. At most 2000 literals per file, " +
+            "`omitted` counting the rest.",
+          List(
+            (
+              "files",
+              "array",
+              "objects: {uri: string, ranges?: [[startLine, endLineExclusive], …], source?: string}"
+            )
+          ),
+          List("files")
+        ) { a =>
+          val entries = a.obj.get("files").toList.flatMap(_.arr)
+          if entries.isEmpty then
+            error("literal_tokens: `files` must hold at least one {uri} object")
+          else
+            val answers = entries.map { entry =>
+              val uri = argUri(entry, "uri")
+              val ranges = argRanges(entry)
+              val text =
+                entry.obj.get("source").map(_.str).orElse(readFileText(root.resolve(uri.value)))
+              text match
+                case None =>
+                  FileLiterals(
+                    uri.value,
+                    Nil,
+                    0,
+                    Some(s"no source: pass `source` or make ${uri.value} exist on disk")
+                  )
+                case Some(t) => LiteralTokens.forFile(uri.value, t, ranges)
+            }
+            upickle.default.writeJs(LiteralResult(answers))
         }
       ),
       toolDef(
