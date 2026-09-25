@@ -43,6 +43,7 @@ Every tool example on this page is **executed at docs build time** by the real S
 | `type_at_position` | Type of code at a source location |
 | `hole_context` | Expected type at a hole and what in scope satisfies it |
 | `resolve_references` | Every name a diff's line ranges refer to, and whether it resolves |
+| `literal_tokens` | Every literal in a file's line ranges, normalised, with its enclosing definition |
 
 ## Find & resolve symbols
 
@@ -768,6 +769,26 @@ straight from SemanticDB. Run it one-shot from a shell hook via `scalasemantic-m
 resolve_references '<json-args>' [root] [classpath]` — no MCP session needed.
 
 ---
+
+### literal_tokens
+
+**What it tells you:** every literal in the given line ranges, with a normalised `value` and the
+nearest enclosing definition. Syntax only — no presentation compiler, no classpath. It is the fact a
+memorisation check needs: a production construct whose literals are largely its tests' own inputs
+and expected outputs is a table that learned the tests rather than the problem, and `enclosing` is
+what lets a caller judge that per construct.
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "literal_tokens",
+  """{"files":[{"uri":"Notes.scala","source":"package demo\nobject Notes:\n  val midi = Map(\"C4\" -> 60, \"D4\" -> 62)\n  def label(n: Int) = s\"note $n\"\n"}]}"""))
+```
+
+`value` is normalised so equal literals compare equal across files — `0x10` and `16` are both `16`.
+Booleans, `null` and `()` are never reported, and no literal is dropped as trivial: deciding that `0`
+and `1` carry no signal is the caller's policy, not the tool's.
+
+**Replaces:** grepping for quoted strings and numbers → every literal with its owner, in one call.
 
 ## Tools on modified code
 

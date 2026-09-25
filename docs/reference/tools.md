@@ -15,6 +15,7 @@ ScalaSemantic exposes MCP tools over stdio JSON-RPC. For most workflows, start w
 | `type_at_position` | Return the symbol and type at a 0-based source position. |
 | `hole_context` | Expected type at a position (with confidence) and the in-scope bindings, producers and givens that satisfy it. |
 | `resolve_references` | Every name the given line ranges refer to, resolved or not, with origin and near-miss suggestions. |
+| `literal_tokens` | Every literal in the given line ranges, normalised, with its enclosing definition — no classpath needed. |
 | `resolve_implicits` | Find given definitions that can produce a requested type. |
 | `trace_implicit_chain` | Follow a given's transitive implicit dependencies. |
 | `call_path` | Find the shortest known call path between two methods. |

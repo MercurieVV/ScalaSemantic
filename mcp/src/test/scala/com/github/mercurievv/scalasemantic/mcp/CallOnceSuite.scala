@@ -12,6 +12,18 @@ class CallOnceSuite extends munit.FunSuite:
     assert(json.obj.nonEmpty, json.toString)
   }
 
+  test("call literal_tokens answers one-shot, without a classpath") {
+    val args = ujson.Obj(
+      "files" -> ujson.Arr(
+        ujson.Obj("uri" -> "A.scala", "source" -> "package p\nobject O:\n  val x = 42\n")
+      )
+    )
+    val json = Mcp
+      .callOnce(".", None, "literal_tokens", args)
+      .fold(err => fail(s"call failed: $err"), identity)
+    assertEquals(json("files")(0)("literals")(0)("value").str, "42")
+  }
+
   test("callOnce names an unknown tool instead of failing silently") {
     val res = Mcp.callOnce(".", None, "no_such_tool", ujson.Obj())
     assert(res.isLeft, res.toString)

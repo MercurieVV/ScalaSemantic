@@ -56,6 +56,21 @@ class LiteralTokensSuite extends munit.FunSuite:
     assertEquals(kv(src), List("string" -> "note ", "string" -> " end"))
   }
 
+  test("an interpolation's empty structural parts are not literals, a written empty string is") {
+    // scalameta gives an interpolation one more part than it has arguments, so `s"note $n"` has an
+    // empty trailing part the author never wrote. That is structure, not a literal; `""` written
+    // out is a literal.
+    val src =
+      """package p
+        |object O:
+        |  def f(n: Int) = s"note $n"
+        |  def g(n: Int) = s"$n"
+        |  val e = ""
+        |""".stripMargin
+    assertEquals(kv(src), List("string" -> "note ", "string" -> ""))
+    assertEquals(lits(src).map(_.line), List(2, 4))
+  }
+
   test("a negative literal is one row with a negative value") {
     val src =
       """package p

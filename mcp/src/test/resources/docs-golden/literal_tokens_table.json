@@ -1,0 +1,77 @@
+{
+  "tool": "literal_tokens",
+  "args": {
+    "files": [
+      {
+        "uri": "Notes.scala",
+        "source": "package demo\nobject Notes:\n  val midi = Map(\"C4\" -> 60, \"D4\" -> 62)\n  def label(n: Int) = s\"note $n\"\n"
+      }
+    ]
+  },
+  "result": {
+    "files": [
+      {
+        "uri": "Notes.scala",
+        "literals": [
+          {
+            "line": 2,
+            "character": 17,
+            "kind": "string",
+            "value": "C4",
+            "enclosing": {
+              "kind": "val",
+              "name": "midi",
+              "line": 2
+            }
+          },
+          {
+            "line": 2,
+            "character": 25,
+            "kind": "int",
+            "value": "60",
+            "enclosing": {
+              "kind": "val",
+              "name": "midi",
+              "line": 2
+            }
+          },
+          {
+            "line": 2,
+            "character": 29,
+            "kind": "string",
+            "value": "D4",
+            "enclosing": {
+              "kind": "val",
+              "name": "midi",
+              "line": 2
+            }
+          },
+          {
+            "line": 2,
+            "character": 37,
+            "kind": "int",
+            "value": "62",
+            "enclosing": {
+              "kind": "val",
+              "name": "midi",
+              "line": 2
+            }
+          },
+          {
+            "line": 3,
+            "character": 24,
+            "kind": "string",
+            "value": "note ",
+            "enclosing": {
+              "kind": "def",
+              "name": "label",
+              "line": 3
+            }
+          }
+        ],
+        "omitted": 0,
+        "error": null
+      }
+    ]
+  }
+}

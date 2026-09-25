@@ -67,6 +67,20 @@ class DocsToolExamplesGoldenSuite extends munit.FunSuite:
   private val EnrichFile =
     "docExamples/src/main/scala/com/github/mercurievv/scalasemantic/docexamples/Enrich.scala"
 
+  test("literal_tokens(a note table)"):
+    assertGolden(
+      "literal_tokens_table",
+      "literal_tokens",
+      ujson.Obj(
+        "files" -> ujson.Arr(
+          ujson.Obj(
+            "uri" -> "Notes.scala",
+            "source" -> "package demo\nobject Notes:\n  val midi = Map(\"C4\" -> 60, \"D4\" -> 62)\n  def label(n: Int) = s\"note $n\"\n"
+          )
+        )
+      )
+    )
+
   test("find_symbol('transform')"):
     assertGolden("find_symbol_transform", "find_symbol", ujson.Obj("query" -> "transform"))
 

@@ -29,7 +29,7 @@ object LiteralTokens:
           // A negative literal: report it once, with its sign, whichever shape the parser chose.
           case u @ Term.ApplyUnary(Term.Name("-"), l: Lit) if inRange(u.pos) =>
             literal(u, l, negative = true)
-          case l: Lit if inRange(l.pos) && !isNegatedOperand(l) =>
+          case l: Lit if inRange(l.pos) && !isNegatedOperand(l) && !isEmptyInterpolationPart(l) =>
             literal(l, l, negative = false)
         }
         .flatten
@@ -42,6 +42,15 @@ object LiteralTokens:
       case None      => FileLiterals(uri, Nil, 0, Some(s"$uri does not parse as Scala 3"))
       case Some(all) =>
         FileLiterals(uri, all.take(MaxPerFile), (all.size - MaxPerFile).max(0), None)
+
+  /** An interpolation has one more part than it has arguments, so `s"note $n"` carries an empty
+    * trailing part the author never wrote: structure, not a literal. An EXPLICIT `""` is not an
+    * interpolation part and is still reported.
+    */
+  private def isEmptyInterpolationPart(l: Lit): Boolean =
+    l match
+      case Lit.String("") => l.parent.exists(_.is[Term.Interpolate])
+      case _              => false
 
   private def isNegatedOperand(l: Lit): Boolean =
     l.parent.exists {
