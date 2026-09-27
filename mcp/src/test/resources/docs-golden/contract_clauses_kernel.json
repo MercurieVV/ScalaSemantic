@@ -1,0 +1,36 @@
+{
+  "tool": "contract_clauses",
+  "args": {
+    "files": [
+      {
+        "uri": "PureKernels.scala",
+        "source": "package demo\nimport stainless.lang.*\nobject PureKernels:\n  def framesToNanos(frames: Int, sampleRate: Int): Long = {\n    require(frames >= 0 && sampleRate > 0)\n    frames.toLong * 1000000000L / sampleRate\n  } ensuring (r => r >= 0)\n"
+      }
+    ]
+  },
+  "result": {
+    "files": [
+      {
+        "uri": "PureKernels.scala",
+        "defs": [
+          {
+            "key": "PureKernels.framesToNanos",
+            "line": 3,
+            "requires": [
+              {
+                "text": "require(frames >= 0 && sampleRate > 0)",
+                "shape": "762108d665a00501"
+              }
+            ],
+            "ensuring": {
+              "text": "r => r >= 0",
+              "shape": "53f9576a64489fba"
+            },
+            "decreases": null
+          }
+        ],
+        "error": null
+      }
+    ]
+  }
+}

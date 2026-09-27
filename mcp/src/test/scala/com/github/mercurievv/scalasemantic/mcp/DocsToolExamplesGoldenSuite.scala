@@ -81,6 +81,20 @@ class DocsToolExamplesGoldenSuite extends munit.FunSuite:
       )
     )
 
+  test("contract_clauses(a pure kernel)"):
+    assertGolden(
+      "contract_clauses_kernel",
+      "contract_clauses",
+      ujson.Obj(
+        "files" -> ujson.Arr(
+          ujson.Obj(
+            "uri" -> "PureKernels.scala",
+            "source" -> "package demo\nimport stainless.lang.*\nobject PureKernels:\n  def framesToNanos(frames: Int, sampleRate: Int): Long = {\n    require(frames >= 0 && sampleRate > 0)\n    frames.toLong * 1000000000L / sampleRate\n  } ensuring (r => r >= 0)\n"
+          )
+        )
+      )
+    )
+
   test("find_symbol('transform')"):
     assertGolden("find_symbol_transform", "find_symbol", ujson.Obj("query" -> "transform"))
 

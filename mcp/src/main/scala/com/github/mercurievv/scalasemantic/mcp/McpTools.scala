@@ -1,6 +1,7 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.analysis.ContractClauses
 import com.github.mercurievv.scalasemantic.analysis.InlineEnrich
 import com.github.mercurievv.scalasemantic.analysis.LiteralTokens
 import com.github.mercurievv.scalasemantic.analysis.RangeSelector
@@ -8,6 +9,7 @@ import com.github.mercurievv.scalasemantic.analysis.SourceDiff
 import com.github.mercurievv.scalasemantic.analysis.SourceSentinel
 import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
+import com.github.mercurievv.scalasemantic.model.{ContractResult, FileContracts}
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 import upickle.default.ReadWriter
 
@@ -1694,6 +1696,50 @@ private[mcp] object McpToolsGroupB:
                 case Some(t) => LiteralTokens.forFile(uri.value, t, ranges)
             }
             upickle.default.writeJs(LiteralResult(answers))
+        }
+      ),
+      toolDef(
+        tool(
+          "contract_clauses",
+          "Every def's Stainless CONTRACT — its `require`, `ensuring` and `decreases` clauses — the " +
+            "syntax fact behind a guard that keeps a human-owned contract from being edited by the " +
+            "agent writing the body. Syntax only: no presentation compiler and no classpath. Clauses " +
+            "are found where Stainless puts them: `require`/`decreases` count only as the first " +
+            "statements of the body; `ensuring` counts as the outermost call on the body or on its " +
+            "last expression (infix, `.ensuring(…)` or `.ensuring[T](…)`). " +
+            "Each def carries `key` (owner path + name, e.g. `PureKernels.toPcm16`; defs sharing a key " +
+            "get kind-marked owners — `class:K`, `trait:T`, `enum:E`, and `pkg:a` segments when the " +
+            "file has several package blocks — then, if still shared, their typed parameter list, " +
+            "e.g. `K.f(a: Int, b: String)` (an extension's receiver first), then `#1`, `#2`, … in " +
+            "source order), `line` (0-based, the first annotation's line for an annotated def), " +
+            "`requires` (list), " +
+            "`ensuring` and `decreases` (clause or null). A clause is {text, shape}: `shape` hashes " +
+            "the clause's syntax tree, so reformatting keeps it and any edit to the clause changes " +
+            "it. Only defs with at least one clause are listed. Pass `source` for the buffer's text, " +
+            "else the on-disk file is read. OUTPUT: `files` holds {uri, defs, error} per requested " +
+            "file; `error` is null on success, and names the problem (no source, does not parse) " +
+            "with `defs` empty otherwise.",
+          List(("files", "array", "objects: {uri: string, source?: string}")),
+          List("files")
+        ) { a =>
+          val entries = a.obj.get("files").toList.flatMap(_.arr)
+          if entries.isEmpty then
+            error("contract_clauses: `files` must hold at least one {uri} object")
+          else
+            val answers = entries.map { entry =>
+              val uri = argUri(entry, "uri")
+              val text =
+                entry.obj.get("source").map(_.str).orElse(readFileText(root.resolve(uri.value)))
+              text match
+                case None =>
+                  FileContracts(
+                    uri.value,
+                    Nil,
+                    Some(s"no source: pass `source` or make ${uri.value} exist on disk")
+                  )
+                case Some(t) => ContractClauses.forFile(uri.value, t)
+            }
+            upickle.default.writeJs(ContractResult(answers))
         }
       ),
       toolDef(

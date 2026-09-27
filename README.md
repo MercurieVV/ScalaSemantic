@@ -31,7 +31,7 @@ Launcher, plain jar and logging: [Integration](https://mercurievv.github.io/Scal
 
 ## Tools
 
-`find_symbol` · `find_usages` · `class_hierarchy` · `method_signature` · `members` · `resolve_implicits` · `call_path` · `type_at_position` · `hole_context` · `resolve_references` · `literal_tokens` · `trace_implicit_chain` · `find_overloads` — what each does, plus the symbol grammar: [Tool reference](https://mercurievv.github.io/ScalaSemantic/reference/tools/).
+`find_symbol` · `find_usages` · `class_hierarchy` · `method_signature` · `members` · `resolve_implicits` · `call_path` · `type_at_position` · `hole_context` · `resolve_references` · `literal_tokens` · `contract_clauses` · `trace_implicit_chain` · `find_overloads` — what each does, plus the symbol grammar: [Tool reference](https://mercurievv.github.io/ScalaSemantic/reference/tools/).
 
 For a shell hook or script that can't hold an MCP session open, `scalasemantic-mcp call <tool> '<json-args>' [root] [classpath]` runs one tool and prints its JSON result.
 

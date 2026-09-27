@@ -44,6 +44,7 @@ Every tool example on this page is **executed at docs build time** by the real S
 | `hole_context` | Expected type at a hole and what in scope satisfies it |
 | `resolve_references` | Every name a diff's line ranges refer to, and whether it resolves |
 | `literal_tokens` | Every literal in a file's line ranges, normalised, with its enclosing definition |
+| `contract_clauses` | Every def's Stainless contract (require/ensuring/decreases) with a formatting-proof shape |
 
 ## Find & resolve symbols
 
@@ -789,6 +790,34 @@ Booleans, `null` and `()` are never reported, and no literal is dropped as trivi
 and `1` carry no signal is the caller's policy, not the tool's.
 
 **Replaces:** grepping for quoted strings and numbers → every literal with its owner, in one call.
+
+---
+
+### contract_clauses
+
+**What it tells you:** each `def`'s Stainless contract — `require`, `ensuring`, `decreases` — with a
+`shape` per clause that hashes its syntax tree. Syntax only. It is the fact a harness needs to keep a
+human-owned contract from being rewritten by the agent that fills in the body: reformatting keeps
+every shape, and any edit to a clause changes it. `require`/`decreases` count only as the first
+statements of the body; `ensuring` counts as the outermost call on the body or on its last expression,
+so the braceless `require(…)`, `val …`, `(expr).ensuring(…)` style is covered. A def's `key` is its
+owner path plus name (`PureKernels.toPcm16`); defs sharing a key are re-keyed with kind-marked owners
+(`class:K.f` beside the companion's `K.f`; `trait:`, `enum:` likewise) and, in a file with several
+package blocks, `pkg:a` segments; a key still shared gets its typed parameter list, e.g.
+`K.f(a: Int, b: String)` (an extension's receiver first), and then `#1`, `#2`, … in source order. A
+def's `line` is where its tree starts, so an annotated def reports its first annotation's line. It is
+syntax only: a locally redefined `require` or `ensuring` is not recognised as different, a contract on
+a `val` or `lazy val` is not reported, and the two-argument `ensuring(cond, msg)` is not seen as a
+postcondition. A parenthesised postcondition is reported without its parentheses (`r => r > x`), a
+braced one with its braces (`{ r => r == x }`).
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "contract_clauses",
+  """{"files":[{"uri":"PureKernels.scala","source":"package demo\nimport stainless.lang.*\nobject PureKernels:\n  def framesToNanos(frames: Int, sampleRate: Int): Long = {\n    require(frames >= 0 && sampleRate > 0)\n    frames.toLong * 1000000000L / sampleRate\n  } ensuring (r => r >= 0)\n"}]}"""))
+```
+
+**Replaces:** grepping for `require`/`ensuring` lines → every clause per def, formatting-proof, in one call.
 
 ## Tools on modified code
 
