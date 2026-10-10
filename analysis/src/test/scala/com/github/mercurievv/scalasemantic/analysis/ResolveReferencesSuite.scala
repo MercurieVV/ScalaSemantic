@@ -331,3 +331,32 @@ class ResolveReferencesSuite extends munit.FunSuite:
     assert(!late.resolved, late.toString)
     // Only resolved rows are ever dropped.
     assertEquals(r.references.count(!_.resolved), 1)
+
+  test("prefix `!` and infix `!=` / `==` on stdlib values are not hallucinations"):
+    // A gated run (skreeep2, 2026-10-10) was blocked on `if solo && !state.soloed(name)` and on
+    // `a != b`: the operators reached the join with no covering occurrence.
+    val opsFile = workspace.resolve("Ops.scala").nn
+    val ops =
+      """package demo
+        |
+        |object Ops:
+        |  def neg(b: Boolean, s: Set[String]): Boolean = !b && !s("x")
+        |  def ne(a: Int, b: Int): Boolean = a != b || a == b
+        |  def hid: Boolean = !nowhereFlag
+        |""".stripMargin
+    java.nio.file.Files.writeString(opsFile, ops)
+    val r = PresentationCompilerBackend.useCurrentJvm(workspace = Some(workspace)) { backend =>
+      val az = Analyzer(new SemanticIndex(Vector.empty), Some(backend))
+      az.resolveReferences(opsFile.toUri, ops, "Ops.scala", Seq((3, 4)))
+        .getOrElse(fail("no PC backend"))
+    }
+    val bad = r.references.filterNot(_.resolved)
+    assert(bad.isEmpty, bad.toString)
+    assert(r.references.exists(_.name == "b"), r.references.toString)
+    // the operand of a prefix operator is still checked
+    val hidden = PresentationCompilerBackend.useCurrentJvm(workspace = Some(workspace)) { backend =>
+      val az = Analyzer(new SemanticIndex(Vector.empty), Some(backend))
+      az.resolveReferences(opsFile.toUri, ops, "Ops.scala", Seq((5, 6)))
+        .getOrElse(fail("no PC backend"))
+    }
+    assertEquals(hidden.references.filterNot(_.resolved).map(_.name), List("nowhereFlag"))

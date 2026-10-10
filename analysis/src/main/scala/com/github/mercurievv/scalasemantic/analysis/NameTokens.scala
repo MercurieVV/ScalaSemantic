@@ -39,7 +39,7 @@ object NameTokens:
           NameToken(t.pos.startLine, startColumn(text, t.pos), t.value, "type", roleOf(t))
         case t: Term.Name
             if inRange(t.pos) && visible(t.pos) && !isQuotedBinding(t) &&
-              !isDerived(t) =>
+              !isDerived(t) && !isPrefixOperator(t) =>
           NameToken(t.pos.startLine, startColumn(text, t.pos), t.value, kindOfTerm(t), roleOf(t))
         case t: Name.Indeterminate
             if inRange(t.pos) && visible(t.pos) && !isImportAlias(t) && !isExportSelector(t) =>
@@ -133,6 +133,18 @@ object NameTokens:
       case Some(p)                                                                    =>
         enclosingStat(p)
       case None => t
+
+  /** The operator of a prefix application (`!b`, `-x`, `~m`, `+y`). Measured on Scala 3: the
+    * compiler emits no occurrence over it (the `unary_!` it calls is recorded nowhere in the source
+    * span), so joining would report every `!cond` in ordinary code as an unresolved name. Only the
+    * operator token is skipped; the operand is a separate tree and is still checked. A prefix
+    * operator the operand's type lacks is a compile error, which the gate's compile stage reports.
+    */
+  private def isPrefixOperator(t: Term.Name): Boolean =
+    t.parent.exists {
+      case p: Term.ApplyUnary => p.op eq t
+      case _                  => false
+    }
 
   /** A name in a `derives` clause (`case class C(x: Int) derives Eq`, `derives q.Eq`). The compiler
     * emits no occurrence over it — the synthesized given is what it records — so joining would
