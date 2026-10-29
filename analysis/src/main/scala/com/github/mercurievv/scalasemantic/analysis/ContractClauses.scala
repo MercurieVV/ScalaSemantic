@@ -1,6 +1,9 @@
 package com.github.mercurievv.scalasemantic.analysis
 
-import com.github.mercurievv.scalasemantic.model.{Clause, Contract, FileContracts}
+import com.github.mercurievv.scalasemantic.model.Clause
+import com.github.mercurievv.scalasemantic.model.Contract
+import com.github.mercurievv.scalasemantic.model.FileContracts
+
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import scala.meta.*

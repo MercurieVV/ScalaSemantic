@@ -8,8 +8,9 @@ import com.github.mercurievv.scalasemantic.analysis.RangeSelector
 import com.github.mercurievv.scalasemantic.analysis.SourceDiff
 import com.github.mercurievv.scalasemantic.analysis.SourceSentinel
 import com.github.mercurievv.scalasemantic.model.*
+import com.github.mercurievv.scalasemantic.model.ContractResult
+import com.github.mercurievv.scalasemantic.model.FileContracts
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
-import com.github.mercurievv.scalasemantic.model.{ContractResult, FileContracts}
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 import upickle.default.ReadWriter
 
