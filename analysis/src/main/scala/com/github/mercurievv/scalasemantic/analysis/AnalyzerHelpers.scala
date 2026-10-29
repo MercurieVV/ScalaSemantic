@@ -785,3 +785,40 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
       case s.UnitConstant()     => "Unit"
       case s.NullConstant()     => "null"
       case _                    => ""
+
+private[analysis] object AnalyzerHelpers:
+
+  /** The Levenshtein distance between `a` and `b` when it is at most `max`, else `None`. Callers
+    * that rank near-misses need the distance itself, not just a yes/no: sorting suggestions by
+    * symbol alone lets the alphabet outrank closeness. Bounded twice over: a length difference
+    * greater than `max` already exceeds it (each edit changes the length by at most one), so the
+    * quadratic work is skipped outright. The DP itself keeps only two rows, built by folding —
+    * `prev.zip(prev.drop(1))` hands each column its `(diagonal, above)` pair, which is all the
+    * recurrence needs.
+    */
+  /** A set-of-characters fingerprint: bit `c & 31` for every character of `s`. Two strings within
+    * edit distance `max` can differ in at most `2 * max` bits of it — one edit removes at most one
+    * distinct character and adds at most one — so [[maskWithin]] rejects most candidates for the
+    * price of an xor and a popcount, before the quadratic DP is ever entered. A necessary
+    * condition, never a sufficient one: a survivor still has to be measured.
+    */
+  def charMask(s: String): Int =
+    s.foldLeft(0)((mask, c) => mask | (1 << (c & 31)))
+
+  /** Whether two [[charMask]]s are compatible with an edit distance of at most `max`. */
+  def maskWithin(a: Int, b: Int, max: Int): Boolean =
+    Integer.bitCount(a ^ b) <= 2 * max
+
+  def editDistanceWithin(a: String, b: String, max: Int): Option[Int] =
+    if math.abs(a.length - b.length) > max then None
+    else
+      val first = Vector.range(0, b.length + 1)
+      val last = a.iterator.zipWithIndex.foldLeft(first) { case (prev, (ca, i)) =>
+        b.iterator.zip(prev.iterator.zip(prev.drop(1).iterator)).foldLeft(Vector(i + 1)) {
+          case (row, (cb, (diagonal, above))) =>
+            val substitution = diagonal + (if ca == cb then 0 else 1)
+            val left = row.lastOption.getOrElse(i + 1)
+            row :+ math.min(math.min(left + 1, above + 1), substitution)
+        }
+      }
+      last.lastOption.filter(_ <= max)

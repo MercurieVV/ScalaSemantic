@@ -16,7 +16,10 @@ class DoctorSuite extends munit.FunSuite:
     Launcher.run(
       Seq("setup", "--project", root.toString, "--client", "claude", "--skip-semanticdb-config") ++
         extraArgs
-    )(_ => fail("setup must not start the MCP server"))
+    )(
+      _ => fail("setup must not start the MCP server"),
+      _ => fail("setup must not run a one-shot tool call")
+    )
 
   private def tempProject(name: String): Path =
     val root = Files.createTempDirectory(name).nn

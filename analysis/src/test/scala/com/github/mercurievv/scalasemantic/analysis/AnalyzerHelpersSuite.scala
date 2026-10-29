@@ -351,3 +351,22 @@ class AnalyzerHelpersSuite extends munit.FunSuite:
   test("originalText is empty for a multi-line or absent range"):
     assertEquals(h.originalText(Some(s.Range(0, 1, 1, 2)), TotalLines, Map.empty), "")
     assertEquals(h.originalText(None, TotalLines, Map.empty), "")
+
+  test("editDistanceWithin reports the distance, not just the verdict"):
+    assertEquals(AnalyzerHelpers.editDistanceWithin("trim", "trimm", 2), Some(1))
+    assertEquals(AnalyzerHelpers.editDistanceWithin("Symbol", "symbolz", 2), Some(2))
+    assertEquals(AnalyzerHelpers.editDistanceWithin("trim", "wholly", 2), None)
+    // Equal names are distance 0; the length prefilter must not reject an exact match.
+    assertEquals(AnalyzerHelpers.editDistanceWithin("trim", "trim", 2), Some(0))
+    // Distance 3 (three substitutions) is past the bound even at equal length.
+    assertEquals(AnalyzerHelpers.editDistanceWithin("abcdef", "abcxyz", 2), None)
+
+  test("the charMask prefilter never rejects a real near-miss"):
+    // It is a necessary condition only — it may admit something the DP then rejects, but it must
+    // never reject a pair the DP would have accepted, or a suggestion would silently go missing.
+    val words = List("trim", "trimm", "symbol", "symbolz", "Symbol", "label", "labell", "nope")
+    for a <- words; b <- words if AnalyzerHelpers.editDistanceWithin(a, b, 2).isDefined do
+      assert(
+        AnalyzerHelpers.maskWithin(AnalyzerHelpers.charMask(a), AnalyzerHelpers.charMask(b), 2),
+        s"$a / $b"
+      )

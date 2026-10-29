@@ -41,6 +41,10 @@ Every tool example on this page is **executed at docs build time** by the real S
 | `annotated_source` | Compiler view — inferred types, implicits, exploded imports, diff (tabbed) |
 | `method_signature` | Full signature with implicit/using params |
 | `type_at_position` | Type of code at a source location |
+| `hole_context` | Expected type at a hole and what in scope satisfies it |
+| `resolve_references` | Every name a diff's line ranges refer to, and whether it resolves |
+| `literal_tokens` | Every literal in a file's line ranges, normalised, with its enclosing definition |
+| `contract_clauses` | Every def's Stainless contract (require/ensuring/decreases) with a formatting-proof shape |
 
 ## Find & resolve symbols
 
@@ -649,6 +653,171 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 **Replaces:** Hand type inference → compiler's answer.
 
 ---
+
+### hole_context
+
+**What it tells you:** the expected type at a `???` (or any expression position), with a
+confidence, plus the in-scope bindings, producers, givens and types that satisfy it — so a new
+body gets filled from what the compiler already knows instead of a guessed API.
+
+*This example is a captured run (the tool needs a presentation compiler, which the docs build does
+not start).* On the hole in
+
+```scala
+final case class Config(host: String, port: Int)
+
+object Wiring:
+  val fallback: Config = Config("localhost", 80)
+  def config(port: Int): Config = ???
+```
+
+```json
+{
+  "found": true,
+  "why": null,
+  "hole": {"kind": "???", "text": "???"},
+  "expected": {"type": "Config", "confidence": "exact", "why": "result type of def config"},
+  "bindings": [
+    {"name": "fallback", "type": "Config", "kind": "val", "from": "member of Wiring"}
+  ],
+  "producers": [
+    {"name": "Config.apply", "signature": "def apply(host: String, port: Int): Config",
+     "from": "companion Config", "match": "exact"},
+    {"name": "Config.unapply", "signature": "def unapply(x$1: Config): Config",
+     "from": "companion Config", "match": "exact"},
+    {"name": "config", "signature": "def config(port: Int): Config",
+     "from": "member of Wiring", "match": "exact"}
+  ],
+  "givens": [],
+  "types": [
+    {"symbol": "demo/Config#", "source": "project",
+     "signature": "final case class Config: Object with Product with Serializable {...}",
+     "excerpt": "final case class Config(host: String, port: Int)"}
+  ],
+  "omitted": {"bindings": 0, "producers": 0, "givens": 0, "types": 0}
+}
+```
+
+**Replaces:** Guessing an API from memory → the compiler's own answer at that exact position. See
+the `typed-holes` skill for the full skeleton-first, one-hole-at-a-time procedure.
+
+---
+
+### resolve_references
+
+**What it tells you:** every name the given LINE RANGES of the given files refer to, and whether it
+resolves — the deterministic check for hallucinated symbols. Each row carries the name as written,
+its `kind` (type/term/method/package) and `role` (use/definition), and either `resolved: true` with
+the SemanticDB `symbol` and its `origin` (`project`/`stdlib`/`classpath`), or `resolved: false` with
+deterministic near-miss `suggestions`. `ranges` are `[startLine, endLineExclusive]`, 0-based — the
+shape `git diff -U0` yields — so it slots straight into a diff-scoped review hook.
+
+*This example is a captured run (the tool needs a presentation compiler, which the docs build does
+not start).* On a scratch file with one good and one bad reference (`trimm` is a typo of `trim`):
+
+```json
+{
+  "files": [
+    {
+      "uri": "Refs.scala",
+      "references": [
+        {
+          "line": 3, "character": 6, "name": "bad", "kind": "term", "role": "definition",
+          "resolved": true, "symbol": "demo/Refs.bad().", "origin": "project", "suggestions": []
+        },
+        {
+          "line": 3, "character": 20, "name": "label", "kind": "term", "role": "use",
+          "resolved": true, "symbol": "demo/Refs.label.", "origin": "project", "suggestions": []
+        },
+        {
+          "line": 3, "character": 26, "name": "trimm", "kind": "term", "role": "use",
+          "resolved": false, "symbol": null, "origin": null, "suggestions": []
+        }
+      ],
+      "omitted": 0,
+      "error": null
+    }
+  ]
+}
+```
+
+`trimm` comes back `resolved: false` with no suggestion here because this call's index is empty and
+`trim` (the near-miss) has no other occurrence in the buffer to draw a suggestion from — a richer
+index would surface it.
+
+**Parse it defensively.** A file entry comes in one of three shapes: the full object above
+(plus `"pcFallback": true` when the text was read from disk and the file is not in the index),
+`{"uri": …, "error": "no presentation compiler"}` with no `references`/`omitted` keys, or
+`{"uri": …, "references": [], "omitted": 0, "error": "no source: …"}`. `symbol`, `origin` and
+`error` are written as explicit `null` when absent. At most 200 rows are returned per file:
+**unresolved rows are never dropped**, resolved ones fill what is left in source order, and
+`omitted` counts only the resolved rows that did not fit.
+
+**Known blind spots.** A name the compiler emits no occurrence for cannot be joined, so it is not
+reported at all rather than reported as a hallucination: a `derives` clause's type, a named
+`export` selector, a macro quote's spliced name, an annotation on a type ascription
+(`(o: @unchecked)`) and — in the one shape `val w: T = (o: @unchecked) match { … }`, an annotated
+ascription as the scrutinee of a match that is the whole right-hand side of a val or var — that
+statement's declared type and the binders its right-hand side introduces. Any other placement of
+the ascription (nested in a call argument, wrapping the whole match, inside a block or an
+`if`/`else`) is checked normally. Everything else stays checked, the enclosing signature included, so
+`def f(p: Bogus): Int = (o: @unchecked) match { … }` still reports `Bogus`. Suggestions are not
+restricted to the unresolved name's own owner, so an unrelated owner's near-miss can appear beside
+the right one.
+
+**Replaces:** grepping a diff for plausible-looking names → a resolved-or-not verdict per name,
+straight from SemanticDB. Run it one-shot from a shell hook via `scalasemantic-mcp call
+resolve_references '<json-args>' [root] [classpath]` — no MCP session needed.
+
+---
+
+### literal_tokens
+
+**What it tells you:** every literal in the given line ranges, with a normalised `value` and the
+nearest enclosing definition. Syntax only — no presentation compiler, no classpath. It is the fact a
+memorisation check needs: a production construct whose literals are largely its tests' own inputs
+and expected outputs is a table that learned the tests rather than the problem, and `enclosing` is
+what lets a caller judge that per construct.
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "literal_tokens",
+  """{"files":[{"uri":"Notes.scala","source":"package demo\nobject Notes:\n  val midi = Map(\"C4\" -> 60, \"D4\" -> 62)\n  def label(n: Int) = s\"note $n\"\n"}]}"""))
+```
+
+`value` is normalised so equal literals compare equal across files — `0x10` and `16` are both `16`.
+Booleans, `null` and `()` are never reported, and no literal is dropped as trivial: deciding that `0`
+and `1` carry no signal is the caller's policy, not the tool's.
+
+**Replaces:** grepping for quoted strings and numbers → every literal with its owner, in one call.
+
+---
+
+### contract_clauses
+
+**What it tells you:** each `def`'s Stainless contract — `require`, `ensuring`, `decreases` — with a
+`shape` per clause that hashes its syntax tree. Syntax only. It is the fact a harness needs to keep a
+human-owned contract from being rewritten by the agent that fills in the body: reformatting keeps
+every shape, and any edit to a clause changes it. `require`/`decreases` count only as the first
+statements of the body; `ensuring` counts as the outermost call on the body or on its last expression,
+so the braceless `require(…)`, `val …`, `(expr).ensuring(…)` style is covered. A def's `key` is its
+owner path plus name (`PureKernels.toPcm16`); defs sharing a key are re-keyed with kind-marked owners
+(`class:K.f` beside the companion's `K.f`; `trait:`, `enum:` likewise) and, in a file with several
+package blocks, `pkg:a` segments; a key still shared gets its typed parameter list, e.g.
+`K.f(a: Int, b: String)` (an extension's receiver first), and then `#1`, `#2`, … in source order. A
+def's `line` is where its tree starts, so an annotated def reports its first annotation's line. It is
+syntax only: a locally redefined `require` or `ensuring` is not recognised as different, a contract on
+a `val` or `lazy val` is not reported, and the two-argument `ensuring(cond, msg)` is not seen as a
+postcondition. A parenthesised postcondition is reported without its parentheses (`r => r > x`), a
+braced one with its braces (`{ r => r == x }`).
+
+```scala mdoc:passthrough
+println(scalasemantic.docs.ToolRunner.runPretty(
+  "contract_clauses",
+  """{"files":[{"uri":"PureKernels.scala","source":"package demo\nimport stainless.lang.*\nobject PureKernels:\n  def framesToNanos(frames: Int, sampleRate: Int): Long = {\n    require(frames >= 0 && sampleRate > 0)\n    frames.toLong * 1000000000L / sampleRate\n  } ensuring (r => r >= 0)\n"}]}"""))
+```
+
+**Replaces:** grepping for `require`/`ensuring` lines → every clause per def, formatting-proof, in one call.
 
 ## Tools on modified code
 

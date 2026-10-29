@@ -20,7 +20,30 @@ import java.nio.file.Path
   *     the LLM. Implies a sink, so it works on its own. Flags are positional-order-independent.
   */
 @main def mcpServer(args: String*): Unit =
-  Launcher.run(args)(serveMcp)
+  Launcher.run(args)(serveMcp, callTool)
+
+/** One-shot tool invocation for a shell hook: no MCP session, no stdio loop — build the index (and
+  * optional PC backends), run one tool, print its JSON, exit. Usage: `call <tool> '<json-args>'
+  * [root] [classpath]`.
+  */
+private[scalasemantic] def callTool(args: Seq[String]): Unit =
+  val (flags, positional) = args.partition(_.startsWith("--"))
+  val _ = flags
+  (positional.lift(0), positional.lift(1)) match
+    case (Some(tool), Some(argsJson)) =>
+      Mcp.callOnce(
+        positional.lift(2).getOrElse("."),
+        positional.lift(3),
+        tool,
+        ujson.read(argsJson)
+      ) match
+        case Right(result) => println(ujson.write(result, indent = 2))
+        case Left(err)     =>
+          System.err.println(err)
+          sys.exit(1)
+    case _ =>
+      System.err.println("usage: scalasemantic-mcp call <tool> '<json-args>' [root] [classpath]")
+      sys.exit(2)
 
 private[scalasemantic] def serveMcp(args: Seq[String]): Unit =
   val (flags, positional) = args.partition(_.startsWith("--"))

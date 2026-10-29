@@ -628,3 +628,390 @@ class McpPcSuite extends munit.FunSuite:
       assertEquals(sig("signature").str, "def area(w: Int): Int")
     }
   }
+
+  test("hole_context: ??? as a def result answers expected type, bindings and producers") {
+    val root = java.nio.file.Files.createTempDirectory("mcp-hole").nn
+    val file = root.resolve("Holes.scala").nn
+    val source =
+      """package demo
+        |object Holes:
+        |  val label: String = "x"
+        |  def render(a: Int, s: String): String = ???
+        |""".stripMargin
+    java.nio.file.Files.writeString(file, source)
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+      val tools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
+      val line = 3; val character = source.linesIterator.toList(3).indexOf("???")
+      val resp = Mcp.handle(
+        req(
+          "tools/call",
+          ujson.Obj(
+            "name" -> "hole_context",
+            "arguments" -> ujson
+              .Obj(
+                "uri" -> "Holes.scala",
+                "line" -> line,
+                "character" -> character,
+                "source" -> source
+              )
+          )
+        ),
+        tools
+      )
+      val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
+      val json = ujson.read(text)
+      assertEquals(json("expected")("type").str, "String")
+      assertEquals(json("expected")("confidence").str, "exact")
+      assert(json("bindings").arr.exists(_("name").str == "s"), text)
+      assert(json("bindings").arr.exists(_("name").str == "label"), text)
+      assert(json.obj.keySet.contains("omitted"))
+    }
+  }
+
+  test("hole_context: without source reads the disk file and marks pcFallback") {
+    val root = java.nio.file.Files.createTempDirectory("mcp-hole-disk").nn
+    val file = root.resolve("Holes.scala").nn
+    val source =
+      """package demo
+        |object Holes:
+        |  val label: String = "x"
+        |  def render(a: Int, s: String): String = ???
+        |""".stripMargin
+    java.nio.file.Files.writeString(file, source)
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+      val tools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
+      val line = 3; val character = source.linesIterator.toList(3).indexOf("???")
+      val resp = Mcp.handle(
+        req(
+          "tools/call",
+          ujson.Obj(
+            "name" -> "hole_context",
+            "arguments" -> ujson
+              .Obj("uri" -> "Holes.scala", "line" -> line, "character" -> character)
+          )
+        ),
+        tools
+      )
+      val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
+      val json = ujson.read(text)
+      assertEquals(json("pcFallback").bool, true, text)
+      assertEquals(json("expected")("type").str, "String")
+    }
+  }
+
+  test("hole_context: an INDEXED document read from disk is not marked pcFallback") {
+    val root = java.nio.file.Files.createTempDirectory("mcp-hole-indexed").nn
+    val file = root.resolve("Holes.scala").nn
+    val source =
+      """package demo
+        |object Holes:
+        |  val label: String = "x"
+        |  def render(a: Int, s: String): String = ???
+        |""".stripMargin
+    java.nio.file.Files.writeString(file, source)
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+      // the same file, compiled into the index: the "no compiled SemanticDB entry" hint is false
+      val index =
+        backend.overlay(new SemanticIndex(Vector.empty), file.toUri, source, "Holes.scala")
+      val tools = McpTools.all(Analyzer(index, Some(backend)), root)
+      val line = 3; val character = source.linesIterator.toList(3).indexOf("???")
+      val resp = Mcp.handle(
+        req(
+          "tools/call",
+          ujson.Obj(
+            "name" -> "hole_context",
+            "arguments" -> ujson
+              .Obj("uri" -> "Holes.scala", "line" -> line, "character" -> character)
+          )
+        ),
+        tools
+      )
+      val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
+      val json = ujson.read(text)
+      assert(!json.obj.keySet.contains("pcFallback"), text)
+      assertEquals(json("expected")("type").str, "String")
+    }
+  }
+
+  test("hole_context: a position in a comment is found=false with a why") {
+    val root = java.nio.file.Files.createTempDirectory("mcp-hole-comment").nn
+    val file = root.resolve("Holes.scala").nn
+    val source =
+      """package demo
+        |object Holes:
+        |  // just a comment, no hole here
+        |  val label: String = "x"
+        |""".stripMargin
+    java.nio.file.Files.writeString(file, source)
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+      val tools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
+      val line = 2; val character = source.linesIterator.toList(2).indexOf("comment")
+      val resp = Mcp.handle(
+        req(
+          "tools/call",
+          ujson.Obj(
+            "name" -> "hole_context",
+            "arguments" -> ujson
+              .Obj(
+                "uri" -> "Holes.scala",
+                "line" -> line,
+                "character" -> character,
+                "source" -> source
+              )
+          )
+        ),
+        tools
+      )
+      val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
+      val json = ujson.read(text)
+      assertEquals(json("found").bool, false, text)
+      assert(json("why").str.nonEmpty, text)
+    }
+  }
+
+  test("hole_context: a position past the end of the file is found=false, not an exception") {
+    val root = java.nio.file.Files.createTempDirectory("mcp-hole-oob").nn
+    val file = root.resolve("Holes.scala").nn
+    val source =
+      """package demo
+        |object Holes:
+        |  val label: String = "x"
+        |""".stripMargin
+    java.nio.file.Files.writeString(file, source)
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+      val tools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
+      val resp = Mcp.handle(
+        req(
+          "tools/call",
+          ujson.Obj(
+            "name" -> "hole_context",
+            "arguments" -> ujson
+              .Obj(
+                "uri" -> "Holes.scala",
+                "line" -> 9999,
+                "character" -> 0,
+                "source" -> source
+              )
+          )
+        ),
+        tools
+      )
+      val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
+      val json = ujson.read(text)
+      assertEquals(json("found").bool, false, text)
+      assert(json("why").str.nonEmpty, text)
+    }
+  }
+
+  test("hole_context: without a classpath the tool returns the no-classpath error") {
+    val root = java.nio.file.Files.createTempDirectory("mcp-hole-nocp").nn
+    val tools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty)), root)
+    val resp = Mcp.handle(
+      req(
+        "tools/call",
+        ujson.Obj(
+          "name" -> "hole_context",
+          "arguments" -> ujson
+            .Obj("uri" -> "X.scala", "line" -> 0, "character" -> 0, "source" -> "object X")
+        )
+      ),
+      tools
+    )
+    val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
+    assert(text.toLowerCase.contains("classpath"), text)
+  }
+
+  test(
+    "resolve_references: an unresolved name in range is reported, a resolved one carries origin"
+  ) {
+    val root = java.nio.file.Files.createTempDirectory("mcp-refs").nn
+    val file = root.resolve("Refs.scala").nn
+    val source =
+      """package demo
+        |object Refs:
+        |  val label: String = "x"
+        |  def bad: String = label.trimm
+        |""".stripMargin
+    java.nio.file.Files.writeString(file, source)
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+      val tools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
+      val resp = Mcp.handle(
+        req(
+          "tools/call",
+          ujson.Obj(
+            "name" -> "resolve_references",
+            "arguments" -> ujson.Obj(
+              "files" -> ujson.Arr(
+                ujson.Obj(
+                  "uri" -> "Refs.scala",
+                  "ranges" -> ujson.Arr(ujson.Arr(ujson.Num(3), ujson.Num(4))),
+                  "source" -> source
+                )
+              )
+            )
+          )
+        ),
+        tools
+      )
+      val json = ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
+      val refs = json("files")(0)("references").arr.toList
+      assert(refs.exists(r => r("name").str == "trimm" && !r("resolved").bool), refs.toString)
+      assert(refs.exists(r => r("name").str == "label" && r("resolved").bool), refs.toString)
+      assert(
+        !refs.exists(r => r("name").str == "String" && r("line").num == 2),
+        "out-of-range row leaked"
+      )
+    }
+  }
+
+  test("resolve_references: the envelope carries `role` and a classpath `origin`") {
+    // `role` and `origin` are the two fields the harness's policy matcher reads, and `classpath`
+    // is the origin value no other test pins: `ujson` is on the PC classpath and in neither the
+    // scala/java namespaces nor this (empty) index.
+    val root = java.nio.file.Files.createTempDirectory("mcp-refs-origin").nn
+    val file = root.resolve("Origin.scala").nn
+    val source =
+      """package demo
+        |object Origin:
+        |  val v: ujson.Value = ujson.Null
+        |""".stripMargin
+    java.nio.file.Files.writeString(file, source)
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+      val tools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
+      val resp = Mcp.handle(
+        req(
+          "tools/call",
+          ujson.Obj(
+            "name" -> "resolve_references",
+            "arguments" -> ujson.Obj(
+              "files" -> ujson.Arr(
+                ujson.Obj(
+                  "uri" -> "Origin.scala",
+                  "ranges" -> ujson.Arr(ujson.Arr(ujson.Num(2), ujson.Num(3))),
+                  "source" -> source
+                )
+              )
+            )
+          )
+        ),
+        tools
+      )
+      val json = ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
+      val refs = json("files")(0)("references").arr.toList
+      val value = refs.find(_("name").str == "Value").getOrElse(fail(refs.toString))
+      assertEquals(value("origin").str, "classpath", refs.toString)
+      assertEquals(value("role").str, "use", refs.toString)
+      val v = refs.find(r => r("name").str == "v").getOrElse(fail(refs.toString))
+      assertEquals(v("role").str, "definition", refs.toString)
+      assert(refs.forall(r => !r("resolved").bool || r("symbol").str.nonEmpty), refs.toString)
+    }
+  }
+
+  test("resolve_references: several files in one call") {
+    val root = java.nio.file.Files.createTempDirectory("mcp-refs-batch").nn
+    val file1 = root.resolve("Refs1.scala").nn
+    val file2 = root.resolve("Refs2.scala").nn
+    val source1 =
+      """package demo
+        |object Refs1:
+        |  val label: String = "x"
+        |  def bad: String = label.trimm
+        |""".stripMargin
+    val source2 =
+      """package demo
+        |object Refs2:
+        |  val other: String = "y"
+        |  def ok: String = other.trim
+        |""".stripMargin
+    java.nio.file.Files.writeString(file1, source1)
+    java.nio.file.Files.writeString(file2, source2)
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+      val tools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
+      val resp = Mcp.handle(
+        req(
+          "tools/call",
+          ujson.Obj(
+            "name" -> "resolve_references",
+            "arguments" -> ujson.Obj(
+              "files" -> ujson.Arr(
+                ujson.Obj(
+                  "uri" -> "Refs1.scala",
+                  "ranges" -> ujson.Arr(ujson.Arr(ujson.Num(3), ujson.Num(4))),
+                  "source" -> source1
+                ),
+                ujson.Obj(
+                  "uri" -> "Refs2.scala",
+                  "ranges" -> ujson.Arr(ujson.Arr(ujson.Num(3), ujson.Num(4))),
+                  "source" -> source2
+                )
+              )
+            )
+          )
+        ),
+        tools
+      )
+      val json = ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
+      val files = json("files").arr.toList
+      assertEquals(files.size, 2)
+      val byUri = files.map(f => f("uri").str -> f).toMap
+      val refs1 = byUri("Refs1.scala")("references").arr.toList
+      val refs2 = byUri("Refs2.scala")("references").arr.toList
+      assert(refs1.exists(r => r("name").str == "trimm" && !r("resolved").bool), refs1.toString)
+      assert(refs2.exists(r => r("name").str == "trim" && r("resolved").bool), refs2.toString)
+    }
+  }
+
+  test("resolve_references: without `source` the disk file is read and pcFallback is set") {
+    val root = java.nio.file.Files.createTempDirectory("mcp-refs-disk").nn
+    val file = root.resolve("Refs.scala").nn
+    val source =
+      """package demo
+        |object Refs:
+        |  val label: String = "x"
+        |  def bad: String = label.trimm
+        |""".stripMargin
+    java.nio.file.Files.writeString(file, source)
+    PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
+      val tools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
+      val resp = Mcp.handle(
+        req(
+          "tools/call",
+          ujson.Obj(
+            "name" -> "resolve_references",
+            "arguments" -> ujson.Obj(
+              "files" -> ujson.Arr(
+                ujson.Obj(
+                  "uri" -> "Refs.scala",
+                  "ranges" -> ujson.Arr(ujson.Arr(ujson.Num(3), ujson.Num(4)))
+                )
+              )
+            )
+          )
+        ),
+        tools
+      )
+      val json = ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
+      assert(json("files")(0)("pcFallback").bool, json.toString)
+    }
+  }
+
+  test("resolve_references: without a classpath the tool returns the no-classpath error") {
+    val root = java.nio.file.Files.createTempDirectory("mcp-refs-nocp").nn
+    val tools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty)), root)
+    val resp = Mcp.handle(
+      req(
+        "tools/call",
+        ujson.Obj(
+          "name" -> "resolve_references",
+          "arguments" -> ujson.Obj(
+            "files" -> ujson.Arr(
+              ujson.Obj("uri" -> "X.scala", "ranges" -> ujson.Arr())
+            )
+          )
+        )
+      ),
+      tools
+    )
+    val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
+    assert(text.toLowerCase.contains("classpath"), text)
+  }

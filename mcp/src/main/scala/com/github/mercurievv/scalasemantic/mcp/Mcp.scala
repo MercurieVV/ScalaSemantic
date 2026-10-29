@@ -535,6 +535,31 @@ object Mcp:
         throw t // scalafix:ok DisableSyntax.throw
     finally stateCache.values().asScala.foreach(_.pcBackends.foreach(_.close()))
 
+  /** Run ONE tool and return its result — the entry a shell hook uses, which cannot talk to the
+    * agent session's own server (that server belongs to the agent's process). Builds the same state
+    * `serve` builds (index from `root`, classpath discovery, presentation-compiler backends), runs
+    * the tool, and tears the backends down before returning.
+    */
+  def callOnce(
+      root: String,
+      classpath: Option[String],
+      tool: String,
+      args: ujson.Value
+  ): Either[String, ujson.Value] =
+    val rootPath = Paths.get(root).toAbsolutePath.nn
+    val builtState = buildState(rootPath, classpath, _ => ())
+    try
+      builtState.tools.find(_.name == tool) match
+        case Some(t) =>
+          // The stdio server wraps dispatch in a `Try`; this entry must too. A tool's argument
+          // parsing (`resolve_references` reads `r.arr` and `_.num`) throws on a malformed shape,
+          // and a shell hook must get a message on stderr and exit 1, not a stack trace out of
+          // `main`.
+          scala.util.Try(t.run(args)).toEither.left.map(e => s"$tool failed: $e")
+        case None =>
+          Left(s"unknown tool: $tool (have: ${builtState.tools.map(_.name).mkString(",")})")
+    finally builtState.pcBackends.foreach(_.close())
+
   private[mcp] def buildState(
       rootPath: Path,
       classpath: Option[String],

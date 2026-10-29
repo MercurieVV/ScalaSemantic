@@ -58,7 +58,18 @@ final class PresentationCompilerBackend(
   def overlay(index: SemanticIndex, fileUri: URI, code: String): SemanticIndex =
     overlay(index, fileUri, code, fileUri.toString)
 
-  def close(): Unit = pc.shutdown()
+  /** The typed-hole query on this module's classpath (spec 2026-09-21 §2); created on first use.
+    * `holesOpened` records that the lazy val was forced, so [[close]] never spins up a driver just
+    * to close it.
+    */
+  private val holesOpened = new java.util.concurrent.atomic.AtomicBoolean(false)
+  lazy val holes: HoleContext =
+    holesOpened.set(true)
+    new HoleContext(classpath, options)
+
+  def close(): Unit =
+    if holesOpened.get then scala.util.Try(holes.close())
+    pc.shutdown()
 
   /** The PC may serialize either a single `TextDocument` or a `TextDocuments` envelope depending on
     * version; accept both. `TextDocuments` is tried first (its field 1 is `repeated TextDocument`,
@@ -109,7 +120,7 @@ object PresentationCompilerBackend:
     *     which puts only its test-agent on `java.class.path` and loads the real classpath into a
     *     child loader.
     */
-  private def runtimeClasspath: Seq[Path] =
+  private[pc] def runtimeClasspath: Seq[Path] =
     val fromProp = System
       .getProperty("java.class.path", "")
       .split(java.io.File.pathSeparator)

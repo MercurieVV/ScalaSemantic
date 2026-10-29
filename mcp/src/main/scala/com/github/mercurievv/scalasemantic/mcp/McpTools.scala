@@ -1,11 +1,15 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.analysis.ContractClauses
 import com.github.mercurievv.scalasemantic.analysis.InlineEnrich
+import com.github.mercurievv.scalasemantic.analysis.LiteralTokens
 import com.github.mercurievv.scalasemantic.analysis.RangeSelector
 import com.github.mercurievv.scalasemantic.analysis.SourceDiff
 import com.github.mercurievv.scalasemantic.analysis.SourceSentinel
 import com.github.mercurievv.scalasemantic.model.*
+import com.github.mercurievv.scalasemantic.model.ContractResult
+import com.github.mercurievv.scalasemantic.model.FileContracts
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 import upickle.default.ReadWriter
@@ -773,6 +777,15 @@ private[mcp] object McpToolsSupport:
     try Some(java.nio.file.Files.readString(file))
     catch case _: java.io.IOException => None
 
+  /** The character offset into `text` of 0-based (`line`, `character`) — the sum of the lengths
+    * (plus one for the `\n`) of the lines before `line`, plus `character`.
+    */
+  private[mcp] def offsetOf(text: String, line: Int, character: Int): Int =
+    val lines = text.split("\n", -1).nn
+    // A column past the line's end would otherwise silently point into the NEXT line.
+    val clamped = lines.lift(line).map(l => character.min(l.nn.length)).getOrElse(character)
+    lines.take(line).map(_.nn.length + 1).sum + clamped
+
   /** A PC-only analyzer over the ON-DISK text of `uri` (the file must exist), `None` without a PC
     * backend — the automatic fallback for a file that exists but has no compiled index entry. The
     * caller decides when to consult it (only for uris [[Analyzer.isDocumentIndexed]] says are not
@@ -1005,6 +1018,17 @@ private[mcp] object McpToolsSupport:
 
   private[mcp] def argUri(a: ujson.Value, k: String): DocumentUri =
     argRefinedString(a, k)(DocumentUri.from)
+
+  /** A `files` entry's `ranges`: `[[startLine, endLineExclusive], …]`, 0-based. Absent, empty, or
+    * made only of malformed pairs, it is empty — which every caller reads as "the whole file".
+    */
+  private[mcp] def argRanges(entry: ujson.Value): Seq[(Int, Int)] =
+    entry.obj.get("ranges").toSeq.flatMap(_.arr).flatMap { r =>
+      val pair = r.arr.toVector.map(_.num.toInt)
+      (pair.lift(0), pair.lift(1)) match
+        case (Some(from), Some(until)) => Some((from, until))
+        case _                         => None
+    }
 
   private[mcp] def argIdentifier(a: ujson.Value, k: String): ScalaIdentifier =
     argRefinedString(a, k)(ScalaIdentifier.from)
@@ -1517,6 +1541,256 @@ private[mcp] object McpToolsGroupB:
               )
               if pcFallback then ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
               else base
+        }
+      ),
+      toolDef(
+        tool(
+          "resolve_references",
+          "Every name the given LINE RANGES of the given files refer to, and whether it resolves — " +
+            "the deterministic check for hallucinated symbols. Each row carries the name as written, " +
+            "its `kind` (type/term/method/package) and `role` (use/definition), and either " +
+            "`resolved: true` with the SemanticDB `symbol` and its `origin` (`project` when this " +
+            "index defines it, `stdlib` for scala/java, `classpath` otherwise) or `resolved: false` " +
+            "with deterministic near-miss `suggestions`. A suggestion is drawn only from symbols the " +
+            "project index or the buffer's own occurrences already know, so a typo of an otherwise " +
+            "unused stdlib name may come back with no suggestion; suggestions are also not " +
+            "restricted to the unresolved name's own owner, so unrelated owners' near-misses can " +
+            "appear beside the right one. `ranges` are [startLine, " +
+            "endLineExclusive], 0-based, as `git diff -U0` yields; an empty list means the whole " +
+            "file, and a reference outside every range never appears. Pass `source` with the file's " +
+            "CURRENT text (uncompiled is fine); without it the on-disk file is read and the result is " +
+            "marked `pcFallback`. Needs the server started with a classpath. Policy — which symbols a " +
+            "module MAY use — is the caller's, never this tool's. " +
+            "BLIND SPOT: a few names carry no compiler occurrence and are therefore not checked at " +
+            "all (they are absent from `references` rather than reported unresolved) — an " +
+            "annotation on a type ascription (`(x: @unchecked)`), and, in the one shape " +
+            "`val w: T = (x: @unchecked) match { ... }` — an annotated ascription as the scrutinee " +
+            "of a match that is the whole right-hand side of a val/var — that statement's declared " +
+            "type and the binders its right-hand side introduces. Any other placement of the " +
+            "ascription is checked normally. A missing name spelled like one of those is not reported; " +
+            "the surrounding signature and the rest of the right-hand side still are. " +
+            "OUTPUT: `files` holds one entry per requested file, in one of three shapes — " +
+            "(a) {uri, references, omitted, error: null} (the normal answer; `pcFallback: true` is " +
+            "added when the text came from disk and the file is not indexed), " +
+            "(b) {uri, error: \"no presentation compiler\"} with NO `references`/`omitted` key, " +
+            "(c) {uri, references: [], omitted: 0, error: \"no source: …\"}. Rows carry `symbol`, " +
+            "`origin` and the file-level `error` as explicit JSON `null` when absent, so parse " +
+            "defensively. At most 200 rows per file: UNRESOLVED rows are never dropped, resolved " +
+            "ones fill what is left in source order, and `omitted` counts only the resolved rows " +
+            "that did not fit.",
+          List(
+            (
+              "files",
+              "array",
+              "objects: {uri: string, ranges: [[startLine, endLineExclusive], …], source?: string}"
+            )
+          ),
+          List("files")
+        ) { a =>
+          val entries = a.obj.get("files").toList.flatMap(_.arr)
+          if entries.isEmpty then
+            error("resolve_references: `files` must hold at least one {uri, ranges} object")
+          else
+            val results = entries.map { entry =>
+              val uri = argUri(entry, "uri")
+              val file = root.resolve(uri.value)
+              val ranges = argRanges(entry)
+              val (code, fromDisk) = entry.obj.get("source").map(_.str) match
+                case Some(src) => (Some(src), false)
+                case None      => (readFileText(file), true)
+              code match
+                case None =>
+                  // Distinguish "no PC backend at all" from "this one file has no source": a
+                  // missing backend is the whole call's problem (surfaced as the no-classpath
+                  // error below), not a per-file detail, so probe it even without real text.
+                  az.resolveReferences(file.toUri, "", uri.value, ranges) match
+                    case None =>
+                      (
+                        ujson.Obj(
+                          "uri" -> ujson.Str(uri.value),
+                          "error" -> ujson.Str("no presentation compiler")
+                        ),
+                        true
+                      )
+                    case Some(_) =>
+                      (
+                        ujson.Obj(
+                          "uri" -> ujson.Str(uri.value),
+                          "references" -> ujson.Arr(),
+                          "omitted" -> ujson.Num(0),
+                          "error" -> ujson.Str(
+                            s"no source: pass `source` or make ${uri.value} exist on disk"
+                          )
+                        ),
+                        false
+                      )
+                case Some(text) =>
+                  az.resolveReferences(file.toUri, text, uri.value, ranges) match
+                    case None =>
+                      (
+                        ujson.Obj(
+                          "uri" -> ujson.Str(uri.value),
+                          "error" -> ujson.Str("no presentation compiler")
+                        ),
+                        true
+                      )
+                    case Some(res) =>
+                      val base = upickle.default.writeJs(res)
+                      val json =
+                        if fromDisk && !az.isDocumentIndexed(uri) then
+                          ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
+                        else base
+                      (json, false)
+            }
+            if results.forall(_._2) then
+              error(
+                "resolve_references needs the presentation compiler: start the server with a " +
+                  "classpath (see README → classpath)"
+              )
+            else ujson.Obj("files" -> ujson.Arr(results.map(_._1)*))
+        }
+      ),
+      toolDef(
+        tool(
+          "literal_tokens",
+          "Every LITERAL in the given line ranges of the given files — the syntax fact behind a " +
+            "memorisation check that compares production literals with test literals. Syntax only: " +
+            "no presentation compiler and no classpath, so it answers wherever the file parses. " +
+            "Each row carries `line`/`character` (0-based), `kind` (int/long/double/float/string/" +
+            "char — booleans, null and () are never reported), `value` normalised so the same " +
+            "literal written two ways compares equal (0x10 and 16 are both \"16\", 1_000 is " +
+            "\"1000\", string escapes resolved; an interpolation contributes its literal parts), " +
+            "and `enclosing` {kind, name, line}: the nearest enclosing def/val/var/object/class/" +
+            "trait/enum/given, or null when none encloses it. `ranges` are [startLine, " +
+            "endLineExclusive], 0-based; absent or empty means the whole file. Pass `source` for " +
+            "the buffer's text, else the on-disk file is read. No policy: every literal is " +
+            "returned, including 0 and 1. OUTPUT: `files` holds {uri, literals, omitted, error} " +
+            "per requested file; `error` is null on success, and names the problem (no source, " +
+            "does not parse) with `literals` empty otherwise. At most 2000 literals per file, " +
+            "`omitted` counting the rest.",
+          List(
+            (
+              "files",
+              "array",
+              "objects: {uri: string, ranges?: [[startLine, endLineExclusive], …], source?: string}"
+            )
+          ),
+          List("files")
+        ) { a =>
+          val entries = a.obj.get("files").toList.flatMap(_.arr)
+          if entries.isEmpty then
+            error("literal_tokens: `files` must hold at least one {uri} object")
+          else
+            val answers = entries.map { entry =>
+              val uri = argUri(entry, "uri")
+              val ranges = argRanges(entry)
+              val text =
+                entry.obj.get("source").map(_.str).orElse(readFileText(root.resolve(uri.value)))
+              text match
+                case None =>
+                  FileLiterals(
+                    uri.value,
+                    Nil,
+                    0,
+                    Some(s"no source: pass `source` or make ${uri.value} exist on disk")
+                  )
+                case Some(t) => LiteralTokens.forFile(uri.value, t, ranges)
+            }
+            upickle.default.writeJs(LiteralResult(answers))
+        }
+      ),
+      toolDef(
+        tool(
+          "contract_clauses",
+          "Every def's Stainless CONTRACT — its `require`, `ensuring` and `decreases` clauses — the " +
+            "syntax fact behind a guard that keeps a human-owned contract from being edited by the " +
+            "agent writing the body. Syntax only: no presentation compiler and no classpath. Clauses " +
+            "are found where Stainless puts them: `require`/`decreases` count only as the first " +
+            "statements of the body; `ensuring` counts as the outermost call on the body or on its " +
+            "last expression (infix, `.ensuring(…)` or `.ensuring[T](…)`). " +
+            "Each def carries `key` (owner path + name, e.g. `PureKernels.toPcm16`; defs sharing a key " +
+            "get kind-marked owners — `class:K`, `trait:T`, `enum:E`, and `pkg:a` segments when the " +
+            "file has several package blocks — then, if still shared, their typed parameter list, " +
+            "e.g. `K.f(a: Int, b: String)` (an extension's receiver first), then `#1`, `#2`, … in " +
+            "source order), `line` (0-based, the first annotation's line for an annotated def), " +
+            "`requires` (list), " +
+            "`ensuring` and `decreases` (clause or null). A clause is {text, shape}: `shape` hashes " +
+            "the clause's syntax tree, so reformatting keeps it and any edit to the clause changes " +
+            "it. Only defs with at least one clause are listed. Pass `source` for the buffer's text, " +
+            "else the on-disk file is read. OUTPUT: `files` holds {uri, defs, error} per requested " +
+            "file; `error` is null on success, and names the problem (no source, does not parse) " +
+            "with `defs` empty otherwise.",
+          List(("files", "array", "objects: {uri: string, source?: string}")),
+          List("files")
+        ) { a =>
+          val entries = a.obj.get("files").toList.flatMap(_.arr)
+          if entries.isEmpty then
+            error("contract_clauses: `files` must hold at least one {uri} object")
+          else
+            val answers = entries.map { entry =>
+              val uri = argUri(entry, "uri")
+              val text =
+                entry.obj.get("source").map(_.str).orElse(readFileText(root.resolve(uri.value)))
+              text match
+                case None =>
+                  FileContracts(
+                    uri.value,
+                    Nil,
+                    Some(s"no source: pass `source` or make ${uri.value} exist on disk")
+                  )
+                case Some(t) => ContractClauses.forFile(uri.value, t)
+            }
+            upickle.default.writeJs(ContractResult(answers))
+        }
+      ),
+      toolDef(
+        tool(
+          "hole_context",
+          "Typed-hole context: the type the compiler expects at a 0-based (line, character) — a `???` " +
+            "or any expression — with `confidence` (`exact` when the enclosing code prescribes it, " +
+            "`unconstrained` when nothing does, then no candidates are guessed), and what in reach " +
+            "satisfies it: `bindings` (in-scope values that conform), `producers` (methods/companion " +
+            "members whose result fits — `match` exact or shape), `givens` (instances the compiler would " +
+            "pick) — every name is one you can write as-is at that position (qualified, e.g. " +
+            "`cats.effect.IO.unit`, when the owner is not imported), plus " +
+            "`types` (the expected type's definitions; project types carry an excerpt). Pass " +
+            "`source` with the file's CURRENT text (uncompiled is fine); without it the on-disk file is " +
+            "read (marked `pcFallback`). Needs the server started with a classpath. Use it one hole at a " +
+            "time — see the typed-holes skill.",
+          List(
+            (
+              "uri",
+              "string",
+              "document uri as it appears in SemanticDB (path relative to project root)"
+            ),
+            ("line", "integer", "0-based line"),
+            ("character", "integer", "0-based column"),
+            ("source", "string", "current full text of the file at `uri`")
+          ),
+          List("uri", "line", "character")
+        ) { a =>
+          val uri = argUri(a, "uri")
+          val file = root.resolve(uri.value)
+          // As for `type_at_position`: the pcFallback hint says the file has no compiled entry,
+          // so it is only true for a disk read of a uri the index does not know.
+          val (code, fromDisk) = a.obj.get("source").map(_.str) match
+            case Some(src) => (Some(src), false)
+            case None      => (readFileText(file), !az.isDocumentIndexed(uri))
+          code match
+            case None => notFound(s"no source: pass `source` or make ${uri.value} exist on disk")
+            case Some(text) =>
+              val pos = argPosition(a, "line", "character")
+              val offset = offsetOf(text, pos.lineValue, pos.characterValue)
+              az.holeContext(root, file.toUri, text, uri.value, offset) match
+                case None =>
+                  error(
+                    "hole_context needs the presentation compiler: start the server with a " +
+                      "classpath (see README → classpath)"
+                  )
+                case Some(r) =>
+                  val base = upickle.default.writeJs(r)
+                  if fromDisk then ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
+                  else base
         }
       ),
       toolDef(
