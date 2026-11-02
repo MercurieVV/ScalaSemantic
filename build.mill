@@ -35,7 +35,7 @@ object V {
   val presentationCompiler = "3.8.4"
   val catsEffectTest = "3.6.3" // pc.test only: HoleContextSuite's buffer references cats.effect.IO
   val wartremover = "3.6.0" // must match the compiler-plugin artifact
-  val compatScala = Seq("2.13.16", "3.3.4")
+  val compatScala = Seq("2.13.16", "3.3.9")
 }
 
 def munitDeps = Seq(
