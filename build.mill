@@ -324,6 +324,13 @@ object mcp extends Common with SonatypeCentralPublishModule with BuildInfo {
   // whole-project index for it — mirrors why analysis.test is a dep for the `fixtures` package.
   object test extends CommonTests {
     def moduleDeps = super.moduleDeps ++ Seq(analysis.test, docExamples)
+    // `Mcp` is a singleton holding global mutable state (`Mcp.state`, `stateFactory`, `stateCache`),
+    // and `Mcp.activeTools` prefers that state over the tools a test passes to `Mcp.handle`.
+    // McpFreshnessSuite activates/replaces it for the duration of a test, so any suite running
+    // concurrently in the same JVM (McpSuite, McpPcSuite, ...) can see the wrong tools and fail
+    // nondeterministically (seen in CI: "key not found: signature"). Run this module's test
+    // classes one at a time; suites restore the state in `finally`, so serial order is safe.
+    def testParallelism = false
   }
 
   // assembly / fat jar (sbt-assembly). Port of the merge strategy.
