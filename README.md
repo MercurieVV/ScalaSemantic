@@ -12,6 +12,8 @@ Works with Scala 2.13.* and 3.*.*, any sbt/Mill/Gradle project, and any MCP-comp
 
 ## Why
 
+![Text search vs find_usages on this repo: 196 text hits vs 128 compiler-resolved references](website/static/img/demo.gif)
+
 Agents navigate Scala by grepping text. That misses renamed imports, re-exports, inferred types and summoned `given`s, and floods the context with false hits. ScalaSemantic answers from what the compiler already resolved:
 
 ```text
