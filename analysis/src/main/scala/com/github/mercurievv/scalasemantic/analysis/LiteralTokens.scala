@@ -1,6 +1,9 @@
 package com.github.mercurievv.scalasemantic.analysis
 
-import com.github.mercurievv.scalasemantic.model.{Enclosing, FileLiterals, Literal}
+import com.github.mercurievv.scalasemantic.model.Enclosing
+import com.github.mercurievv.scalasemantic.model.FileLiterals
+import com.github.mercurievv.scalasemantic.model.Literal
+
 import scala.meta.*
 import scala.util.Try
 

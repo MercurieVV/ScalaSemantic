@@ -1,6 +1,7 @@
 package com.github.mercurievv.scalasemantic.analysis
 
-import com.github.mercurievv.scalasemantic.model.{Enclosing, Literal}
+import com.github.mercurievv.scalasemantic.model.Enclosing
+import com.github.mercurievv.scalasemantic.model.Literal
 
 class LiteralTokensSuite extends munit.FunSuite:
 

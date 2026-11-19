@@ -17,12 +17,12 @@ import dotty.tools.pc.IndexedContext
 import dotty.tools.pc.InferCompletionType
 import dotty.tools.pc.printer.ShortenedTypePrinter
 import dotty.tools.pc.printer.ShortenedTypePrinter.IncludeDefaultParam
-import scala.meta.internal.pc.EmptySymbolSearch
-import scala.meta.pc.reports.EmptyReportContext
-import scala.meta.pc.reports.ReportContext
 
 import java.net.URI
 import java.nio.file.Path
+import scala.meta.internal.pc.EmptySymbolSearch
+import scala.meta.pc.reports.EmptyReportContext
+import scala.meta.pc.reports.ReportContext
 
 /** The typed-hole query (spec 2026-09-21-typed-hole-context-design §2): what type does a position
   * demand, and what in scope satisfies it. Runs its own dotty [[InteractiveDriver]] on the same
@@ -196,7 +196,7 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
         // can be instantiated to the expected type; one whose arguments are already fixed
         // (`monotonic: IO[FiniteDuration]`) never can, so it ranks last.
         def instantiable(s: Symbol): Boolean =
-          resultOf(s).argInfos.exists(_.isInstanceOf[TypeParamRef])
+          resultOf(s).argInfos.exists { case _: TypeParamRef => true; case _ => false }
         val ranked = (companions ++ methods)
           .distinctBy(_._1)
           .flatMap((s, from, qualifier) =>
@@ -317,7 +317,9 @@ final class HoleContext(classpath: Seq[Path], options: List[String]) extends Aut
     * prescribes a type there, so the answer is `unconstrained`.
     */
   private def inStatementPosition(path: List[tpd.Tree]): Boolean =
-    path.nonEmpty && path.tail.exists(_.isInstanceOf[tpd.Block]) && prescriber(path).isEmpty
+    path.nonEmpty && path.tail.exists { case _: tpd.Block => true; case _ => false } && prescriber(
+      path
+    ).isEmpty
 
   /** `val x = ???` types `???` against an inferred `Nothing` — the compiler has an answer, but it
     * is the hole's own type, not a demand on it. Treat an inferred `tpt` as unconstrained. Walks
