@@ -1,6 +1,7 @@
 # ScalaSemantic
 
-[![Maven Central](https://img.shields.io/maven-central/v/io.github.mercurievv/scalasemantic-core_3?label=Maven%20Central)](https://central.sonatype.com/namespace/io.github.mercurievv)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.mercurievv/scalasemantic-core_3?label=Maven%20Central)](https://central.sonatype.com/artifact/io.github.mercurievv/scalasemantic-core_3)
+[![Release](https://img.shields.io/github/v/release/MercurieVV/ScalaSemantic)](https://github.com/MercurieVV/ScalaSemantic/releases/latest)
 [![CI](https://github.com/mercurievv/ScalaSemantic/actions/workflows/ci.yml/badge.svg)](https://github.com/mercurievv/ScalaSemantic/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-site-blue)](https://mercurievv.github.io/ScalaSemantic/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -8,6 +9,17 @@
 **ScalaSemantic** is an MCP server that gives AI coding agents compiler-resolved Scala facts — exact symbols, types, inheritance, usages, implicits, and call paths — from compiler-emitted **SemanticDB**. Instead of grepping source text, agents query what the compiler already knows.
 
 Works with Scala 2.13.* and 3.*.*, any sbt/Mill/Gradle project, and any MCP-compatible agent (Claude Code, Codex, Gemini CLI, Cline, Roo Code, Continue…).
+
+## Why
+
+Agents navigate Scala by grepping text. That misses renamed imports, re-exports, inferred types and summoned `given`s, and floods the context with false hits. ScalaSemantic answers from what the compiler already resolved:
+
+```text
+agent → find_usages("com.acme.Repo#save().")
+      ← 4 exact call sites (uri:line:col), no comments, no same-named look-alikes
+```
+
+One compact, exact answer instead of dozens of text matches to read and filter — measured ~90% fewer tokens for symbol questions (see [benchmarks](https://mercurievv.github.io/ScalaSemantic/explanation/scala-semantic-vs-grep/)).
 
 ## Quick setup
 
@@ -31,7 +43,18 @@ Launcher, plain jar and logging: [Integration](https://mercurievv.github.io/Scal
 
 ## Tools
 
-`find_symbol` · `find_usages` · `class_hierarchy` · `method_signature` · `members` · `resolve_implicits` · `call_path` · `type_at_position` · `hole_context` · `resolve_references` · `literal_tokens` · `contract_clauses` · `trace_implicit_chain` · `find_overloads` — what each does, plus the symbol grammar: [Tool reference](https://mercurievv.github.io/ScalaSemantic/reference/tools/).
+| Group | Tools |
+|---|---|
+| Find | `find_symbol` · `find_usages` · `find_overloads` · `search_text` |
+| Types & hierarchy | `class_hierarchy` · `members` · `method_signature` · `type_at_position` |
+| Implicits | `resolve_implicits` · `trace_implicit_chain` · `hole_context` |
+| Flow | `call_path` · `value_flow` · `resolve_references` |
+| Read | `annotated_source` · `document_outline` · `structure` |
+| Refactor plans | `rename_plan` · `batch_rename_plan` · `move_plan` · `extract_method_plan` |
+| Analysis | `smart_code_duplications` · `literal_tokens` · `contract_clauses` |
+| Session | `set_workspace_root` · `get_workspace_root` · `refresh_workspace` |
+
+What each does, plus the symbol grammar: [Tool reference](https://mercurievv.github.io/ScalaSemantic/reference/tools/).
 
 For a shell hook or script that can't hold an MCP session open, `scalasemantic-mcp call <tool> '<json-args>' [root] [classpath]` runs one tool and prints its JSON result.
 
@@ -46,7 +69,7 @@ For a shell hook or script that can't hold an MCP session open, `scalasemantic-m
 | Comments, TODOs, config files | `grep` |
 | Code that hasn't compiled yet | `grep` |
 
-Measured: semantic tools use ~90% fewer tokens than grep for symbol questions. Details: [ScalaSemantic vs grep](https://mercurievv.github.io/ScalaSemantic/explanation/scala-semantic-vs-grep/).
+Details: [ScalaSemantic vs grep](https://mercurievv.github.io/ScalaSemantic/explanation/scala-semantic-vs-grep/). Background reading: [It Hurts to Watch an AI Grep My Scala](docs/articles/it-hurts-to-watch-ai-grep-my-scala.md), [Measuring AI agent token costs and reliability](docs/articles/measuring-ai-agent-token-costs-and-reliability.md).
 
 ## Documentation
 
