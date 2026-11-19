@@ -50,8 +50,8 @@ Launcher, plain jar and logging: [Integration](https://mercurievv.github.io/Scal
 | Find | `find_symbol` · `find_usages` · `find_overloads` · `search_text` |
 | Types & hierarchy | `class_hierarchy` · `members` · `method_signature` · `type_at_position` |
 | Implicits | `resolve_implicits` · `trace_implicit_chain` · `hole_context` |
-| Flow | `call_path` · `value_flow` · `resolve_references` |
-| Read | `annotated_source` · `document_outline` · `structure` |
+| Flow | `call_path` · `method_call_hierarchy` · `value_flow` · `resolve_references` |
+| Read | `annotated_source` · `document_outline` · `symbol_source` · `source_around_position` · `source_ranges` · `structure` |
 | Refactor plans | `rename_plan` · `batch_rename_plan` · `move_plan` · `extract_method_plan` |
 | Analysis | `smart_code_duplications` · `literal_tokens` · `contract_clauses` |
 | Session | `set_workspace_root` · `get_workspace_root` · `refresh_workspace` |
