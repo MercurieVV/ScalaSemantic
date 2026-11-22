@@ -280,6 +280,21 @@ only code that parses results (programmatic tool calling, code-mode) needs them.
 Set `SCALASEMANTIC_STRUCTURED=1` (or `-Dscalasemantic.structured=true`) to also advertise `outputSchema` in
 `tools/list` and return `structuredContent` next to the text block. Off by default: it duplicates every result.
 
+## Large answers: `fields`, `countOnly`, `limit`
+
+Every tool accepts three extra arguments that shape its result. They are described once in the server
+instructions, not in each tool's `inputSchema` (31 copies would cost tokens in every session).
+
+| Argument | Effect |
+|---|---|
+| `fields: ["name", "items.symbol"]` | keep only those top-level keys; `list.key` projects the items of a list. `found`, `candidates`, `note` and the hint fields always stay, so a miss still reads as a miss |
+| `countOnly: true` | every top-level list is replaced by its size, under `counts` |
+| `limit: 20` | every top-level list is cut to 20 items; the original sizes of the lists that were cut are under `truncated` |
+
+Order is `fields`, then `countOnly`, else `limit`. A tool that has its own `limit` (`find_symbol`,
+`find_usages`, `structure`, `search_text`) keeps it — they page with `nextOffset`, which a second cut would
+corrupt. A shaped result carries no `structuredContent`, since a projection no longer matches the schema.
+
 ## Manual stdio check
 
 ```sh
