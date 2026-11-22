@@ -1128,7 +1128,7 @@ private[mcp] object McpToolsGroupA:
   def tools(az: Analyzer, root: java.nio.file.Path): List[Tool] =
     List(
       toolDef(
-        tool(
+        TypedTool[FindSymbolResult](
           "find_symbol",
           "Resolve a plain or partial name (e.g. 'Animal', 'show') to the SemanticDB symbol strings the " +
             "other tools require — start here whenever you have a name rather than a symbol. Ranked " +
@@ -1161,22 +1161,20 @@ private[mcp] object McpToolsGroupA:
             a.obj.get("kind").map(_.str),
             a.obj.get("pathFilter").map(_.str)
           )
-          jobj(
-            Some("query" -> ujson.Str(q)),
-            Some("count" -> ujson.Num(results.size)),
-            Some(
-              "symbols" -> ujson.Arr.from(
-                results.map(r =>
-                  jobj(
-                    (List(
-                      Some("symbol" -> ujson.Str(r.symbol)),
-                      Some("name" -> ujson.Str(r.displayName)),
-                      Some("kind" -> ujson.Str(r.kind.value))
-                    ) ++ metricFields(az, r.symbol, withMetrics))*
-                  )
-                )
+          FindSymbolResult(
+            query = q,
+            count = results.size,
+            symbols = results.map { r =>
+              val m = if withMetrics then az.metricsOf(r.symbol).toList.headOption else None
+              SymbolHit(
+                symbol = r.symbol,
+                name = r.displayName,
+                kind = r.kind.value,
+                layer = m.map(_.combined.layer),
+                centrality = m.map(s => round3(s.combined.centrality)),
+                inCycle = m.flatMap(s => Option.when(s.combined.inCycle)(true))
               )
-            )
+            }
           )
         }
       ),
