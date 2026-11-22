@@ -1331,7 +1331,7 @@ private[mcp] object McpToolsGroupA:
         }
       ),
       toolDef(
-        tool(
+        TypedTool[Lookup[ClassHierarchyResult]](
           "class_hierarchy",
           "Parents, transitive linearization, and known subtypes/implementers of a class or trait — " +
             "including subtypes anywhere in the project, which a single LSP lookup cannot give. Scope " +
@@ -1361,37 +1361,36 @@ private[mcp] object McpToolsGroupA:
           List("symbol")
         ) { a =>
           resolveTypeArg(az, root, a, "symbol") match
-            case Nil           => notFound(argStr(a, "symbol"))
+            case Nil           => Lookup.Missing(argStr(a, "symbol"))
             case symbol :: Nil =>
               val detailed = argBool(a, "detailed", false)
               val want = includeWant(a)
               az.classHierarchy(symbol, a.obj.get("pathFilter").map(_.str)) match
-                case None    => notFound(symbol.value)
+                case None    => Lookup.Missing(symbol.value)
                 case Some(h) =>
-                  jobj(
-                    (List(
-                      Some("symbol" -> ujson.Str(symbol.value)),
-                      Some("name" -> ujson.Str(h.displayName))
-                    ) ++ metricFields(az, symbol.value, argBool(a, "metrics", false)) ++ List(
-                      opt(
-                        want("parents") && h.parents.nonEmpty,
-                        "parents" -> refs(h.parents, detailed)
-                      ),
-                      opt(
-                        want("linearization") && h.linearization.nonEmpty,
-                        "linearization" -> refs(h.linearization, detailed)
-                      ),
-                      opt(
-                        want("knownSubtypes") && h.knownSubtypes.nonEmpty,
-                        "knownSubtypes" -> refs(h.knownSubtypes, detailed)
-                      )
-                    ))*
+                  val m =
+                    if argBool(a, "metrics", false) then
+                      az.metricsOf(symbol.value).toList.headOption
+                    else None
+                  def section(name: String, rs: List[SymbolRef]): Option[List[RefOut]] =
+                    Option.when(want(name) && rs.nonEmpty)(rs.map(RefOut.from(_, detailed)))
+                  Lookup.Found(
+                    ClassHierarchyResult(
+                      symbol = symbol.value,
+                      name = h.displayName,
+                      layer = m.map(_.combined.layer),
+                      centrality = m.map(s => round3(s.combined.centrality)),
+                      inCycle = m.flatMap(s => Option.when(s.combined.inCycle)(true)),
+                      parents = section("parents", h.parents),
+                      linearization = section("linearization", h.linearization),
+                      knownSubtypes = section("knownSubtypes", h.knownSubtypes)
+                    )
                   )
-            case candidates => candidatesJson(candidates.map(_.value))
+            case candidates => Lookup.Ambiguous(candidates.map(_.value))
         }
       ),
       toolDef(
-        tool(
+        TypedTool[Lookup[FindOverloadsResult]](
           "find_overloads",
           "All overloads sharing a name and owner with the given method (they differ only by the `(+N)` " +
             "disambiguator in the symbol), plus same-named methods inherited from parent types " +
@@ -1402,18 +1401,19 @@ private[mcp] object McpToolsGroupA:
           List("symbol")
         ) { a =>
           resolveMethodArg(az, root, a, "symbol") match
-            case Nil           => notFound(argStr(a, "symbol"))
+            case Nil           => Lookup.Missing(argStr(a, "symbol"))
             case symbol :: Nil =>
               val o = az.findOverloads(symbol)
-              jobj(
-                Some("name" -> ujson.Str(o.name)),
-                Some("overloads" -> strs(o.overloads.map(_.rendered))),
-                opt(
-                  o.inheritedOverloads.nonEmpty,
-                  "inheritedOverloads" -> strs(o.inheritedOverloads.map(_.rendered))
+              Lookup.Found(
+                FindOverloadsResult(
+                  name = o.name,
+                  overloads = o.overloads.toList.map(_.rendered),
+                  inheritedOverloads = Option.when(o.inheritedOverloads.nonEmpty)(
+                    o.inheritedOverloads.toList.map(_.rendered)
+                  )
                 )
               )
-            case candidates => candidatesJson(candidates.map(_.value))
+            case candidates => Lookup.Ambiguous(candidates.map(_.value))
         }
       )
     )

@@ -266,6 +266,20 @@ Silent by default. Enable with flags appended to `args` (after the project root)
 
 Log file defaults to `<root>/scala-semantic-mcp.log`. Override with `SCALASEMANTIC_LOG_FILE`. Lines are timestamped and flushed — `tail -f` shows them live.
 
+## Output schemas
+
+Typed tools (`find_symbol`, `find_usages`, `method_signature`, `class_hierarchy`, `find_overloads`) have a
+JSON Schema for their result. It is **not** in `tools/list` — schemas cost tokens in every session, and
+only code that parses results (programmatic tool calling, code-mode) needs them. Fetch on demand:
+
+| Channel | One tool | Every typed tool |
+|---|---|---|
+| MCP resource | `resources/read` `scalasemantic://output-schema/find_usages` | `scalasemantic://output-schema/all` |
+| Tool (clients without resource support) | `output_schema` with `tool: "find_usages"` | `output_schema` with no arguments |
+
+Set `SCALASEMANTIC_STRUCTURED=1` (or `-Dscalasemantic.structured=true`) to also advertise `outputSchema` in
+`tools/list` and return `structuredContent` next to the text block. Off by default: it duplicates every result.
+
 ## Manual stdio check
 
 ```sh
