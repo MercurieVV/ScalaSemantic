@@ -122,7 +122,7 @@ object Mcp:
       getWorkspaceRootTool,
       refreshWorkspaceTool(log.get())
     )
-    base ++ List(OutputSchemaResources.tool(base))
+    base ++ List(OutputSchemaResources.tool(base), BatchTool.tool(base))
 
   /** The full tool surface, but answering with `message` instead of querying an index. Used when
     * the launch directory is not a Scala project: the server stays connectable (ADR-0004, amending
