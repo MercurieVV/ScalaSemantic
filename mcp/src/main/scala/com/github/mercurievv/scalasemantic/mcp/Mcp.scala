@@ -384,7 +384,7 @@ object Mcp:
     * shaped result no longer matches the tool's `outputSchema`, so it never carries
     * `structuredContent`.
     */
-  private def shapedResult(tool: Tool, args: ujson.Value, structured: Boolean): ujson.Value =
+  private[mcp] def shapedResult(tool: Tool, args: ujson.Value, structured: Boolean): ujson.Value =
     val spec = ResultShaping.specOf(tool, args)
     toolResult(tool, ResultShaping.shape(spec, tool.run(args)), structured && spec.isNoop)
 

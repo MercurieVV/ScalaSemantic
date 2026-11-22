@@ -8,6 +8,7 @@ import org.scalacheck.Prop.forAll
 
 import java.nio.file.Path
 import java.nio.file.Paths
+
 import ResultShaping.Spec
 
 /** `fields` / `countOnly` / `limit` on any tool's result: laws on the pure function (properties),
@@ -93,21 +94,12 @@ class ResultShapingSuite extends ScalaCheckSuite:
   private val tools: List[Tool] = Mcp.toolsFor(Analyzer(SemanticIndex.fromProject(".")), root)
   private val Members = "com/github/mercurievv/scalasemantic/mcp/FindUsagesResult#"
 
+  // Straight to the function `tools/call` uses, with this suite's own tool instances: going through
+  // `Mcp.handle` would consult the process-global `Mcp` state (`activeTools`), which other suites
+  // replace, making the answer depend on suite order.
   private def call(name: String, args: (String, ujson.Value)*): ujson.Value =
-    val res = Mcp
-      .handle(
-        ujson.Obj(
-          "jsonrpc" -> "2.0",
-          "id" -> 1,
-          "method" -> "tools/call",
-          "params" -> ujson.Obj("name" -> name, "arguments" -> ujson.Obj.from(args))
-        ),
-        tools,
-        (_, _) => (),
-        true
-      )
-      .getOrElse(fail("no response"))("result")
-    res
+    val tool = tools.find(_.name == name).getOrElse(fail(s"no $name"))
+    Mcp.shapedResult(tool, ujson.Obj.from(args), structured = true)
 
   private def payload(res: ujson.Value): ujson.Value = ujson.read(res("content")(0)("text").str)
 
