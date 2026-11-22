@@ -140,7 +140,8 @@ class FindUsagesMethodSignatureSchemaSuite extends munit.FunSuite:
         .handle(
           ujson.Obj("jsonrpc" -> "2.0", "id" -> 1, "method" -> method, "params" -> params),
           tools,
-          (_, _) => ()
+          (_, _) => (),
+          structured = true
         )
         .getOrElse(fail(s"no response to $method"))("result")
     val listed =
