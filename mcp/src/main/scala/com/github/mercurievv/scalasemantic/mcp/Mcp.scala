@@ -117,11 +117,12 @@ object Mcp:
       root: Path,
       coverage: SemanticIndex.Coverage = SemanticIndex.Coverage.empty
   ): List[Tool] =
-    McpTools.all(az, root, coverage) ++ List(
+    val base = McpTools.all(az, root, coverage) ++ List(
       setWorkspaceRootTool(log.get()),
       getWorkspaceRootTool,
       refreshWorkspaceTool(log.get())
     )
+    base ++ List(OutputSchemaResources.tool(base))
 
   /** The full tool surface, but answering with `message` instead of querying an index. Used when
     * the launch directory is not a Scala project: the server stays connectable (ADR-0004, amending
@@ -249,7 +250,8 @@ object Mcp:
   def handle(
       req: ujson.Value,
       tools: List[Tool],
-      onToolCall: (String, ujson.Value) => Unit = (_, _) => ()
+      onToolCall: (String, ujson.Value) => Unit = (_, _) => (),
+      structured: Boolean = OutputSchemaResources.structuredDefault
   ): Option[ujson.Value] =
     val method = req.obj.get("method").map(_.str).getOrElse("")
     val idOpt = req.obj.get("id")
@@ -270,7 +272,7 @@ object Mcp:
             id,
             obj(
               "protocolVersion" -> ujson.Str(pv),
-              "capabilities" -> obj("tools" -> ujson.Obj()),
+              "capabilities" -> obj("tools" -> ujson.Obj(), "resources" -> ujson.Obj()),
               "serverInfo" -> obj(
                 "name" -> ujson.Str(ServerName),
                 "version" -> ujson.Str(ServerVersion)
@@ -287,7 +289,7 @@ object Mcp:
               "name" -> ujson.Str(t.name),
               "description" -> ujson.Str(t.description),
               "inputSchema" -> t.inputSchema
-            ) ++ t.outputSchema.map("outputSchema" -> _))*
+            ) ++ t.outputSchema.filter(_ => structured).map("outputSchema" -> _))*
           )
         )
         idOpt.map(id => ok(id, obj("tools" -> ujson.Arr.from(list))))
@@ -301,9 +303,17 @@ object Mcp:
             case None       => err(id, -32602, s"Unknown tool: $name")
             case Some(tool) =>
               onToolCall(name, args)
-              runToolGuarded(id, name, tool, args)
+              runToolGuarded(id, name, tool, args, structured)
         }
 
+      case "resources/list"           => idOpt.map(id => ok(id, OutputSchemaResources.list))
+      case "resources/templates/list" => idOpt.map(id => ok(id, OutputSchemaResources.templates))
+      case "resources/read"           =>
+        idOpt.map: id =>
+          val uri = req.obj.get("params").flatMap(_.obj.get("uri")).map(_.str).getOrElse("")
+          OutputSchemaResources
+            .read(uri, currentTools)
+            .fold(msg => err(id, -32002, msg), result => ok(id, result))
       case "ping"                              => idOpt.map(id => ok(id, ujson.Obj()))
       case m if m.startsWith("notifications/") => None
       case _ => idOpt.map(id => err(id, -32601, s"Method not found: $method"))
@@ -367,20 +377,22 @@ object Mcp:
   /** Success payload: the JSON as a text block (all clients), plus `structuredContent` when the
     * tool declares an `outputSchema` and produced an object — MCP requires the two to agree.
     */
-  private def toolResult(tool: Tool, result: ujson.Value): ujson.Value =
+  private def toolResult(tool: Tool, result: ujson.Value, structured: Boolean): ujson.Value =
     val content = ujson.Arr(textBlock(ujson.write(result)))
     (tool.outputSchema, result) match
-      case (Some(_), o: ujson.Obj) => obj("content" -> content, "structuredContent" -> o)
-      case _                       => obj("content" -> content)
+      case (Some(_), o: ujson.Obj) if structured =>
+        obj("content" -> content, "structuredContent" -> o)
+      case _ => obj("content" -> content)
 
   private def runToolGuarded(
       id: ujson.Value,
       name: String,
       tool: Tool,
-      args: ujson.Value
+      args: ujson.Value,
+      structured: Boolean
   ): ujson.Value =
     guarded(s"tool $name", log.get())(
-      ok(id, toolResult(tool, tool.run(args)))
+      ok(id, toolResult(tool, tool.run(args), structured))
     ) match
       case Right(res) => res
       case Left(t)    =>

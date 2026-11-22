@@ -77,7 +77,8 @@ class FindSymbolOutputSchemaSuite extends munit.FunSuite:
       .handle(
         ujson.Obj("jsonrpc" -> "2.0", "id" -> 1, "method" -> method, "params" -> params),
         List(tool),
-        (_, _) => ()
+        (_, _) => (),
+        structured = true
       )
       .getOrElse(fail(s"no response to $method"))("result")
 
