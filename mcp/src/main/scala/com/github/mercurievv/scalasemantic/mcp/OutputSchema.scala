@@ -36,6 +36,10 @@ object OutputSchema:
       WrapperHints.foreach((k, v) => props.value.getOrElseUpdate(k, v))
       o.value("properties") = props
       o
+    case o: ujson.Obj if o.value.contains("oneOf") =>
+      // Documented once beside the alternatives (JSON Schema allows undeclared keys), not per branch.
+      o.value("properties") = ujson.Obj.from(WrapperHints)
+      o
     case other => other
 
   private def unwrap(s: Schema[?]): Schema[?] = s.schemaType match
