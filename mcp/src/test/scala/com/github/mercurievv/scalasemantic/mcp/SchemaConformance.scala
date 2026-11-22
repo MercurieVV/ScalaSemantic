@@ -1,19 +1,38 @@
 package com.github.mercurievv.scalasemantic.mcp
 
-/** Minimal JSON Schema checker for the subset `OutputSchema` emits (object/array/scalars/`oneOf`).
-  * Flags undeclared keys so a drift between the encoder and the declared schema is loud — except
-  * keys a `oneOf` node declares beside its alternatives (the wrapper hints).
+/** Minimal JSON Schema checker for the subset `OutputSchema` emits (object/array/scalars/`oneOf`,
+  * and `$ref` into the root's `$defs` for recursive types). Flags undeclared keys so a drift
+  * between the encoder and the declared schema is loud — except keys a `oneOf` node declares beside
+  * its alternatives (the wrapper hints).
   */
 object SchemaConformance:
 
   def violations(s: ujson.Value, v: ujson.Value, at: String = "$"): List[String] =
-    check(s, v, at, Set.empty)
+    check(s, s, v, at, Set.empty)
 
-  private def check(s: ujson.Value, v: ujson.Value, at: String, extra: Set[String]): List[String] =
+  /** Follows `{"$ref": "#/$defs/Name"}` into the root schema. */
+  private def resolve(root: ujson.Value, s: ujson.Value): ujson.Value =
+    s.obj.get("$ref") match
+      case Some(r) =>
+        val name = r.str.stripPrefix("#/$defs/")
+        root.obj
+          .get("$defs")
+          .flatMap(_.obj.get(name))
+          .getOrElse(ujson.Obj("type" -> "unresolved-ref"))
+      case None => s
+
+  private def check(
+      root: ujson.Value,
+      node: ujson.Value,
+      v: ujson.Value,
+      at: String,
+      extra: Set[String]
+  ): List[String] =
+    val s = resolve(root, node)
     s.obj.get("oneOf") match
       case Some(alts) =>
         val shared = s.obj.get("properties").map(_.obj.keySet.toSet).getOrElse(Set.empty[String])
-        val perAlt = alts.arr.toList.map(alt => check(alt, v, at, shared))
+        val perAlt = alts.arr.toList.map(alt => check(root, alt, v, at, shared))
         if perAlt.exists(_.isEmpty) then Nil else List(s"$at: matches no oneOf branch: $perAlt")
       case None =>
         s.obj.get("type").map(_.str) match
@@ -26,7 +45,7 @@ object SchemaConformance:
                 required.filterNot(o.value.contains).map(k => s"$at: missing '$k'") ++
                   o.value.toList.flatMap: (k, x) =>
                     props.get(k) match
-                      case Some(ps)                  => check(ps, x, s"$at.$k", Set.empty)
+                      case Some(ps)                  => check(root, ps, x, s"$at.$k", Set.empty)
                       case None if extra.contains(k) => Nil
                       case None                      => List(s"$at: undeclared '$k'")
               case _ => List(s"$at: expected object")
@@ -34,7 +53,7 @@ object SchemaConformance:
             v match
               case a: ujson.Arr =>
                 a.value.toList.zipWithIndex.flatMap((x, i) =>
-                  check(s("items"), x, s"$at[$i]", Set.empty)
+                  check(root, s("items"), x, s"$at[$i]", Set.empty)
                 )
               case _ => List(s"$at: expected array")
           case Some("string")  => if v.strOpt.isDefined then Nil else List(s"$at: expected string")

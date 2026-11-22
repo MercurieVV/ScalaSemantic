@@ -20,7 +20,10 @@ class OutputSchemaResourcesSuite extends munit.FunSuite:
     "class_hierarchy",
     "find_overloads",
     "members",
-    "resolve_implicits"
+    "resolve_implicits",
+    "call_path",
+    "method_call_hierarchy",
+    "trace_implicit_chain"
   )
   private val Loc = "com/github/mercurievv/scalasemantic/mcp/McpToolsSupport.loc()."
 
