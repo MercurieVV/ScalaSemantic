@@ -1422,7 +1422,7 @@ private[mcp] object McpToolsGroupB:
   def tools(az: Analyzer, root: java.nio.file.Path): List[Tool] =
     List(
       toolDef(
-        tool(
+        TypedTool[Lookup[MembersOut]](
           "members",
           "Members a type declares versus those it inherits through its linearization (a member " +
             "re-declared locally counts as declared). Scope with `pathFilter` (glob on a member's " +
@@ -1442,31 +1442,31 @@ private[mcp] object McpToolsGroupB:
           List("symbol")
         ) { a =>
           resolveTypeArg(az, root, a, "symbol") match
-            case Nil           => notFound(argStr(a, "symbol"))
+            case Nil           => Lookup.Missing(argStr(a, "symbol"))
             case symbol :: Nil =>
               val detailed = argBool(a, "detailed", false)
               val want = includeWant(a)
               az.members(symbol, a.obj.get("pathFilter").map(_.str)) match
-                case None    => notFound(symbol.value)
+                case None    => Lookup.Missing(symbol.value)
                 case Some(m) =>
-                  val declared =
-                    if detailed then ujson.Arr.from(m.declared.map(memberJson))
-                    else strs(m.declared.map(_.displayName))
-                  val inherited = ujson.Arr.from(m.inherited.map { mi =>
-                    if detailed then memberJson(mi)
-                    else
-                      jobj(
-                        Some("name" -> ujson.Str(mi.displayName)),
-                        Some("from" -> ujson.Str(mi.declaredIn.displayName))
+                  Lookup.Found(
+                    MembersOut(
+                      symbol = symbol.value,
+                      name = m.displayName,
+                      declared = Option.when(want("declared") && m.declared.nonEmpty)(
+                        m.declared.toList.map(mi =>
+                          if detailed then NameOr.Full(MemberOut.detailed(mi))
+                          else NameOr.Name(mi.displayName)
+                        )
+                      ),
+                      inherited = Option.when(want("inherited") && m.inherited.nonEmpty)(
+                        m.inherited.toList.map(mi =>
+                          if detailed then MemberOut.detailed(mi) else MemberOut.brief(mi)
+                        )
                       )
-                  })
-                  jobj(
-                    Some("symbol" -> ujson.Str(symbol.value)),
-                    Some("name" -> ujson.Str(m.displayName)),
-                    opt(want("declared") && m.declared.nonEmpty, "declared" -> declared),
-                    opt(want("inherited") && m.inherited.nonEmpty, "inherited" -> inherited)
+                    )
                   )
-            case candidates => candidatesJson(candidates.map(_.value))
+            case candidates => Lookup.Ambiguous(candidates.map(_.value))
         }
       ),
       toolDef(
@@ -1773,7 +1773,7 @@ private[mcp] object McpToolsGroupB:
         }
       ),
       toolDef(
-        tool(
+        TypedTool[ResolveImplicitsResult](
           "resolve_implicits",
           "The given/implicit definitions in the index that produce a wanted type (by symbol) — implicit " +
             "resolution that text search cannot do. `chosen` is set when exactly one candidate applies.",
@@ -1782,19 +1782,10 @@ private[mcp] object McpToolsGroupB:
         ) { a =>
           val typeSymbol = argTypeSymbol(a, "type")
           val r = az.resolveImplicits(typeSymbol)
-          jobj(
-            Some("type" -> ujson.Str(typeSymbol.value)),
-            r.chosen.map(c => "chosen" -> ujson.Str(c.symbol)),
-            Some(
-              "candidates" -> ujson.Arr.from(
-                r.candidates.map(c =>
-                  jobj(
-                    Some("symbol" -> ujson.Str(c.target.symbol)),
-                    Some("type" -> ujson.Str(c.tpe))
-                  )
-                )
-              )
-            )
+          ResolveImplicitsResult(
+            `type` = typeSymbol.value,
+            chosen = r.chosen.map(_.symbol),
+            candidates = r.candidates.toList.map(c => ImplicitCandidateOut(c.target.symbol, c.tpe))
           )
         }
       ),
