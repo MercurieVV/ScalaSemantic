@@ -295,6 +295,24 @@ Order is `fields`, then `countOnly`, else `limit`. A tool that has its own `limi
 `find_usages`, `structure`, `search_text`) keeps it — they page with `nextOffset`, which a second cut would
 corrupt. A shaped result carries no `structuredContent`, since a projection no longer matches the schema.
 
+## Batching: `batch`
+
+Agents mostly call the same tool several times in a row (reading three files, resolving four names) or
+resolve a name and then act on it. Each call costs a model turn; `batch` runs up to 20 calls in one:
+
+```json
+{"calls": [
+  {"tool": "find_symbol",   "args": {"query": "Foo", "exact": true, "kind": "CLASS"}},
+  {"tool": "members",       "args": {"symbol": {"$ref": "0.symbols.0.symbol"}, "countOnly": true}}
+]}
+```
+
+An argument that is exactly `{"$ref": "<path>"}` is replaced by the value at that path in an earlier call's
+result: `<call index>.<key or list position>…` (keys containing a dot are not addressable). The answer is
+`{"results": [{"tool", "ok", "result" | "error"}]}`, in order. A failing call does not stop the others, and a
+later call that references it fails with a message naming the path. `fields` / `countOnly` / `limit` work
+per call; `batch` cannot call `batch`.
+
 ## Manual stdio check
 
 ```sh
