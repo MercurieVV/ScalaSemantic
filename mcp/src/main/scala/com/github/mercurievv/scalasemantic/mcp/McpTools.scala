@@ -1792,7 +1792,7 @@ private[mcp] object McpToolsGroupB:
         }
       ),
       toolDef(
-        tool(
+        TypedTool[ImplicitChainResult](
           "trace_implicit_chain",
           "The givens that produce a type, plus the implicit dependencies they transitively pull in — " +
             "follows implicit resolution across givens, step by step.",
@@ -1811,45 +1811,22 @@ private[mcp] object McpToolsGroupB:
             typeSymbol,
             a.obj.get("appliedType").map(_.str).filter(_.nonEmpty)
           )
-          def treeJson(t: ImplicitTree): ujson.Value =
-            jobj(
-              Some("type" -> ujson.Str(t.targetType)),
-              t.chosen.map(c => "chosen" -> ujson.Str(c.symbol)),
-              opt(t.ambiguous, "ambiguous" -> ujson.Bool(true)),
-              opt(t.cycle, "cycle" -> ujson.Bool(true)),
-              opt(
-                t.candidates.nonEmpty,
-                "candidates" -> ujson.Arr.from(
-                  t.candidates.map(c =>
-                    jobj(
-                      Some("symbol" -> ujson.Str(c.target.symbol)),
-                      Some("type" -> ujson.Str(c.tpe))
-                    )
-                  )
-                )
-              ),
-              opt(t.children.nonEmpty, "children" -> ujson.Arr.from(t.children.map(treeJson)))
-            )
-          jobj(
-            Some("type" -> ujson.Str(typeSymbol.value)),
-            a.obj.get("appliedType").map(v => "appliedType" -> ujson.Str(v.str)),
-            Some(
-              "steps" -> ujson.Arr.from(
-                chain.steps.map(st =>
-                  jobj(
-                    Some("given" -> ujson.Str(st.target.displayName)),
-                    Some("type" -> ujson.Str(st.tpe)),
-                    opt(st.dependsOn.nonEmpty, "dependsOn" -> strs(st.dependsOn))
-                  )
-                )
+          ImplicitChainResult(
+            `type` = typeSymbol.value,
+            appliedType = a.obj.get("appliedType").map(_.str),
+            steps = chain.steps.toList.map(st =>
+              ImplicitStepOut(
+                st.target.displayName,
+                st.tpe,
+                Option.when(st.dependsOn.nonEmpty)(st.dependsOn.toList)
               )
             ),
-            chain.resolved.map(r => "resolved" -> treeJson(r))
+            resolved = chain.resolved.map(ImplicitTreeOut.from)
           )
         }
       ),
       toolDef(
-        tool(
+        TypedTool[CallPathResult](
           "call_path",
           "The shortest call path from one method to another, with the call-site edges that realize it " +
             "(pass `detailed` for edge locations). Use for reachability / how A reaches B — for direct " +
@@ -1863,22 +1840,19 @@ private[mcp] object McpToolsGroupB:
         ) { a =>
           val p = az.callPath(argMethodSymbol(a, "from"), argMethodSymbol(a, "to"))
           val reachable = p.path.nonEmpty
-          jobj(
-            Some("from" -> ujson.Str(p.from.displayName)),
-            Some("to" -> ujson.Str(p.to.displayName)),
-            Some("reachable" -> ujson.Bool(reachable)),
-            opt(reachable, "path" -> strs(p.path.map(_.displayName))),
-            opt(
-              argBool(a, "detailed", false) && p.edges.nonEmpty,
-              "edges" -> strs(
-                p.edges.map(e => s"${e.from.displayName}->${e.to.displayName}@${loc(e.at)}")
-              )
+          CallPathResult(
+            from = p.from.displayName,
+            to = p.to.displayName,
+            reachable = reachable,
+            path = Option.when(reachable)(p.path.toList.map(_.displayName)),
+            edges = Option.when(argBool(a, "detailed", false) && p.edges.nonEmpty)(
+              p.edges.toList.map(e => s"${e.from.displayName}->${e.to.displayName}@${loc(e.at)}")
             )
           )
         }
       ),
       toolDef(
-        tool(
+        TypedTool[CallHierarchyResult](
           "method_call_hierarchy",
           "The call hierarchy for a method — callers (incoming) or callees (outgoing) — as a hierarchical " +
             "tree. `direction` is \"callers\" (who calls this method, transitively) or \"callees\" (what this " +
@@ -1902,21 +1876,12 @@ private[mcp] object McpToolsGroupB:
             case _         => "callees"
           val depth = argPositiveInt(a, "depth", 3)
           val h = az.callHierarchy(symbol, depth, direction)
-
-          def nodeJson(node: CallHierarchyNode): ujson.Value =
-            jobj(
-              Some("symbol" -> ujson.Str(node.method.symbol)),
-              Some("name" -> ujson.Str(node.method.displayName)),
-              node.at.map(l => "at" -> ujson.Str(loc(l))),
-              opt(node.children.nonEmpty, "children" -> ujson.Arr.from(node.children.map(nodeJson)))
-            )
-
-          jobj(
-            Some("symbol" -> ujson.Str(h.symbol)),
-            Some("name" -> ujson.Str(h.displayName)),
-            Some("direction" -> ujson.Str(h.direction)),
-            Some("depth" -> ujson.Num(h.depth)),
-            Some("hierarchy" -> nodeJson(h.root))
+          CallHierarchyResult(
+            symbol = h.symbol,
+            name = h.displayName,
+            direction = h.direction,
+            depth = h.depth,
+            hierarchy = CallNodeOut.from(h.root)
           )
         }
       )
