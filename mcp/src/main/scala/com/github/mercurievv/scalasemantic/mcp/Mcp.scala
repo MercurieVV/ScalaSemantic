@@ -230,6 +230,9 @@ object Mcp:
       |Do NOT hand-write or guess these — they are easy to get subtly wrong. Always obtain a symbol
       |from `find_symbol` (from a name) or `type_at_position` (from a source location), then pass it on.
       |
+      |Large answers: any tool also takes `fields` (top-level keys to keep; `list.key` projects the
+      |items of a list), `countOnly` (lists become `counts`) and `limit` (caps lists; original sizes
+      |go in `truncated`; ignored by tools with their own `limit`). Use them instead of reading it all.
       |Worked example — "who calls Service.run?":
       |  1. find_symbol "run"                                 → choose the result whose symbol ends `…/Service#run().`
       |  2. find_usages (or call_path) with that symbol.
@@ -377,6 +380,14 @@ object Mcp:
   /** Success payload: the JSON as a text block (all clients), plus `structuredContent` when the
     * tool declares an `outputSchema` and produced an object — MCP requires the two to agree.
     */
+  /** Runs the tool and applies the caller's `fields` / `countOnly` / `limit` ([[ResultShaping]]). A
+    * shaped result no longer matches the tool's `outputSchema`, so it never carries
+    * `structuredContent`.
+    */
+  private[mcp] def shapedResult(tool: Tool, args: ujson.Value, structured: Boolean): ujson.Value =
+    val spec = ResultShaping.specOf(tool, args)
+    toolResult(tool, ResultShaping.shape(spec, tool.run(args)), structured && spec.isNoop)
+
   private def toolResult(tool: Tool, result: ujson.Value, structured: Boolean): ujson.Value =
     val content = ujson.Arr(textBlock(ujson.write(result)))
     (tool.outputSchema, result) match
@@ -392,7 +403,7 @@ object Mcp:
       structured: Boolean
   ): ujson.Value =
     guarded(s"tool $name", log.get())(
-      ok(id, toolResult(tool, tool.run(args), structured))
+      ok(id, shapedResult(tool, args, structured))
     ) match
       case Right(res) => res
       case Left(t)    =>
