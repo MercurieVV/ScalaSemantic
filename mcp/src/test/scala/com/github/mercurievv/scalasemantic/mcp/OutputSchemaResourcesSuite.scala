@@ -13,8 +13,15 @@ class OutputSchemaResourcesSuite extends munit.FunSuite:
 
   private val root: Path = Paths.get(".")
   private val tools: List[Tool] = Mcp.toolsFor(Analyzer(SemanticIndex.fromProject(".")), root)
-  private val typed =
-    List("find_symbol", "find_usages", "method_signature", "class_hierarchy", "find_overloads")
+  private val typed = List(
+    "find_symbol",
+    "find_usages",
+    "method_signature",
+    "class_hierarchy",
+    "find_overloads",
+    "members",
+    "resolve_implicits"
+  )
   private val Loc = "com/github/mercurievv/scalasemantic/mcp/McpToolsSupport.loc()."
 
   private def rpc(method: String, params: ujson.Value, structured: Boolean = false): ujson.Value =
