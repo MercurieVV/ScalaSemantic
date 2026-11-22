@@ -23,32 +23,8 @@ class FindSymbolOutputSchemaSuite extends munit.FunSuite:
   private val schema: ujson.Value =
     tool.outputSchema.getOrElse(fail("find_symbol has no outputSchema"))
 
-  /** Minimal checker for the subset `OutputSchema` emits; flags undeclared keys so drift is loud.
-    */
-  private def violations(s: ujson.Value, v: ujson.Value, at: String = "$"): List[String] =
-    s.obj.get("type").map(_.str) match
-      case Some("object") =>
-        v match
-          case o: ujson.Obj =>
-            val props = s.obj.get("properties").map(_.obj).getOrElse(Map.empty[String, ujson.Value])
-            val required = s.obj.get("required").toList.flatMap(_.arr.map(_.str))
-            required.filterNot(o.value.contains).map(k => s"$at: missing '$k'") ++
-              o.value.toList.flatMap: (k, x) =>
-                props.get(k) match
-                  case Some(ps) => violations(ps, x, s"$at.$k")
-                  case None     => List(s"$at: undeclared '$k'")
-          case _ => List(s"$at: expected object")
-      case Some("array") =>
-        v match
-          case a: ujson.Arr =>
-            a.value.toList.zipWithIndex.flatMap((x, i) => violations(s("items"), x, s"$at[$i]"))
-          case _ => List(s"$at: expected array")
-      case Some("string")  => if v.strOpt.isDefined then Nil else List(s"$at: expected string")
-      case Some("boolean") => if v.boolOpt.isDefined then Nil else List(s"$at: expected boolean")
-      case Some("integer") =>
-        if v.numOpt.exists(d => d == d.toLong) then Nil else List(s"$at: expected integer")
-      case Some("number") => if v.numOpt.isDefined then Nil else List(s"$at: expected number")
-      case other          => List(s"$at: unsupported schema type $other")
+  private def violations(s: ujson.Value, v: ujson.Value): List[String] =
+    SchemaConformance.violations(s, v)
 
   test("declares a compact object outputSchema with required fields and descriptions"):
     assertEquals(schema("type").str, "object")
