@@ -28,6 +28,9 @@ object V {
   val scala3 = "3.8.4"
   val scalameta = "4.17.0"
   val upickle = "4.4.3"
+  // tapir 1.14.x is built with Scala 3.9 (TASTy 28.9) and unreadable by 3.8.4 — stay on 1.13.x.
+  val tapir = "1.13.33"
+  val circe = "0.14.17"
   val refined = "0.11.3"
   val munit = "1.3.3"
   val munitScalacheck = "1.3.0"
@@ -298,7 +301,11 @@ object mcp extends Common with SonatypeCentralPublishModule with BuildInfo {
   def publishVersion = build.publishVersion()
   def pomSettings = commonPom("scalasemantic-mcp")
   def moduleDeps = Seq(analysis, build.launcher)
-  def mvnDeps = Seq(mvn"com.lihaoyi::upickle:${V.upickle}")
+  def mvnDeps = Seq(
+    mvn"com.lihaoyi::upickle:${V.upickle}",
+    mvn"io.circe::circe-core:${V.circe}",
+    mvn"com.softwaremill.sttp.tapir::tapir-core:${V.tapir}"
+  )
 
   // build.sbt: two @main — pin the entrypoint for run + assembly manifest.
   def mainClass = Some("com.github.mercurievv.scalasemantic.mcpServer")
@@ -420,6 +427,16 @@ object mcp extends Common with SonatypeCentralPublishModule with BuildInfo {
       "class geny.** { *; }",
       "-keepclassmembers",
       "class sourcecode.** { *; }",
+      // tapir/circe/cats (typed tool outputs): Scala 3 `lazy val`s are resolved by field name via
+      // VarHandle/MethodHandle (`schemaForPeriod$lzy1`…); shrinking them → NoSuchFieldError at startup.
+      "-keepclassmembers",
+      "class sttp.** { *; }",
+      "-keepclassmembers",
+      "class io.circe.** { *; }",
+      "-keepclassmembers",
+      "class cats.** { *; }",
+      "-keepclassmembers",
+      "class magnolia1.** { *; }",
       "-keep",
       "class xsbti.** { *; }",
       "-keep",

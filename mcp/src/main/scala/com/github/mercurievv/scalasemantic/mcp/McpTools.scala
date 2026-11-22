@@ -1128,7 +1128,7 @@ private[mcp] object McpToolsGroupA:
   def tools(az: Analyzer, root: java.nio.file.Path): List[Tool] =
     List(
       toolDef(
-        tool(
+        TypedTool[FindSymbolResult](
           "find_symbol",
           "Resolve a plain or partial name (e.g. 'Animal', 'show') to the SemanticDB symbol strings the " +
             "other tools require — start here whenever you have a name rather than a symbol. Ranked " +
@@ -1161,27 +1161,25 @@ private[mcp] object McpToolsGroupA:
             a.obj.get("kind").map(_.str),
             a.obj.get("pathFilter").map(_.str)
           )
-          jobj(
-            Some("query" -> ujson.Str(q)),
-            Some("count" -> ujson.Num(results.size)),
-            Some(
-              "symbols" -> ujson.Arr.from(
-                results.map(r =>
-                  jobj(
-                    (List(
-                      Some("symbol" -> ujson.Str(r.symbol)),
-                      Some("name" -> ujson.Str(r.displayName)),
-                      Some("kind" -> ujson.Str(r.kind.value))
-                    ) ++ metricFields(az, r.symbol, withMetrics))*
-                  )
-                )
+          FindSymbolResult(
+            query = q,
+            count = results.size,
+            symbols = results.map { r =>
+              val m = if withMetrics then az.metricsOf(r.symbol).toList.headOption else None
+              SymbolHit(
+                symbol = r.symbol,
+                name = r.displayName,
+                kind = r.kind.value,
+                layer = m.map(_.combined.layer),
+                centrality = m.map(s => round3(s.combined.centrality)),
+                inCycle = m.flatMap(s => Option.when(s.combined.inCycle)(true))
               )
-            )
+            }
           )
         }
       ),
       toolDef(
-        tool(
+        TypedTool[FindUsagesResult](
           "find_usages",
           "Every resolved reference to a symbol across the codebase, split into definitions and " +
             "references (paged) — including renames, re-exports, and inferred/implicit uses that text " +
@@ -1234,46 +1232,40 @@ private[mcp] object McpToolsGroupA:
             if contextLines > 0 then withContext(root, u.definitions, contextLines) else Nil
           val referencesWithContext =
             if contextLines > 0 then withContext(root, page, contextLines) else Nil
-          val relatedJson = u.related.map { g =>
+          val relatedGroups = u.related.map { g =>
             val locs = g.locations.take(limit.value)
-            jobj(
-              Some("kind" -> ujson.Str(g.kind)),
-              Some("symbol" -> ujson.Str(g.symbol)),
-              Some("locationCount" -> ujson.Num(g.locations.size)),
-              Some("locations" -> strs(locs.map(loc))),
-              opt(
-                contextLines > 0,
-                "hits" -> ujson.Arr.from(withContext(root, locs, contextLines).map(usageHitJson))
+            RelatedGroup(
+              kind = g.kind,
+              symbol = g.symbol,
+              locationCount = g.locations.size,
+              locations = locs.map(loc),
+              hits = Option.when(contextLines > 0)(
+                withContext(root, locs, contextLines).map(usageHitOut)
               )
             )
           }
-          jobj(
-            Some("symbol" -> ujson.Str(symbol.value)),
-            Some("name" -> ujson.Str(u.displayName)),
-            opt(
-              want("definitions") && u.definitions.nonEmpty,
-              "definitions" -> strs(u.definitions.map(loc))
-            ),
-            Some("referenceCount" -> ujson.Num(u.references.size)),
-            opt(want("references") && page.nonEmpty, "references" -> strs(page.map(loc))),
-            opt(
-              want("references") && offset.value + limit.value < u.references.size,
-              "nextOffset" -> ujson.Num(offset.value + limit.value)
-            ),
-            opt(
-              want("definitions") && definitionsWithContext.nonEmpty,
-              "definitionsWithContext" -> ujson.Arr.from(definitionsWithContext.map(usageHitJson))
-            ),
-            opt(
-              want("references") && referencesWithContext.nonEmpty,
-              "referencesWithContext" -> ujson.Arr.from(referencesWithContext.map(usageHitJson))
-            ),
-            opt(relatedJson.nonEmpty, "related" -> ujson.Arr.from(relatedJson))
+          FindUsagesResult(
+            symbol = symbol.value,
+            name = u.displayName,
+            definitions =
+              Option.when(want("definitions") && u.definitions.nonEmpty)(u.definitions.map(loc)),
+            referenceCount = u.references.size,
+            references = Option.when(want("references") && page.nonEmpty)(page.map(loc)),
+            nextOffset = Option.when(
+              want("references") && offset.value + limit.value < u.references.size
+            )(offset.value + limit.value),
+            definitionsWithContext = Option.when(
+              want("definitions") && definitionsWithContext.nonEmpty
+            )(definitionsWithContext.map(usageHitOut)),
+            referencesWithContext = Option.when(
+              want("references") && referencesWithContext.nonEmpty
+            )(referencesWithContext.map(usageHitOut)),
+            related = Option.when(relatedGroups.nonEmpty)(relatedGroups)
           )
         }
       ),
       toolDef(
-        tool(
+        TypedTool[Lookup[MethodSignatureResult]](
           "method_signature",
           "The full signature of a term declared with `def`, `val` or `var` (a caller pointing at " +
             "an identifier often does not know — or care — which keyword declared it): for a method, " +
@@ -1305,48 +1297,37 @@ private[mcp] object McpToolsGroupA:
           List("symbol")
         ) { a =>
           resolveMethodOrTermArg(az, root, a, "symbol") match
-            case Nil           => notFound(argStr(a, "symbol"))
+            case Nil           => Lookup.Missing(argStr(a, "symbol"))
             case symbol :: Nil =>
-              // overlay category: a referenced return/param type may be defined in another file, so
-              // the buffer is overlaid ONTO the whole index rather than queried in isolation.
               val engine = (a.obj.get("uri").map(_.str), a.obj.get("source").map(_.str)) match
                 case (Some(_), Some(src)) =>
                   val uri = argUri(a, "uri")
                   az.withBuffer(root.resolve(uri.value).toUri, src, uri.value)
                 case _ => az
               engine.methodOrTermSignature(symbol) match
-                case None    => notFound(symbol.value)
+                case None    => Lookup.Missing(symbol.value)
                 case Some(m) =>
-                  if !argBool(a, "detailed", false) then
-                    jobj(
-                      Some("symbol" -> ujson.Str(symbol.value)),
-                      Some("signature" -> ujson.Str(m.rendered))
-                    )
-                  else
-                    val lists = m.parameterLists.map { pl =>
-                      jobj(
-                        Some("implicit" -> ujson.Bool(pl.isImplicit)),
-                        Some(
-                          "params" -> ujson.Arr.from(
-                            pl.parameters.map(p =>
-                              jobj(
-                                Some("name" -> ujson.Str(p.name)),
-                                Some("type" -> ujson.Str(p.tpe)),
-                                opt(p.isImplicit, "implicit" -> ujson.Bool(true))
-                              )
+                  val detailed = argBool(a, "detailed", false)
+                  Lookup.Found(
+                    MethodSignatureResult(
+                      symbol = symbol.value,
+                      signature = m.rendered,
+                      typeParameters =
+                        Option.when(detailed && m.typeParameters.nonEmpty)(m.typeParameters.toList),
+                      parameterLists = Option.when(detailed && m.parameterLists.nonEmpty)(
+                        m.parameterLists.toList.map(pl =>
+                          ParameterListOut(
+                            pl.isImplicit,
+                            pl.parameters.toList.map(p =>
+                              ParameterOut(p.name, p.tpe, Option.when(p.isImplicit)(true))
                             )
                           )
                         )
-                      )
-                    }
-                    jobj(
-                      Some("symbol" -> ujson.Str(symbol.value)),
-                      Some("signature" -> ujson.Str(m.rendered)),
-                      opt(m.typeParameters.nonEmpty, "typeParameters" -> strs(m.typeParameters)),
-                      opt(lists.nonEmpty, "parameterLists" -> ujson.Arr.from(lists)),
-                      Some("returnType" -> ujson.Str(m.returnType))
+                      ),
+                      returnType = Option.when(detailed)(m.returnType)
                     )
-            case candidates => candidatesJson(candidates.map(_.value))
+                  )
+            case candidates => Lookup.Ambiguous(candidates.map(_.value))
         }
       ),
       toolDef(

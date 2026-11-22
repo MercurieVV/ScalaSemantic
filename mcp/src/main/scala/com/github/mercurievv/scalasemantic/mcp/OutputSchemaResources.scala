@@ -1,0 +1,87 @@
+package com.github.mercurievv.scalasemantic.mcp
+
+/** Output schemas of the typed tools, served on demand instead of riding along in every
+  * `tools/list`: schemas cost tokens per session, and only code that parses results (programmatic
+  * tool calling, code-mode) needs them.
+  *
+  * Two channels, same data: MCP resources (`scalasemantic://output-schema/{tool}` and
+  * `scalasemantic://output-schema/all`) and the `output_schema` tool for clients without resource
+  * support. Advertising `outputSchema` in `tools/list` and sending `structuredContent` with each
+  * result is opt-in (`SCALASEMANTIC_STRUCTURED=1`), because `structuredContent` duplicates the text
+  * block on every call.
+  */
+object OutputSchemaResources:
+
+  val UriPrefix: String = "scalasemantic://output-schema/"
+  val AllUri: String = UriPrefix + "all"
+  private val MimeType = "application/json"
+
+  /** Opt-in switch: env `SCALASEMANTIC_STRUCTURED` or system property `scalasemantic.structured`.
+    */
+  def structuredDefault: Boolean =
+    sys.env
+      .get("SCALASEMANTIC_STRUCTURED")
+      .orElse(sys.props.get("scalasemantic.structured"))
+      .exists(v => v == "1" || v.equalsIgnoreCase("true"))
+
+  /** Typed tools only, sorted by name: `(tool name, output schema)`. */
+  def schemas(tools: List[Tool]): List[(String, ujson.Value)] =
+    tools.flatMap(t => t.outputSchema.map(t.name -> _)).sortBy(_._1)
+
+  def list: ujson.Value =
+    ujson.Obj(
+      "resources" -> ujson.Arr(
+        ujson.Obj(
+          "uri" -> AllUri,
+          "name" -> "output-schema-all",
+          "description" -> "Output JSON Schemas of every typed tool, keyed by tool name",
+          "mimeType" -> MimeType
+        )
+      )
+    )
+
+  def templates: ujson.Value =
+    ujson.Obj(
+      "resourceTemplates" -> ujson.Arr(
+        ujson.Obj(
+          "uriTemplate" -> (UriPrefix + "{tool}"),
+          "name" -> "output-schema",
+          "description" -> "Output JSON Schema of one typed tool (e.g. find_usages)",
+          "mimeType" -> MimeType
+        )
+      )
+    )
+
+  /** `resources/read` result, or the JSON-RPC error message (code -32002, resource not found). */
+  def read(uri: String, tools: List[Tool]): Either[String, ujson.Value] =
+    text(uri, tools).map: body =>
+      ujson.Obj(
+        "contents" -> ujson.Arr(ujson.Obj("uri" -> uri, "mimeType" -> MimeType, "text" -> body))
+      )
+
+  private def text(uri: String, tools: List[Tool]): Either[String, String] =
+    if uri == AllUri then Right(ujson.write(ujson.Obj.from(schemas(tools))))
+    else if uri.startsWith(UriPrefix) then
+      forTool(uri.stripPrefix(UriPrefix), tools).map(ujson.write(_))
+    else Left(s"Unknown resource: $uri")
+
+  private def forTool(name: String, tools: List[Tool]): Either[String, ujson.Value] =
+    schemas(tools)
+      .collectFirst { case (n, s) if n == name => s }
+      .toRight(
+        s"No output schema for tool '$name'; typed tools: ${schemas(tools).map(_._1).mkString(", ")}"
+      )
+
+  /** The same data as a tool, for clients that do not support MCP resources. */
+  def tool(all: List[Tool]): Tool =
+    McpToolsSupport.tool(
+      "output_schema",
+      "Output JSON Schema of typed tools; pass `tool` for one, omit for all (keyed by name). " +
+        "Only needed to write code that parses results.",
+      List(("tool", "string", "tool name, e.g. find_usages; omit for every typed tool")),
+      Nil
+    ) { a =>
+      a.obj.get("tool").map(_.str) match
+        case None       => ujson.Obj.from(schemas(all))
+        case Some(name) => forTool(name, all).fold(McpToolsSupport.error, identity)
+    }
