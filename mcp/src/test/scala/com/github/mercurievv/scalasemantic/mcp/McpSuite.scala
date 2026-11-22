@@ -9,9 +9,10 @@ import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 class McpSuite extends munit.FunSuite:
 
   // Default munit per-test timeout (30s) is too tight for smart_code_duplications (whole-project
-  // scan) when 5 stryker4s test-runner JVMs compete for CPU concurrently during mutation testing.
+  // scan) when CPU is contended (stryker4s runners, another coding agent, prePush building the
+  // corpus index alongside). 300s keeps it a hang guard, not a load-sensitive flake.
   override val munitTimeout: scala.concurrent.duration.Duration =
-    scala.concurrent.duration.Duration("120s")
+    scala.concurrent.duration.Duration("300s")
 
   private val tools = Mcp.toolsFor(
     Analyzer(SemanticIndex.fromProject(".")),
