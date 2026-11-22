@@ -21,7 +21,8 @@ final case class Tool(
     name: String,
     description: String,
     inputSchema: ujson.Value,
-    run: ujson.Value => ujson.Value
+    run: ujson.Value => ujson.Value,
+    outputSchema: Option[ujson.Value] = None
 )
 
 /** Hand-rolled MCP server over stdio JSON-RPC (no Scala MCP SDK exists). Newline-delimited JSON-RPC
@@ -282,9 +283,11 @@ object Mcp:
       case "tools/list" =>
         val list = currentTools.map(t =>
           obj(
-            "name" -> ujson.Str(t.name),
-            "description" -> ujson.Str(t.description),
-            "inputSchema" -> t.inputSchema
+            (Seq[(String, ujson.Value)](
+              "name" -> ujson.Str(t.name),
+              "description" -> ujson.Str(t.description),
+              "inputSchema" -> t.inputSchema
+            ) ++ t.outputSchema.map("outputSchema" -> _))*
           )
         )
         idOpt.map(id => ok(id, obj("tools" -> ujson.Arr.from(list))))
@@ -361,6 +364,15 @@ object Mcp:
         log(s"$what failed with ${t.getClass.getName}: ${t.getMessage}\n$sw")
         Left(t)
 
+  /** Success payload: the JSON as a text block (all clients), plus `structuredContent` when the
+    * tool declares an `outputSchema` and produced an object — MCP requires the two to agree.
+    */
+  private def toolResult(tool: Tool, result: ujson.Value): ujson.Value =
+    val content = ujson.Arr(textBlock(ujson.write(result)))
+    (tool.outputSchema, result) match
+      case (Some(_), o: ujson.Obj) => obj("content" -> content, "structuredContent" -> o)
+      case _                       => obj("content" -> content)
+
   private def runToolGuarded(
       id: ujson.Value,
       name: String,
@@ -368,7 +380,7 @@ object Mcp:
       args: ujson.Value
   ): ujson.Value =
     guarded(s"tool $name", log.get())(
-      ok(id, obj("content" -> ujson.Arr(textBlock(ujson.write(tool.run(args))))))
+      ok(id, toolResult(tool, tool.run(args)))
     ) match
       case Right(res) => res
       case Left(t)    =>
