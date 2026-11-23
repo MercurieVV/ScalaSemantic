@@ -117,10 +117,12 @@ object Mcp:
       root: Path,
       coverage: SemanticIndex.Coverage = SemanticIndex.Coverage.empty
   ): List[Tool] =
-    val base = McpTools.all(az, root, coverage) ++ List(
-      setWorkspaceRootTool(log.get()),
-      getWorkspaceRootTool,
-      refreshWorkspaceTool(log.get())
+    val base = SourceToolSchemas.attach(
+      McpTools.all(az, root, coverage) ++ List(
+        setWorkspaceRootTool(log.get()),
+        getWorkspaceRootTool,
+        refreshWorkspaceTool(log.get())
+      )
     )
     base ++ List(OutputSchemaResources.tool(base), BatchTool.tool(base))
 
