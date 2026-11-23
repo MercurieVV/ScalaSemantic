@@ -387,9 +387,9 @@ object mcp extends Common with SonatypeCentralPublishModule with BuildInfo {
   // classpath via the `//| mvnDeps` header, so `_root_.proguard.*` is referenced directly (the
   // `_root_` prefix disambiguates the library package from this task named `proguard`).
   // -keep set ported verbatim from build.sbt: keep the entrypoint + all first-party classes, all
-  // Scala module singletons (MODULE$), the upickle reader/writer subclasses, and the reflection-
-  // reached namespaces (scala/dotty/scalameta/pc/upickle/protobuf/…) so nothing is stripped that
-  // the presentation compiler or upickle derivation looks up by name at runtime.
+  // Scala module singletons (MODULE$), and the reflection-reached namespaces
+  // (scala/dotty/scalameta/pc/protobuf/circe/tapir/…) so nothing is stripped that the presentation
+  // compiler or the circe/tapir derivations look up by name at runtime.
   def proguard: T[PathRef] = Task {
     val inputJar = assembly().path
     val outputJar = Task.dest / "scalasemantic-mcp-shrunk.jar"
@@ -417,10 +417,6 @@ object mcp extends Common with SonatypeCentralPublishModule with BuildInfo {
       "class * { public static ** MODULE$; }",
       "-keep",
       "class scala.Dynamic { *; }",
-      "-keep",
-      "class * extends upickle.core.Reader { *; }",
-      "-keep",
-      "class * extends upickle.core.Writer { *; }",
       "-keepclassmembers",
       "class scala.** { *; }",
       "-keepclassmembers",
@@ -431,12 +427,6 @@ object mcp extends Common with SonatypeCentralPublishModule with BuildInfo {
       "class scala.meta.internal.metals.** { *; }",
       "-keep",
       "class dotty.tools.pc.** { *; }",
-      "-keepclassmembers",
-      "class upickle.** { *; }",
-      "-keepclassmembers",
-      "class ujson.** { *; }",
-      "-keepclassmembers",
-      "class upack.** { *; }",
       "-keepclassmembers",
       "class com.google.protobuf.** { *; }",
       "-keepclassmembers",
