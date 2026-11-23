@@ -117,10 +117,12 @@ object Mcp:
       root: Path,
       coverage: SemanticIndex.Coverage = SemanticIndex.Coverage.empty
   ): List[Tool] =
-    val base = McpTools.all(az, root, coverage) ++ List(
-      setWorkspaceRootTool(log.get()),
-      getWorkspaceRootTool,
-      refreshWorkspaceTool(log.get())
+    val base = SourceToolSchemas.attach(
+      McpTools.all(az, root, coverage) ++ List(
+        setWorkspaceRootTool(log.get()),
+        getWorkspaceRootTool,
+        refreshWorkspaceTool(log.get())
+      )
     )
     base ++ List(OutputSchemaResources.tool(base), BatchTool.tool(base))
 
@@ -955,13 +957,11 @@ object Mcp:
   private[mcp] def setWorkspaceRootTool(
       log: String => Unit
   ): Tool =
-    McpToolsSupport.tool(
+    TypedTool.withArgs[SetWorkspaceRootArgs](
       "set_workspace_root",
-      "Update the stateful current workspace root for semantic analysis. Relocates the indexed root dynamically.",
-      List(("path", "string", "absolute or relative path to the new workspace root")),
-      List("path")
+      "Update the stateful current workspace root for semantic analysis. Relocates the indexed root dynamically."
     ) { args =>
-      val rawPath = McpToolsSupport.argStr(args, "path")
+      val rawPath = args.path
       if (rawPath.trim.isEmpty) {
         sys.error("path parameter cannot be empty")
       }
@@ -1075,24 +1075,11 @@ object Mcp:
   private[mcp] def refreshWorkspaceTool(
       log: String => Unit
   ): Tool =
-    McpToolsSupport.tool(
+    TypedTool.withArgs[RefreshWorkspaceArgs](
       "refresh_workspace",
-      "Force-rebuild the semantic index for the current (or given) workspace root, dropping any cached copy. Not needed after a normal recompile — every tool call re-checks the *.semanticdb files on disk and rebuilds itself. Use this only to force a rebuild the on-disk check cannot see, or to rebuild a root other than the active one. Pass compile=true to also run the project's build compile task first (mill/sbt/scala-cli, auto-detected) — use this when the index is empty or stale and you have no other way to run the build yourself (e.g. a session that cannot shell out).",
-      List(
-        (
-          "path",
-          "string",
-          "absolute or relative path to rebuild; defaults to the current workspace root"
-        ),
-        (
-          "compile",
-          "boolean",
-          "run the auto-detected build's compile task in this directory before rebuilding the index (default false)"
-        )
-      ),
-      Nil
+      "Force-rebuild the semantic index for the current (or given) workspace root, dropping any cached copy. Not needed after a normal recompile — every tool call re-checks the *.semanticdb files on disk and rebuilds itself. Use this only to force a rebuild the on-disk check cannot see, or to rebuild a root other than the active one. Pass compile=true to also run the project's build compile task first (mill/sbt/scala-cli, auto-detected) — use this when the index is empty or stale and you have no other way to run the build yourself (e.g. a session that cannot shell out)."
     ) { args =>
-      val rawPath = McpToolsSupport.argStr(args, "path")
+      val rawPath = args.path.getOrElse("")
       val targetPath = if (rawPath.trim.isEmpty) currentRoot else Paths.get(rawPath)
       val resolvedPath =
         (if (targetPath.isAbsolute) targetPath else currentRoot.resolve(targetPath)).normalize().nn
@@ -1104,7 +1091,7 @@ object Mcp:
         sys.error(s"Path is not a directory: $resolvedPath")
       }
 
-      val doCompile = McpToolsSupport.argBool(args, "compile", false)
+      val doCompile = args.compile.getOrElse(false)
       val compileResult = if (doCompile) Some(runCompile(resolvedPath, log)) else None
 
       val newState = rebuildState(resolvedPath, "forced by refresh_workspace", log)

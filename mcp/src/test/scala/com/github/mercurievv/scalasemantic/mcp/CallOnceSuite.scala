@@ -7,7 +7,7 @@ package com.github.mercurievv.scalasemantic.mcp
 class CallOnceSuite extends munit.FunSuite:
 
   test("callOnce runs one tool against the root's index and returns its JSON") {
-    val res = Mcp.callOnce(".", None, "find_symbol", ujson.Obj("name" -> "Analyzer"))
+    val res = Mcp.callOnce(".", None, "find_symbol", ujson.Obj("query" -> "Analyzer"))
     val json = res.fold(err => fail(err), identity)
     assert(json.obj.nonEmpty, json.toString)
   }

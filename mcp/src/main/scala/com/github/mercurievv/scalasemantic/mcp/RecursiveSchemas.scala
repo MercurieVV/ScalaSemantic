@@ -34,6 +34,14 @@ private object RecursiveSchemaDerivation:
       selfRef[ImplicitTreeOut]("ImplicitTreeOut").asIterable[List].asOption
     Schema.derived[ImplicitTreeOut]
 
+  val outlineEntry: Schema[OutlineEntryOut] =
+    given Schema[Option[List[OutlineEntryOut]]] =
+      selfRef[OutlineEntryOut]("OutlineEntryOut").asIterable[List].asOption
+    Schema.derived[OutlineEntryOut]
+
+object OutlineSchemas:
+  given Schema[OutlineEntryOut] = RecursiveSchemaDerivation.outlineEntry
+
 object CallGraphSchemas:
   given Schema[CallNodeOut] = RecursiveSchemaDerivation.callNode
   given Schema[ImplicitTreeOut] = RecursiveSchemaDerivation.implicitTree
