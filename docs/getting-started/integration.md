@@ -271,7 +271,8 @@ Log file defaults to `<root>/scala-semantic-mcp.log`. Override with `SCALASEMANT
 Typed tools (`find_symbol`, `find_usages`, `method_signature`, `class_hierarchy`, `find_overloads`,
 `members`, `resolve_implicits`, `call_path`, `method_call_hierarchy`, `trace_implicit_chain`,
 `type_at_position`, `search_text`, `document_outline`, `annotated_source`, `symbol_source`,
-`source_around_position`) have a JSON Schema for their result. It is **not** in `tools/list` — schemas cost tokens in every session, and
+`source_around_position`, `rename_plan`, `batch_rename_plan`, `move_plan`, `extract_method_plan`) have
+a JSON Schema for their result. It is **not** in `tools/list` — schemas cost tokens in every session, and
 only code that parses results (programmatic tool calling, code-mode) needs them. Fetch on demand:
 
 | Channel | One tool | Every typed tool |
