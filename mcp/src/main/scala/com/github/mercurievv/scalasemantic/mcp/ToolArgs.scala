@@ -359,3 +359,42 @@ final case class HoleContextArgs(
     @description("current full text of the file at `uri`") source: Option[String]
 ) derives Decoder,
       Schema
+
+/** One file of a multi-file request, with optional line ranges (`[startLine, endLineExclusive]`,
+  * 0-based; absent or empty means the whole file) and optional buffer text.
+  */
+final case class FileRangesArg(
+    @description("document uri (path relative to project root)") uri: String,
+    @description("`[startLine, endLineExclusive]` pairs, 0-based; absent or empty = whole file")
+    ranges: Option[List[List[Int]]],
+    @description("current full text of the file; else the on-disk file is read")
+    source: Option[String]
+) derives Decoder,
+      Schema:
+  /** The well-formed `[from, until]` pairs; a range with fewer than two numbers is skipped. */
+  def rangePairs: Seq[(Int, Int)] =
+    ranges.getOrElse(Nil).flatMap(r => r.lift(0).zip(r.lift(1)))
+
+final case class FileSourceArg(
+    @description("document uri (path relative to project root)") uri: String,
+    @description("current full text of the file; else the on-disk file is read")
+    source: Option[String]
+) derives Decoder,
+      Schema
+
+final case class LiteralTokensArgs(
+    @description("objects: {uri, ranges?: [[startLine, endLineExclusive], …], source?}")
+    files: List[FileRangesArg]
+) derives Decoder,
+      Schema
+
+final case class ResolveReferencesArgs(
+    @description("objects: {uri, ranges: [[startLine, endLineExclusive], …], source?}")
+    files: List[FileRangesArg]
+) derives Decoder,
+      Schema
+
+final case class ContractClausesArgs(
+    @description("objects: {uri, source?}") files: List[FileSourceArg]
+) derives Decoder,
+      Schema

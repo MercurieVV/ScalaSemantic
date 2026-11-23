@@ -244,6 +244,39 @@ class TypedInputSuite extends munit.FunSuite:
     assert(e.getMessage.contains("newOwner"), e.getMessage)
     assertEquals(call("value_flow")("found").bool, false)
 
+  test("the multi-file tools declare files[] items, and reject a malformed range by name"):
+    List("literal_tokens", "resolve_references", "contract_clauses").foreach: name =>
+      val s = allTools.find(_.name == name).getOrElse(fail(s"no $name")).inputSchema
+      assertEquals(s("required").arr.map(_.str).toSet, Set("files"), name)
+      val item = s("properties")("files")("items")
+      assertEquals(item("required").arr.map(_.str).toSet, Set("uri"), name)
+      assert(item("properties").obj.contains("source"), name)
+    val ranged = allTools.find(_.name == "literal_tokens").getOrElse(fail("no literal_tokens"))
+    assertEquals(
+      ranged.inputSchema("properties")("files")("items")("properties")("ranges")("type").str,
+      "array"
+    )
+    val bad = intercept[RuntimeException](
+      ranged.run(
+        ujson.Obj(
+          "files" -> ujson.Arr(ujson.Obj("uri" -> "X.scala", "ranges" -> ujson.Arr(ujson.Num(5))))
+        )
+      )
+    )
+    assert(bad.getMessage.contains("literal_tokens: invalid arguments"), bad.getMessage)
+    val ok = ranged.run(
+      ujson.Obj(
+        "files" -> ujson.Arr(
+          ujson.Obj(
+            "uri" -> "A.scala",
+            "source" -> "object A:\n  val x = 42\n",
+            "ranges" -> ujson.Arr(ujson.Arr(0, 2))
+          )
+        )
+      )
+    )
+    assertEquals(ok("files")(0)("literals")(0)("value").str, "42")
+
   test("JsonBridge keeps integers integral and nesting intact"):
     val j = JsonBridge.toCirce(
       ujson.Obj("a" -> 2, "b" -> 2.5, "c" -> ujson.Arr(true, ujson.Null, "x"), "d" -> ujson.Obj())

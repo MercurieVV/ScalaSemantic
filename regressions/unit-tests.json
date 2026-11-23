@@ -729,6 +729,7 @@
   "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.source tools reject a missing required argument by name, and still render",
   "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.symbol-lookup tools name the missing field; paging and sections still work",
   "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.the graph, position and text-search tools derive their inputSchema too",
+  "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.the multi-file tools declare files[] items, and reject a malformed range by name",
   "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.the plan and analysis tools derive their inputSchema from typed arguments",
   "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.the source tools derive their inputSchema, sharing one wording for the view options",
   "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.the symbol-lookup tools derive their inputSchema from typed arguments",
