@@ -26,7 +26,7 @@ import mill.javalib.SonatypeCentralPublishModule
 // ---------------------------------------------------------------------------------------------
 object V {
   val scala3 = "3.8.4"
-  val scalameta = "4.17.0"
+  val scalameta = "4.17.3"
   val upickle = "4.4.3"
   // tapir 1.14.x is built with Scala 3.9 (TASTy 28.9) and unreadable by 3.8.4 — stay on 1.13.x.
   val tapir = "1.13.33"
