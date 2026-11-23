@@ -124,7 +124,8 @@ object SourceToolSchemas:
       "source_around_position" -> schema(using Alternatives.of(List(sourceView, uriNotFound)))
     )
 
-  private lazy val all: Map[String, ujson.Value] = schemaOf ++ PlanToolSchemas.schemaOf
+  private lazy val all: Map[String, ujson.Value] =
+    schemaOf ++ PlanToolSchemas.schemaOf ++ AnalysisToolSchemas.schemaOf
 
   def attach(tools: List[Tool]): List[Tool] =
     tools.map(t =>
