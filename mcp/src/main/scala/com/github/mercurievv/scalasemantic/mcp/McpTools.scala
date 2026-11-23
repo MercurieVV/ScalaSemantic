@@ -698,8 +698,12 @@ private[mcp] object McpToolsSupport:
     * keep only the named ones.
     */
   private[mcp] def includeWant(a: ujson.Value): String => Boolean =
-    val include = a.obj.get("include").map(_.arr.iterator.map(_.str).toSet)
-    section => include.forall(_.contains(section))
+    includeWant(a.obj.get("include").map(_.arr.iterator.map(_.str).toList))
+
+  /** Which sections to return: all when `include` is absent, else exactly the listed ones. */
+  private[mcp] def includeWant(include: Option[List[String]]): String => Boolean =
+    val wanted = include.map(_.toSet)
+    section => wanted.forall(_.contains(section))
 
   private[mcp] def notFound(symbol: String): ujson.Value =
     jobj(Some("symbol" -> ujson.Str(symbol)), Some("found" -> ujson.Bool(false)))
@@ -876,13 +880,19 @@ private[mcp] object McpToolsSupport:
       root: java.nio.file.Path,
       a: ujson.Value,
       key: String
+  ): List[TypeSymbol] = resolveTypeArg(az, root, argStr(a, key))
+
+  /** A type symbol, or a file path — the file's types. */
+  private[mcp] def resolveTypeArg(
+      az: Analyzer,
+      root: java.nio.file.Path,
+      raw: String
   ): List[TypeSymbol] =
-    val raw = argStr(a, key)
     TypeSymbol.from(raw) match
       case Right(sym) => List(sym)
       case Left(_)    =>
         if looksLikeFilePath(raw, root) then
-          val uri = argUri(a, key)
+          val uri = validatedArg(DocumentUri.from(raw))
           if !java.nio.file.Files.isRegularFile(root.resolve(uri.value)) then
             error(s"not a symbol or an existing file: $raw")
           else
@@ -905,13 +915,19 @@ private[mcp] object McpToolsSupport:
       root: java.nio.file.Path,
       a: ujson.Value,
       key: String
+  ): List[MethodSymbol] = resolveMethodArg(az, root, argStr(a, key))
+
+  /** A method symbol, or a file path — the file's methods. */
+  private[mcp] def resolveMethodArg(
+      az: Analyzer,
+      root: java.nio.file.Path,
+      raw: String
   ): List[MethodSymbol] =
-    val raw = argStr(a, key)
     MethodSymbol.from(raw) match
       case Right(sym) => List(sym)
       case Left(_)    =>
         if looksLikeFilePath(raw, root) then
-          val uri = argUri(a, key)
+          val uri = validatedArg(DocumentUri.from(raw))
           if !java.nio.file.Files.isRegularFile(root.resolve(uri.value)) then
             error(s"not a symbol or an existing file: $raw")
           else
@@ -935,13 +951,19 @@ private[mcp] object McpToolsSupport:
       root: java.nio.file.Path,
       a: ujson.Value,
       key: String
+  ): List[MethodOrTermSymbol] = resolveMethodOrTermArg(az, root, argStr(a, key))
+
+  /** A method/val/var symbol, or a file path — the file's methods. */
+  private[mcp] def resolveMethodOrTermArg(
+      az: Analyzer,
+      root: java.nio.file.Path,
+      raw: String
   ): List[MethodOrTermSymbol] =
-    val raw = argStr(a, key)
     MethodOrTermSymbol.from(raw) match
       case Right(sym) => List(sym)
       case Left(_)    =>
         if looksLikeFilePath(raw, root) then
-          val uri = argUri(a, key)
+          val uri = validatedArg(DocumentUri.from(raw))
           if !java.nio.file.Files.isRegularFile(root.resolve(uri.value)) then
             error(s"not a symbol or an existing file: $raw")
           else
@@ -1162,7 +1184,7 @@ private[mcp] object McpToolsGroupA:
         }
       ),
       toolDef(
-        TypedTool[FindUsagesResult](
+        TypedTool.of[FindUsagesArgs, FindUsagesResult](
           "find_usages",
           "Every resolved reference to a symbol across the codebase, split into definitions and " +
             "references (paged) — including renames, re-exports, and inferred/implicit uses that text " +
@@ -1174,42 +1196,16 @@ private[mcp] object McpToolsGroupA:
             "carries a `related` section: construction sites (which resolve to the companion " +
             "object, not to the class), `copy` calls, `apply`/`unapply` and parameter-accessor " +
             "reads — the sites a plain type-reference search silently omits. Narrow that section " +
-            "with `related`, or pass an empty array to drop it.",
-          List(
-            ("symbol", "string", "SemanticDB symbol to search for"),
-            ("limit", "integer", "max references to return (default 100)"),
-            ("offset", "integer", "reference offset for paging (default 0)"),
-            (
-              "pathFilter",
-              "string",
-              "glob on document uri; `*` matches any chars (substring match)"
-            ),
-            (
-              "include",
-              "array",
-              "sections to return: any of \"definitions\", \"references\" (default both)"
-            ),
-            (
-              "contextLines",
-              "integer",
-              "lines of surrounding source per hit (default 0 = no context, no extra file I/O)"
-            ),
-            (
-              "related",
-              "array",
-              "case-class relations to include: any of \"companion\", \"constructors\", \"copy\", " +
-                "\"accessors\", \"apply\", \"unapply\" (default all; `[]` drops the section)"
-            )
-          ),
-          List("symbol")
+            "with `related`, or pass an empty array to drop it."
         ) { a =>
-          val symbol = argSymbol(a, "symbol")
-          val limit = argPositiveInt(a, "limit", 100)
-          val offset = argNonNegativeInt(a, "offset", 0)
-          val want = includeWant(a)
-          val contextLines = argNonNegativeInt(a, "contextLines", 0).value
-          val relatedKinds = a.obj.get("related").map(_.arr.iterator.map(_.str).toSet)
-          val u = az.findUsages(symbol, a.obj.get("pathFilter").map(_.str), relatedKinds)
+          val symbol = validatedArg(SemanticDbSymbol.from(a.symbol))
+          val limit = validatedArg(PositiveInt.from(a.limit.getOrElse(100), "limit"))
+          val offset = validatedArg(NonNegativeInt.from(a.offset.getOrElse(0), "offset"))
+          val want = includeWant(a.include)
+          val contextLines =
+            validatedArg(NonNegativeInt.from(a.contextLines.getOrElse(0), "contextLines")).value
+          val relatedKinds = a.related.map(_.toSet)
+          val u = az.findUsages(symbol, a.pathFilter, relatedKinds)
           val page = u.references.slice(offset.value, offset.value + limit.value)
           val definitionsWithContext =
             if contextLines > 0 then withContext(root, u.definitions, contextLines) else Nil
@@ -1248,7 +1244,7 @@ private[mcp] object McpToolsGroupA:
         }
       ),
       toolDef(
-        TypedTool[Lookup[MethodSignatureResult]](
+        TypedTool.of[MethodSignatureArgs, Lookup[MethodSignatureResult]](
           "method_signature",
           "The full signature of a term declared with `def`, `val` or `var` (a caller pointing at " +
             "an identifier often does not know — or care — which keyword declared it): for a method, " +
@@ -1257,40 +1253,20 @@ private[mcp] object McpToolsGroupA:
             "`source` (the defining file's path and CURRENT text) to read it from a buffer edited " +
             "since — or never — compiled: the presentation compiler regenerates it, error-tolerant, " +
             "and overlays it on the index so types referenced from other files still resolve. (The " +
-            "server must have been started with a classpath for `source` to take effect.)",
-          List(
-            (
-              "symbol",
-              "string",
-              "method/val/var symbol, OR a file path — a file with exactly one method returns its " +
-                "signature; several methods return `{ candidates }` to re-call with one"
-            ),
-            ("detailed", "boolean", "include structured parameter breakdown (default false)"),
-            (
-              "uri",
-              "string",
-              "defining file's uri (path relative to project root); with `source`, overlays it"
-            ),
-            (
-              "source",
-              "string",
-              "current full text of the file at `uri`; enables the live PC overlay"
-            )
-          ),
-          List("symbol")
+            "server must have been started with a classpath for `source` to take effect.)"
         ) { a =>
-          resolveMethodOrTermArg(az, root, a, "symbol") match
-            case Nil           => Lookup.Missing(argStr(a, "symbol"))
+          resolveMethodOrTermArg(az, root, a.symbol) match
+            case Nil           => Lookup.Missing(a.symbol)
             case symbol :: Nil =>
-              val engine = (a.obj.get("uri").map(_.str), a.obj.get("source").map(_.str)) match
-                case (Some(_), Some(src)) =>
-                  val uri = argUri(a, "uri")
+              val engine = (a.uri, a.source) match
+                case (Some(u), Some(src)) =>
+                  val uri = validatedArg(DocumentUri.from(u))
                   az.withBuffer(root.resolve(uri.value).toUri, src, uri.value)
                 case _ => az
               engine.methodOrTermSignature(symbol) match
                 case None    => Lookup.Missing(symbol.value)
                 case Some(m) =>
-                  val detailed = argBool(a, "detailed", false)
+                  val detailed = a.detailed.getOrElse(false)
                   Lookup.Found(
                     MethodSignatureResult(
                       symbol = symbol.value,
@@ -1314,46 +1290,25 @@ private[mcp] object McpToolsGroupA:
         }
       ),
       toolDef(
-        TypedTool[Lookup[ClassHierarchyResult]](
+        TypedTool.of[ClassHierarchyArgs, Lookup[ClassHierarchyResult]](
           "class_hierarchy",
           "Parents, transitive linearization, and known subtypes/implementers of a class or trait — " +
             "including subtypes anywhere in the project, which a single LSP lookup cannot give. Scope " +
             "related types with `pathFilter` (glob on a related type's definition uri); trim with " +
             "`include` (subset of [\"parents\",\"linearization\",\"knownSubtypes\"]). Accepts a symbol " +
             "OR a file path; a file defining several types returns `{ candidates }` to re-call with " +
-            "one.",
-          List(
-            ("symbol", "string", "class or trait symbol, or a file path"),
-            ("detailed", "boolean", "expand related types to {symbol,name,kind} (default false)"),
-            (
-              "pathFilter",
-              "string",
-              "glob on a related type's definition uri; `*` matches any chars"
-            ),
-            (
-              "include",
-              "array",
-              "sections to return: any of \"parents\", \"linearization\", \"knownSubtypes\" (default all)"
-            ),
-            (
-              "metrics",
-              "boolean",
-              "badge the queried type with its structural layer/centrality/inCycle (default false)"
-            )
-          ),
-          List("symbol")
+            "one."
         ) { a =>
-          resolveTypeArg(az, root, a, "symbol") match
-            case Nil           => Lookup.Missing(argStr(a, "symbol"))
+          resolveTypeArg(az, root, a.symbol) match
+            case Nil           => Lookup.Missing(a.symbol)
             case symbol :: Nil =>
-              val detailed = argBool(a, "detailed", false)
-              val want = includeWant(a)
-              az.classHierarchy(symbol, a.obj.get("pathFilter").map(_.str)) match
+              val detailed = a.detailed.getOrElse(false)
+              val want = includeWant(a.include)
+              az.classHierarchy(symbol, a.pathFilter) match
                 case None    => Lookup.Missing(symbol.value)
                 case Some(h) =>
                   val m =
-                    if argBool(a, "metrics", false) then
-                      az.metricsOf(symbol.value).toList.headOption
+                    if a.metrics.getOrElse(false) then az.metricsOf(symbol.value).toList.headOption
                     else None
                   def section(name: String, rs: List[SymbolRef]): Option[List[RefOut]] =
                     Option.when(want(name) && rs.nonEmpty)(rs.map(RefOut.from(_, detailed)))
@@ -1373,18 +1328,16 @@ private[mcp] object McpToolsGroupA:
         }
       ),
       toolDef(
-        TypedTool[Lookup[FindOverloadsResult]](
+        TypedTool.of[FindOverloadsArgs, Lookup[FindOverloadsResult]](
           "find_overloads",
           "All overloads sharing a name and owner with the given method (they differ only by the `(+N)` " +
             "disambiguator in the symbol), plus same-named methods inherited from parent types " +
             "(`inheritedOverloads`, each suffixed `(from <Parent>)`). Pass any one overload's symbol, " +
             "or a file path — a file defining exactly one method returns its overloads; several " +
-            "methods return `{ candidates }` to re-call with one.",
-          List(("symbol", "string", "any one overload's symbol, or a file path")),
-          List("symbol")
+            "methods return `{ candidates }` to re-call with one."
         ) { a =>
-          resolveMethodArg(az, root, a, "symbol") match
-            case Nil           => Lookup.Missing(argStr(a, "symbol"))
+          resolveMethodArg(az, root, a.symbol) match
+            case Nil           => Lookup.Missing(a.symbol)
             case symbol :: Nil =>
               val o = az.findOverloads(symbol)
               Lookup.Found(
@@ -1407,31 +1360,20 @@ private[mcp] object McpToolsGroupB:
   def tools(az: Analyzer, root: java.nio.file.Path): List[Tool] =
     List(
       toolDef(
-        TypedTool[Lookup[MembersOut]](
+        TypedTool.of[MembersArgs, Lookup[MembersOut]](
           "members",
           "Members a type declares versus those it inherits through its linearization (a member " +
             "re-declared locally counts as declared). Scope with `pathFilter` (glob on a member's " +
             "definition uri); trim with `include` (subset of [\"declared\",\"inherited\"]). Accepts a " +
             "symbol OR a file path; a file defining several types returns `{ candidates }` to re-call " +
-            "with one.",
-          List(
-            ("symbol", "string", "class or trait symbol, or a file path"),
-            ("detailed", "boolean", "include kinds and declaring symbols (default false)"),
-            ("pathFilter", "string", "glob on a member's definition uri; `*` matches any chars"),
-            (
-              "include",
-              "array",
-              "sections to return: any of \"declared\", \"inherited\" (default both)"
-            )
-          ),
-          List("symbol")
+            "with one."
         ) { a =>
-          resolveTypeArg(az, root, a, "symbol") match
-            case Nil           => Lookup.Missing(argStr(a, "symbol"))
+          resolveTypeArg(az, root, a.symbol) match
+            case Nil           => Lookup.Missing(a.symbol)
             case symbol :: Nil =>
-              val detailed = argBool(a, "detailed", false)
-              val want = includeWant(a)
-              az.members(symbol, a.obj.get("pathFilter").map(_.str)) match
+              val detailed = a.detailed.getOrElse(false)
+              val want = includeWant(a.include)
+              az.members(symbol, a.pathFilter) match
                 case None    => Lookup.Missing(symbol.value)
                 case Some(m) =>
                   Lookup.Found(
@@ -1758,14 +1700,12 @@ private[mcp] object McpToolsGroupB:
         }
       ),
       toolDef(
-        TypedTool[ResolveImplicitsResult](
+        TypedTool.of[ResolveImplicitsArgs, ResolveImplicitsResult](
           "resolve_implicits",
           "The given/implicit definitions in the index that produce a wanted type (by symbol) — implicit " +
-            "resolution that text search cannot do. `chosen` is set when exactly one candidate applies.",
-          List(("type", "string", "the wanted type's symbol, e.g. pkg/Show#")),
-          List("type")
+            "resolution that text search cannot do. `chosen` is set when exactly one candidate applies."
         ) { a =>
-          val typeSymbol = argTypeSymbol(a, "type")
+          val typeSymbol = validatedArg(TypeSymbol.from(a.`type`))
           val r = az.resolveImplicits(typeSymbol)
           ResolveImplicitsResult(
             `type` = typeSymbol.value,

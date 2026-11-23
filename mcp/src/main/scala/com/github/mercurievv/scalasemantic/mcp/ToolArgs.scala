@@ -23,3 +23,75 @@ final case class FindSymbolArgs(
     metrics: Option[Boolean]
 ) derives Decoder,
       Schema
+
+final case class FindUsagesArgs(
+    @description("SemanticDB symbol to search for") symbol: String,
+    @description("max references to return (default 100)") limit: Option[Int],
+    @description("reference offset for paging (default 0)") offset: Option[Int],
+    @description("glob on document uri; `*` matches any chars (substring match)")
+    pathFilter: Option[String],
+    @description("sections to return: any of \"definitions\", \"references\" (default both)")
+    include: Option[List[String]],
+    @description("lines of surrounding source per hit (default 0 = no context, no extra file I/O)")
+    contextLines: Option[Int],
+    @description(
+      "case-class relations to include: any of \"companion\", \"constructors\", \"copy\", " +
+        "\"accessors\", \"apply\", \"unapply\" (default all; `[]` drops the section)"
+    )
+    related: Option[List[String]]
+) derives Decoder,
+      Schema
+
+final case class MethodSignatureArgs(
+    @description(
+      "method/val/var symbol, OR a file path — a file with exactly one method returns its " +
+        "signature; several methods return `{ candidates }` to re-call with one"
+    )
+    symbol: String,
+    @description("include structured parameter breakdown (default false)")
+    detailed: Option[Boolean],
+    @description(
+      "defining file's uri (path relative to project root); with `source`, overlays it"
+    )
+    uri: Option[String],
+    @description("current full text of the file at `uri`; enables the live PC overlay")
+    source: Option[String]
+) derives Decoder,
+      Schema
+
+final case class ClassHierarchyArgs(
+    @description("class or trait symbol, or a file path") symbol: String,
+    @description("expand related types to {symbol,name,kind} (default false)")
+    detailed: Option[Boolean],
+    @description("glob on a related type's definition uri; `*` matches any chars")
+    pathFilter: Option[String],
+    @description(
+      "sections to return: any of \"parents\", \"linearization\", \"knownSubtypes\" (default all)"
+    )
+    include: Option[List[String]],
+    @description(
+      "badge the queried type with its structural layer/centrality/inCycle (default false)"
+    )
+    metrics: Option[Boolean]
+) derives Decoder,
+      Schema
+
+final case class FindOverloadsArgs(
+    @description("any one overload's symbol, or a file path") symbol: String
+) derives Decoder,
+      Schema
+
+final case class MembersArgs(
+    @description("class or trait symbol, or a file path") symbol: String,
+    @description("include kinds and declaring symbols (default false)") detailed: Option[Boolean],
+    @description("glob on a member's definition uri; `*` matches any chars")
+    pathFilter: Option[String],
+    @description("sections to return: any of \"declared\", \"inherited\" (default both)")
+    include: Option[List[String]]
+) derives Decoder,
+      Schema
+
+final case class ResolveImplicitsArgs(
+    @description("the wanted type's symbol, e.g. pkg/Show#") `type`: String
+) derives Decoder,
+      Schema
