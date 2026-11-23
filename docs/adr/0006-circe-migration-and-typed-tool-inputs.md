@@ -1,6 +1,8 @@
 # ADR 0006 — Moving the MCP layer from upickle to circe, with typed tool inputs
 
-- **Status:** proposed — stage 0 is done; stages A–E need approval of the open questions below
+- **Status:** accepted 2026-11-23 — stage 0 is done; the owner's answers to the open questions are
+  recorded under [Decisions taken](#decisions-taken), which also revise the stage list (stage A
+  dropped, a `wire` module added)
 - **Date:** 2026-11-23
 - **Extends:** the typed-output work (PRs #330–#338): circe encoders + tapir `Schema` + a compact
   JSON-Schema emitter already produce every tool's `outputSchema`
@@ -88,12 +90,38 @@ language. It will be called out in the release notes.
 - The `McpTools.scala` bytecode budget gets easier: typed tools already shrank bodies, and decoded
   args remove the per-call parsing boilerplate.
 
-## Open questions for the owner
+## Decisions taken
 
-1. **Stage D's `null` → absent.** Accept it, or keep explicit `null` for those four tools (then
-   `NullableOptionals` stays and the encode step needs a per-tool "keep nulls" switch)?
-2. **`analysis` gets `circe-core`.** Acceptable, or should `analysis` stay JSON-free and the
-   encoders live in `mcp` (more code in `mcp`, models stay plain case classes)?
-3. **Input validation strictness.** Today an unknown argument is silently ignored. Typed inputs
-   can reject it (`additionalProperties: false`), which catches typos but breaks clients that send
-   extras. Default proposed: keep ignoring, document it.
+The owner's answers to the three open questions, and what they change:
+
+1. **Circe-native wire.** Absent optionals are absent keys everywhere — the explicit `null` of the
+   four model-writing tools goes away (stage D as written), and `NullableOptionals` is deleted.
+   "Circe native" also means contracts may change slightly where the circe derivation is the
+   natural shape; each such change is listed in its PR and in the release notes.
+2. **A separate module.** Neither `analysis` nor `mcp` owns the codecs: a new Mill module `wire`
+   (package `…​.wire`, depends on `analysis`, depended on by `mcp`) holds the circe
+   `Encoder`/`Decoder` and tapir `Schema` derivations for the analysis models and the validated
+   input types (`DocumentUri`, `SemanticDbSymbol`, `PositiveInt`, …). `analysis` and `core` end up
+   JSON-free: the models become plain case classes and `analysis` loses `upickle`.
+3. **Unknown arguments stay accepted, with an optional warning.** The default is unchanged (an
+   unknown key is ignored). With `SCALASEMANTIC_WARN_UNKNOWN_ARGS=1` (or
+   `-Dscalasemantic.warnUnknownArgs=true`) the server logs one warning per call naming the
+   tool and the ignored keys. No client ever sees an error for an extra key.
+4. **Derive once, reuse everywhere.** A type's `Encoder`, `Decoder` and `Schema` come from a single
+   `derives` clause and serve inputs, outputs, `inputSchema`, `outputSchema` and (where it
+   applies) the analysis result itself. Concretely: where a hand-written mirror of an analysis
+   model exists only to be encoded (for example `RenamePlanResult`, the `Hole*` and `Literal*`
+   copies), the model itself becomes the tool's output type, and the mirror is deleted.
+
+### Revised stages
+
+| Stage | What | Wire change |
+| --- | --- | --- |
+| ~~A~~ | ~~`Args` view over the request~~ — dropped: typed inputs make the 19 `arg*` helpers disappear tool by tool, so an intermediate view would be thrown away | — |
+| **B** | Typed inputs: one case class per tool (`derives Decoder, Schema`); `inputSchema` is derived from it by the same emitter that does outputs; decode failures give one uniform message naming the field. Until stage C the decoder reads the `ujson` request through the same string bridge `TypedTool` already uses for outputs. Optional unknown-argument warning lands with the first migrated tool. | `inputSchema` gains `items` for arrays and loses nothing |
+| **W** | New `wire` module; the analysis models' derivations move there as circe `Encoder`/`Schema`; `analysis` drops `upickle`; mirrors that only re-encode a model are deleted | explicit `null` → absent (decision 1) |
+| **C** | Flip `Tool.run` to `Json => Json` and port `Mcp`, `ResultShaping`, `BatchTool`, `OutputSchema*`, `TypedTool` (the bridge disappears); tests move to a small `J` helper | none |
+| **E** | Remove `upickle` from `mcp`, the ProGuard keep rules for it, and the doc line | none |
+
+B and W are independent and can interleave; C needs both; the parity test described above is
+written before C.
