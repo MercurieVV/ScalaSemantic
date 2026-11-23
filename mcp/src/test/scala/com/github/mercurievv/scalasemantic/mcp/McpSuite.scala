@@ -1,7 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 /** Phase 4: MCP protocol + tool wiring, driven through the pure `Mcp.handle` against the fixtures
   * index. Also pins the token-discipline contract: lean by default, structured under `detailed`.
@@ -26,26 +28,26 @@ class McpSuite extends munit.FunSuite:
 
   private def req(
       method: String,
-      params: ujson.Value,
-      id: ujson.Value = ujson.Num(1)
-  ): ujson.Value =
-    ujson.Obj("jsonrpc" -> "2.0", "id" -> id, "method" -> method, "params" -> params)
+      params: Json,
+      id: Json = J.num(1)
+  ): Json =
+    J.obj("jsonrpc" -> "2.0", "id" -> id, "method" -> method, "params" -> params)
 
   /** Invoke a tool and parse the JSON carried in its text content block. */
-  private def call(name: String, args: ujson.Value): ujson.Value =
+  private def call(name: String, args: Json): Json =
     val resp = callResponse(name, args)
     val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
-    ujson.read(text)
+    J.read(text)
 
-  private def callResponse(name: String, args: ujson.Value): Option[ujson.Value] =
-    Mcp.handle(req("tools/call", ujson.Obj("name" -> name, "arguments" -> args)), tools)
+  private def callResponse(name: String, args: Json): Option[Json] =
+    Mcp.handle(req("tools/call", J.obj("name" -> name, "arguments" -> args)), tools)
 
   @SuppressWarnings(Array("org.wartremover.warts.MutableDataStructures"))
-  private def jsonArray(value: ujson.Value): Vector[ujson.Value] =
+  private def jsonArray(value: Json): Vector[Json] =
     value.arr.toVector
 
   test("initialize echoes the protocol version, advertises the server, and ships instructions") {
-    val r = Mcp.handle(req("initialize", ujson.Obj("protocolVersion" -> "2025-06-18")), tools).get
+    val r = Mcp.handle(req("initialize", J.obj("protocolVersion" -> "2025-06-18")), tools).get
     assertEquals(r("result")("protocolVersion").str, "2025-06-18")
     assertEquals(r("result")("serverInfo")("name").str, Mcp.ServerName)
     // instructions must steer the model to prefer these tools over grep
@@ -55,7 +57,7 @@ class McpSuite extends munit.FunSuite:
   }
 
   test("initialize instructions describe the annotation-aware edit path") {
-    val r = Mcp.handle(req("initialize", ujson.Obj("protocolVersion" -> "2025-06-18")), tools).get
+    val r = Mcp.handle(req("initialize", J.obj("protocolVersion" -> "2025-06-18")), tools).get
     val instr = r("result")("instructions").str
     // Reading annotated is already covered above; editing is the part agents never find.
     assert(instr.contains("sentinel"), instr)
@@ -70,7 +72,7 @@ class McpSuite extends munit.FunSuite:
     val src = "package p\nobject O:\n  val table = Map(\"C4\" -> 60)\n"
     val r = call(
       "literal_tokens",
-      ujson.Obj("files" -> ujson.Arr(ujson.Obj("uri" -> "A.scala", "source" -> src)))
+      J.obj("files" -> J.arr(J.obj("uri" -> "A.scala", "source" -> src)))
     )
     val file = r("files")(0)
     assertEquals(file("uri").str, "A.scala")
@@ -84,9 +86,9 @@ class McpSuite extends munit.FunSuite:
     val src = "package p\nobject O:\n  val a = 11\n  val b = 22\n"
     val r = call(
       "literal_tokens",
-      ujson.Obj(
-        "files" -> ujson.Arr(
-          ujson.Obj("uri" -> "A.scala", "source" -> src, "ranges" -> ujson.Arr(ujson.Arr(3, 4)))
+      J.obj(
+        "files" -> J.arr(
+          J.obj("uri" -> "A.scala", "source" -> src, "ranges" -> J.arr(J.arr(3, 4)))
         )
       )
     )
@@ -97,9 +99,9 @@ class McpSuite extends munit.FunSuite:
     val src = "package p\nobject O:\n  val a = 11\n  val b = 22\n"
     val r = call(
       "literal_tokens",
-      ujson.Obj(
-        "files" -> ujson.Arr(
-          ujson.Obj("uri" -> "A.scala", "source" -> src, "ranges" -> ujson.Arr())
+      J.obj(
+        "files" -> J.arr(
+          J.obj("uri" -> "A.scala", "source" -> src, "ranges" -> J.arr())
         )
       )
     )
@@ -109,10 +111,10 @@ class McpSuite extends munit.FunSuite:
   test("a missing file is a per-file error, the others still answer") {
     val r = call(
       "literal_tokens",
-      ujson.Obj(
-        "files" -> ujson.Arr(
-          ujson.Obj("uri" -> "does/not/Exist.scala"),
-          ujson.Obj("uri" -> "B.scala", "source" -> "package p\nobject B:\n  val x = 7\n")
+      J.obj(
+        "files" -> J.arr(
+          J.obj("uri" -> "does/not/Exist.scala"),
+          J.obj("uri" -> "B.scala", "source" -> "package p\nobject B:\n  val x = 7\n")
         )
       )
     )
@@ -125,15 +127,15 @@ class McpSuite extends munit.FunSuite:
   test("a file that does not parse is a per-file error") {
     val r = call(
       "literal_tokens",
-      ujson.Obj(
-        "files" -> ujson.Arr(ujson.Obj("uri" -> "A.scala", "source" -> "object O { val = }"))
+      J.obj(
+        "files" -> J.arr(J.obj("uri" -> "A.scala", "source" -> "object O { val = }"))
       )
     )
     assert(r("files")(0)("error").str.contains("does not parse"), r.toString)
   }
 
   test("literal_tokens with an empty files list is an error") {
-    val text = callResponse("literal_tokens", ujson.Obj("files" -> ujson.Arr()))
+    val text = callResponse("literal_tokens", J.obj("files" -> J.arr()))
       .getOrElse(fail("no response"))("result")("content")(0)("text")
       .str
     assert(text.contains("`files` must hold at least one"), text)
@@ -144,7 +146,7 @@ class McpSuite extends munit.FunSuite:
       "package p\nobject K:\n  def f(x: Int): Int = { require(x > 0); x } ensuring (r => r > 0)\n"
     val r = call(
       "contract_clauses",
-      ujson.Obj("files" -> ujson.Arr(ujson.Obj("uri" -> "K.scala", "source" -> src)))
+      J.obj("files" -> J.arr(J.obj("uri" -> "K.scala", "source" -> src)))
     )
     val file = r("files")(0)
     assertEquals(file("uri").str, "K.scala")
@@ -159,10 +161,10 @@ class McpSuite extends munit.FunSuite:
   test("contract_clauses: a missing file is a per-file error, the others still answer") {
     val r = call(
       "contract_clauses",
-      ujson.Obj(
-        "files" -> ujson.Arr(
-          ujson.Obj("uri" -> "does/not/Exist.scala"),
-          ujson.Obj(
+      J.obj(
+        "files" -> J.arr(
+          J.obj("uri" -> "does/not/Exist.scala"),
+          J.obj(
             "uri" -> "B.scala",
             "source" -> "package p\nobject B:\n  def g(x: Int): Int = { require(x > 1); x }\n"
           )
@@ -177,22 +179,22 @@ class McpSuite extends munit.FunSuite:
   test("contract_clauses: a file that does not parse is a per-file error") {
     val r = call(
       "contract_clauses",
-      ujson.Obj(
-        "files" -> ujson.Arr(ujson.Obj("uri" -> "A.scala", "source" -> "object O { def = }"))
+      J.obj(
+        "files" -> J.arr(J.obj("uri" -> "A.scala", "source" -> "object O { def = }"))
       )
     )
     assert(r("files")(0)("error").str.contains("does not parse"), r.toString)
   }
 
   test("contract_clauses with an empty files list is an error") {
-    val text = callResponse("contract_clauses", ujson.Obj("files" -> ujson.Arr()))
+    val text = callResponse("contract_clauses", J.obj("files" -> J.arr()))
       .getOrElse(fail("no response"))("result")("content")(0)("text")
       .str
     assert(text.contains("`files` must hold at least one"), text)
   }
 
   test("tools/list exposes all tools with schemas") {
-    val r = Mcp.handle(req("tools/list", ujson.Obj()), tools).get
+    val r = Mcp.handle(req("tools/list", J.obj()), tools).get
     val names = r("result")("tools").arr.map(_("name").str).toSet
     assertEquals(names.size, 33)
     assert(names.contains("value_flow"), names.toString)
@@ -234,7 +236,7 @@ class McpSuite extends munit.FunSuite:
   }
 
   test("smart_code_duplications exposes code clones across the project") {
-    val r = call("smart_code_duplications", ujson.Obj("minSize" -> 15))
+    val r = call("smart_code_duplications", J.obj("minSize" -> 15))
     assert(r.obj.contains("groupsCount"))
     assert(r.obj.contains("groups"))
   }
@@ -242,7 +244,7 @@ class McpSuite extends munit.FunSuite:
   test("find_overloads reports inherited overloads separately from same-owner overloads") {
     val r = call(
       "find_overloads",
-      ujson.Obj(
+      J.obj(
         "symbol" -> "com/github/mercurievv/scalasemantic/fixtures/OverloadChild#foo()."
       )
     )
@@ -256,13 +258,13 @@ class McpSuite extends munit.FunSuite:
   test("find_overloads omits inheritedOverloads when the owner has no ancestor overloads") {
     val r = call(
       "find_overloads",
-      ujson.Obj("symbol" -> "com/github/mercurievv/scalasemantic/fixtures/Sample.over().")
+      J.obj("symbol" -> "com/github/mercurievv/scalasemantic/fixtures/Sample.over().")
     )
-    assert(!r.obj.contains("inheritedOverloads"), r.render())
+    assert(!r.obj.contains("inheritedOverloads"), r.noSpaces)
   }
 
   test("find_symbol resolves a plain name to ranked SemanticDB symbols") {
-    val r = call("find_symbol", ujson.Obj("query" -> "Animal"))
+    val r = call("find_symbol", J.obj("query" -> "Animal"))
     assert(r("count").num > 0)
     val syms = jsonArray(r("symbols")).map(_("symbol").str)
     assert(syms.contains(Animal), syms.toString)
@@ -271,26 +273,26 @@ class McpSuite extends munit.FunSuite:
   }
 
   test("find_symbol narrows by kind, exact, and pathFilter") {
-    val byKind = call("find_symbol", ujson.Obj("query" -> "Animal", "kind" -> "TRAIT"))
+    val byKind = call("find_symbol", J.obj("query" -> "Animal", "kind" -> "TRAIT"))
     val kinds = byKind("symbols").arr.map(_("kind").str).toSet
     assertEquals(kinds, Set("TRAIT"))
 
-    val exact = call("find_symbol", ujson.Obj("query" -> "Animal", "exact" -> true))
-    assert(exact("symbols").arr.forall(_("name").str == "Animal"), exact.render())
+    val exact = call("find_symbol", J.obj("query" -> "Animal", "exact" -> true))
+    assert(exact("symbols").arr.forall(_("name").str == "Animal"), exact.noSpaces)
 
     // `VirtualBase` (compat-fixtures' CallGraph.scala) is identically defined in both compat-fixtures
     // version trees.
     val scoped =
       call(
         "find_symbol",
-        ujson.Obj("query" -> "VirtualBase", "kind" -> "TRAIT", "pathFilter" -> "*compat*")
+        J.obj("query" -> "VirtualBase", "kind" -> "TRAIT", "pathFilter" -> "*compat*")
       )
     val syms = jsonArray(scoped("symbols")).map(_("symbol").str)
     assertEquals(syms.toList, List("com/github/mercurievv/scalasemantic/compat/VirtualBase#"))
   }
 
   test("structure ranks types by coupling and rolls up modules (dogfood)") {
-    val r = call("structure", ujson.Obj("limit" -> 5))
+    val r = call("structure", J.obj("limit" -> 5))
     val mods = r("modules").arr.map(_("module").str).toSet
     assert(Set("core", "analysis", "mcp").subsetOf(mods), mods.toString)
     // default sort is afferent (fan-in) descending
@@ -300,19 +302,19 @@ class McpSuite extends munit.FunSuite:
     assert(r("symbols").arr.forall(s => s.obj.contains("instability") && s.obj.contains("layer")))
     assert(r("modules").arr.forall(_.obj.contains("layer")), "modules carry a layer")
     // sorting by layer is accepted and ranks descending
-    val byLayer = call("structure", ujson.Obj("sort" -> "layer", "limit" -> 5))
+    val byLayer = call("structure", J.obj("sort" -> "layer", "limit" -> 5))
     val layers = jsonArray(byLayer("symbols")).map(_("layer").num)
     assertEquals(layers.toList, layers.toList.sortBy(-_), "symbols ranked by layer desc")
 
     // Phase 3: centrality on every symbol, the module coupling surface, and sort=centrality.
     assert(r("symbols").arr.forall(_.obj.contains("centrality")), "symbols carry centrality")
-    assert(r.obj.contains("moduleEdges") && r("moduleEdges").arr.nonEmpty, r.render())
-    val byCent = call("structure", ujson.Obj("sort" -> "centrality", "limit" -> 5))
+    assert(r.obj.contains("moduleEdges") && r("moduleEdges").arr.nonEmpty, r.noSpaces)
+    val byCent = call("structure", J.obj("sort" -> "centrality", "limit" -> 5))
     val cents = jsonArray(byCent("symbols")).map(_("centrality").num)
     assertEquals(cents.toList, cents.toList.sortBy(-_), "symbols ranked by centrality desc")
 
     // detailed adds the per-dimension breakdown with all dimensions
-    val d = call("structure", ujson.Obj("limit" -> 1, "detailed" -> true))
+    val d = call("structure", J.obj("limit" -> 1, "detailed" -> true))
     val dims = d("symbols")(0)("perDimension").obj.keys.toSet
     assertEquals(dims, Set("extends", "typeRef", "memberType", "call", "implicit"), dims.toString)
 
@@ -320,7 +322,7 @@ class McpSuite extends munit.FunSuite:
     assert(!r.obj.contains("mermaid"), "mermaid must be absent when graph is omitted")
 
     // graph=true adds a mermaid graph TD diagram, one line per moduleEdge
-    val withGraph = call("structure", ujson.Obj("limit" -> 5, "graph" -> true))
+    val withGraph = call("structure", J.obj("limit" -> 5, "graph" -> true))
     val mermaid = withGraph("mermaid").str
     assert(mermaid.startsWith("graph TD"), mermaid)
     val edgeCount = withGraph("moduleEdges").arr.size
@@ -331,41 +333,41 @@ class McpSuite extends munit.FunSuite:
 
   test("metrics badge: find_symbol and class_hierarchy carry structural metrics on request") {
     // off by default — no badge fields
-    val plain = call("find_symbol", ujson.Obj("query" -> "Animal", "kind" -> "TRAIT"))
+    val plain = call("find_symbol", J.obj("query" -> "Animal", "kind" -> "TRAIT"))
     assert(plain("symbols").arr.forall(!_.obj.contains("layer")), "no badge without metrics")
 
     // on → each in-project type result gains layer + centrality
     val badged =
-      call("find_symbol", ujson.Obj("query" -> "Animal", "kind" -> "TRAIT", "metrics" -> true))
+      call("find_symbol", J.obj("query" -> "Animal", "kind" -> "TRAIT", "metrics" -> true))
     val anyBadged =
       badged("symbols").arr.exists(s => s.obj.contains("layer") && s.obj.contains("centrality"))
-    assert(anyBadged, badged.render())
+    assert(anyBadged, badged.noSpaces)
 
     // class_hierarchy badges the queried type
-    val h = call("class_hierarchy", ujson.Obj("symbol" -> Animal, "metrics" -> true))
-    assert(h.obj.contains("layer") && h.obj.contains("centrality"), h.render())
+    val h = call("class_hierarchy", J.obj("symbol" -> Animal, "metrics" -> true))
+    assert(h.obj.contains("layer") && h.obj.contains("centrality"), h.noSpaces)
   }
 
   test("document_outline maps a file's declarations with clarified signatures") {
     // Derive the fixture file's uri from a definition location (uri:line:col), robust to the path.
-    val defLoc = call("find_usages", ujson.Obj("symbol" -> Animal))("definitions").arr.head.str
+    val defLoc = call("find_usages", J.obj("symbol" -> Animal))("definitions").arr.head.str
     val uri = defLoc.split(":").dropRight(2).mkString(":")
-    val o = call("document_outline", ujson.Obj("uri" -> uri))
+    val o = call("document_outline", J.obj("uri" -> uri))
 
-    def flatten(arr: ujson.Value): Seq[ujson.Value] =
+    def flatten(arr: Json): Seq[Json] =
       arr.arr.toSeq.flatMap(e => e +: e.obj.get("children").map(flatten).getOrElse(Nil))
     val entries = flatten(o("outline"))
-    assert(entries.exists(_("name").str == "Animal"), o.render())
+    assert(entries.exists(_("name").str == "Animal"), o.noSpaces)
     // a method/value entry renders a resolved signature (the clarified view)
-    assert(entries.exists(_.obj.get("signature").exists(_.str.contains(":"))), o.render())
+    assert(entries.exists(_.obj.get("signature").exists(_.str.contains(":"))), o.noSpaces)
   }
 
   test("annotated_source surfaces compiler insertions invisible in the source text") {
     // Resolve the fixtures file uri from a definition location, robust to the on-disk path.
-    val defLoc = call("find_usages", ujson.Obj("symbol" -> Show))("definitions").arr.head.str
+    val defLoc = call("find_usages", J.obj("symbol" -> Show))("definitions").arr.head.str
     val uri = defLoc.split(":").dropRight(2).mkString(":")
-    val r = call("annotated_source", ujson.Obj("uri" -> uri))
-    assert(r("annotationCount").num > 0, r.render())
+    val r = call("annotated_source", J.obj("uri" -> uri))
+    assert(r("annotationCount").num > 0, r.noSpaces)
     val src = r("source").str
     // numbered lines + the annotation marker for the compiler's invisible work
     assert(src.linesIterator.exists(_.contains("⟹")), src)
@@ -373,7 +375,7 @@ class McpSuite extends munit.FunSuite:
     assert(src.contains("[") && src.contains("using"), src)
 
     // annotationsOnly trims to just the carrying lines (each one keeps the marker).
-    val only = call("annotated_source", ujson.Obj("uri" -> uri, "annotationsOnly" -> true))
+    val only = call("annotated_source", J.obj("uri" -> uri, "annotationsOnly" -> true))
     assert(only("source").str.linesIterator.forall(_.contains("⟹")), only("source").str)
 
     // The build compiles before it tests, so this fixture's SemanticDB was produced from exactly
@@ -382,16 +384,16 @@ class McpSuite extends munit.FunSuite:
   }
 
   test("annotated_source format: plain strips notes, compilable comments them out") {
-    val defLoc = call("find_usages", ujson.Obj("symbol" -> Show))("definitions").arr.head.str
+    val defLoc = call("find_usages", J.obj("symbol" -> Show))("definitions").arr.head.str
     val uri = defLoc.split(":").dropRight(2).mkString(":")
 
     // plain: the raw file, no annotation markers at all
-    val plain = call("annotated_source", ujson.Obj("uri" -> uri, "format" -> "plain"))
+    val plain = call("annotated_source", J.obj("uri" -> uri, "format" -> "plain"))
     assertEquals(plain("format").str, "plain")
     assert(!plain("source").str.contains("⟹"), "plain must carry no notes")
 
     // compilable: notes become trailing `// ⟹` comments and the gutter is dropped
-    val comp = call("annotated_source", ujson.Obj("uri" -> uri, "format" -> "compilable"))
+    val comp = call("annotated_source", J.obj("uri" -> uri, "format" -> "compilable"))
     val src = comp("source").str
     assert(src.contains("// ⟹"), src)
     // no line-number gutter → the first source line starts at column 0, not padded digits
@@ -399,38 +401,38 @@ class McpSuite extends munit.FunSuite:
   }
 
   test("annotated_source reports found:false for an unknown uri") {
-    val r = call("annotated_source", ujson.Obj("uri" -> "does/not/exist.scala"))
+    val r = call("annotated_source", J.obj("uri" -> "does/not/exist.scala"))
     assertEquals(r("found").bool, false)
   }
 
   test("rename_plan returns precise, resolved edits (no grep over-match)") {
-    val rp = call("rename_plan", ujson.Obj("symbol" -> Animal, "newName" -> "Creature"))
+    val rp = call("rename_plan", J.obj("symbol" -> Animal, "newName" -> "Creature"))
     assertEquals(rp("rename").str, "Animal -> Creature")
     assert(rp("editCount").num > 0, "expected occurrences to rename")
     // edits are uri:line:col-col ranges (definition + references), not whole lines
-    assert(rp("edits").arr.forall(_.str.matches(""".+:\d+:\d+-\d+""")), rp.render())
+    assert(rp("edits").arr.forall(_.str.matches(""".+:\d+:\d+-\d+""")), rp.noSpaces)
   }
 
   test("move_plan relocates a symbol and lists references + the FQN change") {
     val mp = call(
       "move_plan",
-      ujson.Obj("symbol" -> Animal, "newOwner" -> "com/github/mercurievv/scalasemantic/moved/")
+      J.obj("symbol" -> Animal, "newOwner" -> "com/github/mercurievv/scalasemantic/moved/")
     )
     assertEquals(
       mp("move").str,
       "com.github.mercurievv.scalasemantic.fixtures.Animal -> " +
         "com.github.mercurievv.scalasemantic.moved.Animal"
     )
-    assert(mp.obj.contains("definition"), mp.render())
+    assert(mp.obj.contains("definition"), mp.noSpaces)
     assert(mp("referenceCount").num > 0, "the move must surface calls/usages")
   }
 
   test("tools/call invokes the debug-logging hook with the tool name and args") {
     val captured =
-      new java.util.concurrent.atomic.AtomicReference[List[(String, ujson.Value)]](Nil)
+      new java.util.concurrent.atomic.AtomicReference[List[(String, Json)]](Nil)
     val rq = req(
       "tools/call",
-      ujson.Obj("name" -> "find_symbol", "arguments" -> ujson.Obj("query" -> "Animal"))
+      J.obj("name" -> "find_symbol", "arguments" -> J.obj("query" -> "Animal"))
     )
     val _ = Mcp.handle(rq, tools, (n, a) => { val _ = captured.updateAndGet(_ :+ (n -> a)) })
     val c = captured.get
@@ -442,7 +444,7 @@ class McpSuite extends munit.FunSuite:
     val dir = java.nio.file.Files.createTempDirectory("ss-log").nn
     val log = Mcp.fileLogger(dir)
     log("serving from '.'")
-    Mcp.logToolCall(log)("find_symbol", ujson.Obj("query" -> "Animal"))
+    Mcp.logToolCall(log)("find_symbol", J.obj("query" -> "Animal"))
     val file = dir.resolve(s"${Mcp.ServerName}.log")
     val lines = java.nio.file.Files.readAllLines(file).nn
     assertEquals(lines.size, 2)
@@ -469,27 +471,27 @@ class McpSuite extends munit.FunSuite:
     val dir = root.resolve(".scala-semantic").nn
     java.nio.file.Files.createDirectories(dir)
     val cpFile = dir.resolve("classpath-sbt.json").nn
-    val json = ujson.Obj(
+    val json = J.obj(
       "schemaVersion" -> 1,
       "buildTool" -> "sbt",
-      "modules" -> ujson.Arr(
-        ujson.Obj(
+      "modules" -> J.arr(
+        J.obj(
           "id" -> "app",
           "baseDir" -> "app",
           "scalaVersion" -> "3.8.4",
           "configuration" -> "Compile",
-          "classpath" -> ujson.Arr("app/target/classes", "shared.jar")
+          "classpath" -> J.arr("app/target/classes", "shared.jar")
         ),
-        ujson.Obj(
+        J.obj(
           "id" -> "app.jvm",
           "baseDir" -> "app/jvm",
           "scalaVersion" -> "3.8.4",
           "configuration" -> "Compile",
-          "classpath" -> ujson.Arr("app/jvm/target/classes", "shared.jar")
+          "classpath" -> J.arr("app/jvm/target/classes", "shared.jar")
         )
       )
     )
-    java.nio.file.Files.writeString(cpFile, ujson.write(json))
+    java.nio.file.Files.writeString(cpFile, J.write(json))
 
     val resolved = Mcp.resolveClasspathSpec(".scala-semantic/classpath-sbt.json", root)
     assertEquals(resolved.modules.map(_.id).toList, List("app", "app.jvm"))
@@ -525,17 +527,17 @@ class McpSuite extends munit.FunSuite:
     val cpFile = dir.resolve("classpath-sbt.json").nn
     java.nio.file.Files.writeString(
       cpFile,
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
           "buildTool" -> "sbt",
-          "modules" -> ujson.Arr(
-            ujson.Obj(
+          "modules" -> J.arr(
+            J.obj(
               "id" -> "root",
               "baseDir" -> ".",
               "scalaVersion" -> "3.8.4",
               "configuration" -> "Compile",
-              "classpath" -> ujson.Arr("target/classes")
+              "classpath" -> J.arr("target/classes")
             )
           )
         )
@@ -559,12 +561,12 @@ class McpSuite extends munit.FunSuite:
     val childCp = child.resolve(".scala-semantic").resolve("classpath-mill.json").nn
     java.nio.file.Files.writeString(
       rootMetadata.resolve("modules-mill.json"),
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
           "buildTool" -> "mill",
-          "modules" -> ujson.Arr(
-            ujson.Obj(
+          "modules" -> J.arr(
+            J.obj(
               "name" -> "app",
               "path_from_root" -> "modules/app",
               "path_to_out_dir" -> "out/app"
@@ -575,17 +577,17 @@ class McpSuite extends munit.FunSuite:
     )
     java.nio.file.Files.writeString(
       rootCp,
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
           "buildTool" -> "sbt",
-          "modules" -> ujson.Arr(
-            ujson.Obj(
+          "modules" -> J.arr(
+            J.obj(
               "id" -> "root",
               "baseDir" -> ".",
               "scalaVersion" -> "3.8.4",
               "configuration" -> "Compile",
-              "classpath" -> ujson.Arr("target/classes")
+              "classpath" -> J.arr("target/classes")
             )
           )
         )
@@ -593,17 +595,17 @@ class McpSuite extends munit.FunSuite:
     )
     java.nio.file.Files.writeString(
       childCp,
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
           "buildTool" -> "mill",
-          "modules" -> ujson.Arr(
-            ujson.Obj(
+          "modules" -> J.arr(
+            J.obj(
               "id" -> "app",
               "baseDir" -> "modules/app",
               "scalaVersion" -> "3.8.4",
               "configuration" -> "Compile",
-              "classpath" -> ujson.Arr("out/app/classes")
+              "classpath" -> J.arr("out/app/classes")
             )
           )
         )
@@ -629,12 +631,12 @@ class McpSuite extends munit.FunSuite:
     val cpFile = out.resolve(".scala-semantic").resolve("classpath.json").nn
     java.nio.file.Files.writeString(
       rootMetadata.resolve("modules-mill.json"),
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
           "buildTool" -> "mill",
-          "modules" -> ujson.Arr(
-            ujson.Obj(
+          "modules" -> J.arr(
+            J.obj(
               "name" -> "app",
               "path_from_root" -> "modules/app",
               "path_to_out_dir" -> "out/modules/app"
@@ -645,17 +647,17 @@ class McpSuite extends munit.FunSuite:
     )
     java.nio.file.Files.writeString(
       cpFile,
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
           "buildTool" -> "custom",
-          "modules" -> ujson.Arr(
-            ujson.Obj(
+          "modules" -> J.arr(
+            J.obj(
               "id" -> "app",
               "baseDir" -> "modules/app",
               "scalaVersion" -> "3.8.4",
               "configuration" -> "Compile",
-              "classpath" -> ujson.Arr("out/modules/app/classes")
+              "classpath" -> J.arr("out/modules/app/classes")
             )
           )
         )
@@ -680,12 +682,12 @@ class McpSuite extends munit.FunSuite:
     val libCp = lib.resolve(".scala-semantic").resolve("classpath-sbt.json").nn
     java.nio.file.Files.writeString(
       rootMetadata.resolve("modules-mill.json"),
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
           "buildTool" -> "mill",
-          "modules" -> ujson.Arr(
-            ujson.Obj(
+          "modules" -> J.arr(
+            J.obj(
               "name" -> "app",
               "path_from_root" -> "modules/app",
               "path_to_out_dir" -> "out/app"
@@ -696,12 +698,12 @@ class McpSuite extends munit.FunSuite:
     )
     java.nio.file.Files.writeString(
       rootMetadata.resolve("modules-sbt.json"),
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
           "buildTool" -> "sbt",
-          "modules" -> ujson.Arr(
-            ujson.Obj(
+          "modules" -> J.arr(
+            J.obj(
               "name" -> "lib",
               "path_from_root" -> "modules/lib",
               "path_to_out_dir" -> "target/lib"
@@ -712,24 +714,24 @@ class McpSuite extends munit.FunSuite:
     )
     java.nio.file.Files.writeString(
       appCp,
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
           "buildTool" -> "mill",
-          "modules" -> ujson.Arr(
-            ujson.Obj("id" -> "app", "baseDir" -> "modules/app", "classpath" -> ujson.Arr("a"))
+          "modules" -> J.arr(
+            J.obj("id" -> "app", "baseDir" -> "modules/app", "classpath" -> J.arr("a"))
           )
         )
       )
     )
     java.nio.file.Files.writeString(
       libCp,
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
           "buildTool" -> "sbt",
-          "modules" -> ujson.Arr(
-            ujson.Obj("id" -> "lib", "baseDir" -> "modules/lib", "classpath" -> ujson.Arr("b"))
+          "modules" -> J.arr(
+            J.obj("id" -> "lib", "baseDir" -> "modules/lib", "classpath" -> J.arr("b"))
           )
         )
       )
@@ -753,11 +755,11 @@ class McpSuite extends munit.FunSuite:
     val cpFile = external.resolve(".scala-semantic").resolve("classpath.json").nn
     java.nio.file.Files.writeString(
       rootMetadata.resolve("modules.json"),
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
-          "modules" -> ujson.Arr(
-            ujson.Obj(
+          "modules" -> J.arr(
+            J.obj(
               "name" -> "external",
               "path_from_root" -> relativeExternal,
               "path_to_out_dir" -> "missing-out"
@@ -768,14 +770,14 @@ class McpSuite extends munit.FunSuite:
     )
     java.nio.file.Files.writeString(
       cpFile,
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
-          "modules" -> ujson.Arr(
-            ujson.Obj(
+          "modules" -> J.arr(
+            J.obj(
               "id" -> "external",
               "baseDir" -> relativeExternal,
-              "classpath" -> ujson.Arr(s"$relativeExternal/classes")
+              "classpath" -> J.arr(s"$relativeExternal/classes")
             )
           )
         )
@@ -797,16 +799,16 @@ class McpSuite extends munit.FunSuite:
     val cpFile = child.resolve(".scala-semantic").resolve("classpath.json").nn
     java.nio.file.Files.writeString(
       rootMetadata.resolve("modules.json"),
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
-          "modules" -> ujson.Arr(
-            ujson.Obj(
+          "modules" -> J.arr(
+            J.obj(
               "name" -> "app-a",
               "path_from_root" -> "modules/app",
               "path_to_out_dir" -> "modules/app"
             ),
-            ujson.Obj(
+            J.obj(
               "name" -> "app-b",
               "pathFromRoot" -> "modules/app",
               "pathToOutDir" -> "modules/app"
@@ -817,22 +819,22 @@ class McpSuite extends munit.FunSuite:
     )
     java.nio.file.Files.writeString(
       child.resolve(".scala-semantic").resolve("modules.json"),
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
-          "modules" -> ujson.Arr(
-            ujson.Obj("name" -> "root", "path_from_root" -> ".", "path_to_out_dir" -> ".")
+          "modules" -> J.arr(
+            J.obj("name" -> "root", "path_from_root" -> ".", "path_to_out_dir" -> ".")
           )
         )
       )
     )
     java.nio.file.Files.writeString(
       cpFile,
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
-          "modules" -> ujson.Arr(
-            ujson.Obj("id" -> "app", "baseDir" -> "modules/app", "classpath" -> ujson.Arr("a"))
+          "modules" -> J.arr(
+            J.obj("id" -> "app", "baseDir" -> "modules/app", "classpath" -> J.arr("a"))
           )
         )
       )
@@ -852,17 +854,17 @@ class McpSuite extends munit.FunSuite:
     val hiddenFile = hidden.resolve(".scala-semantic").resolve("classpath-sbt.json").nn
     java.nio.file.Files.writeString(
       cpFile,
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
           "buildTool" -> "mill",
-          "modules" -> ujson.Arr(
-            ujson.Obj(
+          "modules" -> J.arr(
+            J.obj(
               "id" -> "app",
               "baseDir" -> "modules/app",
               "scalaVersion" -> "3.8.4",
               "configuration" -> "Compile",
-              "classpath" -> ujson.Arr("modules/app/out/classes")
+              "classpath" -> J.arr("modules/app/out/classes")
             )
           )
         )
@@ -870,17 +872,17 @@ class McpSuite extends munit.FunSuite:
     )
     java.nio.file.Files.writeString(
       hiddenFile,
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
           "buildTool" -> "sbt",
-          "modules" -> ujson.Arr(
-            ujson.Obj(
+          "modules" -> J.arr(
+            J.obj(
               "id" -> "hidden",
               "baseDir" -> ".hidden/app",
               "scalaVersion" -> "3.8.4",
               "configuration" -> "Compile",
-              "classpath" -> ujson.Arr(".hidden/app/target/classes")
+              "classpath" -> J.arr(".hidden/app/target/classes")
             )
           )
         )
@@ -904,17 +906,17 @@ class McpSuite extends munit.FunSuite:
     val cpFile = out.resolve(".scala-semantic").resolve("classpath.json").nn
     java.nio.file.Files.writeString(
       cpFile,
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
           "buildTool" -> "custom",
-          "modules" -> ujson.Arr(
-            ujson.Obj(
+          "modules" -> J.arr(
+            J.obj(
               "id" -> "app",
               "baseDir" -> "modules/app",
               "scalaVersion" -> "3.8.4",
               "configuration" -> "Compile",
-              "classpath" -> ujson.Arr("out/app/compile.dest/classes")
+              "classpath" -> J.arr("out/app/compile.dest/classes")
             )
           )
         )
@@ -941,38 +943,38 @@ class McpSuite extends munit.FunSuite:
   }
 
   test("notifications get no response") {
-    val n = ujson.Obj("jsonrpc" -> "2.0", "method" -> "notifications/initialized")
+    val n = J.obj("jsonrpc" -> "2.0", "method" -> "notifications/initialized")
     assertEquals(Mcp.handle(n, tools), None)
   }
 
   test("unknown tool yields a JSON-RPC error") {
     val r = Mcp
-      .handle(req("tools/call", ujson.Obj("name" -> "nope", "arguments" -> ujson.Obj())), tools)
+      .handle(req("tools/call", J.obj("name" -> "nope", "arguments" -> J.obj())), tools)
       .get
-    assert(r.obj.contains("error"), r.render())
+    assert(r.obj.contains("error"), r.noSpaces)
   }
 
   test("invalid tool inputs are rejected at the MCP boundary") {
-    val badSymbol = callResponse("find_usages", ujson.Obj("symbol" -> "not a symbol"))
+    val badSymbol = callResponse("find_usages", J.obj("symbol" -> "not a symbol"))
       .getOrElse(fail("no response"))
     assertEquals(badSymbol("result")("isError").bool, true)
     assert(badSymbol("result")("content")(0)("text").str.contains("invalid SemanticDB symbol"))
 
     val badLimit =
-      callResponse("find_symbol", ujson.Obj("query" -> "Animal", "limit" -> 0))
+      callResponse("find_symbol", J.obj("query" -> "Animal", "limit" -> 0))
         .getOrElse(fail("no response"))
     assertEquals(badLimit("result")("isError").bool, true)
     assert(badLimit("result")("content")(0)("text").str.contains("limit must be > 0"))
 
     val badRename =
-      callResponse("rename_plan", ujson.Obj("symbol" -> Animal, "newName" -> "class"))
+      callResponse("rename_plan", J.obj("symbol" -> Animal, "newName" -> "class"))
         .getOrElse(fail("no response"))
     assertEquals(badRename("result")("isError").bool, true)
     assert(badRename("result")("content")(0)("text").str.contains("invalid Scala identifier"))
 
     val badRange = callResponse(
       "extract_method_plan",
-      ujson.Obj(
+      J.obj(
         "uri" -> "Sample.scala",
         "startLine" -> 5,
         "startCharacter" -> 0,
@@ -985,7 +987,7 @@ class McpSuite extends munit.FunSuite:
   }
 
   test("find_usages returns a count and paged references") {
-    val r = call("find_usages", ujson.Obj("symbol" -> Animal, "limit" -> 1))
+    val r = call("find_usages", J.obj("symbol" -> Animal, "limit" -> 1))
     assert(r("referenceCount").num > 0)
     assert(r("references").arr.nonEmpty)
     // compact location form uri:line:col
@@ -993,55 +995,55 @@ class McpSuite extends munit.FunSuite:
   }
 
   test("find_usages include selects sections; referenceCount always stays") {
-    val full = call("find_usages", ujson.Obj("symbol" -> Animal))
-    assert(full.obj.contains("definitions") && full.obj.contains("references"), full.render())
+    val full = call("find_usages", J.obj("symbol" -> Animal))
+    assert(full.obj.contains("definitions") && full.obj.contains("references"), full.noSpaces)
 
-    val countOnly = call("find_usages", ujson.Obj("symbol" -> Animal, "include" -> ujson.Arr()))
-    assert(!countOnly.obj.contains("definitions"), countOnly.render())
-    assert(!countOnly.obj.contains("references"), countOnly.render())
+    val countOnly = call("find_usages", J.obj("symbol" -> Animal, "include" -> J.arr()))
+    assert(!countOnly.obj.contains("definitions"), countOnly.noSpaces)
+    assert(!countOnly.obj.contains("references"), countOnly.noSpaces)
     assert(countOnly("referenceCount").num > 0, "count must survive any include")
 
     val refsOnly =
-      call("find_usages", ujson.Obj("symbol" -> Animal, "include" -> ujson.Arr("references")))
-    assert(!refsOnly.obj.contains("definitions"), refsOnly.render())
-    assert(refsOnly("references").arr.nonEmpty, refsOnly.render())
+      call("find_usages", J.obj("symbol" -> Animal, "include" -> J.arr("references")))
+    assert(!refsOnly.obj.contains("definitions"), refsOnly.noSpaces)
+    assert(refsOnly("references").arr.nonEmpty, refsOnly.noSpaces)
   }
 
   test("find_usages pathFilter scopes references by document-uri glob") {
     val compat = "com/github/mercurievv/scalasemantic/compat/VirtualBase#"
-    val all = call("find_usages", ujson.Obj("symbol" -> compat))
-    val scoped = call("find_usages", ujson.Obj("symbol" -> compat, "pathFilter" -> "*scala-3*"))
+    val all = call("find_usages", J.obj("symbol" -> compat))
+    val scoped = call("find_usages", J.obj("symbol" -> compat, "pathFilter" -> "*scala-3*"))
     assert(scoped("referenceCount").num < all("referenceCount").num, "filter must drop refs")
-    assert(scoped("references").arr.forall(_.str.contains("scala-3")), scoped.render())
+    assert(scoped("references").arr.forall(_.str.contains("scala-3")), scoped.noSpaces)
   }
 
   test("find_usages contextLines omitted keeps *WithContext fields empty (back-compat)") {
-    val r = call("find_usages", ujson.Obj("symbol" -> Animal))
-    assert(!r.obj.contains("definitionsWithContext"), r.render())
-    assert(!r.obj.contains("referencesWithContext"), r.render())
+    val r = call("find_usages", J.obj("symbol" -> Animal))
+    assert(!r.obj.contains("definitionsWithContext"), r.noSpaces)
+    assert(!r.obj.contains("referencesWithContext"), r.noSpaces)
   }
 
   test("find_usages contextLines returns surrounding source lines per hit") {
-    val r = call("find_usages", ujson.Obj("symbol" -> Animal, "contextLines" -> 2))
-    assert(r("referencesWithContext").arr.nonEmpty, r.render())
+    val r = call("find_usages", J.obj("symbol" -> Animal, "contextLines" -> 2))
+    assert(r("referencesWithContext").arr.nonEmpty, r.noSpaces)
     val hit = r("referencesWithContext").arr.head
-    assert(hit.obj.contains("location"), hit.render())
-    assert(hit("context").arr.size > 1, hit.render())
+    assert(hit.obj.contains("location"), hit.noSpaces)
+    assert(hit("context").arr.size > 1, hit.noSpaces)
   }
 
   test("document_outline without filters is unchanged and carries no new keys (back-compat)") {
     val fixture =
       "analysis/src/test/scala/com/github/mercurievv/scalasemantic/fixtures/Sample.scala"
-    val r = call("document_outline", ujson.Obj("uri" -> fixture))
-    assert(!r.obj.contains("filtered"), r.render())
-    assert(!r.obj.contains("liveSource"), r.render())
-    assert(jsonArray(r("outline")).exists(_("name").str == "Animal"), r.render())
+    val r = call("document_outline", J.obj("uri" -> fixture))
+    assert(!r.obj.contains("filtered"), r.noSpaces)
+    assert(!r.obj.contains("liveSource"), r.noSpaces)
+    assert(jsonArray(r("outline")).exists(_("name").str == "Animal"), r.noSpaces)
   }
 
   test("document_outline query narrows to the match and its enclosing scope") {
     val fixture =
       "analysis/src/test/scala/com/github/mercurievv/scalasemantic/fixtures/Sample.scala"
-    val r = call("document_outline", ujson.Obj("uri" -> fixture, "query" -> "swim"))
+    val r = call("document_outline", J.obj("uri" -> fixture, "query" -> "swim"))
     assertEquals(r("filtered").bool, true)
     val names = jsonArray(r("outline")).map(_("name").str)
     assert(names.nonEmpty && names.size < 5, s"expected a narrow result, got $names")
@@ -1051,54 +1053,54 @@ class McpSuite extends munit.FunSuite:
   test("document_outline maxDepth alone bounds nesting without dropping top-level types") {
     val fixture =
       "analysis/src/test/scala/com/github/mercurievv/scalasemantic/fixtures/Sample.scala"
-    val r = call("document_outline", ujson.Obj("uri" -> fixture, "maxDepth" -> 1))
+    val r = call("document_outline", J.obj("uri" -> fixture, "maxDepth" -> 1))
     val entries = jsonArray(r("outline"))
-    assert(entries.exists(_("name").str == "Animal"), r.render())
+    assert(entries.exists(_("name").str == "Animal"), r.noSpaces)
     assert(entries.forall(!_.obj.contains("children")), "no nesting survives maxDepth=1")
   }
 
   test("find_usages omits the related section for a type that is not case-like (back-compat)") {
-    val r = call("find_usages", ujson.Obj("symbol" -> Animal))
-    assert(!r.obj.contains("related"), r.render())
+    val r = call("find_usages", J.obj("symbol" -> Animal))
+    assert(!r.obj.contains("related"), r.noSpaces)
   }
 
   test("find_usages returns labelled related groups for a case class") {
     val order = "com/github/mercurievv/scalasemantic/fixtures/Order#"
-    val r = call("find_usages", ujson.Obj("symbol" -> order))
+    val r = call("find_usages", J.obj("symbol" -> order))
     val groups = jsonArray(r("related"))
-    assert(groups.exists(_("kind").str == "companion"), r.render())
+    assert(groups.exists(_("kind").str == "companion"), r.noSpaces)
     val companion = groups.find(_("kind").str == "companion").get
-    assert(companion("locations").arr.nonEmpty, companion.render())
-    assert(companion("symbol").str.endsWith("/Order."), companion.render())
+    assert(companion("locations").arr.nonEmpty, companion.noSpaces)
+    assert(companion("symbol").str.endsWith("/Order."), companion.noSpaces)
   }
 
   test("find_usages related narrows to the requested kinds, and [] drops the section") {
     val order = "com/github/mercurievv/scalasemantic/fixtures/Order#"
-    val only = call("find_usages", ujson.Obj("symbol" -> order, "related" -> ujson.Arr("copy")))
-    assert(jsonArray(only("related")).forall(_("kind").str == "copy"), only.render())
-    val none = call("find_usages", ujson.Obj("symbol" -> order, "related" -> ujson.Arr()))
-    assert(!none.obj.contains("related"), none.render())
+    val only = call("find_usages", J.obj("symbol" -> order, "related" -> J.arr("copy")))
+    assert(jsonArray(only("related")).forall(_("kind").str == "copy"), only.noSpaces)
+    val none = call("find_usages", J.obj("symbol" -> order, "related" -> J.arr()))
+    assert(!none.obj.contains("related"), none.noSpaces)
   }
 
   test("search_text finds a known literal string in this repo's own sources") {
-    val r = call("search_text", ujson.Obj("query" -> "Phase 4: MCP protocol"))
-    assert(r("count").num > 0, r.render())
+    val r = call("search_text", J.obj("query" -> "Phase 4: MCP protocol"))
+    assert(r("count").num > 0, r.noSpaces)
     val hits = jsonArray(r("hits"))
-    assert(hits.exists(h => h("uri").str.endsWith("McpSuite.scala")), r.render())
+    assert(hits.exists(h => h("uri").str.endsWith("McpSuite.scala")), r.noSpaces)
     assert(
       hits.forall(h => h.obj.contains("uri") && h.obj.contains("line") && h.obj.contains("text"))
     )
   }
 
   test("search_text respects limit, pathFilter, and rejects an invalid regex") {
-    val limited = call("search_text", ujson.Obj("query" -> "def ", "limit" -> 3))
-    assert(limited("hits").arr.size <= 3, limited.render())
+    val limited = call("search_text", J.obj("query" -> "def ", "limit" -> 3))
+    assert(limited("hits").arr.size <= 3, limited.noSpaces)
 
-    val scoped = call("search_text", ujson.Obj("query" -> "McpSuite", "pathFilter" -> "*McpSuite*"))
-    assert(scoped("hits").arr.forall(_("uri").str.contains("McpSuite")), scoped.render())
+    val scoped = call("search_text", J.obj("query" -> "McpSuite", "pathFilter" -> "*McpSuite*"))
+    assert(scoped("hits").arr.forall(_("uri").str.contains("McpSuite")), scoped.noSpaces)
 
     val badRegex =
-      callResponse("search_text", ujson.Obj("query" -> "(unclosed", "regex" -> true))
+      callResponse("search_text", J.obj("query" -> "(unclosed", "regex" -> true))
         .getOrElse(fail("no response"))
     assertEquals(badRegex("result")("isError").bool, true)
   }
@@ -1106,14 +1108,14 @@ class McpSuite extends munit.FunSuite:
   test("batch_rename_plan combines edits from unrelated symbols with no conflicts") {
     val a = "com/github/mercurievv/scalasemantic/fixtures/Show#"
     val b = "com/github/mercurievv/scalasemantic/fixtures/Robot#"
-    val singleA = call("rename_plan", ujson.Obj("symbol" -> a, "newName" -> "Displayable"))
-    val singleB = call("rename_plan", ujson.Obj("symbol" -> b, "newName" -> "Automaton"))
+    val singleA = call("rename_plan", J.obj("symbol" -> a, "newName" -> "Displayable"))
+    val singleB = call("rename_plan", J.obj("symbol" -> b, "newName" -> "Automaton"))
     val batch = call(
       "batch_rename_plan",
-      ujson.Obj(
-        "renames" -> ujson.Arr(
-          ujson.Obj("symbol" -> a, "newName" -> "Displayable"),
-          ujson.Obj("symbol" -> b, "newName" -> "Automaton")
+      J.obj(
+        "renames" -> J.arr(
+          J.obj("symbol" -> a, "newName" -> "Displayable"),
+          J.obj("symbol" -> b, "newName" -> "Automaton")
         )
       )
     )
@@ -1122,7 +1124,7 @@ class McpSuite extends munit.FunSuite:
       singleA("editCount").num + singleB("editCount").num
     )
     assertEquals(batch("conflictCount").num, 0.0)
-    assert(!batch.obj.contains("conflicts"), batch.render())
+    assert(!batch.obj.contains("conflicts"), batch.noSpaces)
   }
 
   test(
@@ -1130,16 +1132,16 @@ class McpSuite extends munit.FunSuite:
   ) {
     val batch = call(
       "batch_rename_plan",
-      ujson.Obj(
-        "renames" -> ujson.Arr(
-          ujson.Obj("symbol" -> Animal, "newName" -> "Creature"),
-          ujson.Obj("symbol" -> Animal, "newName" -> "Beast")
+      J.obj(
+        "renames" -> J.arr(
+          J.obj("symbol" -> Animal, "newName" -> "Creature"),
+          J.obj("symbol" -> Animal, "newName" -> "Beast")
         )
       )
     )
-    assert(batch("conflictCount").num > 0, batch.render())
-    assert(batch("conflicts").arr.nonEmpty, batch.render())
-    val single = call("rename_plan", ujson.Obj("symbol" -> Animal, "newName" -> "Creature"))
+    assert(batch("conflictCount").num > 0, batch.noSpaces)
+    assert(batch("conflicts").arr.nonEmpty, batch.noSpaces)
+    val single = call("rename_plan", J.obj("symbol" -> Animal, "newName" -> "Creature"))
     val singleEdits = single("edits").arr.map(_.str).toSet
     val combinedEdits = batch("combinedEdits").arr.map(_.str).toSet
     assert(
@@ -1149,12 +1151,12 @@ class McpSuite extends munit.FunSuite:
   }
 
   test("method_signature is lean by default and structured only when detailed") {
-    val lean = call("method_signature", ujson.Obj("symbol" -> Render))
+    val lean = call("method_signature", J.obj("symbol" -> Render))
     assertEquals(lean("signature").str, "def render[A](a: A)(implicit sh: Show[A]): String")
     assert(!lean.obj.contains("parameterLists"), "lean result must not expand parameter lists")
 
-    val full = call("method_signature", ujson.Obj("symbol" -> Render, "detailed" -> true))
-    assert(full.obj.contains("parameterLists"), full.render())
+    val full = call("method_signature", J.obj("symbol" -> Render, "detailed" -> true))
+    assert(full.obj.contains("parameterLists"), full.noSpaces)
     assertEquals(full("parameterLists").arr.last("implicit").bool, true)
   }
 
@@ -1163,18 +1165,18 @@ class McpSuite extends munit.FunSuite:
     // it was declared `def` or `val` — the tool must answer either (regression: the val symbol used
     // to be misdiagnosed as a file path and rejected with "file not indexed").
     val first = "com/github/mercurievv/scalasemantic/fixtures/OrderUses.first."
-    val lean = call("method_signature", ujson.Obj("symbol" -> first))
+    val lean = call("method_signature", J.obj("symbol" -> first))
     assertEquals(lean("signature").str, "val first: Order")
     assert(!lean.obj.contains("parameterLists"), "lean result must not expand parameter lists")
 
-    val full = call("method_signature", ujson.Obj("symbol" -> first, "detailed" -> true))
+    val full = call("method_signature", J.obj("symbol" -> first, "detailed" -> true))
     assertEquals(full("returnType").str, "Order")
-    assert(!full.obj.contains("parameterLists"), full.render())
-    assert(!full.obj.contains("typeParameters"), full.render())
+    assert(!full.obj.contains("parameterLists"), full.noSpaces)
+    assert(!full.obj.contains("typeParameters"), full.noSpaces)
   }
 
   test("method_signature reports a type symbol as a type, not a method or value") {
-    val resp = callResponse("method_signature", ujson.Obj("symbol" -> Animal))
+    val resp = callResponse("method_signature", J.obj("symbol" -> Animal))
       .getOrElse(fail("no response"))
     assertEquals(resp("result")("isError").bool, true)
     val text = resp("result")("content")(0)("text").str
@@ -1184,7 +1186,7 @@ class McpSuite extends munit.FunSuite:
 
   test("method_signature reports a missing symbol as not found in the index, not as a file") {
     val missing = "com/github/mercurievv/scalasemantic/fixtures/NoSuchThing#"
-    val resp = callResponse("method_signature", ujson.Obj("symbol" -> missing))
+    val resp = callResponse("method_signature", J.obj("symbol" -> missing))
       .getOrElse(fail("no response"))
     assertEquals(resp("result")("isError").bool, true)
     val text = resp("result")("content")(0)("text").str
@@ -1194,7 +1196,7 @@ class McpSuite extends munit.FunSuite:
 
   test("find_overloads reports a val symbol as a term, not a method") {
     val first = "com/github/mercurievv/scalasemantic/fixtures/OrderUses.first."
-    val resp = callResponse("find_overloads", ujson.Obj("symbol" -> first))
+    val resp = callResponse("find_overloads", J.obj("symbol" -> first))
       .getOrElse(fail("no response"))
     assertEquals(resp("result")("isError").bool, true)
     val text = resp("result")("content")(0)("text").str
@@ -1202,7 +1204,7 @@ class McpSuite extends munit.FunSuite:
   }
 
   test("class_hierarchy reports a method symbol as a method, not a type") {
-    val resp = callResponse("class_hierarchy", ujson.Obj("symbol" -> Render))
+    val resp = callResponse("class_hierarchy", J.obj("symbol" -> Render))
       .getOrElse(fail("no response"))
     assertEquals(resp("result")("isError").bool, true)
     val text = resp("result")("content")(0)("text").str
@@ -1210,37 +1212,37 @@ class McpSuite extends munit.FunSuite:
   }
 
   test("class_hierarchy reports known subtypes as display names by default") {
-    val r = call("class_hierarchy", ujson.Obj("symbol" -> Animal))
+    val r = call("class_hierarchy", J.obj("symbol" -> Animal))
     assertEquals(r("knownSubtypes").arr.map(_.str).toList, List("Dog", "Fish"))
   }
 
   test("class_hierarchy include selects sections and pathFilter scopes subtypes") {
-    val full = call("class_hierarchy", ujson.Obj("symbol" -> Animal))
-    assert(full.obj.contains("knownSubtypes"), full.render())
+    val full = call("class_hierarchy", J.obj("symbol" -> Animal))
+    assert(full.obj.contains("knownSubtypes"), full.noSpaces)
 
     val only =
       call(
         "class_hierarchy",
-        ujson.Obj("symbol" -> Animal, "include" -> ujson.Arr("knownSubtypes"))
+        J.obj("symbol" -> Animal, "include" -> J.arr("knownSubtypes"))
       )
-    assert(!only.obj.contains("parents") && !only.obj.contains("linearization"), only.render())
+    assert(!only.obj.contains("parents") && !only.obj.contains("linearization"), only.noSpaces)
     assertEquals(only("knownSubtypes").arr.map(_.str).toList, List("Dog", "Fish"))
 
     // Dog/Fish live under fixtures → a compat glob empties the list, dropping the section.
-    val scoped = call("class_hierarchy", ujson.Obj("symbol" -> Animal, "pathFilter" -> "*compat*"))
-    assert(!scoped.obj.contains("knownSubtypes"), scoped.render())
+    val scoped = call("class_hierarchy", J.obj("symbol" -> Animal, "pathFilter" -> "*compat*"))
+    assert(!scoped.obj.contains("knownSubtypes"), scoped.noSpaces)
   }
 
   test("members include selects sections and pathFilter scopes members") {
-    val full = call("members", ujson.Obj("symbol" -> Robot))
-    assert(full.obj.contains("inherited"), full.render())
+    val full = call("members", J.obj("symbol" -> Robot))
+    assert(full.obj.contains("inherited"), full.noSpaces)
 
     val declOnly =
-      call("members", ujson.Obj("symbol" -> Robot, "include" -> ujson.Arr("declared")))
-    assert(!declOnly.obj.contains("inherited"), declOnly.render())
+      call("members", J.obj("symbol" -> Robot, "include" -> J.arr("declared")))
+    assert(!declOnly.obj.contains("inherited"), declOnly.noSpaces)
 
-    val scoped = call("members", ujson.Obj("symbol" -> Robot, "pathFilter" -> "*compat*"))
-    assert(!scoped.obj.contains("declared") && !scoped.obj.contains("inherited"), scoped.render())
+    val scoped = call("members", J.obj("symbol" -> Robot, "pathFilter" -> "*compat*"))
+    assert(!scoped.obj.contains("declared") && !scoped.obj.contains("inherited"), scoped.noSpaces)
   }
 
   // --- Task M: class-accepting tools also accept a file path -----------------
@@ -1253,8 +1255,8 @@ class McpSuite extends munit.FunSuite:
     "analysis/src/test/scala/com/github/mercurievv/scalasemantic/fixtures/Sample.scala"
 
   test("members accepts a file path: a single-type file resolves to that type's members") {
-    val bySymbol = call("members", ujson.Obj("symbol" -> SemanticIndexClass))
-    val byFile = call("members", ujson.Obj("symbol" -> SemanticIndexFile))
+    val bySymbol = call("members", J.obj("symbol" -> SemanticIndexClass))
+    val byFile = call("members", J.obj("symbol" -> SemanticIndexFile))
     assertEquals(byFile("symbol").str, bySymbol("symbol").str)
     assertEquals(byFile("name").str, bySymbol("name").str)
     assertEquals(byFile("declared").arr.map(_.str).toSet, bySymbol("declared").arr.map(_.str).toSet)
@@ -1263,40 +1265,40 @@ class McpSuite extends munit.FunSuite:
   test(
     "class_hierarchy accepts a file path: a single-type file resolves to that type's hierarchy"
   ) {
-    val bySymbol = call("class_hierarchy", ujson.Obj("symbol" -> SemanticIndexClass))
-    val byFile = call("class_hierarchy", ujson.Obj("symbol" -> SemanticIndexFile))
+    val bySymbol = call("class_hierarchy", J.obj("symbol" -> SemanticIndexClass))
+    val byFile = call("class_hierarchy", J.obj("symbol" -> SemanticIndexFile))
     assertEquals(byFile("symbol").str, bySymbol("symbol").str)
     assertEquals(byFile("name").str, bySymbol("name").str)
   }
 
   test("members/class_hierarchy on a multi-type file path return disambiguation candidates") {
-    val members = call("members", ujson.Obj("symbol" -> SampleFile))
-    assert(members.obj.contains("candidates"), members.render())
-    assert(members("candidates").arr.map(_.str).contains(Animal), members.render())
-    assert(members.obj.contains("note"), members.render())
+    val members = call("members", J.obj("symbol" -> SampleFile))
+    assert(members.obj.contains("candidates"), members.noSpaces)
+    assert(members("candidates").arr.map(_.str).contains(Animal), members.noSpaces)
+    assert(members.obj.contains("note"), members.noSpaces)
 
-    val hierarchy = call("class_hierarchy", ujson.Obj("symbol" -> SampleFile))
-    assert(hierarchy.obj.contains("candidates"), hierarchy.render())
-    assert(hierarchy("candidates").arr.map(_.str).contains(Animal), hierarchy.render())
+    val hierarchy = call("class_hierarchy", J.obj("symbol" -> SampleFile))
+    assert(hierarchy.obj.contains("candidates"), hierarchy.noSpaces)
+    assert(hierarchy("candidates").arr.map(_.str).contains(Animal), hierarchy.noSpaces)
   }
 
   test(
     "method_signature/find_overloads accept a file path; a multi-method file returns candidates"
   ) {
-    val sig = call("method_signature", ujson.Obj("symbol" -> SampleFile))
-    assert(sig.obj.contains("candidates"), sig.render())
+    val sig = call("method_signature", J.obj("symbol" -> SampleFile))
+    assert(sig.obj.contains("candidates"), sig.noSpaces)
 
-    val overloads = call("find_overloads", ujson.Obj("symbol" -> SampleFile))
-    assert(overloads.obj.contains("candidates"), overloads.render())
+    val overloads = call("find_overloads", J.obj("symbol" -> SampleFile))
+    assert(overloads.obj.contains("candidates"), overloads.noSpaces)
   }
 
   test("class_hierarchy/members error clearly on a value that is neither a symbol nor a file") {
-    intercept[Exception](call("members", ujson.Obj("symbol" -> "not/a/real/path.scala")))
-    intercept[Exception](call("class_hierarchy", ujson.Obj("symbol" -> "totally bogus input")))
+    intercept[Exception](call("members", J.obj("symbol" -> "not/a/real/path.scala")))
+    intercept[Exception](call("class_hierarchy", J.obj("symbol" -> "totally bogus input")))
   }
 
   test("resolve_implicits lists candidate givens for a type") {
-    val r = call("resolve_implicits", ujson.Obj("type" -> Show))
+    val r = call("resolve_implicits", J.obj("type" -> Show))
     val types = r("candidates").arr.map(_("type").str).toSet
     assertEquals(types, Set("Show[Int]", "Show[List[A]]"))
   }
@@ -1304,7 +1306,7 @@ class McpSuite extends munit.FunSuite:
   test("call_path reports reachability and the method chain") {
     val a = "com/github/mercurievv/scalasemantic/fixtures/Calls.a()."
     val c = "com/github/mercurievv/scalasemantic/fixtures/Calls.c()."
-    val r = call("call_path", ujson.Obj("from" -> a, "to" -> c))
+    val r = call("call_path", J.obj("from" -> a, "to" -> c))
     assertEquals(r("reachable").bool, true)
     assertEquals(r("path").arr.map(_.str).toList, List("a", "b", "c"))
   }
@@ -1319,6 +1321,6 @@ class McpSuite extends munit.FunSuite:
     val out = Mcp.process(in, tools).toList
     // 4 lines in (one blank, one notification) → 2 responses out, with matching ids
     assertEquals(out.size, 2)
-    assertEquals(ujson.read(out(0))("id").num, 1.0)
-    assertEquals(ujson.read(out(1))("result")("tools").arr.size, 33)
+    assertEquals(J.read(out(0))("id").num, 1.0)
+    assertEquals(J.read(out(1))("result")("tools").arr.size, 33)
   }

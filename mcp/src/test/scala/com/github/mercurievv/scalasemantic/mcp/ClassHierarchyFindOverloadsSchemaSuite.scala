@@ -1,7 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -15,11 +17,11 @@ class ClassHierarchyFindOverloadsSchemaSuite extends munit.FunSuite:
   private val root: Path = Paths.get(".")
   private val tools: List[Tool] = Mcp.toolsFor(Analyzer(SemanticIndex.fromProject(".")), root)
   private def tool(name: String): Tool = tools.find(_.name == name).getOrElse(fail(s"no $name"))
-  private def call(name: String, args: (String, ujson.Value)*): ujson.Value =
-    tool(name).run(ujson.Obj.from(args))
-  private def schemaOf(name: String): ujson.Value =
+  private def call(name: String, args: (String, J.V)*): Json =
+    tool(name).run(J.obj(args*))
+  private def schemaOf(name: String): Json =
     tool(name).outputSchema.getOrElse(fail(s"$name has no outputSchema"))
-  private def conforms(name: String, res: ujson.Value): Unit =
+  private def conforms(name: String, res: Json): Unit =
     assertEquals(SchemaConformance.violations(schemaOf(name), res), Nil)
 
   private val Lookup = "com/github/mercurievv/scalasemantic/mcp/Lookup#"
@@ -42,8 +44,8 @@ class ClassHierarchyFindOverloadsSchemaSuite extends munit.FunSuite:
       s("oneOf").arr.toList.map(_("required").arr.toList.map(_.str).toSet).toSet,
       Set(Set("symbol", "name"), Set("symbol", "found"), Set("candidates", "note"))
     )
-    assert(!ujson.write(s).contains("$ref"))
-    println(s"class_hierarchy outputSchema: ${ujson.write(s).length} chars")
+    assert(!J.write(s).contains("$ref"))
+    println(s"class_hierarchy outputSchema: ${J.write(s).length} chars")
 
   test("class_hierarchy: default answer lists parents and known subtypes as display names"):
     val res = call("class_hierarchy", "symbol" -> Lookup)
@@ -61,7 +63,7 @@ class ClassHierarchyFindOverloadsSchemaSuite extends munit.FunSuite:
     conforms("class_hierarchy", res)
 
   test("class_hierarchy: `include` trims sections"):
-    val res = call("class_hierarchy", "symbol" -> Lookup, "include" -> ujson.Arr("parents"))
+    val res = call("class_hierarchy", "symbol" -> Lookup, "include" -> J.arr("parents"))
     assert(res.obj.contains("parents") && !res.obj.contains("knownSubtypes"))
     assert(!res.obj.contains("linearization"))
     conforms("class_hierarchy", res)
@@ -88,7 +90,7 @@ class ClassHierarchyFindOverloadsSchemaSuite extends munit.FunSuite:
       s("oneOf").arr.toList
         .exists(_("required").arr.toList.map(_.str).toSet == Set("name", "overloads"))
     )
-    println(s"find_overloads outputSchema: ${ujson.write(s).length} chars")
+    println(s"find_overloads outputSchema: ${J.write(s).length} chars")
 
   test("find_overloads: lists every overload as a rendered signature"):
     val res = call("find_overloads", "symbol" -> Overloaded)

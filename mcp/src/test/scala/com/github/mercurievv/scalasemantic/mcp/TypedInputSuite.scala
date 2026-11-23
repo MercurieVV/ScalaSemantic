@@ -1,7 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -18,7 +20,7 @@ class TypedInputSuite extends munit.FunSuite:
     .find(_.name == "find_symbol")
     .getOrElse(fail("no find_symbol"))
 
-  private def run(args: (String, ujson.Value)*): ujson.Value = tool.run(ujson.Obj.from(args))
+  private def run(args: (String, J.V)*): Json = tool.run(J.obj(args*))
 
   test("inputSchema is derived from the argument type: required = non-Option fields"):
     val s = tool.inputSchema
@@ -64,7 +66,7 @@ class TypedInputSuite extends munit.FunSuite:
       val _ = run("query" -> "Analyzer", "limit" -> 1, "bogus" -> 1)
       assert(seen.isEmpty, "off by default")
       val _ = System.setProperty(key, "true")
-      val _ = run("query" -> "Analyzer", "limit" -> 1, "bogus" -> 1, "fields" -> ujson.Arr())
+      val _ = run("query" -> "Analyzer", "limit" -> 1, "bogus" -> 1, "fields" -> J.arr())
       assertEquals(seen.size, 1)
       val line = Option(seen.peek()).getOrElse("")
       assert(line.contains("find_symbol") && line.contains("bogus"), line)
@@ -98,8 +100,8 @@ class TypedInputSuite extends munit.FunSuite:
     assertEquals(s("properties")("include")("items")("type").str, "string")
 
   test("symbol-lookup tools name the missing field; paging and sections still work"):
-    def call(name: String, args: (String, ujson.Value)*): ujson.Value =
-      allTools.find(_.name == name).getOrElse(fail(s"no $name")).run(ujson.Obj.from(args))
+    def call(name: String, args: (String, J.V)*): Json =
+      allTools.find(_.name == name).getOrElse(fail(s"no $name")).run(J.obj(args*))
     val e = intercept[RuntimeException](call("resolve_implicits"))
     assert(e.getMessage.contains("resolve_implicits: invalid arguments"), e.getMessage)
     assert(e.getMessage.contains("type"), e.getMessage)
@@ -107,7 +109,7 @@ class TypedInputSuite extends munit.FunSuite:
       "find_usages",
       "symbol" -> "com/github/mercurievv/scalasemantic/mcp/McpToolsSupport.loc().",
       "limit" -> 1,
-      "include" -> ujson.Arr("references")
+      "include" -> J.arr("references")
     )
     assert(!usages.obj.contains("definitions"), "include trims sections")
     assert(usages("references").arr.size <= 1)
@@ -129,8 +131,8 @@ class TypedInputSuite extends munit.FunSuite:
       assert(s("properties").obj.values.forall(_("description").str.nonEmpty), name)
 
   test("type_at_position and search_text still answer, and reject a missing required argument"):
-    def call(name: String, args: (String, ujson.Value)*): ujson.Value =
-      allTools.find(_.name == name).getOrElse(fail(s"no $name")).run(ujson.Obj.from(args))
+    def call(name: String, args: (String, J.V)*): Json =
+      allTools.find(_.name == name).getOrElse(fail(s"no $name")).run(J.obj(args*))
     val hits = call("search_text", "query" -> "TypedTool", "limit" -> 2)
     assert(hits("hits").arr.size <= 2 && hits("hits").arr.nonEmpty)
     val miss = intercept[RuntimeException](call("type_at_position", "uri" -> "A.scala"))
@@ -162,8 +164,8 @@ class TypedInputSuite extends munit.FunSuite:
       assertEquals(texts.distinct.size, 1, s"$opt wording must not drift between tools")
 
   test("source tools reject a missing required argument by name, and still render"):
-    def call(name: String, args: (String, ujson.Value)*): ujson.Value =
-      allTools.find(_.name == name).getOrElse(fail(s"no $name")).run(ujson.Obj.from(args))
+    def call(name: String, args: (String, J.V)*): Json =
+      allTools.find(_.name == name).getOrElse(fail(s"no $name")).run(J.obj(args*))
     val e = intercept[RuntimeException](call("source_around_position", "file" -> "A.scala"))
     assert(e.getMessage.contains("source_around_position: invalid arguments"), e.getMessage)
     assert(e.getMessage.contains("line"), e.getMessage)
@@ -221,8 +223,8 @@ class TypedInputSuite extends munit.FunSuite:
     assertEquals(items("required").arr.map(_.str).toSet, Set("symbol", "newName"))
 
   test("plan tools still plan, and name the missing field when called wrongly"):
-    def call(name: String, args: (String, ujson.Value)*): ujson.Value =
-      allTools.find(_.name == name).getOrElse(fail(s"no $name")).run(ujson.Obj.from(args))
+    def call(name: String, args: (String, J.V)*): Json =
+      allTools.find(_.name == name).getOrElse(fail(s"no $name")).run(J.obj(args*))
     val plan = call(
       "rename_plan",
       "symbol" -> "com/github/mercurievv/scalasemantic/mcp/NotFoundResult#",
@@ -231,8 +233,8 @@ class TypedInputSuite extends munit.FunSuite:
     assert(plan("editCount").num > 0)
     val batch = call(
       "batch_rename_plan",
-      "renames" -> ujson.Arr(
-        ujson.Obj(
+      "renames" -> J.arr(
+        J.obj(
           "symbol" -> "com/github/mercurievv/scalasemantic/mcp/NotFoundResult#",
           "newName" -> "Gone"
         )
@@ -258,19 +260,19 @@ class TypedInputSuite extends munit.FunSuite:
     )
     val bad = intercept[RuntimeException](
       ranged.run(
-        ujson.Obj(
-          "files" -> ujson.Arr(ujson.Obj("uri" -> "X.scala", "ranges" -> ujson.Arr(ujson.Num(5))))
+        J.obj(
+          "files" -> J.arr(J.obj("uri" -> "X.scala", "ranges" -> J.arr(J.num(5))))
         )
       )
     )
     assert(bad.getMessage.contains("literal_tokens: invalid arguments"), bad.getMessage)
     val ok = ranged.run(
-      ujson.Obj(
-        "files" -> ujson.Arr(
-          ujson.Obj(
+      J.obj(
+        "files" -> J.arr(
+          J.obj(
             "uri" -> "A.scala",
             "source" -> "object A:\n  val x = 42\n",
-            "ranges" -> ujson.Arr(ujson.Arr(0, 2))
+            "ranges" -> J.arr(J.arr(0, 2))
           )
         )
       )
@@ -289,17 +291,21 @@ class TypedInputSuite extends munit.FunSuite:
       assertEquals(required, shape._1, name)
       assertEquals(s("properties").obj.keySet.toSet, shape._2, name)
     val e = intercept[RuntimeException](
-      allTools.find(_.name == "set_workspace_root").getOrElse(fail("none")).run(ujson.Obj())
+      allTools.find(_.name == "set_workspace_root").getOrElse(fail("none")).run(J.obj())
     )
     assert(e.getMessage.contains("set_workspace_root: invalid arguments"), e.getMessage)
     val one = allTools
       .find(_.name == "output_schema")
       .getOrElse(fail("none"))
-      .run(ujson.Obj("tool" -> "find_symbol"))
+      .run(J.obj("tool" -> "find_symbol"))
     assert(one.obj.nonEmpty)
 
-  test("JsonBridge keeps integers integral and nesting intact"):
-    val j = JsonBridge.toCirce(
-      ujson.Obj("a" -> 2, "b" -> 2.5, "c" -> ujson.Arr(true, ujson.Null, "x"), "d" -> ujson.Obj())
+  test("J writes whole doubles as integers and keeps nesting and order intact"):
+    val j = J.obj(
+      "a" -> 2,
+      "b" -> 2.5,
+      "c" -> J.arr(true, Json.Null, "x"),
+      "d" -> J.obj(),
+      "e" -> 3.0
     )
-    assertEquals(j.noSpaces, """{"a":2,"b":2.5,"c":[true,null,"x"],"d":{}}""")
+    assertEquals(j.noSpaces, """{"a":2,"b":2.5,"c":[true,null,"x"],"d":{},"e":3}""")

@@ -1,7 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 import java.nio.file.Paths
 
@@ -15,7 +17,7 @@ class SourceRangesFqnSuite extends munit.FunSuite:
 
   private val root = Paths.get(".").nn
   private val tools = Mcp.toolsFor(Analyzer(SemanticIndex.fromProject(".")), root)
-  private def call(args: ujson.Value): ujson.Value =
+  private def call(args: Json): Json =
     tools.find(_.name == "source_ranges").getOrElse(fail("no source_ranges")).run(args)
 
   private val RangeSelectorUri =
@@ -25,7 +27,7 @@ class SourceRangesFqnSuite extends munit.FunSuite:
 
   test("resolves a dotted FQN target to its defining file and renders the requested range"):
     val res = call(
-      ujson.Obj("query" -> "com.github.mercurievv.scalasemantic.analysis.RangeSelector[1-1]")
+      J.obj("query" -> "com.github.mercurievv.scalasemantic.analysis.RangeSelector[1-1]")
     )
     val entry = res("results").arr.head
     assertEquals(entry("found").bool, true)
@@ -33,23 +35,23 @@ class SourceRangesFqnSuite extends munit.FunSuite:
     assert(entry("source").str.contains("package com.github.mercurievv.scalasemantic.analysis"))
 
   test("resolves a literal file-path target and renders the requested range"):
-    val res = call(ujson.Obj("query" -> s"$RangeSelectorUri[1-1]"))
+    val res = call(J.obj("query" -> s"$RangeSelectorUri[1-1]"))
     val entry = res("results").arr.head
     assertEquals(entry("found").bool, true)
     assertEquals(entry("requestedRange").str, "1-1")
     assert(entry("source").str.contains("package com.github.mercurievv.scalasemantic.analysis"))
 
   test("defaults to detail=full when the caller does not pass a detail arg"):
-    val res = call(ujson.Obj("query" -> s"$RangeSelectorUri[1-1]"))
+    val res = call(J.obj("query" -> s"$RangeSelectorUri[1-1]"))
     assert(res("results").arr.head("legend").str.nonEmpty)
 
   test("caller-supplied detail overrides the default without error"):
-    val res = call(ujson.Obj("query" -> s"$RangeSelectorUri[1-1]", "detail" -> "terse"))
+    val res = call(J.obj("query" -> s"$RangeSelectorUri[1-1]", "detail" -> "terse"))
     assertEquals(res("results").arr.head("found").bool, true)
 
   test("renders multiple ranges of one target and multiple targets in one call"):
     val res = call(
-      ujson.Obj("query" -> s"$RangeSelectorUri[1-1;2-2];$RangeSelectorPropertySuiteUri[1-1]")
+      J.obj("query" -> s"$RangeSelectorUri[1-1;2-2];$RangeSelectorPropertySuiteUri[1-1]")
     )
     val results = res("results").arr.toList
     assertEquals(results.size, 3)

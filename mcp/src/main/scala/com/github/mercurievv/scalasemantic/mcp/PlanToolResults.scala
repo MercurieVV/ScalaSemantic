@@ -1,5 +1,6 @@
 package com.github.mercurievv.scalasemantic.mcp
 
+import io.circe.Json
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.description
 
@@ -69,9 +70,9 @@ final case class ExtractMethodPlanResult(
 
 object PlanToolSchemas:
 
-  private def schema[A](using s: Schema[A]): ujson.Value = OutputSchema.of[A]
+  private def schema[A](using s: Schema[A]): Json = OutputSchema.of[A]
 
-  private[mcp] val schemaOf: Map[String, ujson.Value] =
+  private[mcp] val schemaOf: Map[String, Json] =
     Map(
       "rename_plan" -> schema[RenamePlanResult],
       "batch_rename_plan" -> schema[BatchRenamePlanResult],

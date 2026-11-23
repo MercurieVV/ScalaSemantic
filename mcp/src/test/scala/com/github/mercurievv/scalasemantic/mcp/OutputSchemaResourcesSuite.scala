@@ -1,7 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -45,25 +47,25 @@ class OutputSchemaResourcesSuite extends munit.FunSuite:
   )
   private val Loc = "com/github/mercurievv/scalasemantic/mcp/McpToolsSupport.loc()."
 
-  private def rpc(method: String, params: ujson.Value, structured: Boolean = false): ujson.Value =
+  private def rpc(method: String, params: Json, structured: Boolean = false): Json =
     Mcp
       .handle(
-        ujson.Obj("jsonrpc" -> "2.0", "id" -> 1, "method" -> method, "params" -> params),
+        J.obj("jsonrpc" -> "2.0", "id" -> 1, "method" -> method, "params" -> params),
         tools,
         (_, _) => (),
         structured
       )
       .getOrElse(fail(s"no response to $method"))
 
-  private def schemaOf(name: String): ujson.Value =
+  private def schemaOf(name: String): Json =
     tools.find(_.name == name).flatMap(_.outputSchema).getOrElse(fail(s"$name has no schema"))
 
   test("default: tools/list carries no outputSchema, tools/call no structuredContent"):
-    val listed = rpc("tools/list", ujson.Obj())("result")("tools").arr.toList
+    val listed = rpc("tools/list", J.obj())("result")("tools").arr.toList
     assert(listed.forall(!_.obj.contains("outputSchema")))
     val res = rpc(
       "tools/call",
-      ujson.Obj("name" -> "find_symbol", "arguments" -> ujson.Obj("query" -> "Analyzer"))
+      J.obj("name" -> "find_symbol", "arguments" -> J.obj("query" -> "Analyzer"))
     )("result")
     assert(!res.obj.contains("structuredContent"))
     assert(res("content")(0)("text").str.nonEmpty)
@@ -71,67 +73,64 @@ class OutputSchemaResourcesSuite extends munit.FunSuite:
   test(
     "opt-in: tools/list advertises outputSchema for typed tools and calls add structuredContent"
   ):
-    val listed = rpc("tools/list", ujson.Obj(), structured = true)("result")("tools").arr.toList
+    val listed = rpc("tools/list", J.obj(), structured = true)("result")("tools").arr.toList
     assertEquals(
       listed.filter(_.obj.contains("outputSchema")).map(_("name").str).toSet,
       typed.toSet
     )
     val res = rpc(
       "tools/call",
-      ujson.Obj("name" -> "find_symbol", "arguments" -> ujson.Obj("query" -> "Analyzer")),
+      J.obj("name" -> "find_symbol", "arguments" -> J.obj("query" -> "Analyzer")),
       structured = true
     )("result")
-    assertEquals(res("structuredContent"), ujson.read(res("content")(0)("text").str))
+    assertEquals(res("structuredContent"), J.read(res("content")(0)("text").str))
 
   test("initialize advertises the resources capability"):
-    val caps = rpc("initialize", ujson.Obj())("result")("capabilities")
+    val caps = rpc("initialize", J.obj())("result")("capabilities")
     assert(caps.obj.contains("tools") && caps.obj.contains("resources"))
 
   test("resources/templates/list exposes the per-tool template; resources/list the `all` bundle"):
-    val template = rpc("resources/templates/list", ujson.Obj())("result")("resourceTemplates")(0)
+    val template = rpc("resources/templates/list", J.obj())("result")("resourceTemplates")(0)
     assertEquals(template("uriTemplate").str, "scalasemantic://output-schema/{tool}")
-    val resource = rpc("resources/list", ujson.Obj())("result")("resources")(0)
+    val resource = rpc("resources/list", J.obj())("result")("resources")(0)
     assertEquals(resource("uri").str, OutputSchemaResources.AllUri)
 
   test("resources/read returns one tool's schema"):
     val res =
-      rpc("resources/read", ujson.Obj("uri" -> (OutputSchemaResources.UriPrefix + "find_usages")))
+      rpc("resources/read", J.obj("uri" -> (OutputSchemaResources.UriPrefix + "find_usages")))
     val content = res("result")("contents")(0)
     assertEquals(content("mimeType").str, "application/json")
-    assertEquals(ujson.read(content("text").str), schemaOf("find_usages"))
+    assertEquals(J.read(content("text").str), schemaOf("find_usages"))
 
   test("resources/read `all` returns every typed tool's schema keyed by name"):
-    val res = rpc("resources/read", ujson.Obj("uri" -> OutputSchemaResources.AllUri))
-    val all = ujson.read(res("result")("contents")(0)("text").str)
+    val res = rpc("resources/read", J.obj("uri" -> OutputSchemaResources.AllUri))
+    val all = J.read(res("result")("contents")(0)("text").str)
     assertEquals(all.obj.keySet.toSet, typed.toSet)
     typed.foreach(n => assertEquals(all(n), schemaOf(n)))
 
   test("resources/read of an unknown tool or uri is a -32002 error naming the typed tools"):
     val missing =
-      rpc("resources/read", ujson.Obj("uri" -> (OutputSchemaResources.UriPrefix + "nope")))
+      rpc("resources/read", J.obj("uri" -> (OutputSchemaResources.UriPrefix + "nope")))
     assertEquals(missing("error")("code").num.toInt, -32002)
     assert(missing("error")("message").str.contains("find_usages"))
-    val foreign = rpc("resources/read", ujson.Obj("uri" -> "file:///etc/passwd"))
+    val foreign = rpc("resources/read", J.obj("uri" -> "file:///etc/passwd"))
     assertEquals(foreign("error")("code").num.toInt, -32002)
 
   test("output_schema tool: one tool by name, all without argument, error for unknown"):
     val tool = tools.find(_.name == "output_schema").getOrElse(fail("no output_schema tool"))
-    assertEquals(tool.run(ujson.Obj("tool" -> "method_signature")), schemaOf("method_signature"))
-    assertEquals(tool.run(ujson.Obj()).obj.keySet.toSet, typed.toSet)
-    val e = intercept[Throwable](tool.run(ujson.Obj("tool" -> "nope")))
+    assertEquals(tool.run(J.obj("tool" -> "method_signature")), schemaOf("method_signature"))
+    assertEquals(tool.run(J.obj()).obj.keySet.toSet, typed.toSet)
+    val e = intercept[Throwable](tool.run(J.obj("tool" -> "nope")))
     assert(e.getMessage.contains("nope"))
 
   test("the lean default keeps tools/list small: output_schema adds one short definition"):
-    val withTool = ujson.write(rpc("tools/list", ujson.Obj())("result")("tools")).length
+    val withTool = J.write(rpc("tools/list", J.obj())("result")("tools")).length
     val own = tools
       .find(_.name == "output_schema")
       .map(t =>
-        ujson
-          .write(
-            ujson
-              .Obj("name" -> t.name, "description" -> t.description, "inputSchema" -> t.inputSchema)
-          )
-          .length
+        J.write(
+          J.obj("name" -> t.name, "description" -> t.description, "inputSchema" -> t.inputSchema)
+        ).length
       )
     assert(own.exists(_ < 600), s"output_schema definition is $own chars")
     println(s"tools/list default: $withTool chars; output_schema definition: ${own.getOrElse(-1)}")
@@ -139,7 +138,7 @@ class OutputSchemaResourcesSuite extends munit.FunSuite:
   test("find_usages result is still served and conforms when structured output is on"):
     val res = rpc(
       "tools/call",
-      ujson.Obj("name" -> "find_usages", "arguments" -> ujson.Obj("symbol" -> Loc, "limit" -> 2)),
+      J.obj("name" -> "find_usages", "arguments" -> J.obj("symbol" -> Loc, "limit" -> 2)),
       structured = true
     )("result")
     assertEquals(

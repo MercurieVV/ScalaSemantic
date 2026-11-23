@@ -1,5 +1,8 @@
 package com.github.mercurievv.scalasemantic.mcp
 
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
+import io.circe.Json
+import io.circe.JsonObject
 import sttp.tapir.Schema
 import sttp.tapir.Schema.SName
 import sttp.tapir.SchemaType
@@ -20,7 +23,7 @@ import sttp.tapir.SchemaType
 object OutputSchema:
 
   /** Fields the server wrappers (`McpTools.all`) append to any object result. */
-  private val WrapperHints: List[(String, ujson.Value)] = List(
+  private val WrapperHints: List[(String, Json)] = List(
     "indexEmptyHint" -> described("string", "present when the SemanticDB index is empty"),
     "coverageHint" -> described(
       "string",
@@ -28,23 +31,23 @@ object OutputSchema:
     )
   )
 
-  def of[A](using s: Schema[A]): ujson.Value = withDefs(s, withHints(emit(s, recursive(s))))
+  def of[A](using s: Schema[A]): Json = withDefs(s, withHints(emit(s, recursive(s))))
 
-  private def described(tpe: String, desc: String): ujson.Value =
-    ujson.Obj("type" -> tpe, "description" -> desc)
+  private def described(tpe: String, desc: String): Json =
+    J.obj("type" -> tpe, "description" -> desc)
 
-  private def withHints(schema: ujson.Value): ujson.Value = schema match
-    case o: ujson.Obj if o.value.get("type").contains(ujson.Str("object")) =>
-      val props =
-        o.value.get("properties").collect { case p: ujson.Obj => p }.getOrElse(ujson.Obj())
-      WrapperHints.foreach((k, v) => props.value.getOrElseUpdate(k, v))
-      o.value("properties") = props
-      o
-    case o: ujson.Obj if o.value.contains("oneOf") =>
+  private def withHints(schema: Json): Json = schema.asObject match
+    case Some(o) if o("type").contains(J.str("object")) =>
+      val props = o("properties").flatMap(_.asObject).getOrElse(JsonObject.empty)
+      val merged =
+        WrapperHints.foldLeft(props)((p, kv) =>
+          if p.contains(kv._1) then p else p.add(kv._1, kv._2)
+        )
+      Json.fromJsonObject(o.add("properties", Json.fromJsonObject(merged)))
+    case Some(o) if o.contains("oneOf") =>
       // Documented once beside the alternatives (JSON Schema allows undeclared keys), not per branch.
-      o.value("properties") = ujson.Obj.from(WrapperHints)
-      o
-    case other => other
+      Json.fromJsonObject(o.add("properties", J.objOf(WrapperHints)))
+    case _ => schema
 
   // ---- recursion ---------------------------------------------------------------------------
 
@@ -69,9 +72,9 @@ object OutputSchema:
 
   private def refName(n: SName): String = n.fullName.split('.').last.filter(_.isLetterOrDigit)
 
-  private def ref(n: SName): ujson.Value = ujson.Obj("$ref" -> s"#/$$defs/${refName(n)}")
+  private def ref(n: SName): Json = J.obj("$ref" -> s"#/$$defs/${refName(n)}")
 
-  private def withDefs(root: Schema[?], schema: ujson.Value): ujson.Value =
+  private def withDefs(root: Schema[?], schema: Json): Json =
     val rec = recursive(root)
     if rec.isEmpty then schema
     else
@@ -79,11 +82,7 @@ object OutputSchema:
         .flatMap(s => s.name.filter(rec.contains).filter(_ => !isRef(s)).map(_ -> s))
         .distinctBy(_._1)
         .map((n, s) => refName(n) -> emit(s, rec, asDefinition = true))
-      schema match
-        case o: ujson.Obj =>
-          o.value("$defs") = ujson.Obj.from(defs)
-          o
-        case other => other
+      schema.asObject.fold(schema)(o => Json.fromJsonObject(o.add("$defs", J.objOf(defs))))
 
   private def isRef(s: Schema[?]): Boolean = s.schemaType match
     case _: SchemaType.SRef[?] => true
@@ -95,38 +94,38 @@ object OutputSchema:
     case SchemaType.SOption(inner) => unwrap(inner)
     case _                         => s
 
-  def emit(s: Schema[?]): ujson.Value = emit(s, Set.empty[SName])
+  def emit(s: Schema[?]): Json = emit(s, Set.empty[SName])
 
-  private def emit(s: Schema[?], rec: Set[SName], asDefinition: Boolean = false): ujson.Value =
+  private def emit(s: Schema[?], rec: Set[SName], asDefinition: Boolean = false): Json =
     s.schemaType match
       case SchemaType.SRef(name)                             => ref(name)
       case _ if !asDefinition && s.name.exists(rec.contains) =>
-        s.name.fold(ujson.Obj(): ujson.Value)(ref)
+        s.name.fold(J.obj(): Json)(ref)
       case _ =>
         val base = s.schemaType match
           case SchemaType.SProduct(fields) =>
-            val props = ujson.Obj.from(fields.map(f => f.name.name -> emit(f.schema, rec)))
+            val props = J.objOf(fields.map(f => f.name.name -> emit(f.schema, rec)))
             val req = fields
               .filterNot(f => isOption(f.schema))
-              .map(f => ujson.Str(f.name.name): ujson.Value)
-            val o = ujson.Obj("type" -> "object", "properties" -> props)
-            if req.nonEmpty then o("required") = ujson.Arr.from(req)
-            o
-          case SchemaType.SArray(el)  => ujson.Obj("type" -> "array", "items" -> emit(el, rec))
-          case SchemaType.SOption(el) => emit(el, rec)
+              .map(f => J.str(f.name.name): Json)
+            val o = J.obj("type" -> "object", "properties" -> props)
+            if req.nonEmpty then o.withFields(List("required" -> J.arrOf(req))) else o
+          case SchemaType.SArray(el)          => J.obj("type" -> "array", "items" -> emit(el, rec))
+          case SchemaType.SOption(el)         => emit(el, rec)
           case SchemaType.SCoproduct(subs, _) =>
-            ujson.Obj("oneOf" -> ujson.Arr.from(subs.map(emit(_, rec))))
-          case _: SchemaType.SString[?]         => ujson.Obj("type" -> "string")
-          case _: SchemaType.SInteger[?]        => ujson.Obj("type" -> "integer")
-          case _: SchemaType.SNumber[?]         => ujson.Obj("type" -> "number")
-          case _: SchemaType.SBoolean[?]        => ujson.Obj("type" -> "boolean")
+            J.obj("oneOf" -> J.arrOf(subs.map(emit(_, rec))))
+          case _: SchemaType.SString[?]         => J.obj("type" -> "string")
+          case _: SchemaType.SInteger[?]        => J.obj("type" -> "integer")
+          case _: SchemaType.SNumber[?]         => J.obj("type" -> "number")
+          case _: SchemaType.SBoolean[?]        => J.obj("type" -> "boolean")
           case o: SchemaType.SOpenProduct[?, ?] =>
-            ujson.Obj("type" -> "object", "additionalProperties" -> emit(o.valueSchema, rec))
-          case _ => ujson.Obj()
+            J.obj("type" -> "object", "additionalProperties" -> emit(o.valueSchema, rec))
+          case _ => J.obj()
         // An Option's own description may sit on the wrapper or on the inner schema; prefer the inner.
         val desc = unwrap(s).description.orElse(s.description)
-        desc.foreach(d => base.obj.getOrElseUpdate("description", ujson.Str(d)))
-        base
+        desc.fold(base): d =>
+          if base.obj.contains("description") then base
+          else base.withFields(List("description" -> J.str(d)))
 
   private def isOption(s: Schema[?]): Boolean = s.schemaType match
     case _: SchemaType.SOption[?, ?] => true

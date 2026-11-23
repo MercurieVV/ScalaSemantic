@@ -2,7 +2,7 @@ package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
-import upickle.default.write
+import io.circe.Json
 
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -37,9 +37,9 @@ class DocsToolExamplesGoldenSuite extends munit.FunSuite:
 
   private val goldenDir = Paths.get("mcp/src/test/resources/docs-golden")
 
-  private def assertGolden(exampleName: String, tool: String, args: ujson.Value): Unit =
+  private def assertGolden(exampleName: String, tool: String, args: Json): Unit =
     val result = toolByName(tool).run(args)
-    val actual = write(ujson.Obj("tool" -> tool, "args" -> args, "result" -> result), indent = 2)
+    val actual = J.write(J.obj("tool" -> tool, "args" -> args, "result" -> result), indent = 2)
     val goldenPath = goldenDir.resolve(s"$exampleName.json")
     if Files.exists(goldenPath) then
       val expected = Files.readString(goldenPath)
@@ -71,9 +71,9 @@ class DocsToolExamplesGoldenSuite extends munit.FunSuite:
     assertGolden(
       "literal_tokens_table",
       "literal_tokens",
-      ujson.Obj(
-        "files" -> ujson.Arr(
-          ujson.Obj(
+      J.obj(
+        "files" -> J.arr(
+          J.obj(
             "uri" -> "Notes.scala",
             "source" -> "package demo\nobject Notes:\n  val midi = Map(\"C4\" -> 60, \"D4\" -> 62)\n  def label(n: Int) = s\"note $n\"\n"
           )
@@ -85,9 +85,9 @@ class DocsToolExamplesGoldenSuite extends munit.FunSuite:
     assertGolden(
       "contract_clauses_kernel",
       "contract_clauses",
-      ujson.Obj(
-        "files" -> ujson.Arr(
-          ujson.Obj(
+      J.obj(
+        "files" -> J.arr(
+          J.obj(
             "uri" -> "PureKernels.scala",
             "source" -> "package demo\nimport stainless.lang.*\nobject PureKernels:\n  def framesToNanos(frames: Int, sampleRate: Int): Long = {\n    require(frames >= 0 && sampleRate > 0)\n    frames.toLong * 1000000000L / sampleRate\n  } ensuring (r => r >= 0)\n"
           )
@@ -96,73 +96,73 @@ class DocsToolExamplesGoldenSuite extends munit.FunSuite:
     )
 
   test("find_symbol('transform')"):
-    assertGolden("find_symbol_transform", "find_symbol", ujson.Obj("query" -> "transform"))
+    assertGolden("find_symbol_transform", "find_symbol", J.obj("query" -> "transform"))
 
   test("class_hierarchy(Processor)"):
-    assertGolden("class_hierarchy_processor", "class_hierarchy", ujson.Obj("symbol" -> Processor))
+    assertGolden("class_hierarchy_processor", "class_hierarchy", J.obj("symbol" -> Processor))
 
   test("find_overloads(format)"):
-    assertGolden("find_overloads_format", "find_overloads", ujson.Obj("symbol" -> Format))
+    assertGolden("find_overloads_format", "find_overloads", J.obj("symbol" -> Format))
 
   test("find_usages(transform)"):
-    assertGolden("find_usages_transform", "find_usages", ujson.Obj("symbol" -> Transform))
+    assertGolden("find_usages_transform", "find_usages", J.obj("symbol" -> Transform))
 
   test("find_usages(transform, contextLines=1)"):
     assertGolden(
       "find_usages_transform_context",
       "find_usages",
-      ujson.Obj("symbol" -> Transform, "contextLines" -> 1)
+      J.obj("symbol" -> Transform, "contextLines" -> 1)
     )
 
   test("search_text(context bound)"):
     assertGolden(
       "search_text_context_bound",
       "search_text",
-      ujson.Obj(
+      J.obj(
         "query" -> "context bound",
         "pathFilter" -> "*docexamples/Enrich.scala*"
       )
     )
 
   test("members(UpperProcessor)"):
-    assertGolden("members_upper_processor", "members", ujson.Obj("symbol" -> UpperProcessor))
+    assertGolden("members_upper_processor", "members", J.obj("symbol" -> UpperProcessor))
 
   test("call_path(pipeline -> process)"):
     assertGolden(
       "call_path_pipeline_process",
       "call_path",
-      ujson.Obj("from" -> Pipeline, "to" -> ProcessorProcess, "detailed" -> true)
+      J.obj("from" -> Pipeline, "to" -> ProcessorProcess, "detailed" -> true)
     )
 
   test("method_call_hierarchy(pipeline, callees)"):
     assertGolden(
       "method_call_hierarchy_pipeline",
       "method_call_hierarchy",
-      ujson.Obj("symbol" -> Pipeline, "direction" -> "callees")
+      J.obj("symbol" -> Pipeline, "direction" -> "callees")
     )
 
   test("value_flow(Navigate.scala:19:13)"):
     assertGolden(
       "value_flow_navigate",
       "value_flow",
-      ujson.Obj("file" -> NavigateFile, "line" -> 19, "column" -> 13)
+      J.obj("file" -> NavigateFile, "line" -> 19, "column" -> 13)
     )
 
   test("rename_plan(transform -> apply)"):
     assertGolden(
       "rename_plan_transform",
       "rename_plan",
-      ujson.Obj("symbol" -> Transform, "newName" -> "apply")
+      J.obj("symbol" -> Transform, "newName" -> "apply")
     )
 
   test("batch_rename_plan(transform, calculateTotal)"):
     assertGolden(
       "batch_rename_plan_transform_calculate_total",
       "batch_rename_plan",
-      ujson.Obj(
-        "renames" -> ujson.Arr(
-          ujson.Obj("symbol" -> Transform, "newName" -> "apply"),
-          ujson.Obj("symbol" -> CalculateTotal, "newName" -> "total")
+      J.obj(
+        "renames" -> J.arr(
+          J.obj("symbol" -> Transform, "newName" -> "apply"),
+          J.obj("symbol" -> CalculateTotal, "newName" -> "total")
         )
       )
     )
@@ -171,14 +171,14 @@ class DocsToolExamplesGoldenSuite extends munit.FunSuite:
     assertGolden(
       "move_plan_calculate_total",
       "move_plan",
-      ujson.Obj("symbol" -> CalculateTotal, "newOwner" -> "com/example/math/")
+      J.obj("symbol" -> CalculateTotal, "newOwner" -> "com/example/math/")
     )
 
   test("extract_method_plan(Refactor.scala 5:20-8:9)"):
     assertGolden(
       "extract_method_plan_refactor",
       "extract_method_plan",
-      ujson.Obj(
+      J.obj(
         "uri" -> RefactorFile,
         "startLine" -> 5,
         "startCharacter" -> 20,
@@ -188,35 +188,35 @@ class DocsToolExamplesGoldenSuite extends munit.FunSuite:
     )
 
   test("structure()"):
-    assertGolden("structure_all", "structure", ujson.Obj())
+    assertGolden("structure_all", "structure", J.obj())
 
   test("structure(graph=true)"):
-    assertGolden("structure_graph", "structure", ujson.Obj("graph" -> true))
+    assertGolden("structure_graph", "structure", J.obj("graph" -> true))
 
   test("smart_code_duplications(minSize=15)"):
     assertGolden(
       "smart_code_duplications_min15",
       "smart_code_duplications",
-      ujson.Obj("minSize" -> 15)
+      J.obj("minSize" -> 15)
     )
 
   test("smart_code_duplications(minSize=15, showSource=true)"):
     assertGolden(
       "smart_code_duplications_min15_show_source",
       "smart_code_duplications",
-      ujson.Obj("minSize" -> 15, "showSource" -> true)
+      J.obj("minSize" -> 15, "showSource" -> true)
     )
 
   test("source_ranges(Enrich.scala[28-28;49-49])"):
     assertGolden(
       "source_ranges_enrich_multi",
       "source_ranges",
-      ujson.Obj("query" -> s"$EnrichFile[28-28;49-49]")
+      J.obj("query" -> s"$EnrichFile[28-28;49-49]")
     )
 
   test("source_ranges(Enrich.scala[43-49])"):
     assertGolden(
       "source_ranges_enrich_wide",
       "source_ranges",
-      ujson.Obj("query" -> s"$EnrichFile[43-49]")
+      J.obj("query" -> s"$EnrichFile[43-49]")
     )

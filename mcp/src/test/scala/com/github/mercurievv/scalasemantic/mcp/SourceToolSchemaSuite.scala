@@ -1,7 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -20,11 +22,11 @@ class SourceToolSchemaSuite extends munit.FunSuite:
 
   private def tool(name: String): Tool = tools.find(_.name == name).getOrElse(fail(s"no $name"))
 
-  private def check(name: String, args: (String, ujson.Value)*): ujson.Value =
+  private def check(name: String, args: (String, J.V)*): Json =
     val t = tool(name)
     val schema = t.outputSchema.getOrElse(fail(s"$name has no outputSchema"))
-    val res = t.run(ujson.Obj.from(args))
-    assertEquals(SchemaConformance.violations(schema, res), Nil, ujson.write(res).take(300))
+    val res = t.run(J.obj(args*))
+    assertEquals(SchemaConformance.violations(schema, res), Nil, J.write(res).take(300))
     res
 
   test("every source/position tool declares an outputSchema"):
@@ -40,7 +42,7 @@ class SourceToolSchemaSuite extends munit.FunSuite:
   test("type_at_position: a hit and a miss conform"):
     val hit =
       check("type_at_position", "uri" -> Parts, "line" -> 8, "character" -> 17)
-    assert(hit.obj.contains("symbol") || hit.obj.get("found").contains(ujson.Bool(false)))
+    assert(hit.obj.contains("symbol") || hit.obj.get("found").contains(J.bool(false)))
     val miss = check("type_at_position", "uri" -> Parts, "line" -> 9000, "character" -> 0)
     assertEquals(miss("found").bool, false)
 
@@ -73,11 +75,11 @@ class SourceToolSchemaSuite extends munit.FunSuite:
     check("source_around_position", "file" -> "no/such/File.scala", "line" -> 1, "column" -> 1)
 
   test("document_outline's schema is recursive through a $ref into $defs"):
-    val s = ujson.write(tool("document_outline").outputSchema.getOrElse(fail("no schema")))
+    val s = J.write(tool("document_outline").outputSchema.getOrElse(fail("no schema")))
     assert(s.contains("$defs") && s.contains("$ref"), s.take(400))
 
   test("schemas stay small (they ship in the on-demand output_schema resource)"):
     List("type_at_position", "search_text", "document_outline", "annotated_source").foreach: n =>
-      val chars = ujson.write(tool(n).outputSchema.getOrElse(fail(n))).length
+      val chars = J.write(tool(n).outputSchema.getOrElse(fail(n))).length
       println(s"$n outputSchema: $chars chars")
       assert(chars < 3500, s"$n schema is $chars chars")

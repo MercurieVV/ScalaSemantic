@@ -1,6 +1,7 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
@@ -34,11 +35,11 @@ class AnnotatedSourcePcFallbackSuite extends munit.FunSuite:
       val res = tools
         .find(_.name == "annotated_source")
         .getOrElse(fail("no annotated_source"))
-        .run(ujson.Obj("uri" -> Uri))
+        .run(J.obj("uri" -> Uri))
 
-      assertEquals(res.obj.contains("found"), false, res.render())
+      assertEquals(res.obj.contains("found"), false, res.noSpaces)
       assertEquals(res("pcFallback").bool, true)
-      assert(res.obj.contains("pcFallbackHint"), res.render())
+      assert(res.obj.contains("pcFallbackHint"), res.noSpaces)
       assert(res("source").str.contains("def area(w: Int): Int"), res("source").str)
       // No compiled digest exists at all under a PC fallback -- the field is skipped, not `false`.
       assertEquals(res.obj.contains("staleIndex"), false)
@@ -55,5 +56,5 @@ class AnnotatedSourcePcFallbackSuite extends munit.FunSuite:
     val res = tools
       .find(_.name == "annotated_source")
       .getOrElse(fail("no annotated_source"))
-      .run(ujson.Obj("uri" -> uri))
-    assertEquals(res.obj.contains("pcFallback"), false, res.render())
+      .run(J.obj("uri" -> uri))
+    assertEquals(res.obj.contains("pcFallback"), false, res.noSpaces)

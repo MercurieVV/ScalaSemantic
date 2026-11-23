@@ -1,7 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -20,7 +22,7 @@ class AnnotatedSourceStaleSuite extends munit.FunSuite:
   private def md5Of(text: String): String =
     McpToolsSupport.md5Hex(text.getBytes(java.nio.charset.StandardCharsets.UTF_8).nn)
 
-  private def setup(onDisk: String, compiledFrom: Option[String]): (Path, ujson.Value) =
+  private def setup(onDisk: String, compiledFrom: Option[String]): (Path, Json) =
     val root = Files.createTempDirectory("ss-stale").nn
     val _ = Files.writeString(root.resolve(Uri), onDisk)
     val docs = compiledFrom.map(t => s.TextDocument(uri = Uri, md5 = md5Of(t))).toVector
@@ -28,7 +30,7 @@ class AnnotatedSourceStaleSuite extends munit.FunSuite:
     val res = tools
       .find(_.name == "annotated_source")
       .getOrElse(fail("no annotated_source"))
-      .run(ujson.Obj("uri" -> Uri))
+      .run(J.obj("uri" -> Uri))
     (root, res)
 
   test("a file matching the digest the index recorded is not stale"):

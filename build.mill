@@ -27,7 +27,6 @@ import mill.javalib.SonatypeCentralPublishModule
 object V {
   val scala3 = "3.8.4"
   val scalameta = "4.17.0"
-  val upickle = "4.4.3"
   // tapir 1.14.x is built with Scala 3.9 (TASTy 28.9) and unreadable by 3.8.4 — stay on 1.13.x.
   val tapir = "1.13.33"
   val circe = "0.14.17"
@@ -321,8 +320,8 @@ object mcp extends Common with SonatypeCentralPublishModule with BuildInfo {
   def pomSettings = commonPom("scalasemantic-mcp")
   def moduleDeps = Seq(analysis, wire, build.launcher)
   def mvnDeps = Seq(
-    mvn"com.lihaoyi::upickle:${V.upickle}",
     mvn"io.circe::circe-core:${V.circe}",
+    mvn"io.circe::circe-parser:${V.circe}",
     mvn"com.softwaremill.sttp.tapir::tapir-core:${V.tapir}"
   )
 
@@ -585,7 +584,6 @@ object docs
   def mvnDeps = Seq(
     mvn"org.scalameta::mdoc:2.9.0",
     mvn"com.lihaoyi::os-lib:0.11.3",
-    mvn"com.lihaoyi::upickle:4.4.3",
     // mdoc:2.9.0 transitively pulls scala3-compiler_3:3.3.7 (its LTS build). Force it to match
     // this module's own scalaVersion so mdoc's fence compiler and the module's own classpath
     // agree — without this, coursier leaves both scala3-library versions on the classpath and

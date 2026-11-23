@@ -1,10 +1,13 @@
 package scalasemantic.docs
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.J
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.mcp.McpTools
 import com.github.mercurievv.scalasemantic.mcp.Tool
 import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -47,22 +50,20 @@ object ToolRunner:
   private val extractedSourceFields = Set("source")
 
   def run(tool: String, args: String): String =
-    ujson.write(toolByName(baseTools, tool).run(ujson.read(args)), indent = 2)
+    J.write(toolByName(baseTools, tool).run(J.read(args)), indent = 2)
 
   def runStructure(args: String): String =
-    ujson.write(toolByName(structureTools, "structure").run(ujson.read(args)), indent = 2)
+    J.write(toolByName(structureTools, "structure").run(J.read(args)), indent = 2)
 
   /** Modified-buffer variant: passes the edited file text + its uri through the presentation
     * compiler, exactly as ToolCli's `--source` branch does.
     */
   def runWithSource(tool: String, args: String, uri: String, sourcePath: String): String =
     val sourceText = new String(Files.readAllBytes(Paths.get(sourcePath)))
-    val argsJson = ujson.read(args)
-    argsJson("source") = sourceText
-    argsJson("uri") = uri
+    val argsJson = J.read(args).withFields(List("source" -> J.str(sourceText), "uri" -> J.str(uri)))
     PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
       val tools = McpTools.all(Analyzer(index, Some(backend)), root)
-      ujson.write(toolByName(tools, tool).run(argsJson), indent = 2)
+      J.write(toolByName(tools, tool).run(argsJson), indent = 2)
     }
 
   /** Reads a fixture file relative to the docs root — the same file a tool call's `uri`/`source`
@@ -93,13 +94,11 @@ object ToolRunner:
     * of the output so the reader sees what was asked before what was answered.
     */
   def requestMarkdown(tool: String, args: String): String =
-    val argLines = scala.util.Try(ujson.read(args)) match
-      case scala.util.Success(obj: ujson.Obj) if obj.obj.nonEmpty =>
+    val argLines = scala.util.Try(J.read(args)) match
+      case scala.util.Success(obj) if obj.objOpt.exists(_.nonEmpty) =>
         obj.obj.toSeq
           .map { case (k, v) =>
-            val value = v match
-              case ujson.Str(s) => s
-              case other        => ujson.write(other)
+            val value = v.strOpt.getOrElse(J.write(v))
             s"- **`$k`**: `$value`"
           }
           .mkString("\n")
@@ -111,31 +110,29 @@ object ToolRunner:
        |$argLines""".stripMargin
 
   /** Request header shown ONCE above a group of tabs: the tool name and the args that are constant
-    * across every tab. Pass only the fixed args as a ujson object string.
+    * across every tab. Pass only the fixed args as a JSON object string.
     */
   def commonRequestMarkdown(tool: String, fixedArgs: String): String =
     requestMarkdown(tool, fixedArgs)
 
   /** One-line note of just the arg(s) that make THIS tab differ from the common request. */
   def variantLine(label: String, changedArgs: String): String =
-    val changed = ujson.read(changedArgs) match
-      case obj: ujson.Obj =>
-        obj.obj.toSeq
+    val changed = J.read(changedArgs).asObject match
+      case Some(obj) =>
+        obj.toList
           .map { case (k, v) =>
-            val value = v match
-              case ujson.Str(s) => s
-              case other        => ujson.write(other)
+            val value = v.strOpt.getOrElse(J.write(v))
             s"`$k` = `$value`"
           }
           .mkString(", ")
-      case _ => "(defaults)"
+      case None => "(defaults)"
     s"**$label** — $changed"
 
   /** Pulls a single field's value out of a tool's raw JSON, unwrapped (no markdown fencing) so the
     * caller can place it inside a custom layout (e.g. a diff panel).
     */
   def extractField(raw: String, field: String): String =
-    ujson.read(raw).obj(field).str
+    J.read(raw).obj(field).str
 
   /** A `<EnrichedCode>` MDX element wrapping a tool result's `source` field — the intra-line
     * insert-tinting component (see `website/src/components/EnrichedCode.js`), which highlights only
@@ -150,10 +147,10 @@ object ToolRunner:
     s"<EnrichedCode base64=\"$encoded\" />"
 
   def syntaxComponent(code: String, language: String = "scala"): String =
-    s"<SyntaxCode language=\"$language\" code={${ujson.write(code)}} />"
+    s"<SyntaxCode language=\"$language\" code={${J.write(J.str(code))}} />"
 
   def semanticSymbolComponent(symbol: String): String =
-    s"<SemanticSymbol value={${ujson.write(symbol)}} />"
+    s"<SemanticSymbol value={${J.write(J.str(symbol))}} />"
 
   def semanticJsonComponent(json: String): String =
     val encoded =
@@ -218,16 +215,16 @@ object ToolRunner:
     outlineTreeComponent(raw)
 
   def callHierarchyMermaid(raw: String): String =
-    val root = ujson.read(raw)
+    val root = J.read(raw)
     def esc(s: String): String =
       s.replace("\"", "&quot;")
     def shortLocation(at: String): String =
       at.split('/').lastOption.getOrElse(at)
-    def label(node: ujson.Value): String =
+    def label(node: Json): String =
       val name = node.obj.get("name").map(_.str).getOrElse("?")
       val at = node.obj.get("at").map(v => s"\\n${shortLocation(v.str)}").getOrElse("")
       esc(s"$name$at")
-    def walk(parentId: Option[String], node: ujson.Value, next: Int): (List[String], Int) =
+    def walk(parentId: Option[String], node: Json, next: Int): (List[String], Int) =
       val id = s"n$next"
       val own =
         List(s"""  $id["${label(node)}"]""") ++ parentId.map(p => s"  $p --> $id").toList
@@ -245,7 +242,7 @@ object ToolRunner:
     * glance.
     */
   def implicitTreeMermaid(raw: String): String =
-    val root = ujson.read(raw)
+    val root = J.read(raw)
     root.obj.get("resolved") match
       case None => mermaidComponent("implicit", "graph TD\n  n0[\"No concrete resolution\"]")
       case Some(resolved) =>
@@ -260,7 +257,7 @@ object ToolRunner:
             .filter(_.nonEmpty)
             .lastOption
             .getOrElse(symbol)
-        def label(node: ujson.Value): String =
+        def label(node: Json): String =
           val targetType = node.obj.get("type").map(_.str).getOrElse("?")
           val chosen = node.obj.get("chosen").map(v => shortSymbol(v.str))
           val suffix =
@@ -268,7 +265,7 @@ object ToolRunner:
             else if node.obj.get("ambiguous").exists(_.bool) then "\\nambiguous"
             else chosen.fold("\\nno match")(c => s"\\n$c")
           esc(s"$targetType$suffix")
-        def walk(parentId: Option[String], node: ujson.Value, next: Int): (List[String], Int) =
+        def walk(parentId: Option[String], node: Json, next: Int): (List[String], Int) =
           val id = s"n$next"
           val own =
             List(s"""  $id["${label(node)}"]""") ++ parentId.map(p => s"  $p --> $id").toList
@@ -284,8 +281,8 @@ object ToolRunner:
     * an extracted code block via [[extractField]]) so nothing is printed twice.
     */
   def detailsMarkdown(input: String, output: String): String =
-    val inputJson = ujson.write(ujson.read(input), indent = 2)
-    val outputJson = ujson.write(ujson.read(output), indent = 2)
+    val inputJson = J.write(J.read(input), indent = 2)
+    val outputJson = J.write(J.read(output), indent = 2)
 
     s"""<details>
        |<summary>Raw JSON</summary>
@@ -299,11 +296,9 @@ object ToolRunner:
        |</details>""".stripMargin
 
   private def resultMarkdown(args: String, raw: String): String =
-    val parsed = ujson.read(raw)
-    val extractedFields = parsed.obj.toSeq.collect {
-      case (k, ujson.Str(v)) if v.contains("\n") && extractedSourceFields.contains(k) =>
-        k -> v
-    }
+    val parsed = J.read(raw)
+    val extractedFields = parsed.obj.toSeq.flatMap: (k, v) =>
+      v.asString.filter(s => s.contains("\n") && extractedSourceFields.contains(k)).map(k -> _)
     if extractedFields.isEmpty then semanticJsonComponent(raw)
     else
       val codeBlocks = extractedFields

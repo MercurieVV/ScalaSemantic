@@ -1,5 +1,7 @@
 package com.github.mercurievv.scalasemantic.mcp
 
+import io.circe.Json
+
 import scala.util.Try
 
 /** `batch`: several tool calls in one round trip, with later calls able to use earlier results.
@@ -37,60 +39,65 @@ object BatchTool:
       List(("calls", "array", "[{tool, args}], at most 20; run in order")),
       List("calls")
     ) { a =>
-      val calls = a.obj.get("calls") match
-        case Some(arr: ujson.Arr) => arr.value.toList
-        case _ => McpToolsSupport.error("`calls` must be an array of {tool, args}")
+      val calls = a.asObject.flatMap(_("calls")).flatMap(_.asArray) match
+        case Some(arr) => arr.toList
+        case None      => McpToolsSupport.error("`calls` must be an array of {tool, args}")
       if calls.size > MaxCalls then
         McpToolsSupport.error(s"at most $MaxCalls calls per batch (got ${calls.size})")
       val results =
-        calls.foldLeft(Vector.empty[ujson.Value])((done, c) => done :+ runOne(byName, c, done))
-      ujson.Obj("results" -> ujson.Arr.from(results))
+        calls.foldLeft(Vector.empty[Json])((done, c) => done :+ runOne(byName, c, done))
+      J.obj("results" -> J.arrOf(results))
     }
 
   private def runOne(
       byName: Map[String, Tool],
-      call: ujson.Value,
-      done: Vector[ujson.Value]
-  ): ujson.Value =
-    val name = call.objOpt.flatMap(_.get("tool")).flatMap(_.strOpt).getOrElse("")
-    val outcome: Either[String, ujson.Value] =
+      call: Json,
+      done: Vector[Json]
+  ): Json =
+    val name = call.asObject.flatMap(_("tool")).flatMap(_.asString).getOrElse("")
+    val outcome: Either[String, Json] =
       for
         tool <-
           if name == "batch" then Left("batch cannot call batch")
           else byName.get(name).toRight(s"unknown tool '$name'")
-        args <- resolveRefs(call.objOpt.flatMap(_.get("args")).getOrElse(ujson.Obj()), done)
+        args <- resolveRefs(call.asObject.flatMap(_("args")).getOrElse(J.obj()), done)
         result <- Try(
           ResultShaping.shape(ResultShaping.specOf(tool, args), tool.run(args))
         ).toEither.left
           .map(t => Option(t.getMessage).getOrElse(t.getClass.getName))
       yield result
     outcome.fold(
-      e => ujson.Obj("tool" -> name, "ok" -> false, "error" -> e),
-      r => ujson.Obj("tool" -> name, "ok" -> true, "result" -> r)
+      e => J.obj("tool" -> name, "ok" -> false, "error" -> e),
+      r => J.obj("tool" -> name, "ok" -> true, "result" -> r)
     )
 
   // ---- references --------------------------------------------------------------------------
 
   /** Replaces every `{"$ref": path}` in `v` with the value `path` addresses in `done`. */
   private[mcp] def resolveRefs(
-      v: ujson.Value,
-      done: Vector[ujson.Value]
-  ): Either[String, ujson.Value] =
-    v match
-      case o: ujson.Obj if o.value.size == 1 && o.value.contains("$ref") =>
-        o.value("$ref").strOpt.toRight("$ref must be a string").flatMap(resolvePath(_, done))
-      case o: ujson.Obj =>
-        sequence(o.value.toList.map((k, x) => resolveRefs(x, done).map(k -> _)))
-          .map(ujson.Obj.from(_))
-      case a: ujson.Arr =>
-        sequence(a.value.toList.map(resolveRefs(_, done))).map(ujson.Arr.from(_))
-      case other => Right(other)
+      v: Json,
+      done: Vector[Json]
+  ): Either[String, Json] =
+    v.fold(
+      Right(v),
+      _ => Right(v),
+      _ => Right(v),
+      _ => Right(v),
+      items => sequence(items.toList.map(resolveRefs(_, done))).map(J.arrOf(_)),
+      o =>
+        o.toList match
+          case ("$ref", ref) :: Nil =>
+            ref.asString.toRight("$ref must be a string").flatMap(resolvePath(_, done))
+          case fields =>
+            sequence(fields.map((k, x) => resolveRefs(x, done).map(k -> _)))
+              .map(J.objOf(_))
+    )
 
   /** `"2.symbols.0.symbol"`: the result of call 2, then key `symbols`, position 0, key `symbol`. */
   private[mcp] def resolvePath(
       path: String,
-      done: Vector[ujson.Value]
-  ): Either[String, ujson.Value] =
+      done: Vector[Json]
+  ): Either[String, Json] =
     path.split('.').toList match
       case head :: rest =>
         for
@@ -99,19 +106,25 @@ object BatchTool:
             .toRight(s"$$ref '$path': no earlier call '$head' (have ${done.size})")
           entry <- done.lift(idx).toRight(s"$$ref '$path': no earlier call")
           result <-
-            if entry.obj.get("ok").contains(ujson.Bool(true)) then Right(entry("result"))
+            if entry.asObject.flatMap(_("ok")).flatMap(_.asBoolean).contains(true) then
+              entry.asObject.flatMap(_("result")).toRight(s"$$ref '$path': call $idx has no result")
             else Left(s"$$ref '$path': call $idx failed")
           value <- at(result, rest).left.map(e => s"$$ref '$path': $e")
         yield value
       case Nil => Left("empty $ref")
 
   /** Steps into `root` one segment at a time: a key for an object, a position for a list. */
-  private[mcp] def at(root: ujson.Value, segments: List[String]): Either[String, ujson.Value] =
-    segments.foldLeft(Right(root): Either[String, ujson.Value]): (acc, seg) =>
-      acc.flatMap:
-        case a: ujson.Arr => seg.toIntOption.flatMap(a.value.lift).toRight(s"no position '$seg'")
-        case o: ujson.Obj => o.value.get(seg).toRight(s"no key '$seg'")
-        case _            => Left(s"cannot step into a scalar with '$seg'")
+  private[mcp] def at(root: Json, segments: List[String]): Either[String, Json] =
+    segments.foldLeft(Right(root): Either[String, Json]): (acc, seg) =>
+      acc.flatMap: j =>
+        j.fold(
+          Left(s"cannot step into a scalar with '$seg'"),
+          _ => Left(s"cannot step into a scalar with '$seg'"),
+          _ => Left(s"cannot step into a scalar with '$seg'"),
+          _ => Left(s"cannot step into a scalar with '$seg'"),
+          items => seg.toIntOption.flatMap(items.lift).toRight(s"no position '$seg'"),
+          o => o(seg).toRight(s"no key '$seg'")
+        )
 
   private def sequence[A](xs: List[Either[String, A]]): Either[String, List[A]] =
     xs.foldRight(Right(Nil): Either[String, List[A]])((x, acc) =>

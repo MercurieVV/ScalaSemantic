@@ -1,7 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -17,11 +19,11 @@ class PlanToolSchemaSuite extends munit.FunSuite:
     "mcp/src/main/scala/com/github/mercurievv/scalasemantic/mcp/ToolResultParts.scala"
   private val Sym = "com/github/mercurievv/scalasemantic/mcp/NotFoundResult#"
 
-  private def check(name: String, args: (String, ujson.Value)*): ujson.Value =
+  private def check(name: String, args: (String, J.V)*): Json =
     val t = tools.find(_.name == name).getOrElse(fail(s"no $name"))
     val schema = t.outputSchema.getOrElse(fail(s"$name has no outputSchema"))
-    val res = t.run(ujson.Obj.from(args))
-    assertEquals(SchemaConformance.violations(schema, res), Nil, ujson.write(res).take(300))
+    val res = t.run(J.obj(args*))
+    assertEquals(SchemaConformance.violations(schema, res), Nil, J.write(res).take(300))
     res
 
   test("rename_plan conforms, also for a symbol with no occurrences"):
@@ -30,10 +32,10 @@ class PlanToolSchemaSuite extends munit.FunSuite:
     check("rename_plan", "symbol" -> "no/such/Symbol#", "newName" -> "Other")
 
   test("batch_rename_plan conforms: clean batch and one with overlapping edits"):
-    def req(s: String, n: String) = ujson.Obj("symbol" -> s, "newName" -> n)
-    val clean = check("batch_rename_plan", "renames" -> ujson.Arr(req(Sym, "A")))
+    def req(s: String, n: String) = J.obj("symbol" -> s, "newName" -> n)
+    val clean = check("batch_rename_plan", "renames" -> J.arr(req(Sym, "A")))
     assertEquals(clean("conflictCount").num.toInt, 0)
-    val clash = check("batch_rename_plan", "renames" -> ujson.Arr(req(Sym, "A"), req(Sym, "B")))
+    val clash = check("batch_rename_plan", "renames" -> J.arr(req(Sym, "A"), req(Sym, "B")))
     assert(clash("conflictCount").num > 0, "same symbol renamed twice must conflict")
 
   test("move_plan conforms, with and without references"):
@@ -63,6 +65,6 @@ class PlanToolSchemaSuite extends munit.FunSuite:
   test("plan schemas stay small"):
     List("rename_plan", "batch_rename_plan", "move_plan", "extract_method_plan").foreach: n =>
       val chars =
-        ujson.write(tools.find(_.name == n).flatMap(_.outputSchema).getOrElse(fail(n))).length
+        J.write(tools.find(_.name == n).flatMap(_.outputSchema).getOrElse(fail(n))).length
       println(s"$n outputSchema: $chars chars")
       assert(chars < 2500, s"$n schema is $chars chars")

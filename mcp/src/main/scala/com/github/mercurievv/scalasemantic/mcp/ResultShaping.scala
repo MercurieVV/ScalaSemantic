@@ -1,5 +1,8 @@
 package com.github.mercurievv.scalasemantic.mcp
 
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
+import io.circe.Json
+
 /** Per-call shaping of any tool's result, for callers that only need part of a large answer.
   *
   * Three universal arguments, documented once in the server instructions (not repeated in every
@@ -18,7 +21,7 @@ object ResultShaping:
   final case class Spec(limit: Option[Int], countOnly: Boolean, fields: Option[List[String]]):
     def isNoop: Boolean = limit.isEmpty && !countOnly && fields.isEmpty
 
-  private type Fields = List[(String, ujson.Value)]
+  private type Fields = List[(String, Json)]
 
   /** Keys with control meaning: they survive any `fields` projection. */
   val ControlKeys: Set[String] = Set(
@@ -31,7 +34,7 @@ object ResultShaping:
     "pcFallbackHint"
   )
 
-  def specOf(tool: Tool, args: ujson.Value): Spec =
+  def specOf(tool: Tool, args: Json): Spec =
     val hasOwnLimit = tool.inputSchema.obj.get("properties").exists(_.obj.contains("limit"))
     Spec(
       limit =
@@ -40,18 +43,19 @@ object ResultShaping:
       countOnly = args.obj.get("countOnly").flatMap(_.boolOpt).contains(true),
       fields = args.obj
         .get("fields")
-        .collect { case a: ujson.Arr => a.value.toList.flatMap(_.strOpt) }
+        .flatMap(_.asArray)
+        .map(_.toList.flatMap(_.asString))
         .filter(_.nonEmpty)
     )
 
-  def shape(spec: Spec, result: ujson.Value): ujson.Value = result match
-    case o: ujson.Obj if !spec.isNoop =>
-      val projected = spec.fields.fold(o.value.toList)(project(o.value.toList, _))
-      ujson.Obj.from(
+  def shape(spec: Spec, result: Json): Json = result.asObject match
+    case Some(o) if !spec.isNoop =>
+      val projected = spec.fields.fold(o.toList)(project(o.toList, _))
+      J.objOf(
         if spec.countOnly then countOnly(projected)
         else spec.limit.fold(projected)(limitTo(projected, _))
       )
-    case other => other
+    case _ => result
 
   // ---- fields ------------------------------------------------------------------------------
 
@@ -67,30 +71,29 @@ object ResultShaping:
       else if mine.exists(_._2.isEmpty) then List(k -> v)
       else List(k -> projectValue(v, mine.flatMap(_._2)))
 
-  private def projectValue(v: ujson.Value, sub: List[String]): ujson.Value = v match
-    case a: ujson.Arr => ujson.Arr.from(a.value.toList.map(projectValue(_, sub)))
-    case o: ujson.Obj => ujson.Obj.from(project(o.value.toList, sub))
-    case other        => other
+  private def projectValue(v: Json, sub: List[String]): Json =
+    v.fold(
+      v,
+      _ => v,
+      _ => v,
+      _ => v,
+      items => J.arrOf(items.toList.map(projectValue(_, sub))),
+      o => J.objOf(project(o.toList, sub))
+    )
 
   // ---- countOnly / limit -------------------------------------------------------------------
 
   private def countOnly(fields: Fields): Fields =
-    val counts = fields.collect { case (k, a: ujson.Arr) =>
-      k -> (ujson.Num(a.value.size): ujson.Value)
-    }
-    val rest = fields.filter:
-      case (_, _: ujson.Arr) => false
-      case _                 => true
+    val counts = fields.flatMap((k, v) => v.asArray.map(a => k -> J.num(a.size)))
+    val rest = fields.filterNot((_, v) => v.isArray)
     rest ++ withKey("counts", counts)
 
   private def limitTo(fields: Fields, n: Int): Fields =
-    val truncated = fields.collect:
-      case (k, a: ujson.Arr) if a.value.size > n => k -> (ujson.Num(a.value.size): ujson.Value)
-    val capped = fields.map:
-      case (k, a: ujson.Arr) if a.value.size > n =>
-        k -> (ujson.Arr.from(a.value.toList.take(n)): ujson.Value)
-      case kv => kv
+    val truncated =
+      fields.flatMap((k, v) => v.asArray.filter(_.size > n).map(a => k -> J.num(a.size)))
+    val capped = fields.map: (k, v) =>
+      v.asArray.filter(_.size > n).fold(k -> v)(a => k -> J.arrOf(a.take(n)))
     capped ++ withKey("truncated", truncated)
 
   private def withKey(key: String, entries: Fields): Fields =
-    if entries.isEmpty then Nil else List(key -> (ujson.Obj.from(entries): ujson.Value))
+    if entries.isEmpty then Nil else List(key -> (J.objOf(entries): Json))

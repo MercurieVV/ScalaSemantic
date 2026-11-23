@@ -1,5 +1,8 @@
 package com.github.mercurievv.scalasemantic.mcp
 
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
+import io.circe.Json
+
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -69,7 +72,7 @@ class TokenLiveMetricsSuite extends munit.FunSuite:
       meanCacheTokens = rounded(runs.map(_.cacheTokens).sum.toDouble / runs.size)
     )
 
-  private def parseRun(value: ujson.Value): RunTokens =
+  private def parseRun(value: Json): RunTokens =
     val obj = value.obj
     RunTokens(
       arm = obj("arm").str,
@@ -79,7 +82,7 @@ class TokenLiveMetricsSuite extends munit.FunSuite:
       cacheTokens = obj.get("cacheTokens").map(_.num.toInt).getOrElse(0)
     )
 
-  private def parseMeasurement(value: ujson.Value): Measurement =
+  private def parseMeasurement(value: Json): Measurement =
     val obj = value.obj
     Measurement(
       id = obj("id").str,
@@ -91,7 +94,7 @@ class TokenLiveMetricsSuite extends munit.FunSuite:
       runs = obj("runs").arr.map(parseRun).toList
     )
 
-  private def parseMeasurements(raw: ujson.Value): List[Measurement] =
+  private def parseMeasurements(raw: Json): List[Measurement] =
     val schemaVersion = raw("schemaVersion").num.toInt
     assertEquals(schemaVersion, 1, "unsupported live metrics schema version")
     raw("measurements").arr.map(parseMeasurement).toList
@@ -109,8 +112,8 @@ class TokenLiveMetricsSuite extends munit.FunSuite:
     if baselineMean == 0.0 then 0.0
     else rounded((baselineMean - toolMean) * 100.0 / baselineMean)
 
-  private def runJson(run: RunTokens): ujson.Value =
-    ujson.Obj(
+  private def runJson(run: RunTokens): Json =
+    J.obj(
       "run" -> run.run,
       "inputTokens" -> run.inputTokens,
       "outputTokens" -> run.outputTokens,
@@ -118,9 +121,9 @@ class TokenLiveMetricsSuite extends munit.FunSuite:
       "totalTokens" -> run.totalTokens
     )
 
-  private def statsJson(stats: Stats): ujson.Value =
-    ujson.Obj(
-      "runs" -> ujson.Arr.from(stats.runs.map(runJson)),
+  private def statsJson(stats: Stats): Json =
+    J.obj(
+      "runs" -> J.arrOf(stats.runs.map(runJson)),
       "meanTokens" -> stats.meanTokens,
       "medianTokens" -> stats.medianTokens,
       "variance" -> stats.variance,
@@ -130,13 +133,13 @@ class TokenLiveMetricsSuite extends munit.FunSuite:
     )
 
   private def aggregate(rawText: String): String =
-    val raw = ujson.read(rawText)
+    val raw = J.read(rawText)
     val measurements = parseMeasurements(raw)
     val rows = measurements.sortBy(m => (m.id, m.engine)).map { measurement =>
       val withMcp = armStats(measurement, "with-mcp")
       val withoutMcp = armStats(measurement, "without-mcp")
       val delta = rounded(withoutMcp.meanTokens - withMcp.meanTokens)
-      ujson.Obj(
+      J.obj(
         "id" -> measurement.id,
         "query" -> measurement.query,
         "tool" -> measurement.tool,
@@ -156,23 +159,21 @@ class TokenLiveMetricsSuite extends munit.FunSuite:
       rows.map(row => row("withoutMcp")("meanTokens").num).sum
     )
     val delta = rounded(withoutTotal - withTotal)
-    ujson
-      .Obj(
-        "schemaVersion" -> 1,
-        "measurement" -> "end-to-end-agent-context",
-        "source" -> raw("source"),
-        "summary" -> ujson.Obj(
-          "measurementCount" -> rows.size,
-          "taskCount" -> rows.map(_("id").str).distinct.size,
-          "engineCount" -> rows.map(_("engine").str).distinct.size,
-          "toolMeanTokens" -> withTotal,
-          "baselineMeanTokens" -> withoutTotal,
-          "tokenDelta" -> delta,
-          "savingsPercent" -> savingsPercent(withoutTotal, withTotal)
-        ),
-        "measurements" -> ujson.Arr.from(rows)
-      )
-      .render(indent = 2) + "\n"
+    J.obj(
+      "schemaVersion" -> 1,
+      "measurement" -> "end-to-end-agent-context",
+      "source" -> raw("source"),
+      "summary" -> J.obj(
+        "measurementCount" -> rows.size,
+        "taskCount" -> rows.map(_("id").str).distinct.size,
+        "engineCount" -> rows.map(_("engine").str).distinct.size,
+        "toolMeanTokens" -> withTotal,
+        "baselineMeanTokens" -> withoutTotal,
+        "tokenDelta" -> delta,
+        "savingsPercent" -> savingsPercent(withoutTotal, withTotal)
+      ),
+      "measurements" -> J.arrOf(rows)
+    ).pretty + "\n"
 
   test("live token metrics sample aggregate matches raw run fixture") {
     val generated = aggregate(Files.readString(runsPath).nn)

@@ -1,7 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -26,13 +28,13 @@ class TokenMetricsSuite extends munit.FunSuite:
   private val jsonPath = root.resolve("docs/research/token-metrics.json").nn
   private val markdownPath = root.resolve("docs/research/token-metrics-methodology.md").nn
 
-  private def req(method: String, params: ujson.Value): ujson.Value =
-    ujson.Obj("jsonrpc" -> "2.0", "id" -> 1, "method" -> method, "params" -> params)
+  private def req(method: String, params: Json): Json =
+    J.obj("jsonrpc" -> "2.0", "id" -> 1, "method" -> method, "params" -> params)
 
-  private def call(name: String, args: ujson.Value): String =
+  private def call(name: String, args: Json): String =
     val response =
       Mcp
-        .handle(req("tools/call", ujson.Obj("name" -> name, "arguments" -> args)), tools)
+        .handle(req("tools/call", J.obj("name" -> name, "arguments" -> args)), tools)
         .getOrElse(fail(s"no response for $name"))
     response("result")("content")(0)("text").str
 
@@ -104,7 +106,7 @@ class TokenMetricsSuite extends munit.FunSuite:
         query = "Find all definitions and references of the Animal trait.",
         tool = "find_usages",
         baseline = "Text grep for Animal across fixture and vendored corpus source trees.",
-        toolOutput = call("find_usages", ujson.Obj("symbol" -> Animal)),
+        toolOutput = call("find_usages", J.obj("symbol" -> Animal)),
         baselineOutput = grep("Animal", fixtureSources)
       ),
       QueryMetric(
@@ -112,7 +114,7 @@ class TokenMetricsSuite extends munit.FunSuite:
         query = "Identify Animal parents, linearization, and known subtypes.",
         tool = "class_hierarchy",
         baseline = "Read the fixture source containing Animal, Dog, and Fish inheritance.",
-        toolOutput = call("class_hierarchy", ujson.Obj("symbol" -> Animal, "detailed" -> true)),
+        toolOutput = call("class_hierarchy", J.obj("symbol" -> Animal, "detailed" -> true)),
         baselineOutput = fixtureWithHeader("inspect trait/class declarations and extends clauses")
       ),
       QueryMetric(
@@ -120,7 +122,7 @@ class TokenMetricsSuite extends munit.FunSuite:
         query = "Recover Sample.render's full method signature, including using parameters.",
         tool = "method_signature",
         baseline = "Read the fixture source and infer the complete signature from text.",
-        toolOutput = call("method_signature", ujson.Obj("symbol" -> Render, "detailed" -> true)),
+        toolOutput = call("method_signature", J.obj("symbol" -> Render, "detailed" -> true)),
         baselineOutput = fixtureWithHeader("locate render and surrounding type-class context")
       ),
       QueryMetric(
@@ -128,7 +130,7 @@ class TokenMetricsSuite extends munit.FunSuite:
         query = "Trace givens that produce Show and their dependencies.",
         tool = "trace_implicit_chain",
         baseline = "Read the fixture source and follow given definitions manually.",
-        toolOutput = call("trace_implicit_chain", ujson.Obj("type" -> Show)),
+        toolOutput = call("trace_implicit_chain", J.obj("type" -> Show)),
         baselineOutput = fixtureWithHeader("inspect Show, intShow, and listShow dependencies")
       ),
       QueryMetric(
@@ -138,7 +140,7 @@ class TokenMetricsSuite extends munit.FunSuite:
         baseline = "Read the fixture source and follow method bodies manually.",
         toolOutput = call(
           "call_path",
-          ujson.Obj("from" -> calls("a"), "to" -> calls("c"), "detailed" -> true)
+          J.obj("from" -> calls("a"), "to" -> calls("c"), "detailed" -> true)
         ),
         baselineOutput = fixtureWithHeader("inspect Calls.a, Calls.b, and Calls.c bodies")
       )
@@ -156,33 +158,31 @@ class TokenMetricsSuite extends munit.FunSuite:
 
   private def json(metrics: List[QueryMetric]): String =
     val (tool, baseline, delta, savings) = summary(metrics)
-    ujson
-      .Obj(
-        "method" -> "Approximate token proxy: ceil(character_count / 4).",
-        "baselineScope" -> "Raw source/grep context is generated from checked-in fixture sources.",
-        "summary" -> ujson.Obj(
-          "queryCount" -> metrics.size,
-          "toolTokens" -> tool,
-          "baselineTokens" -> baseline,
-          "tokenDelta" -> delta,
-          "savingsPercent" -> savings
-        ),
-        "queries" -> ujson.Arr.from(metrics.map { m =>
-          ujson.Obj(
-            "id" -> m.id,
-            "query" -> m.query,
-            "tool" -> m.tool,
-            "baseline" -> m.baseline,
-            "toolChars" -> m.toolChars,
-            "baselineChars" -> m.baselineChars,
-            "toolTokens" -> m.toolTokens,
-            "baselineTokens" -> m.baselineTokens,
-            "tokenDelta" -> m.tokenDelta,
-            "savingsPercent" -> m.savingsPercent
-          )
-        })
-      )
-      .render(indent = 2) + "\n"
+    J.obj(
+      "method" -> "Approximate token proxy: ceil(character_count / 4).",
+      "baselineScope" -> "Raw source/grep context is generated from checked-in fixture sources.",
+      "summary" -> J.obj(
+        "queryCount" -> metrics.size,
+        "toolTokens" -> tool,
+        "baselineTokens" -> baseline,
+        "tokenDelta" -> delta,
+        "savingsPercent" -> savings
+      ),
+      "queries" -> J.arrOf(metrics.map { m =>
+        J.obj(
+          "id" -> m.id,
+          "query" -> m.query,
+          "tool" -> m.tool,
+          "baseline" -> m.baseline,
+          "toolChars" -> m.toolChars,
+          "baselineChars" -> m.baselineChars,
+          "toolTokens" -> m.toolTokens,
+          "baselineTokens" -> m.baselineTokens,
+          "tokenDelta" -> m.tokenDelta,
+          "savingsPercent" -> m.savingsPercent
+        )
+      })
+    ).pretty + "\n"
 
   private val beginMarker = "<!-- BEGIN AUTO-GENERATED -->"
   private val endMarker = "<!-- END AUTO-GENERATED -->"

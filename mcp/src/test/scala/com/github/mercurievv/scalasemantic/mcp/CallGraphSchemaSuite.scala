@@ -1,7 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -14,11 +16,11 @@ class CallGraphSchemaSuite extends munit.FunSuite:
   private val root: Path = Paths.get(".")
   private val tools: List[Tool] = Mcp.toolsFor(Analyzer(SemanticIndex.fromProject(".")), root)
   private def tool(name: String): Tool = tools.find(_.name == name).getOrElse(fail(s"no $name"))
-  private def call(name: String, args: (String, ujson.Value)*): ujson.Value =
-    tool(name).run(ujson.Obj.from(args))
-  private def schemaOf(name: String): ujson.Value =
+  private def call(name: String, args: (String, J.V)*): Json =
+    tool(name).run(J.obj(args*))
+  private def schemaOf(name: String): Json =
     tool(name).outputSchema.getOrElse(fail(s"$name has no outputSchema"))
-  private def conforms(name: String, res: ujson.Value): Unit =
+  private def conforms(name: String, res: Json): Unit =
     assertEquals(SchemaConformance.violations(schemaOf(name), res), Nil)
 
   private val Pkg = "com/github/mercurievv/scalasemantic/mcp/"
@@ -30,7 +32,7 @@ class CallGraphSchemaSuite extends munit.FunSuite:
   test("call_path: schema requires from/to/reachable; path and edges optional"):
     val s = schemaOf("call_path")
     assertEquals(s("required").arr.toList.map(_.str).toSet, Set("from", "to", "reachable"))
-    println(s"call_path outputSchema: ${ujson.write(s).length} chars")
+    println(s"call_path outputSchema: ${J.write(s).length} chars")
 
   test("call_path: a direct call is reachable, with the path (edges only when detailed)"):
     val res = call("call_path", "from" -> Caller, "to" -> Callee)
@@ -57,7 +59,7 @@ class CallGraphSchemaSuite extends munit.FunSuite:
       s("$defs")("CallNodeOut")("properties")("children")("items")("$ref").str,
       "#/$defs/CallNodeOut"
     )
-    println(s"method_call_hierarchy outputSchema: ${ujson.write(s).length} chars")
+    println(s"method_call_hierarchy outputSchema: ${J.write(s).length} chars")
 
   test("method_call_hierarchy: callees tree nests and conforms"):
     val res = call("method_call_hierarchy", "symbol" -> Caller, "depth" -> 2)
@@ -79,7 +81,7 @@ class CallGraphSchemaSuite extends munit.FunSuite:
     assertEquals(s("required").arr.toList.map(_.str).toSet, Set("type", "steps"))
     assertEquals(s("properties")("resolved")("$ref").str, "#/$defs/ImplicitTreeOut")
     assert(s("$defs").obj.contains("ImplicitTreeOut"))
-    println(s"trace_implicit_chain outputSchema: ${ujson.write(s).length} chars")
+    println(s"trace_implicit_chain outputSchema: ${J.write(s).length} chars")
 
   test("trace_implicit_chain: steps list the givens producing a type"):
     val res = call("trace_implicit_chain", "type" -> "io/circe/Encoder#")

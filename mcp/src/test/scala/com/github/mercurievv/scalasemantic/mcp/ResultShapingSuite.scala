@@ -1,7 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
@@ -20,23 +22,23 @@ class ResultShapingSuite extends ScalaCheckSuite:
 
   private val keyGen: Gen[String] =
     Gen.oneOf("a", "b", "c", "d", "e", "found", "note") // two of them are control keys
-  private val listGen: Gen[ujson.Value] =
+  private val listGen: Gen[Json] =
     Gen
       .listOf(Gen.choose(0, 50))
-      .map(xs => ujson.Arr.from(xs.map(i => (ujson.Num(i): ujson.Value))))
-  private val scalarGen: Gen[ujson.Value] =
+      .map(xs => J.arrOf(xs.map(i => (J.num(i): Json))))
+  private val scalarGen: Gen[Json] =
     Gen.oneOf(
-      Gen.alphaStr.map(s => ujson.Str(s): ujson.Value),
-      Gen.choose(0, 99).map(n => ujson.Num(n): ujson.Value)
+      Gen.alphaStr.map(s => J.str(s): Json),
+      Gen.choose(0, 99).map(n => J.num(n): Json)
     )
-  private val objGen: Gen[ujson.Obj] =
+  private val objGen: Gen[Json] =
     Gen
       .listOf(Gen.zip(keyGen, Gen.oneOf(listGen, scalarGen)))
-      .map(kvs => ujson.Obj.from(kvs.distinctBy(_._1)))
+      .map(kvs => J.objOf(kvs.distinctBy(_._1)))
 
-  private def entries(o: ujson.Value): List[(String, ujson.Value)] = o.obj.toList
-  private def arraysOf(o: ujson.Value): List[(String, List[ujson.Value])] =
-    entries(o).collect { case (k, a: ujson.Arr) => k -> a.value.toList }
+  private def entries(o: Json): List[(String, Json)] = o.obj.toList
+  private def arraysOf(o: Json): List[(String, List[Json])] =
+    entries(o).flatMap((k, v) => v.asArray.map(a => k -> a.toList))
 
   // ---- laws --------------------------------------------------------------------------------
 
@@ -58,7 +60,7 @@ class ResultShapingSuite extends ScalaCheckSuite:
   property("limit n: nothing but lists and `truncated` changes"):
     forAll(objGen, Gen.choose(1, 10)): (o, n) =>
       val shaped = ResultShaping.shape(Spec(Some(n), false, None), o)
-      val scalars = entries(o).filter { case (_, _: ujson.Arr) => false; case _ => true }
+      val scalars = entries(o).filterNot((_, v) => v.isArray)
       scalars.forall((k, v) => shaped.obj.get(k).contains(v))
 
   property("countOnly: no list survives, counts holds every original size"):
@@ -84,9 +86,9 @@ class ResultShapingSuite extends ScalaCheckSuite:
   // ---- projection into lists ---------------------------------------------------------------
 
   test("fields: `list.key` projects the items of a list, control keys survive"):
-    val in = ujson.read("""{"items":[{"a":1,"b":2},{"a":3}],"x":1,"found":false}""")
+    val in = J.read("""{"items":[{"a":1,"b":2},{"a":3}],"x":1,"found":false}""")
     val out = ResultShaping.shape(Spec(None, false, Some(List("items.a"))), in)
-    assertEquals(out, ujson.read("""{"items":[{"a":1},{"a":3}],"found":false}"""))
+    assertEquals(out, J.read("""{"items":[{"a":1},{"a":3}],"found":false}"""))
 
   // ---- through the real tools/call path ----------------------------------------------------
 
@@ -97,11 +99,11 @@ class ResultShapingSuite extends ScalaCheckSuite:
   // Straight to the function `tools/call` uses, with this suite's own tool instances: going through
   // `Mcp.handle` would consult the process-global `Mcp` state (`activeTools`), which other suites
   // replace, making the answer depend on suite order.
-  private def call(name: String, args: (String, ujson.Value)*): ujson.Value =
+  private def call(name: String, args: (String, J.V)*): Json =
     val tool = tools.find(_.name == name).getOrElse(fail(s"no $name"))
-    Mcp.shapedResult(tool, ujson.Obj.from(args), structured = true)
+    Mcp.shapedResult(tool, J.obj(args*), structured = true)
 
-  private def payload(res: ujson.Value): ujson.Value = ujson.read(res("content")(0)("text").str)
+  private def payload(res: Json): Json = J.read(res("content")(0)("text").str)
 
   test("countOnly: members answer shrinks to counts; no structuredContent for a shaped result"):
     val full = payload(call("members", "symbol" -> Members))
@@ -113,13 +115,13 @@ class ResultShapingSuite extends ScalaCheckSuite:
 
   test("fields: keeps only what was asked for"):
     assertEquals(
-      payload(call("members", "symbol" -> Members, "fields" -> ujson.Arr("name"))).obj.keySet.toSet,
+      payload(call("members", "symbol" -> Members, "fields" -> J.arr("name"))).obj.keySet.toSet,
       Set("name")
     )
 
   test("fields on a miss: the control key `found` still tells the caller it was a miss"):
     val shaped =
-      payload(call("members", "symbol" -> "no/such/Type#", "fields" -> ujson.Arr("name")))
+      payload(call("members", "symbol" -> "no/such/Type#", "fields" -> J.arr("name")))
     assertEquals(shaped("found").bool, false)
 
   test("limit: caps lists and reports the original size"):

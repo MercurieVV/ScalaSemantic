@@ -1,5 +1,7 @@
 package com.github.mercurievv.scalasemantic.mcp
 
+import io.circe.Json
+
 /** Output schemas of the typed tools, served on demand instead of riding along in every
   * `tools/list`: schemas cost tokens per session, and only code that parses results (programmatic
   * tool calling, code-mode) needs them.
@@ -25,13 +27,13 @@ object OutputSchemaResources:
       .exists(v => v == "1" || v.equalsIgnoreCase("true"))
 
   /** Typed tools only, sorted by name: `(tool name, output schema)`. */
-  def schemas(tools: List[Tool]): List[(String, ujson.Value)] =
+  def schemas(tools: List[Tool]): List[(String, Json)] =
     tools.flatMap(t => t.outputSchema.map(t.name -> _)).sortBy(_._1)
 
-  def list: ujson.Value =
-    ujson.Obj(
-      "resources" -> ujson.Arr(
-        ujson.Obj(
+  def list: Json =
+    J.obj(
+      "resources" -> J.arr(
+        J.obj(
           "uri" -> AllUri,
           "name" -> "output-schema-all",
           "description" -> "Output JSON Schemas of every typed tool, keyed by tool name",
@@ -40,10 +42,10 @@ object OutputSchemaResources:
       )
     )
 
-  def templates: ujson.Value =
-    ujson.Obj(
-      "resourceTemplates" -> ujson.Arr(
-        ujson.Obj(
+  def templates: Json =
+    J.obj(
+      "resourceTemplates" -> J.arr(
+        J.obj(
           "uriTemplate" -> (UriPrefix + "{tool}"),
           "name" -> "output-schema",
           "description" -> "Output JSON Schema of one typed tool (e.g. find_usages)",
@@ -53,19 +55,19 @@ object OutputSchemaResources:
     )
 
   /** `resources/read` result, or the JSON-RPC error message (code -32002, resource not found). */
-  def read(uri: String, tools: List[Tool]): Either[String, ujson.Value] =
+  def read(uri: String, tools: List[Tool]): Either[String, Json] =
     text(uri, tools).map: body =>
-      ujson.Obj(
-        "contents" -> ujson.Arr(ujson.Obj("uri" -> uri, "mimeType" -> MimeType, "text" -> body))
+      J.obj(
+        "contents" -> J.arr(J.obj("uri" -> uri, "mimeType" -> MimeType, "text" -> body))
       )
 
   private def text(uri: String, tools: List[Tool]): Either[String, String] =
-    if uri == AllUri then Right(ujson.write(ujson.Obj.from(schemas(tools))))
+    if uri == AllUri then Right(J.write(J.objOf(schemas(tools))))
     else if uri.startsWith(UriPrefix) then
-      forTool(uri.stripPrefix(UriPrefix), tools).map(ujson.write(_))
+      forTool(uri.stripPrefix(UriPrefix), tools).map(J.write(_))
     else Left(s"Unknown resource: $uri")
 
-  private def forTool(name: String, tools: List[Tool]): Either[String, ujson.Value] =
+  private def forTool(name: String, tools: List[Tool]): Either[String, Json] =
     schemas(tools)
       .collectFirst { case (n, s) if n == name => s }
       .toRight(
@@ -80,6 +82,6 @@ object OutputSchemaResources:
         "Only needed to write code that parses results."
     ) { a =>
       a.tool match
-        case None       => ujson.Obj.from(schemas(all))
+        case None       => J.objOf(schemas(all))
         case Some(name) => forTool(name, all).fold(McpToolsSupport.error, identity)
     }

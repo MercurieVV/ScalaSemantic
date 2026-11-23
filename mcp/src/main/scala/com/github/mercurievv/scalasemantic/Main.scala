@@ -1,5 +1,6 @@
 package com.github.mercurievv.scalasemantic
 
+import com.github.mercurievv.scalasemantic.mcp.J
 import com.github.mercurievv.scalasemantic.mcp.Mcp
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 
@@ -35,9 +36,9 @@ private[scalasemantic] def callTool(args: Seq[String]): Unit =
         positional.lift(2).getOrElse("."),
         positional.lift(3),
         tool,
-        ujson.read(argsJson)
+        J.read(argsJson)
       ) match
-        case Right(result) => println(ujson.write(result, indent = 2))
+        case Right(result) => println(J.write(result, indent = 2))
         case Left(err)     =>
           System.err.println(err)
           sys.exit(1)

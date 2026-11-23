@@ -1,8 +1,10 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 /** Presentation-compiler-backed MCP tools, split out of `McpSuite`: each test here boots a real
   * Metals-style presentation compiler (`PresentationCompilerBackend.useCurrentJvm`), which is slow
@@ -17,10 +19,10 @@ class McpPcSuite extends munit.FunSuite:
 
   private def req(
       method: String,
-      params: ujson.Value,
-      id: ujson.Value = ujson.Num(1)
-  ): ujson.Value =
-    ujson.Obj("jsonrpc" -> "2.0", "id" -> id, "method" -> method, "params" -> params)
+      params: Json,
+      id: Json = J.num(1)
+  ): Json =
+    J.obj("jsonrpc" -> "2.0", "id" -> id, "method" -> method, "params" -> params)
 
   private def currentRuntimeClasspath: String =
     val fromProp = System
@@ -58,9 +60,9 @@ class McpPcSuite extends munit.FunSuite:
       val resp = Mcp.handle(
         req(
           "tools/call",
-          ujson.Obj(
+          J.obj(
             "name" -> "extract_method_plan",
-            "arguments" -> ujson.Obj(
+            "arguments" -> J.obj(
               "uri" -> "Calc.scala",
               "startLine" -> 5,
               "startCharacter" -> 0,
@@ -73,7 +75,7 @@ class McpPcSuite extends munit.FunSuite:
         ),
         pcTools
       )
-      val r = ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
+      val r = J.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
       assertEquals(r("signature").str, "def compute(a: Int): Int")
       assertEquals(r("call").str, "val c = compute(a)")
       assertEquals(r("enclosingMethod").str, "run")
@@ -97,35 +99,35 @@ class McpPcSuite extends munit.FunSuite:
 
     PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
       val pcTools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
-      def outline(args: ujson.Obj): ujson.Value =
+      def outline(args: Json): Json =
         val resp = Mcp.handle(
-          req("tools/call", ujson.Obj("name" -> "document_outline", "arguments" -> args)),
+          req("tools/call", J.obj("name" -> "document_outline", "arguments" -> args)),
           pcTools
         )
-        ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
+        J.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
 
       // Nothing is compiled and the disk index is empty, so without `source` the tool falls back
       // to the presentation compiler automatically (the file exists on disk) — it outlines, marked
       // pcFallback, instead of answering found:false.
-      val fallback = outline(ujson.Obj("uri" -> "Shapes.scala"))
-      assertEquals(fallback("pcFallback").bool, true, fallback.render())
+      val fallback = outline(J.obj("uri" -> "Shapes.scala"))
+      assertEquals(fallback("pcFallback").bool, true, fallback.noSpaces)
       assertEquals(
         fallback("outline").arr.map(_("name").str).toList.sorted,
         List("Circle", "Square")
       )
-      assert(!fallback.obj.contains("liveSource"), fallback.render())
-      assert(!fallback.obj.contains("filtered"), fallback.render())
+      assert(!fallback.obj.contains("liveSource"), fallback.noSpaces)
+      assert(!fallback.obj.contains("filtered"), fallback.noSpaces)
 
-      val full = outline(ujson.Obj("uri" -> "Shapes.scala", "source" -> source))
+      val full = outline(J.obj("uri" -> "Shapes.scala", "source" -> source))
       assertEquals(full("liveSource").bool, true)
-      assert(!full.obj.contains("filtered"), full.render())
+      assert(!full.obj.contains("filtered"), full.noSpaces)
       assertEquals(
         full("outline").arr.map(_("name").str).toList.sorted,
         List("Circle", "Square")
       )
 
       val narrowed = outline(
-        ujson.Obj("uri" -> "Shapes.scala", "source" -> source, "query" -> "name")
+        J.obj("uri" -> "Shapes.scala", "source" -> source, "query" -> "name")
       )
       assertEquals(narrowed("filtered").bool, true)
       assertEquals(
@@ -202,16 +204,16 @@ class McpPcSuite extends munit.FunSuite:
     val cpFile = metaDir.resolve("classpath-sbt.json").nn
     java.nio.file.Files.writeString(
       cpFile,
-      ujson.write(
-        ujson.Obj(
+      J.write(
+        J.obj(
           "schemaVersion" -> 1,
           "buildTool" -> "sbt",
-          "modules" -> ujson.Arr(
-            ujson.Obj(
+          "modules" -> J.arr(
+            J.obj(
               "id" -> "app",
               "baseDir" -> "app",
               "configuration" -> "Compile",
-              "classpath" -> ujson.Arr.from(moduleClasspath.map(ujson.Str(_)))
+              "classpath" -> J.arrOf(moduleClasspath.map(J.str(_)))
             )
           )
         )
@@ -256,38 +258,38 @@ class McpPcSuite extends munit.FunSuite:
     processEnv.put("SCALASEMANTIC_HOME", jarCache.toString)
     val process = builder.start()
 
-    val initializeReq = ujson.Obj(
+    val initializeReq = J.obj(
       "jsonrpc" -> "2.0",
-      "id" -> ujson.Num(1),
+      "id" -> J.num(1),
       "method" -> "initialize",
-      "params" -> ujson.Obj("protocolVersion" -> "2025-06-18")
+      "params" -> J.obj("protocolVersion" -> "2025-06-18")
     )
-    val initializedNotification = ujson.Obj(
+    val initializedNotification = J.obj(
       "jsonrpc" -> "2.0",
       "method" -> "notifications/initialized",
-      "params" -> ujson.Obj()
+      "params" -> J.obj()
     )
     val toolsCallReq = req(
       "tools/call",
-      ujson.Obj(
+      J.obj(
         "name" -> "type_at_position",
-        "arguments" -> ujson.Obj(
+        "arguments" -> J.obj(
           "uri" -> uri,
           "line" -> 5,
           "character" -> 24,
           "source" -> source
         )
       ),
-      id = ujson.Num(2)
+      id = J.num(2)
     )
 
     val os = process.getOutputStream.nn
-    os.write((ujson.write(initializeReq) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    os.write((J.write(initializeReq) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
     os.write(
-      (ujson.write(initializedNotification) + "\n")
+      (J.write(initializedNotification) + "\n")
         .getBytes(java.nio.charset.StandardCharsets.UTF_8)
     )
-    os.write((ujson.write(toolsCallReq) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    os.write((J.write(toolsCallReq) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
     os.close()
 
     val finished = process.waitFor(90, java.util.concurrent.TimeUnit.SECONDS)
@@ -302,17 +304,17 @@ class McpPcSuite extends munit.FunSuite:
     assertEquals(process.exitValue(), 0, stderr)
 
     val lines = stdout.linesIterator.filter(_.nonEmpty).toList
-    val initResp = ujson.read(lines.headOption.getOrElse(""))
+    val initResp = J.read(lines.headOption.getOrElse(""))
     assert(initResp.obj.contains("result"), s"Invalid init response: $initResp")
 
-    val callResp = ujson.read(lines.lift(1).getOrElse(""))
-    val body = ujson.read(callResp("result")("content")(0)("text").str)
+    val callResp = J.read(lines.lift(1).getOrElse(""))
+    val body = J.read(callResp("result")("content")(0)("text").str)
     assert(
       body.obj.contains("type"),
-      s"stdout=$stdout\nstderr=$stderr\nlog=$log\nbody=${body.render()}"
+      s"stdout=$stdout\nstderr=$stderr\nlog=$log\nbody=${body.noSpaces}"
     )
     assertEquals(body("name").str, "name")
-    assert(body("symbol").str.startsWith("ext/External#name"), body.render())
+    assert(body("symbol").str.startsWith("ext/External#name"), body.noSpaces)
   }
 
   test("launcher smoke switches workspace root statefully") {
@@ -384,52 +386,51 @@ class McpPcSuite extends munit.FunSuite:
     val process = builder.start()
 
     val requests = List(
-      ujson.Obj(
+      J.obj(
         "jsonrpc" -> "2.0",
-        "id" -> ujson.Num(1),
+        "id" -> J.num(1),
         "method" -> "initialize",
-        "params" -> ujson.Obj("protocolVersion" -> "2025-06-18")
+        "params" -> J.obj("protocolVersion" -> "2025-06-18")
       ),
       req(
         "tools/call",
-        ujson.Obj(
+        J.obj(
           "name" -> "find_symbol",
-          "arguments" -> ujson.Obj("query" -> "DuplicationAnalyzer", "exact" -> true)
+          "arguments" -> J.obj("query" -> "DuplicationAnalyzer", "exact" -> true)
         ),
-        id = ujson.Num(2)
+        id = J.num(2)
       ),
       req(
         "tools/call",
-        ujson
-          .Obj("name" -> "set_workspace_root", "arguments" -> ujson.Obj("path" -> rootB.toString)),
-        id = ujson.Num(3)
+        J.obj("name" -> "set_workspace_root", "arguments" -> J.obj("path" -> rootB.toString)),
+        id = J.num(3)
       ),
       req(
         "tools/call",
-        ujson.Obj(
+        J.obj(
           "name" -> "find_symbol",
-          "arguments" -> ujson.Obj("query" -> "Mcp", "exact" -> true)
+          "arguments" -> J.obj("query" -> "Mcp", "exact" -> true)
         ),
-        id = ujson.Num(4)
+        id = J.num(4)
       ),
       req(
         "tools/call",
-        ujson.Obj(
+        J.obj(
           "name" -> "find_symbol",
-          "arguments" -> ujson.Obj("query" -> "DuplicationAnalyzer", "exact" -> true)
+          "arguments" -> J.obj("query" -> "DuplicationAnalyzer", "exact" -> true)
         ),
-        id = ujson.Num(5)
+        id = J.num(5)
       ),
       req(
         "tools/call",
-        ujson.Obj("name" -> "get_workspace_root", "arguments" -> ujson.Obj()),
-        id = ujson.Num(6)
+        J.obj("name" -> "get_workspace_root", "arguments" -> J.obj()),
+        id = J.num(6)
       )
     )
 
     val os = process.getOutputStream.nn
     requests.foreach(r =>
-      os.write((ujson.write(r) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+      os.write((J.write(r) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
     )
     os.close()
 
@@ -442,21 +443,21 @@ class McpPcSuite extends munit.FunSuite:
     assert(finished, stderr)
     assertEquals(process.exitValue(), 0, stderr)
 
-    val lines = stdout.linesIterator.filter(_.nonEmpty).map(ujson.read(_)).toVector
+    val lines = stdout.linesIterator.filter(_.nonEmpty).map(J.read(_)).toVector
     assertEquals(lines.size, requests.size, s"stdout=$stdout\nstderr=$stderr")
-    def body(index: Int): ujson.Value =
-      ujson.read(lines(index)("result")("content")(0)("text").str)
+    def body(index: Int): Json =
+      J.read(lines(index)("result")("content")(0)("text").str)
 
     val rootAFind = body(1)
     assert(
       rootAFind("symbols").arr.exists(_("symbol").str.endsWith("/DuplicationAnalyzer.")),
-      rootAFind.render()
+      rootAFind.noSpaces
     )
     val setRoot = body(2)
     assertEquals(setRoot("root").str, rootB.toString)
     assertEquals(setRoot("cached").bool, false)
     val rootBFind = body(3)
-    assert(rootBFind("symbols").arr.exists(_("symbol").str.endsWith("/Mcp.")), rootBFind.render())
+    assert(rootBFind("symbols").arr.exists(_("symbol").str.endsWith("/Mcp.")), rootBFind.noSpaces)
     val staleFind = body(4)
     assertEquals(staleFind("count").num, 0.0)
     val currentRoot = body(5)
@@ -520,38 +521,38 @@ class McpPcSuite extends munit.FunSuite:
     processEnv.put("SCALASEMANTIC_HOME", jarCache.toString)
     val process = builder.start()
 
-    val initializeReq = ujson.Obj(
+    val initializeReq = J.obj(
       "jsonrpc" -> "2.0",
-      "id" -> ujson.Num(1),
+      "id" -> J.num(1),
       "method" -> "initialize",
-      "params" -> ujson.Obj("protocolVersion" -> "2025-06-18")
+      "params" -> J.obj("protocolVersion" -> "2025-06-18")
     )
-    val initializedNotification = ujson.Obj(
+    val initializedNotification = J.obj(
       "jsonrpc" -> "2.0",
       "method" -> "notifications/initialized",
-      "params" -> ujson.Obj()
+      "params" -> J.obj()
     )
     val toolsCallReq = req(
       "tools/call",
-      ujson.Obj(
+      J.obj(
         "name" -> "type_at_position",
-        "arguments" -> ujson.Obj(
+        "arguments" -> J.obj(
           "uri" -> uri,
           "line" -> 5,
           "character" -> 24,
           "source" -> source
         )
       ),
-      id = ujson.Num(2)
+      id = J.num(2)
     )
 
     val os = process.getOutputStream.nn
-    os.write((ujson.write(initializeReq) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    os.write((J.write(initializeReq) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
     os.write(
-      (ujson.write(initializedNotification) + "\n")
+      (J.write(initializedNotification) + "\n")
         .getBytes(java.nio.charset.StandardCharsets.UTF_8)
     )
-    os.write((ujson.write(toolsCallReq) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    os.write((J.write(toolsCallReq) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
     os.close()
 
     val finished = process.waitFor(90, java.util.concurrent.TimeUnit.SECONDS)
@@ -564,11 +565,11 @@ class McpPcSuite extends munit.FunSuite:
     assertEquals(process.exitValue(), 0, stderr)
 
     val lines = stdout.linesIterator.filter(_.nonEmpty).toList
-    val initResp = ujson.read(lines.headOption.getOrElse(""))
+    val initResp = J.read(lines.headOption.getOrElse(""))
     assert(initResp.obj.contains("result"), s"Invalid init response: $initResp")
 
-    val callResp = ujson.read(lines.lift(1).getOrElse(""))
-    val body = ujson.read(callResp("result")("content")(0)("text").str)
+    val callResp = J.read(lines.lift(1).getOrElse(""))
+    val body = J.read(callResp("result")("content")(0)("text").str)
     assertEquals(body("found").bool, false)
   }
 
@@ -591,17 +592,17 @@ class McpPcSuite extends munit.FunSuite:
 
     PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
       val pcTools = McpTools.all(Analyzer(new SemanticIndex(Vector.empty), Some(backend)), root)
-      def pcCall(tool: String, args: ujson.Value): ujson.Value =
+      def pcCall(tool: String, args: Json): Json =
         val resp =
-          Mcp.handle(req("tools/call", ujson.Obj("name" -> tool, "arguments" -> args)), pcTools)
-        ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
+          Mcp.handle(req("tools/call", J.obj("name" -> tool, "arguments" -> args)), pcTools)
+        J.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
 
       // type_at_position without `source`: the empty disk index has nothing for this file, so the
       // tool falls back to the presentation compiler automatically (the file exists on disk). The
       // PC best-effort-typechecks even the broken tail, and the answer is marked pcFallback.
       val cold = pcCall(
         "type_at_position",
-        ujson.Obj("uri" -> "Widget.scala", "line" -> 3, "character" -> 6)
+        J.obj("uri" -> "Widget.scala", "line" -> 3, "character" -> 6)
       )
       assertEquals(cold("name").str, "area")
       assertEquals(cold("type").str, "Int")
@@ -609,7 +610,7 @@ class McpPcSuite extends munit.FunSuite:
       // With `source`, the PC regenerates SemanticDB and the position resolves — despite the error.
       val live = pcCall(
         "type_at_position",
-        ujson.Obj("uri" -> "Widget.scala", "line" -> 3, "character" -> 6, "source" -> source)
+        J.obj("uri" -> "Widget.scala", "line" -> 3, "character" -> 6, "source" -> source)
       )
       assertEquals(live("name").str, "area")
       assertEquals(live("type").str, "Int")
@@ -617,13 +618,13 @@ class McpPcSuite extends munit.FunSuite:
       // method_signature (overlay): resolve the buffer's symbol, then read its signature live.
       val area = "demo/Widget#area()."
       assertEquals(
-        pcCall("method_signature", ujson.Obj("symbol" -> area)).obj.get("found"),
-        Some(ujson.Bool(false))
+        pcCall("method_signature", J.obj("symbol" -> area)).obj.get("found"),
+        Some(J.bool(false))
       )
       val sig =
         pcCall(
           "method_signature",
-          ujson.Obj("symbol" -> area, "uri" -> "Widget.scala", "source" -> source)
+          J.obj("symbol" -> area, "uri" -> "Widget.scala", "source" -> source)
         )
       assertEquals(sig("signature").str, "def area(w: Int): Int")
     }
@@ -645,21 +646,20 @@ class McpPcSuite extends munit.FunSuite:
       val resp = Mcp.handle(
         req(
           "tools/call",
-          ujson.Obj(
+          J.obj(
             "name" -> "hole_context",
-            "arguments" -> ujson
-              .Obj(
-                "uri" -> "Holes.scala",
-                "line" -> line,
-                "character" -> character,
-                "source" -> source
-              )
+            "arguments" -> J.obj(
+              "uri" -> "Holes.scala",
+              "line" -> line,
+              "character" -> character,
+              "source" -> source
+            )
           )
         ),
         tools
       )
       val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
-      val json = ujson.read(text)
+      val json = J.read(text)
       assertEquals(json("expected")("type").str, "String")
       assertEquals(json("expected")("confidence").str, "exact")
       assert(json("bindings").arr.exists(_("name").str == "s"), text)
@@ -684,16 +684,15 @@ class McpPcSuite extends munit.FunSuite:
       val resp = Mcp.handle(
         req(
           "tools/call",
-          ujson.Obj(
+          J.obj(
             "name" -> "hole_context",
-            "arguments" -> ujson
-              .Obj("uri" -> "Holes.scala", "line" -> line, "character" -> character)
+            "arguments" -> J.obj("uri" -> "Holes.scala", "line" -> line, "character" -> character)
           )
         ),
         tools
       )
       val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
-      val json = ujson.read(text)
+      val json = J.read(text)
       assertEquals(json("pcFallback").bool, true, text)
       assertEquals(json("expected")("type").str, "String")
     }
@@ -718,16 +717,15 @@ class McpPcSuite extends munit.FunSuite:
       val resp = Mcp.handle(
         req(
           "tools/call",
-          ujson.Obj(
+          J.obj(
             "name" -> "hole_context",
-            "arguments" -> ujson
-              .Obj("uri" -> "Holes.scala", "line" -> line, "character" -> character)
+            "arguments" -> J.obj("uri" -> "Holes.scala", "line" -> line, "character" -> character)
           )
         ),
         tools
       )
       val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
-      val json = ujson.read(text)
+      val json = J.read(text)
       assert(!json.obj.keySet.contains("pcFallback"), text)
       assertEquals(json("expected")("type").str, "String")
     }
@@ -749,21 +747,20 @@ class McpPcSuite extends munit.FunSuite:
       val resp = Mcp.handle(
         req(
           "tools/call",
-          ujson.Obj(
+          J.obj(
             "name" -> "hole_context",
-            "arguments" -> ujson
-              .Obj(
-                "uri" -> "Holes.scala",
-                "line" -> line,
-                "character" -> character,
-                "source" -> source
-              )
+            "arguments" -> J.obj(
+              "uri" -> "Holes.scala",
+              "line" -> line,
+              "character" -> character,
+              "source" -> source
+            )
           )
         ),
         tools
       )
       val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
-      val json = ujson.read(text)
+      val json = J.read(text)
       assertEquals(json("found").bool, false, text)
       assert(json("why").str.nonEmpty, text)
     }
@@ -783,21 +780,20 @@ class McpPcSuite extends munit.FunSuite:
       val resp = Mcp.handle(
         req(
           "tools/call",
-          ujson.Obj(
+          J.obj(
             "name" -> "hole_context",
-            "arguments" -> ujson
-              .Obj(
-                "uri" -> "Holes.scala",
-                "line" -> 9999,
-                "character" -> 0,
-                "source" -> source
-              )
+            "arguments" -> J.obj(
+              "uri" -> "Holes.scala",
+              "line" -> 9999,
+              "character" -> 0,
+              "source" -> source
+            )
           )
         ),
         tools
       )
       val text = resp.getOrElse(fail("no response"))("result")("content")(0)("text").str
-      val json = ujson.read(text)
+      val json = J.read(text)
       assertEquals(json("found").bool, false, text)
       assert(json("why").str.nonEmpty, text)
     }
@@ -809,10 +805,10 @@ class McpPcSuite extends munit.FunSuite:
     val resp = Mcp.handle(
       req(
         "tools/call",
-        ujson.Obj(
+        J.obj(
           "name" -> "hole_context",
-          "arguments" -> ujson
-            .Obj("uri" -> "X.scala", "line" -> 0, "character" -> 0, "source" -> "object X")
+          "arguments" -> J
+            .obj("uri" -> "X.scala", "line" -> 0, "character" -> 0, "source" -> "object X")
         )
       ),
       tools
@@ -838,13 +834,13 @@ class McpPcSuite extends munit.FunSuite:
       val resp = Mcp.handle(
         req(
           "tools/call",
-          ujson.Obj(
+          J.obj(
             "name" -> "resolve_references",
-            "arguments" -> ujson.Obj(
-              "files" -> ujson.Arr(
-                ujson.Obj(
+            "arguments" -> J.obj(
+              "files" -> J.arr(
+                J.obj(
                   "uri" -> "Refs.scala",
-                  "ranges" -> ujson.Arr(ujson.Arr(ujson.Num(3), ujson.Num(4))),
+                  "ranges" -> J.arr(J.arr(J.num(3), J.num(4))),
                   "source" -> source
                 )
               )
@@ -853,7 +849,7 @@ class McpPcSuite extends munit.FunSuite:
         ),
         tools
       )
-      val json = ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
+      val json = J.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
       val refs = json("files")(0)("references").arr.toList
       assert(refs.exists(r => r("name").str == "trimm" && !r("resolved").bool), refs.toString)
       assert(refs.exists(r => r("name").str == "label" && r("resolved").bool), refs.toString)
@@ -866,14 +862,14 @@ class McpPcSuite extends munit.FunSuite:
 
   test("resolve_references: the envelope carries `role` and a classpath `origin`") {
     // `role` and `origin` are the two fields the harness's policy matcher reads, and `classpath`
-    // is the origin value no other test pins: `ujson` is on the PC classpath and in neither the
+    // is the origin value no other test pins: `circe` is on the PC classpath and in neither the
     // scala/java namespaces nor this (empty) index.
     val root = java.nio.file.Files.createTempDirectory("mcp-refs-origin").nn
     val file = root.resolve("Origin.scala").nn
     val source =
       """package demo
         |object Origin:
-        |  val v: ujson.Value = ujson.Null
+        |  val v: io.circe.Json = io.circe.Json.Null
         |""".stripMargin
     java.nio.file.Files.writeString(file, source)
     PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
@@ -881,13 +877,13 @@ class McpPcSuite extends munit.FunSuite:
       val resp = Mcp.handle(
         req(
           "tools/call",
-          ujson.Obj(
+          J.obj(
             "name" -> "resolve_references",
-            "arguments" -> ujson.Obj(
-              "files" -> ujson.Arr(
-                ujson.Obj(
+            "arguments" -> J.obj(
+              "files" -> J.arr(
+                J.obj(
                   "uri" -> "Origin.scala",
-                  "ranges" -> ujson.Arr(ujson.Arr(ujson.Num(2), ujson.Num(3))),
+                  "ranges" -> J.arr(J.arr(J.num(2), J.num(3))),
                   "source" -> source
                 )
               )
@@ -896,9 +892,9 @@ class McpPcSuite extends munit.FunSuite:
         ),
         tools
       )
-      val json = ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
+      val json = J.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
       val refs = json("files")(0)("references").arr.toList
-      val value = refs.find(_("name").str == "Value").getOrElse(fail(refs.toString))
+      val value = refs.find(_("name").str == "Json").getOrElse(fail(refs.toString))
       assertEquals(value("origin").str, "classpath", refs.toString)
       assertEquals(value("role").str, "use", refs.toString)
       val v = refs.find(r => r("name").str == "v").getOrElse(fail(refs.toString))
@@ -930,18 +926,18 @@ class McpPcSuite extends munit.FunSuite:
       val resp = Mcp.handle(
         req(
           "tools/call",
-          ujson.Obj(
+          J.obj(
             "name" -> "resolve_references",
-            "arguments" -> ujson.Obj(
-              "files" -> ujson.Arr(
-                ujson.Obj(
+            "arguments" -> J.obj(
+              "files" -> J.arr(
+                J.obj(
                   "uri" -> "Refs1.scala",
-                  "ranges" -> ujson.Arr(ujson.Arr(ujson.Num(3), ujson.Num(4))),
+                  "ranges" -> J.arr(J.arr(J.num(3), J.num(4))),
                   "source" -> source1
                 ),
-                ujson.Obj(
+                J.obj(
                   "uri" -> "Refs2.scala",
-                  "ranges" -> ujson.Arr(ujson.Arr(ujson.Num(3), ujson.Num(4))),
+                  "ranges" -> J.arr(J.arr(J.num(3), J.num(4))),
                   "source" -> source2
                 )
               )
@@ -950,7 +946,7 @@ class McpPcSuite extends munit.FunSuite:
         ),
         tools
       )
-      val json = ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
+      val json = J.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
       val files = json("files").arr.toList
       assertEquals(files.size, 2)
       val byUri = files.map(f => f("uri").str -> f).toMap
@@ -976,13 +972,13 @@ class McpPcSuite extends munit.FunSuite:
       val resp = Mcp.handle(
         req(
           "tools/call",
-          ujson.Obj(
+          J.obj(
             "name" -> "resolve_references",
-            "arguments" -> ujson.Obj(
-              "files" -> ujson.Arr(
-                ujson.Obj(
+            "arguments" -> J.obj(
+              "files" -> J.arr(
+                J.obj(
                   "uri" -> "Refs.scala",
-                  "ranges" -> ujson.Arr(ujson.Arr(ujson.Num(3), ujson.Num(4)))
+                  "ranges" -> J.arr(J.arr(J.num(3), J.num(4)))
                 )
               )
             )
@@ -990,7 +986,7 @@ class McpPcSuite extends munit.FunSuite:
         ),
         tools
       )
-      val json = ujson.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
+      val json = J.read(resp.getOrElse(fail("no response"))("result")("content")(0)("text").str)
       assert(json("files")(0)("pcFallback").bool, json.toString)
     }
   }
@@ -1001,11 +997,11 @@ class McpPcSuite extends munit.FunSuite:
     val resp = Mcp.handle(
       req(
         "tools/call",
-        ujson.Obj(
+        J.obj(
           "name" -> "resolve_references",
-          "arguments" -> ujson.Obj(
-            "files" -> ujson.Arr(
-              ujson.Obj("uri" -> "X.scala", "ranges" -> ujson.Arr())
+          "arguments" -> J.obj(
+            "files" -> J.arr(
+              J.obj("uri" -> "X.scala", "ranges" -> J.arr())
             )
           )
         )

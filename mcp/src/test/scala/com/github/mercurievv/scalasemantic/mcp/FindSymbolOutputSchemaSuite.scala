@@ -1,7 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -19,11 +21,11 @@ class FindSymbolOutputSchemaSuite extends munit.FunSuite:
       .toolsFor(Analyzer(SemanticIndex.fromProject(".")), root)
       .find(_.name == "find_symbol")
       .getOrElse(fail("no find_symbol"))
-  private def call(args: (String, ujson.Value)*): ujson.Value = tool.run(ujson.Obj.from(args))
-  private val schema: ujson.Value =
+  private def call(args: (String, J.V)*): Json = tool.run(J.obj(args*))
+  private val schema: Json =
     tool.outputSchema.getOrElse(fail("find_symbol has no outputSchema"))
 
-  private def violations(s: ujson.Value, v: ujson.Value): List[String] =
+  private def violations(s: Json, v: Json): List[String] =
     SchemaConformance.violations(s, v)
 
   test("declares a compact object outputSchema with required fields and descriptions"):
@@ -32,7 +34,7 @@ class FindSymbolOutputSchemaSuite extends munit.FunSuite:
     val hit = schema("properties")("symbols")("items")
     assertEquals(hit("required").arr.map(_.str).toSet, Set("symbol", "name", "kind"))
     assert(hit("properties")("symbol")("description").str.nonEmpty)
-    assert(!ujson.write(schema).contains("$ref"), "schema must be self-contained")
+    assert(!J.write(schema).contains("$ref"), "schema must be self-contained")
 
   test("outputSchema also allows the optional hints the server wrappers append"):
     val props = schema("properties").obj
@@ -68,14 +70,14 @@ class FindSymbolOutputSchemaSuite extends munit.FunSuite:
     ).foreach(res => assertEquals(violations(schema, res), Nil))
 
   test("schema stays small (it ships in every tools/list)"):
-    val chars = ujson.write(schema).length
+    val chars = J.write(schema).length
     println(s"find_symbol outputSchema: $chars chars")
     assert(chars < 2000, s"outputSchema is $chars chars")
 
-  private def rpc(method: String, params: ujson.Value): ujson.Value =
+  private def rpc(method: String, params: Json): Json =
     Mcp
       .handle(
-        ujson.Obj("jsonrpc" -> "2.0", "id" -> 1, "method" -> method, "params" -> params),
+        J.obj("jsonrpc" -> "2.0", "id" -> 1, "method" -> method, "params" -> params),
         List(tool),
         (_, _) => (),
         structured = true
@@ -83,15 +85,15 @@ class FindSymbolOutputSchemaSuite extends munit.FunSuite:
       .getOrElse(fail(s"no response to $method"))("result")
 
   test("tools/list advertises outputSchema; tools/call returns matching structuredContent"):
-    val listed = rpc("tools/list", ujson.Obj())("tools").arr.toList.head
+    val listed = rpc("tools/list", J.obj())("tools").arr.toList.head
     assertEquals(listed("outputSchema"), schema)
     val res = rpc(
       "tools/call",
-      ujson.Obj(
+      J.obj(
         "name" -> "find_symbol",
-        "arguments" -> ujson.Obj("query" -> "Analyzer", "limit" -> 3)
+        "arguments" -> J.obj("query" -> "Analyzer", "limit" -> 3)
       )
     )
-    val text = ujson.read(res("content")(0)("text").str)
+    val text = J.read(res("content")(0)("text").str)
     assertEquals(res("structuredContent"), text)
     assertEquals(violations(schema, res("structuredContent")), Nil)

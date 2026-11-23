@@ -1,7 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -14,11 +16,11 @@ class MembersResolveImplicitsSchemaSuite extends munit.FunSuite:
   private val root: Path = Paths.get(".")
   private val tools: List[Tool] = Mcp.toolsFor(Analyzer(SemanticIndex.fromProject(".")), root)
   private def tool(name: String): Tool = tools.find(_.name == name).getOrElse(fail(s"no $name"))
-  private def call(name: String, args: (String, ujson.Value)*): ujson.Value =
-    tool(name).run(ujson.Obj.from(args))
-  private def schemaOf(name: String): ujson.Value =
+  private def call(name: String, args: (String, J.V)*): Json =
+    tool(name).run(J.obj(args*))
+  private def schemaOf(name: String): Json =
     tool(name).outputSchema.getOrElse(fail(s"$name has no outputSchema"))
-  private def conforms(name: String, res: ujson.Value): Unit =
+  private def conforms(name: String, res: Json): Unit =
     assertEquals(SchemaConformance.violations(schemaOf(name), res), Nil)
 
   // A case class: declares accessors/copy, inherits from Product/Equals/Object.
@@ -32,8 +34,8 @@ class MembersResolveImplicitsSchemaSuite extends munit.FunSuite:
       s("oneOf").arr.toList.map(_("required").arr.toList.map(_.str).toSet).toSet,
       Set(Set("symbol", "name"), Set("symbol", "found"), Set("candidates", "note"))
     )
-    assert(!ujson.write(s).contains("$ref"))
-    println(s"members outputSchema: ${ujson.write(s).length} chars")
+    assert(!J.write(s).contains("$ref"))
+    println(s"members outputSchema: ${J.write(s).length} chars")
 
   test("members: default — declared entries are bare names"):
     val res = call("members", "symbol" -> LookupType)
@@ -62,7 +64,7 @@ class MembersResolveImplicitsSchemaSuite extends munit.FunSuite:
     assertEquals(TypedTool.encode(brief).obj.keySet.toSet, Set("name", "from"))
 
   test("members: `include` trims sections"):
-    val res = call("members", "symbol" -> LookupType, "include" -> ujson.Arr("declared"))
+    val res = call("members", "symbol" -> LookupType, "include" -> J.arr("declared"))
     assert(res.obj.contains("declared") && !res.obj.contains("inherited"))
     conforms("members", res)
 
@@ -82,8 +84,8 @@ class MembersResolveImplicitsSchemaSuite extends munit.FunSuite:
   test("resolve_implicits: schema requires type + candidates; `chosen` optional"):
     val s = schemaOf("resolve_implicits")
     assertEquals(s("required").arr.toList.map(_.str).toSet, Set("type", "candidates"))
-    assert(!ujson.write(s).contains("$ref"))
-    println(s"resolve_implicits outputSchema: ${ujson.write(s).length} chars")
+    assert(!J.write(s).contains("$ref"))
+    println(s"resolve_implicits outputSchema: ${J.write(s).length} chars")
 
   test("resolve_implicits: lists the given definitions producing a type"):
     val res = call("resolve_implicits", "type" -> "io/circe/Encoder#")

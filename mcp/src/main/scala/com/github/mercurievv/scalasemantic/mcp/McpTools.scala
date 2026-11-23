@@ -7,12 +7,14 @@ import com.github.mercurievv.scalasemantic.analysis.LiteralTokens
 import com.github.mercurievv.scalasemantic.analysis.RangeSelector
 import com.github.mercurievv.scalasemantic.analysis.SourceDiff
 import com.github.mercurievv.scalasemantic.analysis.SourceSentinel
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.model.ContractResult
 import com.github.mercurievv.scalasemantic.model.FileContracts
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 import com.github.mercurievv.scalasemantic.wire.AnalysisCodecs.given
+import io.circe.Json
 
 import scala.jdk.CollectionConverters.*
 import scala.meta.internal.semanticdb.Scala.*
@@ -105,20 +107,16 @@ private[mcp] object McpToolsSupport:
       "annotated_source / type_at_position with the current file text passed as `source` answer " +
       "from the presentation compiler alone and need no persistent index."
 
-  private[mcp] def withEmptyIndexHint(v: ujson.Value): ujson.Value = v match
-    case o: ujson.Obj =>
-      ujson.Obj.from(o.value.toSeq :+ ("indexEmptyHint" -> ujson.Str(EmptyIndexHint)))
-    case other => other
+  private[mcp] def withEmptyIndexHint(v: Json): Json =
+    v.asObject.fold(v)(o => J.objOf(o.toList ++ List("indexEmptyHint" -> J.str(EmptyIndexHint))))
 
   /** A result is "empty" when it reports nothing found — the shape that a coverage gap and a
     * genuine absence produce identically.
     */
-  private[mcp] def isEmptyResult(v: ujson.Value): Boolean = v match
-    case o: ujson.Obj =>
-      def num(k: String) = o.value.get(k).collect { case n: ujson.Num => n.value }
-      num("count").contains(0.0) || num("referenceCount").contains(0.0) ||
-      o.value.get("found").contains(ujson.Bool(false))
-    case _ => false
+  private[mcp] def isEmptyResult(v: Json): Boolean = v.asObject.exists: o =>
+    def num(k: String) = o(k).flatMap(_.asNumber).map(_.toDouble)
+    num("count").contains(0.0) || num("referenceCount").contains(0.0) ||
+    o("found").contains(J.bool(false))
 
   private[mcp] def coverageHint(c: SemanticIndex.Coverage): String =
     s"0 results, but ${c.sources - c.indexed} of ${c.sources} Scala source files are not in the " +
@@ -128,23 +126,23 @@ private[mcp] object McpToolsSupport:
       "--semanticdb-targetroot .semanticdb`. Call get_workspace_root for the unindexed file list, " +
       "or refresh_workspace with compile=true to have the server compile the scope itself."
 
-  private[mcp] def withCoverageHint(c: SemanticIndex.Coverage)(v: ujson.Value): ujson.Value =
-    v match
-      case o: ujson.Obj if isEmptyResult(o) =>
-        ujson.Obj.from(o.value.toSeq :+ ("coverageHint" -> ujson.Str(coverageHint(c))))
-      case other => other
+  private[mcp] def withCoverageHint(c: SemanticIndex.Coverage)(v: Json): Json =
+    v.asObject match
+      case Some(o) if isEmptyResult(v) =>
+        J.objOf(o.toList ++ List("coverageHint" -> J.str(coverageHint(c))))
+      case _ => v
 
   /** Render an outline entry recursively: name/kind/line, the signature and symbol, and any nested
     * children — dropping empties for token economy.
     */
-  private[mcp] def outlineJson(e: OutlineEntry): ujson.Value =
+  private[mcp] def outlineJson(e: OutlineEntry): Json =
     jobj(
-      Some("name" -> ujson.Str(e.name)),
-      Some("kind" -> ujson.Str(e.kind.value)),
-      Some("line" -> ujson.Num(e.line)),
-      opt(e.signature.nonEmpty, "signature" -> ujson.Str(e.signature)),
-      Some("symbol" -> ujson.Str(e.symbol)),
-      opt(e.children.nonEmpty, "children" -> ujson.Arr.from(e.children.map(outlineJson)))
+      Some("name" -> J.str(e.name)),
+      Some("kind" -> J.str(e.kind.value)),
+      Some("line" -> J.num(e.line)),
+      opt(e.signature.nonEmpty, "signature" -> J.str(e.signature)),
+      Some("symbol" -> J.str(e.symbol)),
+      opt(e.children.nonEmpty, "children" -> J.arrOf(e.children.map(outlineJson)))
     )
 
   // --- rendering helpers ----------------------------------------------------
@@ -197,9 +195,9 @@ private[mcp] object McpToolsSupport:
     )
 
     /** The full tool result: the rendered `source` plus `format`, `annotationCount`, and `legend`.
-      * `format`/`annotationsOnly` arrive pre-parsed from the caller (which owns the `ujson`
-      * argument helpers) so this object stays self-contained — depending only on `ujson` and the
-      * model, never back on [[McpTools]] (which would form a dependency cycle).
+      * `format`/`annotationsOnly` arrive pre-parsed from the caller (which owns the circe `Json`
+      * argument helpers) so this object stays self-contained — depending only on circe `Json` and
+      * the model, never back on [[McpTools]] (which would form a dependency cycle).
       */
     def result(
         uri: String,
@@ -211,7 +209,7 @@ private[mcp] object McpToolsSupport:
         symbols: List[(String, String)] = Nil,
         lineOffset: Int = 0,
         sentinel: Boolean = false
-    ): ujson.Value =
+    ): Json =
       val legendBlock =
         if symbols.isEmpty then ""
         else symbols.map((n, fqn) => s"//   $n → $fqn").mkString("\n// symbols:\n", "\n", "")
@@ -220,12 +218,12 @@ private[mcp] object McpToolsSupport:
           renderDiff(uri, rawLines, displayLines, anns, symbols, lineOffset, sentinel)
         case _ =>
           render(displayLines, anns, format, annotationsOnly, lineOffset, sentinel) + legendBlock
-      ujson.Obj(
-        "uri" -> ujson.Str(uri),
-        "format" -> ujson.Str(format.value),
-        "annotationCount" -> ujson.Num(anns.size),
-        "legend" -> ujson.Str(legend(format, sentinel)),
-        "source" -> ujson.Str(rendered)
+      J.obj(
+        "uri" -> J.str(uri),
+        "format" -> J.str(format.value),
+        "annotationCount" -> J.num(anns.size),
+        "legend" -> J.str(legend(format, sentinel)),
+        "source" -> J.str(rendered)
       )
 
     /** A unified diff from the source as written (`-`) to the enriched compilable view (`+`): every
@@ -400,14 +398,14 @@ private[mcp] object McpToolsSupport:
       az: Analyzer,
       symbol: String,
       on: Boolean
-  ): List[Option[(String, ujson.Value)]] =
+  ): List[Option[(String, Json)]] =
     if !on then Nil
     else
       az.metricsOf(symbol).toList.flatMap { s =>
         List(
-          Some("layer" -> ujson.Num(s.combined.layer)),
-          Some("centrality" -> ujson.Num(round3(s.combined.centrality))),
-          opt(s.combined.inCycle, "inCycle" -> ujson.Bool(true))
+          Some("layer" -> J.num(s.combined.layer)),
+          Some("centrality" -> J.num(round3(s.combined.centrality))),
+          opt(s.combined.inCycle, "inCycle" -> J.bool(true))
         )
       }
 
@@ -430,7 +428,7 @@ private[mcp] object McpToolsSupport:
       uri: DocumentUri,
       range: SourceRange,
       a: ViewOpts
-  ): Option[ujson.Value] =
+  ): Option[Json] =
     val file = root.resolve(uri.value)
     if !java.nio.file.Files.isRegularFile(file) then None
     else
@@ -462,7 +460,7 @@ private[mcp] object McpToolsSupport:
             lineOffset = start,
             sentinel = a.sentinelOn
           )
-          if pcFallback then ujson.Obj.from(res.obj.toSeq ++ pcFallbackFields(uri.value)) else res
+          if pcFallback then J.objOf(res.obj.toSeq ++ pcFallbackFields(uri.value)) else res
       }
 
   /** Enriched source for exactly `range` of `uri`, splicing the compiler's insertions directly into
@@ -481,7 +479,7 @@ private[mcp] object McpToolsSupport:
       uri: DocumentUri,
       range: SourceRange,
       a: ViewOpts
-  ): Option[ujson.Value] =
+  ): Option[Json] =
     val file = root.resolve(uri.value)
     if !java.nio.file.Files.isRegularFile(file) then None
     else
@@ -502,29 +500,29 @@ private[mcp] object McpToolsSupport:
             val spliced = InlineEnrich.spliceLine(line, byLine.getOrElse(i, Nil))
             f"$ln%5d  $spliced"
         }
-        val res = ujson.Obj(
-          "uri" -> ujson.Str(uri.value),
-          "format" -> ujson.Str("enriched"),
-          "annotationCount" -> ujson.Num(byLine.valuesIterator.map(_.size).sum),
-          "legend" -> ujson.Str(
+        val res = J.obj(
+          "uri" -> J.str(uri.value),
+          "format" -> J.str("enriched"),
+          "annotationCount" -> J.num(byLine.valuesIterator.map(_.size).sum),
+          "legend" -> J.str(
             "Compiler insertions spliced directly into the code (real type ascriptions, type " +
               "args placed at their call) instead of appended as comments. A note with no known " +
               "splice point (an implicit arg/conversion) trails the line after a bare ⟹ — never a " +
               "`//` comment. READ-ONLY view: never paste it into code; edit the real file at uri " +
               "(gutter line numbers map 1:1)."
           ),
-          "source" -> ujson.Str(renderedLines.mkString("\n"))
+          "source" -> J.str(renderedLines.mkString("\n"))
         )
-        if pcFallback then ujson.Obj.from(res.obj.toSeq ++ pcFallbackFields(uri.value)) else res
+        if pcFallback then J.objOf(res.obj.toSeq ++ pcFallbackFields(uri.value)) else res
       }
 
   /** The `pcFallback`/`pcFallbackHint` field pair marking an answer derived from a PC-only
     * typecheck of the on-disk file rather than the project's compiled index.
     */
-  private[mcp] def pcFallbackFields(uri: String): Seq[(String, ujson.Value)] =
+  private[mcp] def pcFallbackFields(uri: String): Seq[(String, Json)] =
     Seq(
-      "pcFallback" -> ujson.Bool(true),
-      "pcFallbackHint" -> ujson.Str(
+      "pcFallback" -> J.bool(true),
+      "pcFallbackHint" -> J.str(
         s"'$uri' has no compiled SemanticDB entry (it may not compile, or hasn't been built yet), " +
           "so this answer comes from the presentation compiler's best-effort typecheck of the file " +
           "alone, not the project's compiled index — expect gaps where the PC also can't resolve a " +
@@ -604,9 +602,9 @@ private[mcp] object McpToolsSupport:
       UsageHit(location, context)
     }
 
-  private[mcp] def usageHitJson(hit: UsageHit): ujson.Value =
+  private[mcp] def usageHitJson(hit: UsageHit): Json =
     jobj(
-      Some("location" -> ujson.Str(loc(hit.location))),
+      Some("location" -> J.str(loc(hit.location))),
       opt(hit.context.nonEmpty, "context" -> strs(hit.context))
     )
 
@@ -650,28 +648,28 @@ private[mcp] object McpToolsSupport:
         .sorted
     finally stream.close()
 
-  private[mcp] def memberJson(mi: MemberInfo): ujson.Value =
+  private[mcp] def memberJson(mi: MemberInfo): Json =
     jobj(
-      Some("name" -> ujson.Str(mi.displayName)),
-      Some("kind" -> ujson.Str(mi.kind.value)),
-      Some("symbol" -> ujson.Str(mi.symbol)),
-      Some("from" -> ujson.Str(mi.declaredIn.displayName))
+      Some("name" -> J.str(mi.displayName)),
+      Some("kind" -> J.str(mi.kind.value)),
+      Some("symbol" -> J.str(mi.symbol)),
+      Some("from" -> J.str(mi.declaredIn.displayName))
     )
 
-  private[mcp] def refs(rs: List[SymbolRef], detailed: Boolean): ujson.Value =
+  private[mcp] def refs(rs: List[SymbolRef], detailed: Boolean): Json =
     if detailed then
-      ujson.Arr.from(
+      J.arrOf(
         rs.map(r =>
           jobj(
-            Some("symbol" -> ujson.Str(r.symbol)),
-            Some("name" -> ujson.Str(r.displayName)),
-            Some("kind" -> ujson.Str(r.kind.value))
+            Some("symbol" -> J.str(r.symbol)),
+            Some("name" -> J.str(r.displayName)),
+            Some("kind" -> J.str(r.kind.value))
           )
         )
       )
     else strs(rs.map(_.displayName))
 
-  private[mcp] def strs(xs: Iterable[String]): ujson.Value = ujson.Arr.from(xs.map(ujson.Str(_)))
+  private[mcp] def strs(xs: Iterable[String]): Json = J.arrOf(xs.map(J.str(_)))
 
   /** Sanitize a module name into a mermaid-safe node id (alphanumerics, `_`, `-` only). */
   private[mcp] def mermaidNodeId(module: String): String =
@@ -694,7 +692,7 @@ private[mcp] object McpToolsSupport:
   /** A section predicate from an optional `include` array: absent → keep all sections; present →
     * keep only the named ones.
     */
-  private[mcp] def includeWant(a: ujson.Value): String => Boolean =
+  private[mcp] def includeWant(a: Json): String => Boolean =
     includeWant(a.obj.get("include").map(_.arr.iterator.map(_.str).toList))
 
   /** Which sections to return: all when `include` is absent, else exactly the listed ones. */
@@ -702,11 +700,11 @@ private[mcp] object McpToolsSupport:
     val wanted = include.map(_.toSet)
     section => wanted.forall(_.contains(section))
 
-  private[mcp] def notFound(symbol: String): ujson.Value =
-    jobj(Some("symbol" -> ujson.Str(symbol)), Some("found" -> ujson.Bool(false)))
+  private[mcp] def notFound(symbol: String): Json =
+    jobj(Some("symbol" -> J.str(symbol)), Some("found" -> J.bool(false)))
 
-  private[mcp] def notFoundUri(uri: String): ujson.Value =
-    jobj(Some("uri" -> ujson.Str(uri)), Some("found" -> ujson.Bool(false)))
+  private[mcp] def notFoundUri(uri: String): Json =
+    jobj(Some("uri" -> J.str(uri)), Some("found" -> J.bool(false)))
 
   /** True when a buffer offered to `annotated_source`'s write mode is a rendered VIEW rather than a
     * writable buffer: it still carries `⟹` notes, or the read-only line-number gutter. Neither is
@@ -875,7 +873,7 @@ private[mcp] object McpToolsSupport:
   private[mcp] def resolveTypeArg(
       az: Analyzer,
       root: java.nio.file.Path,
-      a: ujson.Value,
+      a: Json,
       key: String
   ): List[TypeSymbol] = resolveTypeArg(az, root, argStr(a, key))
 
@@ -910,7 +908,7 @@ private[mcp] object McpToolsSupport:
   private[mcp] def resolveMethodArg(
       az: Analyzer,
       root: java.nio.file.Path,
-      a: ujson.Value,
+      a: Json,
       key: String
   ): List[MethodSymbol] = resolveMethodArg(az, root, argStr(a, key))
 
@@ -946,7 +944,7 @@ private[mcp] object McpToolsSupport:
   private[mcp] def resolveMethodOrTermArg(
       az: Analyzer,
       root: java.nio.file.Path,
-      a: ujson.Value,
+      a: Json,
       key: String
   ): List[MethodOrTermSymbol] = resolveMethodOrTermArg(az, root, argStr(a, key))
 
@@ -976,40 +974,40 @@ private[mcp] object McpToolsSupport:
   /** The `{ candidates, note }` disambiguation object [[resolveTypeArg]]/[[resolveMethodArg]]
     * callers return in place of running the tool when a file path resolved to MORE than one symbol.
     */
-  private[mcp] def candidatesJson(symbols: List[String]): ujson.Value =
+  private[mcp] def candidatesJson(symbols: List[String]): Json =
     jobj(
       Some("candidates" -> strs(symbols)),
-      Some("note" -> ujson.Str("file defines multiple symbols; re-call with one symbol"))
+      Some("note" -> J.str("file defines multiple symbols; re-call with one symbol"))
     )
 
   /** Build an object from optional fields, dropping the absent ones (token discipline). */
-  private[mcp] def jobj(fields: Option[(String, ujson.Value)]*): ujson.Value =
-    ujson.Obj.from(fields.flatten)
+  private[mcp] def jobj(fields: Option[(String, Json)]*): Json =
+    J.objOf(fields.flatten)
 
   private[mcp] def opt(
       cond: Boolean,
-      field: => (String, ujson.Value)
-  ): Option[(String, ujson.Value)] =
+      field: => (String, Json)
+  ): Option[(String, Json)] =
     if cond then Some(field) else None
 
   // --- argument + schema helpers --------------------------------------------
 
-  private[mcp] def argStr(a: ujson.Value, k: String): String = a.obj.get(k).map(_.str).getOrElse("")
-  private[mcp] def argInt(a: ujson.Value, k: String, d: Int): Int =
+  private[mcp] def argStr(a: Json, k: String): String = a.obj.get(k).map(_.str).getOrElse("")
+  private[mcp] def argInt(a: Json, k: String, d: Int): Int =
     a.obj.get(k).map(_.num.toInt).getOrElse(d)
-  private[mcp] def argBool(a: ujson.Value, k: String, d: Boolean): Boolean =
+  private[mcp] def argBool(a: Json, k: String, d: Boolean): Boolean =
     a.obj.get(k).map(_.bool).getOrElse(d)
 
   private[mcp] def validatedArg[A](result: Either[String, A]): A =
     result.fold(error, identity)
 
-  private[mcp] def argRefinedString[A](a: ujson.Value, k: String)(
+  private[mcp] def argRefinedString[A](a: Json, k: String)(
       from: String => Either[String, A]
   ): A =
     validatedArg(from(argStr(a, k)))
 
   private[mcp] def argRefinedString[A](
-      a: ujson.Value,
+      a: Json,
       k: String,
       default: String
   )(from: String => Either[String, A]): A =
@@ -1017,31 +1015,31 @@ private[mcp] object McpToolsSupport:
     validatedArg(from(if raw.isEmpty then default else raw))
 
   private[mcp] def argRefinedInt[A](
-      a: ujson.Value,
+      a: Json,
       k: String,
       default: Int
   )(from: (Int, String) => Either[String, A]): A =
     validatedArg(from(argInt(a, k, default), k))
 
-  private[mcp] def argSymbol(a: ujson.Value, k: String): SemanticDbSymbol =
+  private[mcp] def argSymbol(a: Json, k: String): SemanticDbSymbol =
     argRefinedString(a, k)(SemanticDbSymbol.from)
 
-  private[mcp] def argMethodSymbol(a: ujson.Value, k: String): MethodSymbol =
+  private[mcp] def argMethodSymbol(a: Json, k: String): MethodSymbol =
     argRefinedString(a, k)(MethodSymbol.from)
 
-  private[mcp] def argTypeSymbol(a: ujson.Value, k: String): TypeSymbol =
+  private[mcp] def argTypeSymbol(a: Json, k: String): TypeSymbol =
     argRefinedString(a, k)(TypeSymbol.from)
 
-  private[mcp] def argPackageSymbol(a: ujson.Value, k: String): PackageSymbol =
+  private[mcp] def argPackageSymbol(a: Json, k: String): PackageSymbol =
     argRefinedString(a, k)(PackageSymbol.from)
 
-  private[mcp] def argUri(a: ujson.Value, k: String): DocumentUri =
+  private[mcp] def argUri(a: Json, k: String): DocumentUri =
     argRefinedString(a, k)(DocumentUri.from)
 
   /** A `files` entry's `ranges`: `[[startLine, endLineExclusive], …]`, 0-based. Absent, empty, or
     * made only of malformed pairs, it is empty — which every caller reads as "the whole file".
     */
-  private[mcp] def argRanges(entry: ujson.Value): Seq[(Int, Int)] =
+  private[mcp] def argRanges(entry: Json): Seq[(Int, Int)] =
     entry.obj.get("ranges").toSeq.flatMap(_.arr).flatMap { r =>
       val pair = r.arr.toVector.map(_.num.toInt)
       (pair.lift(0), pair.lift(1)) match
@@ -1049,20 +1047,20 @@ private[mcp] object McpToolsSupport:
         case _                         => None
     }
 
-  private[mcp] def argIdentifier(a: ujson.Value, k: String): ScalaIdentifier =
+  private[mcp] def argIdentifier(a: Json, k: String): ScalaIdentifier =
     argRefinedString(a, k)(ScalaIdentifier.from)
 
-  private[mcp] def argIdentifier(a: ujson.Value, k: String, default: String): ScalaIdentifier =
+  private[mcp] def argIdentifier(a: Json, k: String, default: String): ScalaIdentifier =
     argRefinedString(a, k, default)(ScalaIdentifier.from)
 
-  private[mcp] def argNonNegativeInt(a: ujson.Value, k: String, default: Int): NonNegativeInt =
+  private[mcp] def argNonNegativeInt(a: Json, k: String, default: Int): NonNegativeInt =
     argRefinedInt(a, k, default)(NonNegativeInt.from)
 
-  private[mcp] def argPositiveInt(a: ujson.Value, k: String, default: Int): PositiveInt =
+  private[mcp] def argPositiveInt(a: Json, k: String, default: Int): PositiveInt =
     argRefinedInt(a, k, default)(PositiveInt.from)
 
   private[mcp] def argPosition(
-      a: ujson.Value,
+      a: Json,
       lineKey: String,
       characterKey: String
   ): SourcePosition =
@@ -1070,7 +1068,7 @@ private[mcp] object McpToolsSupport:
       .from(argInt(a, lineKey, 0), argInt(a, characterKey, 0))
       .fold(error, identity)
 
-  private[mcp] def argRange(a: ujson.Value): SourceRange =
+  private[mcp] def argRange(a: Json): SourceRange =
     SourceRange
       .from(
         argInt(a, "startLine", 0),
@@ -1080,15 +1078,15 @@ private[mcp] object McpToolsSupport:
       )
       .fold(error, identity)
 
-  private[mcp] def argDimension(a: ujson.Value, k: String): StructureDimension =
+  private[mcp] def argDimension(a: Json, k: String): StructureDimension =
     argRefinedString(a, k)(StructureDimension.from)
 
-  private[mcp] def argSort(a: ujson.Value, k: String): StructureSort =
+  private[mcp] def argSort(a: Json, k: String): StructureSort =
     argRefinedString(a, k)(StructureSort.from)
 
-  private[mcp] def argFormat(a: ujson.Value, k: String): SourceFormat =
+  private[mcp] def argFormat(a: Json, k: String): SourceFormat =
     SourceFormat.from(argStr(a, k))
-  private[mcp] def argDetail(a: ujson.Value, k: String): SourceDetail =
+  private[mcp] def argDetail(a: Json, k: String): SourceDetail =
     SourceDetail.from(argStr(a, k))
 
   private[mcp] def error(message: String): Nothing =
@@ -1128,13 +1126,13 @@ private[mcp] object McpToolsSupport:
       description: String,
       params: List[(String, String, String)],
       required: List[String]
-  )(run: ujson.Value => ujson.Value): Tool =
+  )(run: Json => Json): Tool =
     val props = params.map { (pname, ptype, pdesc) =>
-      pname -> (ujson.Obj("type" -> ptype, "description" -> pdesc): ujson.Value)
+      pname -> (J.obj("type" -> ptype, "description" -> pdesc): Json)
     }
-    val schema = ujson.Obj(
+    val schema = J.obj(
       "type" -> "object",
-      "properties" -> ujson.Obj.from(props),
+      "properties" -> J.objOf(props),
       "required" -> strs(required)
     )
     Tool(name, description, schema, run)
@@ -1420,14 +1418,14 @@ private[mcp] object McpToolsGroupB:
                   case Some(pc) => (pc, true)
                   case None     => (az, false)
           engine.typeAtPosition(uri, validatedArg(SourcePosition.from(a.line, a.character))) match
-            case None    => jobj(Some("found" -> ujson.Bool(false)))
+            case None    => jobj(Some("found" -> J.bool(false)))
             case Some(t) =>
               val base = jobj(
-                Some("symbol" -> ujson.Str(t.symbol)),
-                Some("name" -> ujson.Str(t.displayName)),
-                Some("type" -> ujson.Str(t.tpe))
+                Some("symbol" -> J.str(t.symbol)),
+                Some("name" -> J.str(t.displayName)),
+                Some("type" -> J.str(t.tpe))
               )
-              if pcFallback then ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
+              if pcFallback then J.objOf(base.obj.toSeq ++ pcFallbackFields(uri.value))
               else base
         }
       ),
@@ -1486,19 +1484,19 @@ private[mcp] object McpToolsGroupB:
                   az.resolveReferences(file.toUri, "", uri.value, ranges) match
                     case None =>
                       (
-                        ujson.Obj(
-                          "uri" -> ujson.Str(uri.value),
-                          "error" -> ujson.Str("no presentation compiler")
+                        J.obj(
+                          "uri" -> J.str(uri.value),
+                          "error" -> J.str("no presentation compiler")
                         ),
                         true
                       )
                     case Some(_) =>
                       (
-                        ujson.Obj(
-                          "uri" -> ujson.Str(uri.value),
-                          "references" -> ujson.Arr(),
-                          "omitted" -> ujson.Num(0),
-                          "error" -> ujson.Str(
+                        J.obj(
+                          "uri" -> J.str(uri.value),
+                          "references" -> J.arr(),
+                          "omitted" -> J.num(0),
+                          "error" -> J.str(
                             s"no source: pass `source` or make ${uri.value} exist on disk"
                           )
                         ),
@@ -1508,9 +1506,9 @@ private[mcp] object McpToolsGroupB:
                   az.resolveReferences(file.toUri, text, uri.value, ranges) match
                     case None =>
                       (
-                        ujson.Obj(
-                          "uri" -> ujson.Str(uri.value),
-                          "error" -> ujson.Str("no presentation compiler")
+                        J.obj(
+                          "uri" -> J.str(uri.value),
+                          "error" -> J.str("no presentation compiler")
                         ),
                         true
                       )
@@ -1518,7 +1516,7 @@ private[mcp] object McpToolsGroupB:
                       val base = TypedTool.encode(res)
                       val json =
                         if fromDisk && !az.isDocumentIndexed(uri) then
-                          ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
+                          J.objOf(base.obj.toSeq ++ pcFallbackFields(uri.value))
                         else base
                       (json, false)
             }
@@ -1527,7 +1525,7 @@ private[mcp] object McpToolsGroupB:
                 "resolve_references needs the presentation compiler: start the server with a " +
                   "classpath (see README → classpath)"
               )
-            else ujson.Obj("files" -> ujson.Arr(results.map(_._1)*))
+            else J.obj("files" -> J.arr(results.map(_._1)*))
         }
       ),
       toolDef(
@@ -1648,7 +1646,7 @@ private[mcp] object McpToolsGroupB:
                   )
                 case Some(r) =>
                   val base = TypedTool.encode(r)
-                  if fromDisk then ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
+                  if fromDisk then J.objOf(base.obj.toSeq ++ pcFallbackFields(uri.value))
                   else base
         }
       ),
@@ -1773,28 +1771,28 @@ private[mcp] object McpToolsGroupC:
             rankedSymbols.contains(e.from) && rankedSymbols.contains(e.to)
           )
           jobj(
-            Some("dimension" -> ujson.Str(dim.value)),
-            Some("sort" -> ujson.Str(sortKey.value)),
+            Some("dimension" -> J.str(dim.value)),
+            Some("sort" -> J.str(sortKey.value)),
             Some(
-              "modules" -> ujson.Arr.from(res.modules.map { m =>
+              "modules" -> J.arrOf(res.modules.map { m =>
                 jobj(
-                  Some("module" -> ujson.Str(m.module)),
-                  Some("types" -> ujson.Num(m.typeCount)),
-                  Some("layer" -> ujson.Num(m.layer)),
-                  Some("ca" -> ujson.Num(m.afferent)),
-                  Some("ce" -> ujson.Num(m.efferent)),
-                  Some("instability" -> ujson.Num(round2(m.instability))),
-                  opt(m.inCycle, "inCycle" -> ujson.Bool(true))
+                  Some("module" -> J.str(m.module)),
+                  Some("types" -> J.num(m.typeCount)),
+                  Some("layer" -> J.num(m.layer)),
+                  Some("ca" -> J.num(m.afferent)),
+                  Some("ce" -> J.num(m.efferent)),
+                  Some("instability" -> J.num(round2(m.instability))),
+                  opt(m.inCycle, "inCycle" -> J.bool(true))
                 )
               })
             ),
             Some(
-              "dependencies" -> ujson.Arr.from(dependencies.map { e =>
+              "dependencies" -> J.arrOf(dependencies.map { e =>
                 jobj(
-                  Some("from" -> ujson.Str(e.from)),
-                  Some("to" -> ujson.Str(e.to)),
-                  Some("dimensions" -> ujson.Arr.from(e.dimensions.map(ujson.Str(_)))),
-                  Some("weight" -> ujson.Num(e.weight))
+                  Some("from" -> J.str(e.from)),
+                  Some("to" -> J.str(e.to)),
+                  Some("dimensions" -> J.arrOf(e.dimensions.map(J.str(_)))),
+                  Some("weight" -> J.num(e.weight))
                 )
               })
             ),
@@ -1807,26 +1805,25 @@ private[mcp] object McpToolsGroupC:
               )
             ),
             Some(
-              "symbols" -> ujson.Arr.from(ranked.map { (s, m) =>
+              "symbols" -> J.arrOf(ranked.map { (s, m) =>
                 jobj(
-                  Some("symbol" -> ujson.Str(s.symbol)),
-                  Some("name" -> ujson.Str(s.displayName)),
-                  Some("module" -> ujson.Str(s.module)),
-                  Some("layer" -> ujson.Num(m.layer)),
-                  Some("ca" -> ujson.Num(m.afferent)),
-                  Some("ce" -> ujson.Num(m.efferent)),
-                  Some("instability" -> ujson.Num(round2(m.instability))),
-                  Some("centrality" -> ujson.Num(round3(m.centrality))),
-                  opt(m.inCycle, "inCycle" -> ujson.Bool(true)),
+                  Some("symbol" -> J.str(s.symbol)),
+                  Some("name" -> J.str(s.displayName)),
+                  Some("module" -> J.str(s.module)),
+                  Some("layer" -> J.num(m.layer)),
+                  Some("ca" -> J.num(m.afferent)),
+                  Some("ce" -> J.num(m.efferent)),
+                  Some("instability" -> J.num(round2(m.instability))),
+                  Some("centrality" -> J.num(round3(m.centrality))),
+                  opt(m.inCycle, "inCycle" -> J.bool(true)),
                   opt(
                     a.detailed.getOrElse(false),
-                    "perDimension" -> ujson.Obj.from(s.perDimension.toList.sortBy(_._1).map {
-                      (d, dm) =>
-                        d -> (jobj(
-                          Some("ca" -> ujson.Num(dm.afferent)),
-                          Some("ce" -> ujson.Num(dm.efferent)),
-                          Some("instability" -> ujson.Num(round2(dm.instability)))
-                        ): ujson.Value)
+                    "perDimension" -> J.objOf(s.perDimension.toList.sortBy(_._1).map { (d, dm) =>
+                      d -> (jobj(
+                        Some("ca" -> J.num(dm.afferent)),
+                        Some("ce" -> J.num(dm.efferent)),
+                        Some("instability" -> J.num(round2(dm.instability)))
+                      ): Json)
                     })
                   )
                 )
@@ -1834,16 +1831,16 @@ private[mcp] object McpToolsGroupC:
             ),
             opt(
               res.cycles.nonEmpty,
-              "cycles" -> ujson.Arr.from(res.cycles.map { c =>
+              "cycles" -> J.arrOf(res.cycles.map { c =>
                 jobj(
-                  Some("dimension" -> ujson.Str(c.dimension)),
+                  Some("dimension" -> J.str(c.dimension)),
                   Some("members" -> strs(c.members))
                 )
               })
             ),
             opt(
               a.graph.getOrElse(false),
-              "mermaid" -> ujson.Str(structureMermaid(res.moduleEdges))
+              "mermaid" -> J.str(structureMermaid(res.moduleEdges))
             )
           )
         }
@@ -1891,21 +1888,19 @@ private[mcp] object McpToolsGroupC:
           ) match
             case None =>
               val base = jobj(
-                Some("uri" -> ujson.Str(uri.value)),
-                Some("found" -> ujson.Bool(false))
+                Some("uri" -> J.str(uri.value)),
+                Some("found" -> J.bool(false))
               )
-              if autoFallback.isDefined then
-                ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
+              if autoFallback.isDefined then J.objOf(base.obj.toSeq ++ pcFallbackFields(uri.value))
               else base
             case Some(entries) =>
               val base = jobj(
-                Some("uri" -> ujson.Str(uri.value)),
-                opt(explicit.isDefined, "liveSource" -> ujson.Bool(true)),
-                opt(narrowed, "filtered" -> ujson.Bool(true)),
-                Some("outline" -> ujson.Arr.from(entries.map(outlineJson)))
+                Some("uri" -> J.str(uri.value)),
+                opt(explicit.isDefined, "liveSource" -> J.bool(true)),
+                opt(narrowed, "filtered" -> J.bool(true)),
+                Some("outline" -> J.arrOf(entries.map(outlineJson)))
               )
-              if autoFallback.isDefined then
-                ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
+              if autoFallback.isDefined then J.objOf(base.obj.toSeq ++ pcFallbackFields(uri.value))
               else base
         }
       ),
@@ -1983,13 +1978,13 @@ private[mcp] object McpToolsGroupC:
                     previous.split("\n", -1).toIndexedSeq,
                     stripped.split("\n", -1).toIndexedSeq
                   )
-                  ujson.Obj(
-                    "uri" -> ujson.Str(uri.value),
-                    "written" -> ujson.Bool(true),
-                    "bytesWritten" -> ujson.Num(strippedBytes.length.toDouble),
-                    "sha256" -> ujson.Str(sha256Hex(strippedBytes)),
-                    "changed" -> ujson.Bool(diff.nonEmpty),
-                    "diff" -> ujson.Str(diff)
+                  J.obj(
+                    "uri" -> J.str(uri.value),
+                    "written" -> J.bool(true),
+                    "bytesWritten" -> J.num(strippedBytes.length.toDouble),
+                    "sha256" -> J.str(sha256Hex(strippedBytes)),
+                    "changed" -> J.bool(diff.nonEmpty),
+                    "diff" -> J.str(diff)
                   )
               case _ =>
                 val rawBytes = java.nio.file.Files.readAllBytes(file).nn
@@ -2032,20 +2027,20 @@ private[mcp] object McpToolsGroupC:
                         staleAgainstIndex(az, uri.value, rawBytes) match
                           case Some(true) =>
                             Seq(
-                              "staleIndex" -> ujson.Bool(true),
-                              "staleHint" -> ujson.Str(
+                              "staleIndex" -> J.bool(true),
+                              "staleHint" -> J.str(
                                 s"'${uri.value}' has changed since it was last compiled: these " +
                                   "annotations describe the compiled version, so a note may name code " +
                                   "the file no longer contains. Recompile and call refresh_workspace " +
                                   "for annotations that match this text."
                               )
                             )
-                          case Some(false) => Seq("staleIndex" -> ujson.Bool(false))
+                          case Some(false) => Seq("staleIndex" -> J.bool(false))
                           case None        => Nil
                     val pcFields = if pcFallback then pcFallbackFields(uri.value) else Nil
-                    ujson.Obj.from(
+                    J.objOf(
                       res.obj.toSeq ++
-                        (("sha256" -> ujson.Str(sha256Hex(rawBytes))) +: (staleFields ++ pcFields))
+                        (("sha256" -> J.str(sha256Hex(rawBytes))) +: (staleFields ++ pcFields))
                     )
         }
       ),
@@ -2071,7 +2066,7 @@ private[mcp] object McpToolsGroupC:
                   renderRange(az, root, uri, range, a) match
                     case None      => notFoundUri(uri.value)
                     case Some(res) =>
-                      note.fold(res)(n => ujson.Obj.from(res.obj.toSeq :+ ("note" -> ujson.Str(n))))
+                      note.fold(res)(n => J.objOf(res.obj.toSeq :+ ("note" -> J.str(n))))
         }
       ),
       toolDef(
@@ -2112,11 +2107,10 @@ private[mcp] object McpToolsGroupC:
                         val fallbackNote =
                           " Fallback: no enclosing definition found at this position — showing a " +
                             "fixed ±15-line window around it instead."
-                        val obj = res.obj
-                        ujson.Obj.from(obj.toSeq.map {
-                          case (k, ujson.Str(v)) if k == "legend" =>
-                            k -> ujson.Str(v + fallbackNote)
-                          case kv => kv
+                        J.objOf(res.obj.toList.map { (k, v) =>
+                          if k == "legend" then
+                            v.asString.fold(k -> v)(s => k -> J.str(s + fallbackNote))
+                          else k -> v
                         })
         }
       )
@@ -2140,9 +2134,9 @@ private[mcp] object McpToolsGroupD:
             validatedArg(ScalaIdentifier.from(a.newName))
           )
           jobj(
-            Some("symbol" -> ujson.Str(p.symbol)),
-            Some("rename" -> ujson.Str(s"${p.fromName} -> ${p.toName}")),
-            Some("editCount" -> ujson.Num(p.editCount)),
+            Some("symbol" -> J.str(p.symbol)),
+            Some("rename" -> J.str(s"${p.fromName} -> ${p.toName}")),
+            Some("editCount" -> J.num(p.editCount)),
             Some(
               "edits" -> strs(
                 p.edits.map(e =>
@@ -2169,35 +2163,35 @@ private[mcp] object McpToolsGroupD:
             s"${e.uri}:${e.range.start.line}:${e.range.start.character}-${e.range.end.character}"
           jobj(
             Some(
-              "perSymbol" -> ujson.Arr.from(
+              "perSymbol" -> J.arrOf(
                 plan.perSymbol.map(p =>
                   jobj(
-                    Some("symbol" -> ujson.Str(p.symbol)),
-                    Some("rename" -> ujson.Str(s"${p.fromName} -> ${p.toName}")),
-                    Some("editCount" -> ujson.Num(p.editCount))
+                    Some("symbol" -> J.str(p.symbol)),
+                    Some("rename" -> J.str(s"${p.fromName} -> ${p.toName}")),
+                    Some("editCount" -> J.num(p.editCount))
                   )
                 )
               )
             ),
-            Some("combinedEditCount" -> ujson.Num(plan.combinedEdits.size)),
+            Some("combinedEditCount" -> J.num(plan.combinedEdits.size)),
             Some("combinedEdits" -> strs(plan.combinedEdits.map(editStr))),
-            Some("conflictCount" -> ujson.Num(plan.conflicts.size)),
+            Some("conflictCount" -> J.num(plan.conflicts.size)),
             opt(
               plan.conflicts.nonEmpty,
-              "conflicts" -> ujson.Arr.from(
+              "conflicts" -> J.arrOf(
                 plan.conflicts.map(c =>
                   jobj(
                     Some(
-                      "rangeA" -> ujson.Str(
+                      "rangeA" -> J.str(
                         s"${c.uriA}:${c.rangeA.start.line}:${c.rangeA.start.character}-${c.rangeA.end.character}"
                       )
                     ),
                     Some(
-                      "rangeB" -> ujson.Str(
+                      "rangeB" -> J.str(
                         s"${c.uriB}:${c.rangeB.start.line}:${c.rangeB.start.character}-${c.rangeB.end.character}"
                       )
                     ),
-                    Some("reason" -> ujson.Str(c.reason))
+                    Some("reason" -> J.str(c.reason))
                   )
                 )
               )
@@ -2249,15 +2243,15 @@ private[mcp] object McpToolsGroupD:
             .take(limit)
             .toList
           jobj(
-            Some("query" -> ujson.Str(query)),
-            Some("count" -> ujson.Num(hits.size)),
+            Some("query" -> J.str(query)),
+            Some("count" -> J.num(hits.size)),
             Some(
-              "hits" -> ujson.Arr.from(
+              "hits" -> J.arrOf(
                 hits.map(h =>
                   jobj(
-                    Some("uri" -> ujson.Str(h.uri)),
-                    Some("line" -> ujson.Num(h.line)),
-                    Some("text" -> ujson.Str(h.text))
+                    Some("uri" -> J.str(h.uri)),
+                    Some("line" -> J.num(h.line)),
+                    Some("text" -> J.str(h.text))
                   )
                 )
               )
@@ -2281,19 +2275,19 @@ private[mcp] object McpToolsGroupD:
             validatedArg(PackageSymbol.from(a.newOwner))
           )
           jobj(
-            Some("symbol" -> ujson.Str(p.symbol)),
-            Some("move" -> ujson.Str(s"${p.fromFqn} -> ${p.toFqn}")),
-            p.definition.map(d => "definition" -> ujson.Str(loc(d))),
-            Some("referenceCount" -> ujson.Num(p.references.size)),
+            Some("symbol" -> J.str(p.symbol)),
+            Some("move" -> J.str(s"${p.fromFqn} -> ${p.toFqn}")),
+            p.definition.map(d => "definition" -> J.str(loc(d))),
+            Some("referenceCount" -> J.num(p.references.size)),
             opt(p.references.nonEmpty, "references" -> strs(p.references.map(loc))),
             opt(
               p.imports.nonEmpty,
-              "imports" -> ujson.Arr.from(
+              "imports" -> J.arrOf(
                 p.imports.map(i =>
                   jobj(
-                    Some("uri" -> ujson.Str(i.uri)),
-                    opt(i.removeImport.nonEmpty, "remove" -> ujson.Str(i.removeImport)),
-                    opt(i.addImport.nonEmpty, "add" -> ujson.Str(i.addImport))
+                    Some("uri" -> J.str(i.uri)),
+                    opt(i.removeImport.nonEmpty, "remove" -> J.str(i.removeImport)),
+                    opt(i.addImport.nonEmpty, "add" -> J.str(i.addImport))
                   )
                 )
               )
@@ -2334,10 +2328,10 @@ private[mcp] object McpToolsGroupD:
             case None    => notFoundUri(uri.value)
             case Some(p) =>
               jobj(
-                Some("uri" -> ujson.Str(p.uri)),
-                p.enclosingMethod.map(m => "enclosingMethod" -> ujson.Str(m.displayName)),
-                Some("signature" -> ujson.Str(p.signature)),
-                Some("call" -> ujson.Str(p.call)),
+                Some("uri" -> J.str(p.uri)),
+                p.enclosingMethod.map(m => "enclosingMethod" -> J.str(m.displayName)),
+                Some("signature" -> J.str(p.signature)),
+                Some("call" -> J.str(p.call)),
                 opt(
                   p.parameters.nonEmpty,
                   "parameters" -> strs(p.parameters.map(b => s"${b.name}: ${b.tpe}"))
@@ -2346,7 +2340,7 @@ private[mcp] object McpToolsGroupD:
                   p.returns.nonEmpty,
                   "returns" -> strs(p.returns.map(b => s"${b.name}: ${b.tpe}"))
                 ),
-                Some("returnType" -> ujson.Str(p.returnType))
+                Some("returnType" -> J.str(p.returnType))
               )
         }
       ),
@@ -2378,51 +2372,51 @@ private[mcp] object McpToolsGroupD:
                   ).flatMap(t => SemanticDbSymbol.from(t.symbol).toOption)
                 }
           symOpt match
-            case None      => jobj(Some("found" -> ujson.Bool(false)))
+            case None      => jobj(Some("found" -> J.bool(false)))
             case Some(sym) =>
               val r = az.valueFlow(
                 sym,
                 validatedArg(PositiveInt.from(a.maxDepth.getOrElse(5), "maxDepth")),
                 a.stopOnTypeWidening.getOrElse(true)
               )
-              def nodeJson(n: ValueFlowNode): ujson.Value =
+              def nodeJson(n: ValueFlowNode): Json =
                 jobj(
-                  Some("symbol" -> ujson.Str(n.symbol)),
-                  Some("name" -> ujson.Str(n.displayName)),
-                  opt(n.tpe.nonEmpty, "type" -> ujson.Str(n.tpe)),
-                  n.location.map(l => "at" -> ujson.Str(loc(l))),
-                  Some("depth" -> ujson.Num(n.depth)),
-                  n.enclosingMethod.map(m => "enclosingMethod" -> ujson.Str(m)),
-                  opt(n.kind.nonEmpty, "kind" -> ujson.Str(n.kind))
+                  Some("symbol" -> J.str(n.symbol)),
+                  Some("name" -> J.str(n.displayName)),
+                  opt(n.tpe.nonEmpty, "type" -> J.str(n.tpe)),
+                  n.location.map(l => "at" -> J.str(loc(l))),
+                  Some("depth" -> J.num(n.depth)),
+                  n.enclosingMethod.map(m => "enclosingMethod" -> J.str(m)),
+                  opt(n.kind.nonEmpty, "kind" -> J.str(n.kind))
                 )
-              def termJson(t: ValueFlowTerminal): ujson.Value =
+              def termJson(t: ValueFlowTerminal): Json =
                 jobj(
-                  Some("symbol" -> ujson.Str(t.symbol)),
-                  Some("classification" -> ujson.Str(t.classification)),
-                  t.at.map(l => "at" -> ujson.Str(loc(l)))
+                  Some("symbol" -> J.str(t.symbol)),
+                  Some("classification" -> J.str(t.classification)),
+                  t.at.map(l => "at" -> J.str(loc(l)))
                 )
               jobj(
                 Some("root" -> nodeJson(r.root)),
-                Some("nodes" -> ujson.Arr.from(r.nodes.map(nodeJson))),
+                Some("nodes" -> J.arrOf(r.nodes.map(nodeJson))),
                 opt(
                   r.edges.nonEmpty,
-                  "edges" -> ujson.Arr.from(
+                  "edges" -> J.arrOf(
                     r.edges.map(e =>
                       jobj(
-                        Some("from" -> ujson.Str(e.from)),
-                        Some("to" -> ujson.Str(e.to)),
-                        Some("relation" -> ujson.Str(e.relation)),
-                        Some("at" -> ujson.Str(loc(e.at))),
-                        e.paramName.map(p => "paramName" -> ujson.Str(p)),
+                        Some("from" -> J.str(e.from)),
+                        Some("to" -> J.str(e.to)),
+                        Some("relation" -> J.str(e.relation)),
+                        Some("at" -> J.str(loc(e.at))),
+                        e.paramName.map(p => "paramName" -> J.str(p)),
                         opt(e.coParameters.nonEmpty, "coParameters" -> strs(e.coParameters))
                       )
                     )
                   )
                 ),
-                opt(r.stoppedAt.nonEmpty, "stoppedAt" -> ujson.Arr.from(r.stoppedAt.map(termJson))),
+                opt(r.stoppedAt.nonEmpty, "stoppedAt" -> J.arrOf(r.stoppedAt.map(termJson))),
                 opt(
                   r.truncatedAt.nonEmpty,
-                  "truncatedAt" -> ujson.Arr.from(r.truncatedAt.map(termJson))
+                  "truncatedAt" -> J.arrOf(r.truncatedAt.map(termJson))
                 )
               )
         }
@@ -2441,19 +2435,19 @@ private[mcp] object McpToolsGroupD:
           val showSource = a.showSource.getOrElse(false)
           val res = az.analyzeDuplications(root, minSize, pathFilter)
           jobj(
-            Some("groupsCount" -> ujson.Num(res.groups.size)),
+            Some("groupsCount" -> J.num(res.groups.size)),
             Some(
-              "groups" -> ujson.Arr.from(
+              "groups" -> J.arrOf(
                 res.groups.map { g =>
                   jobj(
-                    Some("occurrencesCount" -> ujson.Num(g.size)),
-                    Some("astNodeCount" -> ujson.Num(g.astNodeCount)),
+                    Some("occurrencesCount" -> J.num(g.size)),
+                    Some("astNodeCount" -> J.num(g.astNodeCount)),
                     Some(
-                      "occurrences" -> ujson.Arr.from(
+                      "occurrences" -> J.arrOf(
                         g.occurrences.map { occ =>
                           jobj(
-                            Some("location" -> ujson.Str(loc(occ.location))),
-                            occ.enclosingMethod.map(m => "enclosingMethod" -> ujson.Str(m))
+                            Some("location" -> J.str(loc(occ.location))),
+                            occ.enclosingMethod.map(m => "enclosingMethod" -> J.str(m))
                           )
                         }
                       )
@@ -2464,17 +2458,17 @@ private[mcp] object McpToolsGroupD:
             ),
             opt(
               showSource,
-              "groupsSource" -> ujson.Arr.from(
+              "groupsSource" -> J.arrOf(
                 res.groups.map { g =>
                   jobj(
-                    Some("astNodeCount" -> ujson.Num(g.astNodeCount)),
+                    Some("astNodeCount" -> J.num(g.astNodeCount)),
                     Some(
-                      "occurrences" -> ujson.Arr.from(
+                      "occurrences" -> J.arrOf(
                         g.occurrences.map { occ =>
                           jobj(
-                            Some("location" -> ujson.Str(loc(occ.location))),
+                            Some("location" -> J.str(loc(occ.location))),
                             Some(
-                              "snippet" -> ujson.Str(
+                              "snippet" -> J.str(
                                 sourceSnippet(root, occ.location).getOrElse("")
                               )
                             )
@@ -2523,10 +2517,10 @@ private[mcp] object McpToolsGroupD:
                   case None =>
                     List(
                       jobj(
-                        Some("target" -> ujson.Str(entry.target)),
-                        Some("found" -> ujson.Bool(false)),
+                        Some("target" -> J.str(entry.target)),
+                        Some("found" -> J.bool(false)),
                         Some(
-                          "error" -> ujson.Str(
+                          "error" -> J.str(
                             s"could not resolve target '${entry.target}' to a file or symbol"
                           )
                         )
@@ -2537,37 +2531,37 @@ private[mcp] object McpToolsGroupD:
                       SourceRange.from(lr.startLine - 1, 0, lr.endLine, 0) match
                         case Left(err) =>
                           jobj(
-                            Some("target" -> ujson.Str(entry.target)),
-                            Some("requestedRange" -> ujson.Str(s"${lr.startLine}-${lr.endLine}")),
-                            Some("found" -> ujson.Bool(false)),
-                            Some("error" -> ujson.Str(err))
+                            Some("target" -> J.str(entry.target)),
+                            Some("requestedRange" -> J.str(s"${lr.startLine}-${lr.endLine}")),
+                            Some("found" -> J.bool(false)),
+                            Some("error" -> J.str(err))
                           )
                         case Right(range) =>
                           renderRangeEnriched(az, root, uri, range, argsWithDefaultDetail) match
                             case None =>
                               jobj(
-                                Some("target" -> ujson.Str(entry.target)),
+                                Some("target" -> J.str(entry.target)),
                                 Some(
-                                  "requestedRange" -> ujson.Str(s"${lr.startLine}-${lr.endLine}")
+                                  "requestedRange" -> J.str(s"${lr.startLine}-${lr.endLine}")
                                 ),
-                                Some("found" -> ujson.Bool(false)),
-                                Some("error" -> ujson.Str(s"'${uri.value}' has no such range"))
+                                Some("found" -> J.bool(false)),
+                                Some("error" -> J.str(s"'${uri.value}' has no such range"))
                               )
                             case Some(res) =>
-                              ujson.Obj.from(
+                              J.objOf(
                                 res.obj.toSeq ++ Seq(
-                                  "target" -> ujson.Str(entry.target),
-                                  "requestedRange" -> ujson.Str(
+                                  "target" -> J.str(entry.target),
+                                  "requestedRange" -> J.str(
                                     s"${lr.startLine}-${lr.endLine}"
                                   ),
-                                  "found" -> ujson.Bool(true)
+                                  "found" -> J.bool(true)
                                 )
                               )
                     }
               }
               jobj(
-                Some("query" -> ujson.Str(query)),
-                Some("results" -> ujson.Arr.from(results))
+                Some("query" -> J.str(query)),
+                Some("results" -> J.arrOf(results))
               )
         }
       )

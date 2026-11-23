@@ -1,5 +1,6 @@
 package com.github.mercurievv.scalasemantic.mcp
 
+import io.circe.Json
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.description
 import sttp.tapir.SchemaType
@@ -102,9 +103,9 @@ object Alternatives:
 /** Attaches the `outputSchema` of the tools whose bodies still build JSON by hand. */
 object SourceToolSchemas:
 
-  private def schema[A](using s: Schema[A]): ujson.Value = OutputSchema.of[A]
+  private def schema[A](using s: Schema[A]): Json = OutputSchema.of[A]
 
-  private val schemaOf: Map[String, ujson.Value] =
+  private val schemaOf: Map[String, Json] =
     import OutlineSchemas.given
     val notFound = Schema.derived[NotFoundResult]
     val uriNotFound = Schema.derived[UriNotFound]
@@ -124,7 +125,7 @@ object SourceToolSchemas:
       "source_around_position" -> schema(using Alternatives.of(List(sourceView, uriNotFound)))
     )
 
-  private lazy val all: Map[String, ujson.Value] =
+  private lazy val all: Map[String, Json] =
     schemaOf ++ PlanToolSchemas.schemaOf ++ AnalysisToolSchemas.schemaOf
 
   def attach(tools: List[Tool]): List[Tool] =

@@ -1,5 +1,7 @@
 package com.github.mercurievv.scalasemantic.mcp
 
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
+
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -68,7 +70,7 @@ class RefreshWorkspaceCompileSuite extends munit.FunSuite:
     val root = tempProject("ss-compile-tool-none")
     val tool = Mcp.refreshWorkspaceTool(_ => ())
     val result = tool.run(
-      ujson.Obj("path" -> root.toString, "compile" -> true)
+      J.obj("path" -> root.toString, "compile" -> true)
     )
     assert(result("compileError").str.contains("could not detect a build"), result.toString)
     // the rebuild still ran despite the compile step failing

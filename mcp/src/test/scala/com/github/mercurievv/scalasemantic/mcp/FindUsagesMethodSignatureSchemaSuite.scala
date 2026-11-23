@@ -1,7 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -15,11 +17,11 @@ class FindUsagesMethodSignatureSchemaSuite extends munit.FunSuite:
   private val root: Path = Paths.get(".")
   private val tools: List[Tool] = Mcp.toolsFor(Analyzer(SemanticIndex.fromProject(".")), root)
   private def tool(name: String): Tool = tools.find(_.name == name).getOrElse(fail(s"no $name"))
-  private def call(name: String, args: (String, ujson.Value)*): ujson.Value =
-    tool(name).run(ujson.Obj.from(args))
-  private def schemaOf(name: String): ujson.Value =
+  private def call(name: String, args: (String, J.V)*): Json =
+    tool(name).run(J.obj(args*))
+  private def schemaOf(name: String): Json =
     tool(name).outputSchema.getOrElse(fail(s"$name has no outputSchema"))
-  private def conforms(name: String, res: ujson.Value): Unit =
+  private def conforms(name: String, res: Json): Unit =
     assertEquals(SchemaConformance.violations(schemaOf(name), res), Nil)
 
   private val Loc = "com/github/mercurievv/scalasemantic/mcp/McpToolsSupport.loc()."
@@ -42,8 +44,8 @@ class FindUsagesMethodSignatureSchemaSuite extends munit.FunSuite:
     val s = schemaOf("find_usages")
     assertEquals(s("required").arr.toList.map(_.str).toSet, Set("symbol", "name", "referenceCount"))
     assertEquals(s("properties").obj.keySet.toSet.intersect(FindUsagesKeys), FindUsagesKeys)
-    assert(!ujson.write(s).contains("$ref"))
-    val chars = ujson.write(s).length
+    assert(!J.write(s).contains("$ref"))
+    val chars = J.write(s).length
     println(s"find_usages outputSchema: $chars chars")
     assert(chars < 3000, s"outputSchema is $chars chars")
 
@@ -57,7 +59,7 @@ class FindUsagesMethodSignatureSchemaSuite extends munit.FunSuite:
     conforms("find_usages", res)
 
   test("find_usages: `include` drops sections; referenceCount always stays"):
-    val res = call("find_usages", "symbol" -> Loc, "include" -> ujson.Arr("definitions"))
+    val res = call("find_usages", "symbol" -> Loc, "include" -> J.arr("definitions"))
     assert(res.obj.contains("definitions") && res.obj.contains("referenceCount"))
     assert(!res.obj.contains("references") && !res.obj.contains("nextOffset"))
     conforms("find_usages", res)
@@ -98,8 +100,8 @@ class FindUsagesMethodSignatureSchemaSuite extends munit.FunSuite:
       Set(Set("symbol", "signature"), Set("symbol", "found"), Set("candidates", "note"))
     )
     assert(s("properties").obj.contains("coverageHint"))
-    assert(!ujson.write(s).contains("$ref"))
-    println(s"method_signature outputSchema: ${ujson.write(s).length} chars")
+    assert(!J.write(s).contains("$ref"))
+    println(s"method_signature outputSchema: ${J.write(s).length} chars")
 
   test("method_signature: plain call is just symbol + signature"):
     val res = call("method_signature", "symbol" -> Loc)
@@ -135,21 +137,21 @@ class FindUsagesMethodSignatureSchemaSuite extends munit.FunSuite:
   // ---- wire ---------------------------------------------------------------------------------
 
   test("tools/list advertises both outputSchemas and tools/call returns structuredContent"):
-    def rpc(method: String, params: ujson.Value): ujson.Value =
+    def rpc(method: String, params: Json): Json =
       Mcp
         .handle(
-          ujson.Obj("jsonrpc" -> "2.0", "id" -> 1, "method" -> method, "params" -> params),
+          J.obj("jsonrpc" -> "2.0", "id" -> 1, "method" -> method, "params" -> params),
           tools,
           (_, _) => (),
           structured = true
         )
         .getOrElse(fail(s"no response to $method"))("result")
     val listed =
-      rpc("tools/list", ujson.Obj())("tools").arr.toList.map(t => t("name").str -> t).toMap
+      rpc("tools/list", J.obj())("tools").arr.toList.map(t => t("name").str -> t).toMap
     List("find_usages", "method_signature").foreach: n =>
       assertEquals(listed(n)("outputSchema"), schemaOf(n))
     val res = rpc(
       "tools/call",
-      ujson.Obj("name" -> "find_usages", "arguments" -> ujson.Obj("symbol" -> Loc, "limit" -> 1))
+      J.obj("name" -> "find_usages", "arguments" -> J.obj("symbol" -> Loc, "limit" -> 1))
     )
-    assertEquals(res("structuredContent"), ujson.read(res("content")(0)("text").str))
+    assertEquals(res("structuredContent"), J.read(res("content")(0)("text").str))

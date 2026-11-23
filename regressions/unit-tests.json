@@ -717,7 +717,7 @@
   "com.github.mercurievv.scalasemantic.mcp.SourceToolSchemaSuite.symbol_source conforms: found, FQN with note-free answer, and not found",
   "com.github.mercurievv.scalasemantic.mcp.SourceToolSchemaSuite.type_at_position: a hit and a miss conform",
   "com.github.mercurievv.scalasemantic.mcp.TokenLiveMetricsSuite.live token metrics sample aggregate matches raw run fixture",
-  "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.JsonBridge keeps integers integral and nesting intact",
+  "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.J writes whole doubles as integers and keeps nesting and order intact",
   "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.a missing required argument names the field",
   "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.a mistyped argument names the field",
   "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.a non-positive limit is still rejected by validation",

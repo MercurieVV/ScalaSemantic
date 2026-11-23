@@ -1,5 +1,7 @@
 package com.github.mercurievv.scalasemantic.mcp
 
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
+
 /** `Mcp.callOnce`: the one-shot entry a shell hook uses to run a single tool without an MCP
   * session. PC-free — `find_symbol` needs no classpath, so this suite never depends on a
   * presentation-compiler backend.
@@ -7,15 +9,15 @@ package com.github.mercurievv.scalasemantic.mcp
 class CallOnceSuite extends munit.FunSuite:
 
   test("callOnce runs one tool against the root's index and returns its JSON") {
-    val res = Mcp.callOnce(".", None, "find_symbol", ujson.Obj("query" -> "Analyzer"))
+    val res = Mcp.callOnce(".", None, "find_symbol", J.obj("query" -> "Analyzer"))
     val json = res.fold(err => fail(err), identity)
     assert(json.obj.nonEmpty, json.toString)
   }
 
   test("call literal_tokens answers one-shot, without a classpath") {
-    val args = ujson.Obj(
-      "files" -> ujson.Arr(
-        ujson.Obj("uri" -> "A.scala", "source" -> "package p\nobject O:\n  val x = 42\n")
+    val args = J.obj(
+      "files" -> J.arr(
+        J.obj("uri" -> "A.scala", "source" -> "package p\nobject O:\n  val x = 42\n")
       )
     )
     val json = Mcp
@@ -25,9 +27,9 @@ class CallOnceSuite extends munit.FunSuite:
   }
 
   test("call contract_clauses answers one-shot, without a classpath") {
-    val args = ujson.Obj(
-      "files" -> ujson.Arr(
-        ujson.Obj(
+    val args = J.obj(
+      "files" -> J.arr(
+        J.obj(
           "uri" -> "K.scala",
           "source" -> "package p\nobject K:\n  def f(x: Int): Int = { require(x > 0); x }\n"
         )
@@ -40,7 +42,7 @@ class CallOnceSuite extends munit.FunSuite:
   }
 
   test("callOnce names an unknown tool instead of failing silently") {
-    val res = Mcp.callOnce(".", None, "no_such_tool", ujson.Obj())
+    val res = Mcp.callOnce(".", None, "no_such_tool", J.obj())
     assert(res.isLeft, res.toString)
     assert(res.swap.exists(_.contains("no_such_tool")), res.toString)
   }
@@ -52,9 +54,9 @@ class CallOnceSuite extends munit.FunSuite:
       ".",
       None,
       "resolve_references",
-      ujson.Obj(
-        "files" -> ujson.Arr(
-          ujson.Obj("uri" -> "X.scala", "ranges" -> ujson.Arr(ujson.Num(5)))
+      J.obj(
+        "files" -> J.arr(
+          J.obj("uri" -> "X.scala", "ranges" -> J.arr(J.num(5)))
         )
       )
     )

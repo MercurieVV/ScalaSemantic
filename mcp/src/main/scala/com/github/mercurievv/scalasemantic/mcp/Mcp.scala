@@ -1,8 +1,10 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -20,9 +22,9 @@ import scala.util.Using
 final case class Tool(
     name: String,
     description: String,
-    inputSchema: ujson.Value,
-    run: ujson.Value => ujson.Value,
-    outputSchema: Option[ujson.Value] = None
+    inputSchema: Json,
+    run: Json => Json,
+    outputSchema: Option[Json] = None
 )
 
 /** Hand-rolled MCP server over stdio JSON-RPC (no Scala MCP SDK exists). Newline-delimited JSON-RPC
@@ -253,11 +255,11 @@ object Mcp:
     * default. Returns `None` for notifications.
     */
   def handle(
-      req: ujson.Value,
+      req: Json,
       tools: List[Tool],
-      onToolCall: (String, ujson.Value) => Unit = (_, _) => (),
+      onToolCall: (String, Json) => Unit = (_, _) => (),
       structured: Boolean = OutputSchemaResources.structuredDefault
-  ): Option[ujson.Value] =
+  ): Option[Json] =
     val method = req.obj.get("method").map(_.str).getOrElse("")
     val idOpt = req.obj.get("id")
     // Every answering request re-checks the index against disk first: a stale answer is
@@ -276,13 +278,13 @@ object Mcp:
           ok(
             id,
             obj(
-              "protocolVersion" -> ujson.Str(pv),
-              "capabilities" -> obj("tools" -> ujson.Obj(), "resources" -> ujson.Obj()),
+              "protocolVersion" -> J.str(pv),
+              "capabilities" -> obj("tools" -> J.obj(), "resources" -> J.obj()),
               "serverInfo" -> obj(
-                "name" -> ujson.Str(ServerName),
-                "version" -> ujson.Str(ServerVersion)
+                "name" -> J.str(ServerName),
+                "version" -> J.str(ServerVersion)
               ),
-              "instructions" -> ujson.Str(Instructions)
+              "instructions" -> J.str(Instructions)
             )
           )
         )
@@ -290,20 +292,20 @@ object Mcp:
       case "tools/list" =>
         val list = currentTools.map(t =>
           obj(
-            (Seq[(String, ujson.Value)](
-              "name" -> ujson.Str(t.name),
-              "description" -> ujson.Str(t.description),
+            (Seq[(String, Json)](
+              "name" -> J.str(t.name),
+              "description" -> J.str(t.description),
               "inputSchema" -> t.inputSchema
             ) ++ t.outputSchema.filter(_ => structured).map("outputSchema" -> _))*
           )
         )
-        idOpt.map(id => ok(id, obj("tools" -> ujson.Arr.from(list))))
+        idOpt.map(id => ok(id, obj("tools" -> J.arrOf(list))))
 
       case "tools/call" =>
         idOpt.map { id =>
-          val params = req.obj.getOrElse("params", ujson.Obj())
+          val params = req.obj.getOrElse("params", J.obj())
           val name = params.obj.get("name").map(_.str).getOrElse("")
-          val args = params.obj.getOrElse("arguments", ujson.Obj())
+          val args = params.obj.getOrElse("arguments", J.obj())
           currentTools.find(_.name == name) match
             case None       => err(id, -32602, s"Unknown tool: $name")
             case Some(tool) =>
@@ -319,7 +321,7 @@ object Mcp:
           OutputSchemaResources
             .read(uri, currentTools)
             .fold(msg => err(id, -32002, msg), result => ok(id, result))
-      case "ping"                              => idOpt.map(id => ok(id, ujson.Obj()))
+      case "ping"                              => idOpt.map(id => ok(id, J.obj()))
       case m if m.startsWith("notifications/") => None
       case _ => idOpt.map(id => err(id, -32601, s"Method not found: $method"))
 
@@ -330,7 +332,7 @@ object Mcp:
   def process(
       lines: Iterator[String],
       tools: List[Tool],
-      onToolCall: (String, ujson.Value) => Unit = (_, _) => ()
+      onToolCall: (String, Json) => Unit = (_, _) => ()
   ): Iterator[String] =
     lines
       .filter(_.nonEmpty)
@@ -338,7 +340,7 @@ object Mcp:
         // Guarded twice over: `handle` already converts a failing tool into an isError response,
         // and this catches anything thrown outside it (parsing, dispatch, serialization) so one bad
         // line ends a request rather than the iterator — and with it the whole stdio loop (#292).
-        val parsed = scala.util.Try(ujson.read(line)).toOption
+        val parsed = scala.util.Try(J.read(line)).toOption
         guarded("request", log.get())(parsed.flatMap(handle(_, tools, onToolCall))) match
           case Right(response) => response
           // A request that carried an `id` MUST be answered. Dropping it leaves the client blocked
@@ -351,12 +353,12 @@ object Mcp:
         // Serializing the envelope can itself fail (an OutOfMemoryError on a very large payload),
         // and an unwritten response is again an unanswered request, so fall back to an envelope
         // small enough that writing it cannot plausibly fail.
-        guarded("response", log.get())(ujson.write(response)).toOption
-          .orElse(requestId(response).map(id => ujson.write(err(id, -32603, "response too large"))))
+        guarded("response", log.get())(J.write(response)).toOption
+          .orElse(requestId(response).map(id => J.write(err(id, -32603, "response too large"))))
       )
 
   /** The `id` of a request or response, when it has one that can be echoed back. */
-  private[mcp] def requestId(value: ujson.Value): Option[ujson.Value] =
+  private[mcp] def requestId(value: Json): Option[Json] =
     scala.util.Try(value.obj.get("id")).toOption.flatten.filterNot(_.isNull)
 
   private def internalError(t: Throwable): String =
@@ -386,24 +388,24 @@ object Mcp:
     * shaped result no longer matches the tool's `outputSchema`, so it never carries
     * `structuredContent`.
     */
-  private[mcp] def shapedResult(tool: Tool, args: ujson.Value, structured: Boolean): ujson.Value =
+  private[mcp] def shapedResult(tool: Tool, args: Json, structured: Boolean): Json =
     val spec = ResultShaping.specOf(tool, args)
     toolResult(tool, ResultShaping.shape(spec, tool.run(args)), structured && spec.isNoop)
 
-  private def toolResult(tool: Tool, result: ujson.Value, structured: Boolean): ujson.Value =
-    val content = ujson.Arr(textBlock(ujson.write(result)))
+  private def toolResult(tool: Tool, result: Json, structured: Boolean): Json =
+    val content = J.arr(textBlock(J.write(result)))
     (tool.outputSchema, result) match
-      case (Some(_), o: ujson.Obj) if structured =>
+      case (Some(_), o: Json) if structured =>
         obj("content" -> content, "structuredContent" -> o)
       case _ => obj("content" -> content)
 
   private def runToolGuarded(
-      id: ujson.Value,
+      id: Json,
       name: String,
       tool: Tool,
-      args: ujson.Value,
+      args: Json,
       structured: Boolean
-  ): ujson.Value =
+  ): Json =
     guarded(s"tool $name", log.get())(
       ok(id, shapedResult(tool, args, structured))
     ) match
@@ -413,8 +415,8 @@ object Mcp:
         ok(
           id,
           obj(
-            "content" -> ujson.Arr(textBlock(s"error: $detail")),
-            "isError" -> ujson.Bool(true)
+            "content" -> J.arr(textBlock(s"error: $detail")),
+            "isError" -> J.bool(true)
           )
         )
 
@@ -441,8 +443,8 @@ object Mcp:
   /** Per-tool-call logger over a `log` sink: one line per call with the tool name and its arguments
     * (long arguments are truncated).
     */
-  def logToolCall(log: String => Unit)(name: String, args: ujson.Value): Unit =
-    val argStr = ujson.write(args)
+  def logToolCall(log: String => Unit)(name: String, args: Json): Unit =
+    val argStr = J.write(args)
     val shown = if argStr.length > 300 then argStr.take(300) + "…" else argStr
     log(s"call $name $shown")
 
@@ -581,8 +583,8 @@ object Mcp:
       root: String,
       classpath: Option[String],
       tool: String,
-      args: ujson.Value
-  ): Either[String, ujson.Value] =
+      args: Json
+  ): Either[String, Json] =
     val rootPath = Paths.get(root).toAbsolutePath.nn
     val builtState = buildState(rootPath, classpath, _ => ())
     try
@@ -670,7 +672,7 @@ object Mcp:
     val out = java.io.PrintStream(System.out, true, "UTF-8")
     val lines = Iterator.continually(Option(reader.readLine())).takeWhile(_.isDefined).flatten
     // logToolCall logs inputs (when `enabled`); the tap below logs outputs (when `logOutputs`).
-    val onCall = if logging.enabled then logToolCall(log) else (_: String, _: ujson.Value) => ()
+    val onCall = if logging.enabled then logToolCall(log) else (_: String, _: Json) => ()
     process(lines, tools, onCall).foreach { line =>
       if logging.logOutputs then log(s"out $line")
       out.println(line)
@@ -849,7 +851,7 @@ object Mcp:
   private def moduleMetadataDirs(path: Path, rootPath: Path): Vector[Path] =
     scala.util
       .Try {
-        val json = ujson.read(Files.readString(path))
+        val json = J.read(Files.readString(path))
         json("modules").arr.toVector.flatMap { module =>
           val obj = module.obj
           Vector(
@@ -892,7 +894,7 @@ object Mcp:
     scala.util.Try {
       val files = paths.flatMap(metadataFilesFor).distinct
       val modules = files.distinct.filter(Files.exists(_)).flatMap { f =>
-        val json = ujson.read(Files.readString(f))
+        val json = J.read(Files.readString(f))
         json("modules").arr.toVector.flatMap { module =>
           val classpath = module("classpath").arr.toVector
             .map(entry => resolvePath(entry.str, rootPath))
@@ -939,20 +941,20 @@ object Mcp:
 
   // --- JSON-RPC envelope helpers --------------------------------------------
 
-  private def ok(id: ujson.Value, result: ujson.Value): ujson.Value =
-    obj("jsonrpc" -> ujson.Str("2.0"), "id" -> id, "result" -> result)
+  private def ok(id: Json, result: Json): Json =
+    obj("jsonrpc" -> J.str("2.0"), "id" -> id, "result" -> result)
 
-  private def err(id: ujson.Value, code: Int, message: String): ujson.Value =
+  private def err(id: Json, code: Int, message: String): Json =
     obj(
-      "jsonrpc" -> ujson.Str("2.0"),
+      "jsonrpc" -> J.str("2.0"),
       "id" -> id,
-      "error" -> obj("code" -> ujson.Num(code), "message" -> ujson.Str(message))
+      "error" -> obj("code" -> J.num(code), "message" -> J.str(message))
     )
 
-  private def textBlock(text: String): ujson.Value =
-    obj("type" -> ujson.Str("text"), "text" -> ujson.Str(text))
+  private def textBlock(text: String): Json =
+    obj("type" -> J.str("text"), "text" -> J.str(text))
 
-  private def obj(fields: (String, ujson.Value)*): ujson.Value = ujson.Obj.from(fields)
+  private def obj(fields: (String, Json)*): Json = J.objOf(fields)
 
   private[mcp] def setWorkspaceRootTool(
       log: String => Unit
@@ -995,12 +997,12 @@ object Mcp:
 
       activateState(newState)
 
-      ujson.Obj(
-        "root" -> ujson.Str(resolvedPath.toString),
-        "cached" -> ujson.Bool(isCached),
-        "classpath" -> newState.classpathSource.fold[ujson.Value](ujson.Null)(ujson.Str(_)),
-        "semanticdbFileCount" -> ujson.Num(newState.fingerprint.fileCount),
-        "semanticdbNewestMtime" -> ujson.Str(
+      J.obj(
+        "root" -> J.str(resolvedPath.toString),
+        "cached" -> J.bool(isCached),
+        "classpath" -> newState.classpathSource.fold[Json](Json.Null)(J.str(_)),
+        "semanticdbFileCount" -> J.num(newState.fingerprint.fileCount),
+        "semanticdbNewestMtime" -> J.str(
           java.time.Instant.ofEpochMilli(newState.fingerprint.newestMtimeMillis).toString
         ),
         "coverage" -> coverageJson(newState.coverage)
@@ -1011,11 +1013,11 @@ object Mcp:
     * standalone scripts and files outside the build are legitimately unindexed — but it is what
     * turns an empty result into "possibly a coverage gap" rather than "does not exist" (#291).
     */
-  private[mcp] def coverageJson(c: SemanticIndex.Coverage): ujson.Value =
+  private[mcp] def coverageJson(c: SemanticIndex.Coverage): Json =
     obj(
-      "sources" -> ujson.Num(c.sources),
-      "indexed" -> ujson.Num(c.indexed),
-      "unindexed" -> ujson.Arr.from(c.unindexed.map(ujson.Str(_)))
+      "sources" -> J.num(c.sources),
+      "indexed" -> J.num(c.indexed),
+      "unindexed" -> J.arrOf(c.unindexed.map(J.str(_)))
     )
 
   /** The build command that would populate `root`'s SemanticDB, auto-detected from files on disk —
@@ -1097,19 +1099,19 @@ object Mcp:
       val newState = rebuildState(resolvedPath, "forced by refresh_workspace", log)
 
       val base = Seq(
-        "root" -> ujson.Str(resolvedPath.toString),
-        "classpath" -> newState.classpathSource.fold[ujson.Value](ujson.Null)(ujson.Str(_)),
-        "semanticdbFileCount" -> ujson.Num(newState.fingerprint.fileCount),
-        "semanticdbNewestMtime" -> ujson.Str(
+        "root" -> J.str(resolvedPath.toString),
+        "classpath" -> newState.classpathSource.fold[Json](Json.Null)(J.str(_)),
+        "semanticdbFileCount" -> J.num(newState.fingerprint.fileCount),
+        "semanticdbNewestMtime" -> J.str(
           java.time.Instant.ofEpochMilli(newState.fingerprint.newestMtimeMillis).toString
         ),
         "coverage" -> coverageJson(newState.coverage)
       )
       val withCompile = compileResult match
         case None               => base
-        case Some(Right(out))   => base :+ ("compileOutput" -> ujson.Str(out))
-        case Some(Left(errMsg)) => base :+ ("compileError" -> ujson.Str(errMsg))
-      ujson.Obj.from(withCompile)
+        case Some(Right(out))   => base :+ ("compileOutput" -> J.str(out))
+        case Some(Left(errMsg)) => base :+ ("compileError" -> J.str(errMsg))
+      J.objOf(withCompile)
     }
 
   private[mcp] def getWorkspaceRootTool: Tool =
@@ -1119,16 +1121,16 @@ object Mcp:
       Nil,
       Nil
     ) { _ =>
-      val cp = currentState.flatMap(_.classpathSource).fold[ujson.Value](ujson.Null)(ujson.Str(_))
+      val cp = currentState.flatMap(_.classpathSource).fold[Json](Json.Null)(J.str(_))
       val fp = currentState.map(_.fingerprint)
       val cov = currentState.map(_.coverage).getOrElse(SemanticIndex.Coverage.empty)
-      ujson.Obj(
-        "root" -> ujson.Str(currentRoot.toString),
+      J.obj(
+        "root" -> J.str(currentRoot.toString),
         "classpath" -> cp,
         "coverage" -> coverageJson(cov),
-        "semanticdbFileCount" -> fp.fold[ujson.Value](ujson.Null)(f => ujson.Num(f.fileCount)),
-        "semanticdbNewestMtime" -> fp.fold[ujson.Value](ujson.Null)(f =>
-          ujson.Str(java.time.Instant.ofEpochMilli(f.newestMtimeMillis).toString)
+        "semanticdbFileCount" -> fp.fold[Json](Json.Null)(f => J.num(f.fileCount)),
+        "semanticdbNewestMtime" -> fp.fold[Json](Json.Null)(f =>
+          J.str(java.time.Instant.ofEpochMilli(f.newestMtimeMillis).toString)
         )
       )
     }

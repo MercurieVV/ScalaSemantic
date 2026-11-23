@@ -1,8 +1,10 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -12,7 +14,7 @@ object ToolCli:
     val m = parse(args)
     val indexDir = m("index")
     val toolName = m("tool")
-    val argsJson = ujson.read(m.getOrElse("args", "{}"))
+    val argsJson = J.read(m.getOrElse("args", "{}"))
     val root = Paths.get(m.getOrElse("root", "."))
 
     val index = SemanticIndex.fromRoots(Seq(Paths.get(indexDir)))
@@ -21,12 +23,12 @@ object ToolCli:
     // presentation-compiler branch can call it INSIDE `useCurrentJvm` — the PC backend is torn down
     // when that block returns, so the tool must run before then (running it after threw
     // CancellationException).
-    def runTool(analyzer: Analyzer, args: ujson.Value): String =
+    def runTool(analyzer: Analyzer, args: Json): String =
       val tools = McpTools.all(analyzer, root)
       val tool = tools
         .find(_.name == toolName)
         .getOrElse(sys.error(s"unknown tool: $toolName (have: ${tools.map(_.name).mkString(",")})"))
-      ujson.write(tool.run(args), indent = 2)
+      J.write(tool.run(args), indent = 2)
 
     // `--describe` short-circuits before running any tool and dumps EVERY tool's live
     // `description` (the same string an MCP client sees via `tools/list`) as one JSON array, in one
@@ -35,17 +37,17 @@ object ToolCli:
     // build with dozens of tool sections).
     if m.contains("describe") then
       val tools = McpTools.all(Analyzer(index), root)
-      val descriptions = tools.map(t => ujson.Obj("name" -> t.name, "description" -> t.description))
-      println(ujson.write(ujson.Arr(descriptions*), indent = 2))
+      val descriptions = tools.map(t => J.obj("name" -> t.name, "description" -> t.description))
+      println(J.write(J.arr(descriptions*), indent = 2))
     else
       val output = m.get("source") match
         case Some(sourcePath) =>
           val uri = m("uri")
           val sourceText = new String(Files.readAllBytes(Paths.get(sourcePath)))
-          argsJson("source") = sourceText
-          argsJson("uri") = uri
+          val withSource =
+            argsJson.withFields(List("source" -> J.str(sourceText), "uri" -> J.str(uri)))
           PresentationCompilerBackend.useCurrentJvm(workspace = Some(root)) { backend =>
-            runTool(Analyzer(index, Some(backend)), argsJson)
+            runTool(Analyzer(index, Some(backend)), withSource)
           }
         case None =>
           runTool(Analyzer(index), argsJson)

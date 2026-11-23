@@ -1,7 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -17,7 +19,7 @@ class SourceRangesSuite extends munit.FunSuite:
   private def toolsIn(root: Path) =
     Mcp.toolsFor(Analyzer(SemanticIndex(Vector.empty)), root)
 
-  private def call(root: Path, args: ujson.Value): ujson.Value =
+  private def call(root: Path, args: Json): Json =
     toolsIn(root)
       .find(_.name == "source_ranges")
       .getOrElse(fail("no source_ranges"))
@@ -25,7 +27,7 @@ class SourceRangesSuite extends munit.FunSuite:
 
   test("reports found=false with an error for a target that does not resolve"):
     val root = Files.createTempDirectory("source-ranges-missing").nn
-    val res = call(root, ujson.Obj("query" -> "DoesNotExist.scala[1-2]"))
+    val res = call(root, J.obj("query" -> "DoesNotExist.scala[1-2]"))
     val entry = res("results").arr.head
     assertEquals(entry("target").str, "DoesNotExist.scala")
     assertEquals(entry("found").bool, false)
@@ -33,4 +35,4 @@ class SourceRangesSuite extends munit.FunSuite:
 
   test("rejects a malformed query with an error rather than a partial result"):
     val root = Files.createTempDirectory("source-ranges-malformed").nn
-    intercept[RuntimeException](call(root, ujson.Obj("query" -> "not a valid query")))
+    intercept[RuntimeException](call(root, J.obj("query" -> "not a valid query")))

@@ -19,14 +19,14 @@ class UnresolvedRootSuite extends munit.FunSuite:
       assert(names.contains("set_workspace_root"), s"escape hatch missing: $names")
 
       val findSymbol = tools.find(_.name == "find_symbol").get
-      val result = ujson.write(findSymbol.run(ujson.Obj("name" -> "Anything")))
+      val result = J.write(findSymbol.run(J.obj("name" -> "Anything")))
       assert(
         result.contains("could not detect a Scala project root"),
         s"expected the discovery error from a wrapped tool, got:\n$result"
       )
 
       val getRoot = tools.find(_.name == "get_workspace_root").get
-      val rootResult = ujson.write(getRoot.run(ujson.Obj()))
+      val rootResult = J.write(getRoot.run(J.obj()))
       assert(
         !rootResult.contains("could not detect a Scala project root"),
         s"get_workspace_root must not be wrapped, got:\n$rootResult"

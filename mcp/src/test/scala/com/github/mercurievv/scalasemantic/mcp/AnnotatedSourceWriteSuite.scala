@@ -1,7 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import io.circe.Json
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -18,7 +20,7 @@ class AnnotatedSourceWriteSuite extends munit.FunSuite:
   private def writeFile(root: Path, name: String, content: String): Unit =
     val _ = Files.writeString(root.resolve(name), content)
 
-  private def call(root: Path, args: ujson.Value): ujson.Value =
+  private def call(root: Path, args: Json): Json =
     toolsIn(root)
       .find(_.name == "annotated_source")
       .getOrElse(fail("no annotated_source"))
@@ -28,7 +30,7 @@ class AnnotatedSourceWriteSuite extends munit.FunSuite:
     val root = Files.createTempDirectory("ss-annotated-write").nn
     writeFile(root, "Foo.scala", "object Foo:\n  def bar = 1\n")
     val edited = "object Foo:\n  def bar = 1 /*SEM:type=Int:SEM*/\n"
-    val res = call(root, ujson.Obj("uri" -> "Foo.scala", "write" -> edited))
+    val res = call(root, J.obj("uri" -> "Foo.scala", "write" -> edited))
     assertEquals(res("written").bool, true)
     assertEquals(Files.readString(root.resolve("Foo.scala")), "object Foo:\n  def bar = 1\n")
 
@@ -37,7 +39,7 @@ class AnnotatedSourceWriteSuite extends munit.FunSuite:
     val original = "  def bar = 1 // real comment\n"
     writeFile(root, "Foo.scala", original)
     val edited = "  def bar = 1 // real comment /*SEM:type=Int:SEM*/\n"
-    val _ = call(root, ujson.Obj("uri" -> "Foo.scala", "write" -> edited))
+    val _ = call(root, J.obj("uri" -> "Foo.scala", "write" -> edited))
     assertEquals(Files.readString(root.resolve("Foo.scala")), original)
 
   // `McpToolsSupport.sha256Hex` is the exact function write mode checks `baseHash` against — used
@@ -54,7 +56,7 @@ class AnnotatedSourceWriteSuite extends munit.FunSuite:
     val res =
       call(
         root,
-        ujson.Obj(
+        J.obj(
           "uri" -> "Foo.scala",
           "write" -> "object Foo:\n  def bar = 2\n",
           "baseHash" -> hash
@@ -72,7 +74,7 @@ class AnnotatedSourceWriteSuite extends munit.FunSuite:
     intercept[RuntimeException]:
       call(
         root,
-        ujson.Obj(
+        J.obj(
           "uri" -> "Foo.scala",
           "write" -> "object Foo:\n  def bar = 2\n",
           "baseHash" -> staleHash
@@ -94,7 +96,7 @@ class AnnotatedSourceWriteSuite extends munit.FunSuite:
     intercept[RuntimeException]:
       call(
         root,
-        ujson.Obj("uri" -> "Foo.scala", "write" -> "object Foo:\n  def bar = 1 // ⟹ : Int\n")
+        J.obj("uri" -> "Foo.scala", "write" -> "object Foo:\n  def bar = 1 // ⟹ : Int\n")
       )
     assertEquals(Files.readString(root.resolve("Foo.scala")), original)
 
@@ -105,14 +107,14 @@ class AnnotatedSourceWriteSuite extends munit.FunSuite:
     intercept[RuntimeException]:
       call(
         root,
-        ujson.Obj("uri" -> "Foo.scala", "write" -> "    1  object Foo:\n    2    def bar = 1\n")
+        J.obj("uri" -> "Foo.scala", "write" -> "    1  object Foo:\n    2    def bar = 1\n")
       )
     assertEquals(Files.readString(root.resolve("Foo.scala")), original)
 
   test("write without baseHash succeeds even if the file changed since it was last read"):
     val root = Files.createTempDirectory("ss-annotated-write-nohash").nn
     writeFile(root, "Foo.scala", "object Foo:\n  def bar = 1\n")
-    val res = call(root, ujson.Obj("uri" -> "Foo.scala", "write" -> "object Foo:\n  def bar = 3\n"))
+    val res = call(root, J.obj("uri" -> "Foo.scala", "write" -> "object Foo:\n  def bar = 3\n"))
     assertEquals(res("written").bool, true)
     assertEquals(Files.readString(root.resolve("Foo.scala")), "object Foo:\n  def bar = 3\n")
 
@@ -121,7 +123,7 @@ class AnnotatedSourceWriteSuite extends munit.FunSuite:
     writeFile(root, "Foo.scala", "object Foo:\n  def bar = 1\n  def baz = 2\n")
     // The buffer still carries its SEM block: the diff must describe the edit, not the annotation.
     val edited = "object Foo:\n  def bar = 11 /*SEM:type=Int:SEM*/\n  def baz = 2\n"
-    val res = call(root, ujson.Obj("uri" -> "Foo.scala", "write" -> edited))
+    val res = call(root, J.obj("uri" -> "Foo.scala", "write" -> edited))
     assertEquals(res("changed").bool, true)
     val diff = res("diff").str
     assert(diff.startsWith("--- Foo.scala (on disk)\n+++ Foo.scala (written)"), diff)
@@ -134,7 +136,7 @@ class AnnotatedSourceWriteSuite extends munit.FunSuite:
     val root = Files.createTempDirectory("ss-annotated-write-nodiff").nn
     val original = "object Foo:\n  def bar = 1\n"
     writeFile(root, "Foo.scala", original)
-    val res = call(root, ujson.Obj("uri" -> "Foo.scala", "write" -> original))
+    val res = call(root, J.obj("uri" -> "Foo.scala", "write" -> original))
     assertEquals(res("written").bool, true)
     assertEquals(res("changed").bool, false)
     assertEquals(res("diff").str, "")

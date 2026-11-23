@@ -50,6 +50,11 @@ Every tool example on this page is **executed at docs build time** by the real S
 
 Resolve names to their definitions, locate enriched source and surrounding context.
 
+```scala mdoc:invisible
+import com.github.mercurievv.scalasemantic.mcp.J
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
+```
+
 ### find_symbol
 
 **What it tells you:** resolve a name to its definition.
@@ -126,7 +131,7 @@ println(scalasemantic.docs.ToolRunner.requestMarkdown("source_ranges", rangesWid
 ```
 
 ```scala mdoc:passthrough
-val rangesWideResult = ujson.read(rangesWideRaw)("results").arr.head
+val rangesWideResult = J.read(rangesWideRaw)("results").arr.head
 println(scalasemantic.docs.ToolRunner.wordDiffComponent(
   scalasemantic.docs.ToolRunner.sourceRangesDiff(
     rangesWideResult("uri").str, rangesWideResult("requestedRange").str, rangesWideResult("source").str)))
@@ -150,7 +155,7 @@ Who calls what, value flow, and reachability.
 
 ```scala mdoc:passthrough
 val useSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"transform"}""")
-val useData = ujson.read(useSym)
+val useData = J.read(useSym)
 val useSymbol = if useData("count").num.toInt > 0 then useData("symbols")(0)("symbol").str else "unknown"
 println(scalasemantic.docs.ToolRunner.runPretty("find_usages", s"""{"symbol":"$useSymbol"}"""))
 ```
@@ -231,7 +236,7 @@ Types, supertypes, subtypes, overloads, and member lists.
 
 ```scala mdoc:passthrough
 val procSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"Processor"}""")
-val procData = ujson.read(procSym)
+val procData = J.read(procSym)
 val procSymbol = if procData("count").num.toInt > 0 then procData("symbols")(0)("symbol").str else "unknown"
 println(scalasemantic.docs.ToolRunner.runPretty("class_hierarchy", s"""{"symbol":"$procSymbol"}"""))
 ```
@@ -248,7 +253,7 @@ overload set visible on the type, not just the ones declared locally.
 
 ```scala mdoc:passthrough
 val fmtSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"format"}""")
-val fmtData = ujson.read(fmtSym)
+val fmtData = J.read(fmtSym)
 val fmtSymbol = if fmtData("count").num.toInt > 0 then fmtData("symbols")(0)("symbol").str else "unknown"
 println(scalasemantic.docs.ToolRunner.runPretty("find_overloads", s"""{"symbol":"$fmtSymbol"}"""))
 ```
@@ -263,7 +268,7 @@ println(scalasemantic.docs.ToolRunner.runPretty("find_overloads", s"""{"symbol":
 
 ```scala mdoc:passthrough
 val memSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"UpperProcessor"}""")
-val memData = ujson.read(memSym)
+val memData = J.read(memSym)
 val memSymbol = if memData("count").num.toInt > 0 then memData("symbols")(0)("symbol").str else "unknown"
 println(scalasemantic.docs.ToolRunner.runPretty("members", s"""{"symbol":"$memSymbol"}"""))
 ```
@@ -438,7 +443,7 @@ The tool returns exact line and character ranges for every reference. No over-ma
 
 ```scala mdoc:passthrough
 val renSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"transform"}""")
-val renData = ujson.read(renSym)
+val renData = J.read(renSym)
 val renSymbol = if renData("count").num.toInt > 0 then renData("symbols")(0)("symbol").str else "unknown"
 println(scalasemantic.docs.ToolRunner.runPretty("rename_plan", s"""{"symbol":"$renSymbol","newName":"apply"}"""))
 ```
@@ -460,10 +465,10 @@ scope and remains the caller's responsibility.
 
 ```scala mdoc:passthrough
 val batchSym1 = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"transform"}""")
-val batchData1 = ujson.read(batchSym1)
+val batchData1 = J.read(batchSym1)
 val batchSymbol1 = if batchData1("count").num.toInt > 0 then batchData1("symbols")(0)("symbol").str else "unknown"
 val batchSym2 = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"calculateTotal"}""")
-val batchData2 = ujson.read(batchSym2)
+val batchData2 = J.read(batchSym2)
 val batchSymbol2 = if batchData2("count").num.toInt > 0 then batchData2("symbols")(0)("symbol").str else "unknown"
 println(scalasemantic.docs.ToolRunner.runPretty(
   "batch_rename_plan",
@@ -480,7 +485,7 @@ println(scalasemantic.docs.ToolRunner.runPretty(
 
 ```scala mdoc:passthrough
 val movSym = scalasemantic.docs.ToolRunner.run("find_symbol", """{"query":"calculateTotal"}""")
-val movData = ujson.read(movSym)
+val movData = J.read(movSym)
 val movSymbol = if movData("count").num.toInt > 0 then movData("symbols")(0)("symbol").str else "unknown"
 println(scalasemantic.docs.ToolRunner.runPretty("move_plan", s"""{"symbol":"$movSymbol","newOwner":"com/example/math/"}"""))
 ```

@@ -1,5 +1,8 @@
 package com.github.mercurievv.scalasemantic.mcp
 
+import com.github.mercurievv.scalasemantic.mcp.JOps.*
+import io.circe.Json
+
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicInteger
@@ -67,31 +70,31 @@ class McpFreshnessSuite extends munit.FunSuite:
   private val boom = Tool(
     "boom",
     "throws a fatal error",
-    ujson.Obj("type" -> "object", "properties" -> ujson.Obj()),
+    J.obj("type" -> "object", "properties" -> J.obj()),
     _ => throw new StackOverflowError("simulated deep recursion") // scalafix:ok DisableSyntax.throw
   )
 
-  private def call(name: String, args: ujson.Value): ujson.Value =
-    val req = ujson.Obj(
+  private def call(name: String, args: Json): Json =
+    val req = J.obj(
       "jsonrpc" -> "2.0",
       "id" -> 1,
       "method" -> "tools/call",
-      "params" -> ujson.Obj("name" -> name, "arguments" -> args)
+      "params" -> J.obj("name" -> name, "arguments" -> args)
     )
     val resp = Mcp.handle(req, Nil).getOrElse(fail("no response"))
-    ujson.read(resp("result")("content")(0)("text").str)
+    J.read(resp("result")("content")(0)("text").str)
 
   test("a recompile is picked up without any set_workspace_root or refresh_workspace call") {
     val root = Files.createTempDirectory("mcp-stale").nn
     writeSemanticdb(root, "Alpha.scala", doc("Alpha.scala", "Alpha", "demo/Alpha#"))
 
     withServerState(root) { builds =>
-      assertEquals(call("find_symbol", ujson.Obj("query" -> "Beta"))("count").num, 0.0)
+      assertEquals(call("find_symbol", J.obj("query" -> "Beta"))("count").num, 0.0)
 
       // The "recompile": a new semanticdb file appears under the same root.
       writeSemanticdb(root, "Beta.scala", doc("Beta.scala", "Beta", "demo/Beta#"))
 
-      val after = call("find_symbol", ujson.Obj("query" -> "Beta"))
+      val after = call("find_symbol", J.obj("query" -> "Beta"))
       assertEquals(after("count").num, 1.0, "the freshly compiled symbol must be visible")
       assertEquals(after("symbols")(0)("symbol").str, "demo/Beta#")
       assertEquals(builds.get(), 2, "exactly one rebuild, triggered by the changed fingerprint")
@@ -104,7 +107,7 @@ class McpFreshnessSuite extends munit.FunSuite:
 
     withServerState(root) { builds =>
       (1 to 3).foreach { _ =>
-        val _ = call("find_symbol", ujson.Obj("query" -> "Alpha"))
+        val _ = call("find_symbol", J.obj("query" -> "Alpha"))
       }
       assertEquals(builds.get(), 1, "the initial build only")
     }
@@ -117,18 +120,18 @@ class McpFreshnessSuite extends munit.FunSuite:
     writeSource(root, "Alpha.test.scala")
 
     withServerState(root) { _ =>
-      val res = call("find_symbol", ujson.Obj("query" -> "Nothingness"))
+      val res = call("find_symbol", J.obj("query" -> "Nothingness"))
       assertEquals(res("count").num, 0.0)
       val hint = res.obj.get("coverageHint").map(_.str).getOrElse("")
       assert(hint.contains("1 of 2"), hint)
       assert(hint.contains("--test"), hint)
 
       // A non-empty answer carries no hint — the point is to flag ambiguous zeros, not to nag.
-      val found = call("find_symbol", ujson.Obj("query" -> "Alpha"))
+      val found = call("find_symbol", J.obj("query" -> "Alpha"))
       assertEquals(found("count").num, 1.0)
-      assert(found.obj.get("coverageHint").isEmpty, found.render())
+      assert(found.obj.get("coverageHint").isEmpty, found.noSpaces)
 
-      val cov = call("get_workspace_root", ujson.Obj())("coverage")
+      val cov = call("get_workspace_root", J.obj())("coverage")
       assertEquals(cov("sources").num, 2.0)
       assertEquals(cov("indexed").num, 1.0)
       assertEquals(cov("unindexed")(0).str, "Alpha.test.scala")
@@ -141,9 +144,9 @@ class McpFreshnessSuite extends munit.FunSuite:
     writeSource(root, "Alpha.scala")
 
     withServerState(root) { _ =>
-      val res = call("find_symbol", ujson.Obj("query" -> "Nothingness"))
+      val res = call("find_symbol", J.obj("query" -> "Nothingness"))
       assertEquals(res("count").num, 0.0)
-      assert(res.obj.get("coverageHint").isEmpty, res.render())
+      assert(res.obj.get("coverageHint").isEmpty, res.noSpaces)
     }
   }
 
@@ -153,17 +156,17 @@ class McpFreshnessSuite extends munit.FunSuite:
     val savedState = Mcp.state.get()
     try
       Mcp.state.set(None)
-      val req = ujson.Obj(
+      val req = J.obj(
         "jsonrpc" -> "2.0",
         "id" -> 7,
         "method" -> "tools/call",
-        "params" -> ujson.Obj("name" -> "boom", "arguments" -> ujson.Obj())
+        "params" -> J.obj("name" -> "boom", "arguments" -> J.obj())
       )
       val resp = Mcp.handle(req, List(boom)).getOrElse(fail("no response"))
       assertEquals(resp("result")("isError").bool, true)
       assert(
         resp("result")("content")(0)("text").str.contains("simulated deep recursion"),
-        resp.render()
+        resp.noSpaces
       )
     finally Mcp.state.set(savedState)
   }
@@ -178,7 +181,7 @@ class McpFreshnessSuite extends munit.FunSuite:
       )
       val out = Mcp.process(in, List(boom)).toList
       assertEquals(out.size, 2, "the loop must keep running after the fatal call")
-      assertEquals(ujson.read(out(1))("id").num, 2.0)
+      assertEquals(J.read(out(1))("id").num, 2.0)
     finally Mcp.state.set(savedState)
   }
 
@@ -206,11 +209,11 @@ class McpFreshnessSuite extends munit.FunSuite:
         """{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}""",
         """not json at all"""
       )
-      val out = Mcp.process(in, Nil).toList.map(ujson.read(_))
+      val out = Mcp.process(in, Nil).toList.map(J.read(_))
       assertEquals(out.size, 1, "only the request with an id is answerable")
       assertEquals(out.head("id").num, 11.0)
       assertEquals(out.head("error")("code").num, -32603.0)
-      assert(out.head("error")("message").str.contains("OutOfMemoryError"), out.head.render())
+      assert(out.head("error")("message").str.contains("OutOfMemoryError"), out.head.noSpaces)
     finally
       Mcp.stateCache.remove(root)
       Mcp.stateFactory.set(savedFactory)
@@ -218,9 +221,9 @@ class McpFreshnessSuite extends munit.FunSuite:
   }
 
   test("requestId echoes a usable id and refuses one that is absent or null") {
-    assertEquals(Mcp.requestId(ujson.Obj("id" -> 4)).map(_.num), Some(4.0))
-    assertEquals(Mcp.requestId(ujson.Obj("id" -> "abc")).map(_.str), Some("abc"))
-    assertEquals(Mcp.requestId(ujson.Obj("method" -> "ping")), None, "a notification has no id")
-    assertEquals(Mcp.requestId(ujson.Obj("id" -> ujson.Null)), None, "null is not an id")
-    assertEquals(Mcp.requestId(ujson.Str("not an object")), None, "never throws on a non-object")
+    assertEquals(Mcp.requestId(J.obj("id" -> 4)).map(_.num), Some(4.0))
+    assertEquals(Mcp.requestId(J.obj("id" -> "abc")).map(_.str), Some("abc"))
+    assertEquals(Mcp.requestId(J.obj("method" -> "ping")), None, "a notification has no id")
+    assertEquals(Mcp.requestId(J.obj("id" -> Json.Null)), None, "null is not an id")
+    assertEquals(Mcp.requestId(J.str("not an object")), None, "never throws on a non-object")
   }
