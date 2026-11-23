@@ -73,6 +73,45 @@ class TypedInputSuite extends munit.FunSuite:
       val _ = System.clearProperty(key)
       Mcp.log.set(previous)
 
+  private val allTools: List[Tool] = Mcp.toolsFor(Analyzer(SemanticIndex.fromProject(".")), root)
+
+  test("the symbol-lookup tools derive their inputSchema from typed arguments"):
+    val expected: Map[String, (Set[String], Set[String])] = Map(
+      "find_usages" -> (Set("symbol") ->
+        Set("symbol", "limit", "offset", "pathFilter", "include", "contextLines", "related")),
+      "method_signature" -> (Set("symbol") -> Set("symbol", "detailed", "uri", "source")),
+      "class_hierarchy" ->
+        (Set("symbol") -> Set("symbol", "detailed", "pathFilter", "include", "metrics")),
+      "find_overloads" -> (Set("symbol") -> Set("symbol")),
+      "members" -> (Set("symbol") -> Set("symbol", "detailed", "pathFilter", "include")),
+      "resolve_implicits" -> (Set("type") -> Set("type"))
+    )
+    expected.foreach: (name, shape) =>
+      val s = allTools.find(_.name == name).getOrElse(fail(s"no $name")).inputSchema
+      assertEquals(s("required").arr.map(_.str).toSet, shape._1, name)
+      assertEquals(s("properties").obj.keySet.toSet, shape._2, name)
+      assert(s("properties").obj.values.forall(_("description").str.nonEmpty), name)
+
+  test("array arguments are declared as arrays of strings"):
+    val s = allTools.find(_.name == "find_usages").getOrElse(fail("no find_usages")).inputSchema
+    assertEquals(s("properties")("include")("type").str, "array")
+    assertEquals(s("properties")("include")("items")("type").str, "string")
+
+  test("symbol-lookup tools name the missing field; paging and sections still work"):
+    def call(name: String, args: (String, ujson.Value)*): ujson.Value =
+      allTools.find(_.name == name).getOrElse(fail(s"no $name")).run(ujson.Obj.from(args))
+    val e = intercept[RuntimeException](call("resolve_implicits"))
+    assert(e.getMessage.contains("resolve_implicits: invalid arguments"), e.getMessage)
+    assert(e.getMessage.contains("type"), e.getMessage)
+    val usages = call(
+      "find_usages",
+      "symbol" -> "com/github/mercurievv/scalasemantic/mcp/McpToolsSupport.loc().",
+      "limit" -> 1,
+      "include" -> ujson.Arr("references")
+    )
+    assert(!usages.obj.contains("definitions"), "include trims sections")
+    assert(usages("references").arr.size <= 1)
+
   test("JsonBridge keeps integers integral and nesting intact"):
     val j = JsonBridge.toCirce(
       ujson.Obj("a" -> 2, "b" -> 2.5, "c" -> ujson.Arr(true, ujson.Null, "x"), "d" -> ujson.Obj())
