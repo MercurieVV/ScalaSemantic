@@ -4,7 +4,8 @@ import com.github.mercurievv.scalasemantic.model.InputTypes.*
 import com.github.mercurievv.scalasemantic.model.OutlineEntry
 import com.github.mercurievv.scalasemantic.model.SymbolKind
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
-import upickle.default.write
+import io.circe.Printer
+import io.circe.syntax.*
 
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -53,13 +54,14 @@ class AnalyzerTypeAliasSuite extends munit.FunSuite:
     assertEquals(empty, Nil, "no type entry may render an empty signature")
 
   test("type-alias signatures match golden reference"):
-    val actual = write(
-      Map(
-        "GraphMetrics.scala" -> graphMetrics,
-        "InputTypes.scala" -> inputTypes
-      ),
-      indent = 2
-    )
+    val actual = Printer.spaces2
+      .copy(colonLeft = "")
+      .print(
+        Map(
+          "GraphMetrics.scala" -> graphMetrics,
+          "InputTypes.scala" -> inputTypes
+        ).asJson
+      )
     if Files.exists(goldenPath) then assertEquals(actual, Files.readString(goldenPath))
     else
       val _ = Files.createDirectories(goldenPath.getParent)

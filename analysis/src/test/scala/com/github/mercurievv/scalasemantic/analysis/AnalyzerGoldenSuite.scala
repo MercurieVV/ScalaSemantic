@@ -2,7 +2,9 @@ package com.github.mercurievv.scalasemantic.analysis
 
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
-import upickle.default.write
+import com.github.mercurievv.scalasemantic.wire.ModelCodecs.given
+import io.circe.Printer
+import io.circe.syntax.*
 
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -31,7 +33,7 @@ class AnalyzerGoldenSuite extends munit.FunSuite:
   test("findUsages for Animal matches golden reference"):
     val sym = SemanticDbSymbol.from(Animal).fold(fail(_), identity)
     val result = az.findUsages(sym)
-    val actual = write(result, indent = 2)
+    val actual = Printer.spaces2.copy(colonLeft = "").print(result.asJson)
 
     if Files.exists(goldenPath) then
       val expected = Files.readString(goldenPath)

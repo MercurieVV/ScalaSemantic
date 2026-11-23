@@ -262,7 +262,6 @@ object analysis extends Common with SonatypeCentralPublishModule {
   def pomSettings = commonPom("scalasemantic-analysis")
   def moduleDeps = Seq(core, pc)
   def mvnDeps = Seq(
-    mvn"com.lihaoyi::upickle:${V.upickle}",
     mvn"eu.timepit::refined:${V.refined}"
   )
   // build.sbt: stainless-library.jar is an UNMANAGED dep auto-picked from analysis/lib/.
@@ -271,6 +270,9 @@ object analysis extends Common with SonatypeCentralPublishModule {
   def unmanagedClasspath = Task { Seq(stainlessJar()) }
   object test extends CommonTests {
     def unmanagedClasspath = Task { Seq(stainlessJar()) }
+    // The golden and property suites serialize models, and the wire shape lives in `wire`
+    // (which itself depends on analysis main): a test-only edge, so no cycle.
+    def moduleDeps = super.moduleDeps ++ Seq(wire)
   }
 
   // build.sbt `stainlessVerify` task — shells scripts/stainless-verify.sh.

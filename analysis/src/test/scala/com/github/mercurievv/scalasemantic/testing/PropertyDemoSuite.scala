@@ -3,15 +3,16 @@ package com.github.mercurievv.scalasemantic.testing
 import com.github.mercurievv.scalasemantic.analysis.PureKernels
 import com.github.mercurievv.scalasemantic.analysis.graph.GraphMetrics
 import com.github.mercurievv.scalasemantic.model.MethodSignature
+import com.github.mercurievv.scalasemantic.wire.ModelCodecs.given
+import io.circe.Decoder
+import io.circe.syntax.*
 import org.scalacheck.Prop.forAll
-import upickle.default.read
-import upickle.default.write
 
 class PropertyDemoSuite extends munit.ScalaCheckSuite:
 
-  property("MethodSignature round-trips through upickle with reusable generators"):
+  property("MethodSignature round-trips through circe with reusable generators"):
     forAll(PropertyGens.methodSignature) { signature =>
-      read[MethodSignature](write(signature)) == signature
+      Decoder[MethodSignature].decodeJson(signature.asJson) == Right(signature)
     }
 
   property("rangeContains accepts generated points inside generated ranges"):

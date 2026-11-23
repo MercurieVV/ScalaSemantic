@@ -310,11 +310,11 @@ class ResolveReferencesSuite extends munit.FunSuite:
     assertEquals(r.references.filterNot(_.resolved), Nil)
 
   test("a classpath symbol is origin=classpath, not stdlib or project"):
-    val text = "package demo\n\nobject Cp:\n  val v: ujson.Value = ujson.Null\n"
+    val text = "package demo\n\nobject Cp:\n  val v: io.circe.Json = io.circe.Json.Null\n"
     val r = refsOf("Cp.scala", text)
     assertEquals(r.error, None)
     assertEquals(r.references.filterNot(_.resolved), Nil)
-    val value = r.references.find(_.name == "Value").getOrElse(fail(r.references.toString))
+    val value = r.references.find(_.name == "Json").getOrElse(fail(r.references.toString))
     assertEquals(value.origin, Some("classpath"))
 
   test("the bound never drops an unresolved row, however late it is"):

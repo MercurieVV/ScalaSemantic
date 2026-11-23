@@ -1,7 +1,5 @@
 package com.github.mercurievv.scalasemantic.model
 
-import upickle.default.*
-
 /** One name the source mentions, joined against the compiler's view of it (spec
   * 2026-09-24-diff-scoped-verification-design §1). `resolved = false` is the interesting row: the
   * name is written in the source but the compiler emitted no occurrence over it, i.e. it does not
@@ -24,7 +22,7 @@ final case class Reference(
     symbol: Option[String],
     origin: Option[String],
     suggestions: List[String]
-) derives ReadWriter
+)
 
 /** Every reference of one file's requested ranges. `omitted` counts the RESOLVED rows dropped by
   * the output bound: an unresolved row is never dropped, because it is the only kind of row a
@@ -42,7 +40,7 @@ final case class FileReferences(
     references: List[Reference],
     omitted: Int,
     error: Option[String]
-) derives ReadWriter
+)
 
 /** The wire result: one entry per file asked about. */
-final case class ReferenceResult(files: List[FileReferences]) derives ReadWriter
+final case class ReferenceResult(files: List[FileReferences])

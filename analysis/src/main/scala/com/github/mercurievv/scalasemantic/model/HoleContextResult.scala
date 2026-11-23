@@ -1,27 +1,21 @@
 package com.github.mercurievv.scalasemantic.model
 
-import upickle.default.*
-
 /** Wire model for the typed-hole query (spec 2026-09-21-typed-hole-context-design §1/§2): what a
   * position expects and what in scope can satisfy it. [[HoleContextResult.from]] is a pure
   * conversion of the `pc` module's `HoleContext.Result` — it never touches the compiler itself.
   */
 final case class HoleExpected(`type`: Option[String], confidence: String, why: String)
-    derives ReadWriter
 final case class HoleBinding(name: String, `type`: String, kind: String, from: String)
-    derives ReadWriter
 final case class HoleProducer(name: String, signature: String, from: String, `match`: String)
-    derives ReadWriter
-final case class HoleGiven(name: String, `type`: String, from: String) derives ReadWriter
+final case class HoleGiven(name: String, `type`: String, from: String)
 final case class HoleType(
     symbol: String,
     source: String,
     signature: String,
     excerpt: Option[String]
-) derives ReadWriter
+)
 final case class HoleOmitted(bindings: Int, producers: Int, givens: Int, types: Int)
-    derives ReadWriter
-final case class HoleMarker(kind: String, text: String) derives ReadWriter
+final case class HoleMarker(kind: String, text: String)
 final case class HoleContextResult(
     found: Boolean,
     why: Option[String],
@@ -32,7 +26,7 @@ final case class HoleContextResult(
     givens: List[HoleGiven],
     types: List[HoleType],
     omitted: HoleOmitted
-) derives ReadWriter
+)
 
 object HoleContextResult:
   /** Pure conversion from the pc result. `isProject` decides `source` (the index knows the symbol's

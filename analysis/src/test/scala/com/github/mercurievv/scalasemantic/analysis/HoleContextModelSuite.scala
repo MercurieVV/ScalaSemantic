@@ -2,6 +2,8 @@ package com.github.mercurievv.scalasemantic.analysis
 
 import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.pc.HoleContext as H
+import com.github.mercurievv.scalasemantic.wire.AnalysisCodecs.given
+import io.circe.syntax.*
 
 class HoleContextModelSuite extends munit.FunSuite:
   private val pcResult = H.Result(
@@ -53,10 +55,10 @@ class HoleContextModelSuite extends munit.FunSuite:
       _ => false,
       _ => None
     )
-    val json = ujson.read(upickle.default.write(m))
-    assertEquals(json("expected")("confidence").str, "unconstrained")
-    assertEquals(json("bindings").arr.size, 0)
-    assert(json.obj.keySet.contains("omitted"))
+    val json = m.asJson.hcursor
+    assertEquals(json.downField("expected").get[String]("confidence"), Right("unconstrained"))
+    assertEquals(json.downField("bindings").values.map(_.size), Some(0))
+    assert(json.keys.exists(_.exists(_ == "omitted")))
   }
 
   test("a project type whose excerpt cannot be read stays source=project with a null excerpt") {

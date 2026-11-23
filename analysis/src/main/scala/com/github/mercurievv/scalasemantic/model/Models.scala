@@ -1,12 +1,10 @@
 package com.github.mercurievv.scalasemantic.model
 
-import upickle.default.ReadWriter
-import upickle.default.readwriter
-
 /** Wire models returned by the analysis engine and serialized as the MCP tool results.
   *
-  * Everything derives upickle `ReadWriter` so a result is one `write(value)` away from JSON.
-  * Positions are 0-based (LSP / SemanticDB convention): `endCharacter` is exclusive.
+  * Plain case classes: the JSON wire shape (circe codecs, tapir schemas) lives in the `wire`
+  * module, so this module stays free of any JSON library. Positions are 0-based (LSP / SemanticDB
+  * convention): `endCharacter` is exclusive.
   */
 
 /** The declaration kind of a symbol, mirroring SemanticDB's `SymbolInformation.Kind` (e.g. CLASS,
@@ -36,19 +34,17 @@ object SymbolKind:
   /** The kind for a SemanticDB enum name (`_.kind.toString`), falling back to [[Unknown]]. */
   def from(raw: String): SymbolKind = values.find(_.value == raw).getOrElse(Unknown)
 
-  given ReadWriter[SymbolKind] = readwriter[String].bimap(_.value, from)
-
 /** A point in a source file. */
-case class Position(line: Int, character: Int) derives ReadWriter
+case class Position(line: Int, character: Int)
 
 /** A half-open `[start, end)` span. */
-case class Range(start: Position, end: Position) derives ReadWriter
+case class Range(start: Position, end: Position)
 
 /** A span within a specific document. */
-case class Location(uri: String, range: Range) derives ReadWriter
+case class Location(uri: String, range: Range)
 
 /** A reference to a symbol: its SemanticDB string, human name, and kind (e.g. CLASS, METHOD). */
-case class SymbolRef(symbol: String, displayName: String, kind: SymbolKind) derives ReadWriter
+case class SymbolRef(symbol: String, displayName: String, kind: SymbolKind)
 
 // --- find-usages ------------------------------------------------------------
 
@@ -60,12 +56,12 @@ case class UsagesResult(
     definitionsWithContext: List[UsageHit] = Nil,
     referencesWithContext: List[UsageHit] = Nil,
     related: List[RelatedUsageGroup] = Nil
-) derives ReadWriter
+)
 
 /** One usage location plus a few surrounding source lines (populated only when the caller requests
   * `contextLines > 0`; empty otherwise).
   */
-case class UsageHit(location: Location, context: List[String] = Nil) derives ReadWriter
+case class UsageHit(location: Location, context: List[String] = Nil)
 
 /** Usages of one symbol *related* to the queried one — for a case class, the companion object,
   * constructor, `copy`, `apply`/`unapply` and the parameter accessors. `kind` names the relation
@@ -77,13 +73,13 @@ case class RelatedUsageGroup(
     symbol: String,
     locations: List[Location],
     hits: List[UsageHit] = Nil
-) derives ReadWriter
+)
 
 // --- method-signature / find-overloads --------------------------------------
 
-case class Parameter(name: String, tpe: String, isImplicit: Boolean) derives ReadWriter
+case class Parameter(name: String, tpe: String, isImplicit: Boolean)
 
-case class ParameterList(parameters: List[Parameter], isImplicit: Boolean) derives ReadWriter
+case class ParameterList(parameters: List[Parameter], isImplicit: Boolean)
 
 case class MethodSignature(
     symbol: String,
@@ -92,7 +88,7 @@ case class MethodSignature(
     parameterLists: List[ParameterList],
     returnType: String,
     rendered: String
-) derives ReadWriter
+)
 
 /** All methods sharing a name and owner (`overloads`), plus same-named methods declared in the
   * owner's ancestor types (`inheritedOverloads`) — the full overload set visible on the type. An
@@ -103,7 +99,7 @@ case class OverloadsResult(
     name: String,
     overloads: List[MethodSignature],
     inheritedOverloads: List[MethodSignature] = Nil
-) derives ReadWriter
+)
 
 // --- class-hierarchy --------------------------------------------------------
 
@@ -113,7 +109,7 @@ case class ClassHierarchy(
     parents: List[SymbolRef],
     linearization: List[SymbolRef],
     knownSubtypes: List[SymbolRef]
-) derives ReadWriter
+)
 
 // --- trait-vs-local members -------------------------------------------------
 
@@ -122,14 +118,14 @@ case class MemberInfo(
     displayName: String,
     kind: SymbolKind,
     declaredIn: SymbolRef
-) derives ReadWriter
+)
 
 case class MembersResult(
     symbol: String,
     displayName: String,
     declared: List[MemberInfo],
     inherited: List[MemberInfo]
-) derives ReadWriter
+)
 
 // --- resolve-implicits / trace-implicit-chain -------------------------------
 
@@ -137,19 +133,19 @@ case class ImplicitCandidate(
     target: SymbolRef,
     tpe: String,
     fromExplicitImport: Boolean
-) derives ReadWriter
+)
 
 case class ImplicitResolution(
     queryType: String,
     chosen: Option[SymbolRef],
     candidates: List[ImplicitCandidate]
-) derives ReadWriter
+)
 
 case class ImplicitChainStep(
     target: SymbolRef,
     tpe: String,
     dependsOn: List[String]
-) derives ReadWriter
+)
 
 case class ImplicitTree(
     targetType: String,
@@ -158,13 +154,13 @@ case class ImplicitTree(
     children: List[ImplicitTree],
     ambiguous: Boolean,
     cycle: Boolean
-) derives ReadWriter
+)
 
 case class ImplicitChain(
     queryType: String,
     steps: List[ImplicitChainStep],
     resolved: Option[ImplicitTree] = None
-) derives ReadWriter
+)
 
 // --- type-at-position -------------------------------------------------------
 
@@ -173,7 +169,7 @@ case class TypeAtPosition(
     symbol: String,
     displayName: String,
     tpe: String
-) derives ReadWriter
+)
 
 // --- structure / dependency metrics -----------------------------------------
 
@@ -195,7 +191,7 @@ case class DimensionMetrics(
     centrality: Double,
     sccSize: Int,
     inCycle: Boolean
-) derives ReadWriter
+)
 
 /** Structural metrics for one in-project type, in the combined graph and per edge dimension
   * (`extends`, `memberType`, `call`, `implicit`).
@@ -206,11 +202,11 @@ case class SymbolStructure(
     module: String,
     combined: DimensionMetrics,
     perDimension: Map[String, DimensionMetrics]
-) derives ReadWriter
+)
 
 /** A dependency cycle: the members of one non-trivial strongly-connected component in a dimension.
   */
-case class DependencyCycle(dimension: String, members: List[String]) derives ReadWriter
+case class DependencyCycle(dimension: String, members: List[String])
 
 /** Module-level rollup of the combined graph (module = leading path segment of a type's uri). */
 case class ModuleStructure(
@@ -222,13 +218,13 @@ case class ModuleStructure(
     layer: Int,
     sccSize: Int,
     inCycle: Boolean
-) derives ReadWriter
+)
 
 /** A directed dependency edge between two modules in the combined graph: `weight` = how many type
   * edges cross from `from` to `to`; `inCycle` marks an edge whose endpoints share a module cycle (a
   * mutual-dependency boundary violation).
   */
-case class ModuleEdge(from: String, to: String, weight: Int, inCycle: Boolean) derives ReadWriter
+case class ModuleEdge(from: String, to: String, weight: Int, inCycle: Boolean)
 
 /** A directed dependency edge between two in-project symbols. `dimensions` records which graph
   * dimensions contributed the edge, e.g. `extends`, `memberType`, `call`, or `implicit`. `weight`
@@ -239,7 +235,7 @@ case class SymbolDependency(
     to: String,
     dimensions: List[String],
     weight: Int
-) derives ReadWriter
+)
 
 case class StructureResult(
     symbols: List[SymbolStructure],
@@ -247,7 +243,7 @@ case class StructureResult(
     dependencies: List[SymbolDependency],
     moduleEdges: List[ModuleEdge],
     cycles: List[DependencyCycle]
-) derives ReadWriter
+)
 
 // --- document outline -------------------------------------------------------
 
@@ -263,7 +259,7 @@ case class OutlineEntry(
     line: Int,
     signature: String,
     children: List[OutlineEntry]
-) derives ReadWriter
+)
 
 // --- annotated source -------------------------------------------------------
 
@@ -281,7 +277,7 @@ case class SourceAnnotation(
     endCharacter: Int,
     kind: String,
     text: String
-) derives ReadWriter
+)
 
 // --- rename plan ------------------------------------------------------------
 
@@ -290,7 +286,6 @@ case class SourceAnnotation(
   * same-named identifiers are never touched).
   */
 case class RenameEdit(uri: String, range: Range, oldText: String, newText: String)
-    derives ReadWriter
 
 case class RenamePlan(
     symbol: String,
@@ -298,19 +293,18 @@ case class RenamePlan(
     toName: String,
     editCount: Int,
     edits: List[RenameEdit]
-) derives ReadWriter
+)
 
 // --- batch rename plan -------------------------------------------------------
 
 /** One requested rename: `symbol` to `newName`. */
-case class RenameRequest(symbol: String, newName: String) derives ReadWriter
+case class RenameRequest(symbol: String, newName: String)
 
 /** Two edits from different rename requests whose ranges literally overlap in the same file. Only
   * literal edit-range overlaps are detected here — two different symbols renamed to the same
   * `newName` (a semantic collision at a shared call site) is out of scope.
   */
 case class RenameConflict(uriA: String, uriB: String, rangeA: Range, rangeB: Range, reason: String)
-    derives ReadWriter
 
 /** The combined plan for renaming multiple symbols in one request: `perSymbol` is each individual
   * [[RenamePlan]] (as `rename_plan` would produce it alone); `combinedEdits` is every edit from
@@ -321,7 +315,7 @@ case class BatchRenamePlan(
     perSymbol: List[RenamePlan],
     combinedEdits: List[RenameEdit],
     conflicts: List[RenameConflict]
-) derives ReadWriter
+)
 
 // --- move plan --------------------------------------------------------------
 
@@ -329,7 +323,7 @@ case class BatchRenamePlan(
   * `addImport` (if non-empty), both as dotted fully-qualified names. A file already in the
   * destination package needs neither and is omitted from the plan.
   */
-case class MoveImport(uri: String, removeImport: String, addImport: String) derives ReadWriter
+case class MoveImport(uri: String, removeImport: String, addImport: String)
 
 /** The edits to move `symbol` from `fromOwner` to `toOwner` (both package symbols), keeping every
   * call/usage resolving. `definition` is the occurrence to relocate; `references` is every
@@ -348,12 +342,12 @@ case class MovePlan(
     definition: Option[Location],
     references: List[Location],
     imports: List[MoveImport]
-) derives ReadWriter
+)
 
 // --- extract method plan ----------------------------------------------------
 
 /** A name/type pair in an extracted method's surface (a parameter or a returned local). */
-case class ExtractBinding(name: String, tpe: String) derives ReadWriter
+case class ExtractBinding(name: String, tpe: String)
 
 /** The plan to extract the selected range of `uri` into a new method `methodName`. `parameters` are
   * the locals the selection reads but does not define (free variables → params); `returns` are the
@@ -373,18 +367,18 @@ case class ExtractMethodPlan(
     returnType: String,
     signature: String,
     call: String
-) derives ReadWriter
+)
 
 // --- call-graph path-find ---------------------------------------------------
 
-case class CallEdge(from: SymbolRef, to: SymbolRef, at: Location) derives ReadWriter
+case class CallEdge(from: SymbolRef, to: SymbolRef, at: Location)
 
 case class CallGraphPath(
     from: SymbolRef,
     to: SymbolRef,
     path: List[SymbolRef],
     edges: List[CallEdge]
-) derives ReadWriter
+)
 
 // --- call hierarchy --------------------------------------------------------
 
@@ -395,7 +389,7 @@ case class CallHierarchyNode(
     method: SymbolRef,
     at: Option[Location],
     children: List[CallHierarchyNode]
-) derives ReadWriter
+)
 
 /** The call hierarchy for a method in one direction (callers or callees), as a tree rooted at the
   * queried symbol.
@@ -406,7 +400,7 @@ case class CallHierarchy(
     direction: String,
     depth: Int,
     root: CallHierarchyNode
-) derives ReadWriter
+)
 
 // --- value flow -------------------------------------------------------------
 
@@ -425,7 +419,7 @@ case class ValueFlowNode(
     depth: Int,
     enclosingMethod: Option[String],
     kind: String
-) derives ReadWriter
+)
 
 /** A directed flow edge: the value held by `from` reaches `to` via `relation` (`assigned_to`,
   * `passed_as_arg`, `method_receiver`, `returned_from`, `field_access`, `destructured`), observed
@@ -439,7 +433,7 @@ case class ValueFlowEdge(
     at: Location,
     paramName: Option[String],
     coParameters: List[String]
-) derives ReadWriter
+)
 
 /** A leaf in the flow: `symbol` stops propagating with the given `classification`
   * (`function_result`, `method_receiver`, `type_widened`, `discarded`, `external_boundary`,
@@ -450,7 +444,7 @@ case class ValueFlowTerminal(
     symbol: String,
     classification: String,
     at: Option[Location]
-) derives ReadWriter
+)
 
 /** The result of tracing a value: the `root` binding, every `node` the value reaches, the `edges`
   * that carried it, the `stoppedAt` terminals (where it naturally stops), and the `truncatedAt`
@@ -462,21 +456,21 @@ case class ValueFlowResult(
     edges: List[ValueFlowEdge],
     stoppedAt: List[ValueFlowTerminal],
     truncatedAt: List[ValueFlowTerminal]
-) derives ReadWriter
+)
 
 // --- smart-code-duplications -----------------------------------------------
 
 case class DuplicateOccurrence(
     location: Location,
     enclosingMethod: Option[String]
-) derives ReadWriter
+)
 
 case class DuplicationGroup(
     size: Int,
     astNodeCount: Int,
     occurrences: List[DuplicateOccurrence]
-) derives ReadWriter
+)
 
 case class DuplicationsResult(
     groups: List[DuplicationGroup]
-) derives ReadWriter
+)

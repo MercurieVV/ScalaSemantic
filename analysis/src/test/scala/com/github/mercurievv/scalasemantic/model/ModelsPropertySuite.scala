@@ -1,20 +1,26 @@
 package com.github.mercurievv.scalasemantic.model
 
+import com.github.mercurievv.scalasemantic.wire.ModelCodecs.given
+import io.circe.Decoder
+import io.circe.Encoder
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
-import upickle.default.read
-import upickle.default.write
 
 /** Property-based round-trip complement to [[ModelsSuite]].
   *
   * [[ModelsSuite]] verifies specific hand-crafted values; this suite uses ScalaCheck generators to
   * cover the full value space and assert that `write → read` is the identity for every wire model.
   * Three categories of properties:
-  *   - **Codec round-trip**: `read[A](write(a)) == a` for arbitrary `a`.
+  *   - **Codec round-trip**: `decode(encode(a)) == a` for arbitrary `a`.
   *   - **Field-named JSON**: the serialised form uses named keys, never positional arrays.
   *   - **Structural invariants**: e.g. counts and flags survive the codec round-trip exactly.
   */
 class ModelsPropertySuite extends munit.ScalaCheckSuite:
+
+  private def write[A](a: A)(using e: Encoder[A]): String = e(a).noSpaces
+
+  private def roundTrip[A](a: A)(using e: Encoder[A], d: Decoder[A]): A =
+    d.decodeJson(e(a)).fold(err => fail(s"decode failed: $err"), identity)
 
   // ---------------------------------------------------------------------------
   // Generators
@@ -251,94 +257,94 @@ class ModelsPropertySuite extends munit.ScalaCheckSuite:
   // Round-trip properties
   // ---------------------------------------------------------------------------
 
-  private def roundTrips[A: upickle.default.ReadWriter](gen: Gen[A]): org.scalacheck.Prop =
-    forAll(gen) { value => read[A](write(value)) == value }
+  private def roundTrips[A: Encoder: Decoder](gen: Gen[A]): org.scalacheck.Prop =
+    forAll(gen) { value => Decoder[A].decodeJson(Encoder[A].apply(value)) == Right(value) }
 
-  property("Position round-trips through upickle"):
+  property("Position round-trips through circe"):
     roundTrips(genPosition)
 
-  property("Range round-trips through upickle"):
+  property("Range round-trips through circe"):
     roundTrips(genRange)
 
-  property("Location round-trips through upickle"):
+  property("Location round-trips through circe"):
     roundTrips(genLocation)
 
-  property("SymbolRef round-trips through upickle"):
+  property("SymbolRef round-trips through circe"):
     roundTrips(genSymbolRef)
 
-  property("Parameter round-trips through upickle"):
+  property("Parameter round-trips through circe"):
     roundTrips(genParameter)
 
-  property("ParameterList round-trips through upickle"):
+  property("ParameterList round-trips through circe"):
     roundTrips(genParameterList)
 
-  property("MethodSignature round-trips through upickle"):
+  property("MethodSignature round-trips through circe"):
     roundTrips(genMethodSignature)
 
-  property("UsagesResult round-trips through upickle"):
+  property("UsagesResult round-trips through circe"):
     roundTrips(genUsagesResult)
 
-  property("ClassHierarchy round-trips through upickle"):
+  property("ClassHierarchy round-trips through circe"):
     roundTrips(genClassHierarchy)
 
-  property("OverloadsResult round-trips through upickle"):
+  property("OverloadsResult round-trips through circe"):
     roundTrips(genOverloadsResult)
 
-  property("MemberInfo round-trips through upickle"):
+  property("MemberInfo round-trips through circe"):
     roundTrips(genMemberInfo)
 
-  property("MembersResult round-trips through upickle"):
+  property("MembersResult round-trips through circe"):
     roundTrips(genMembersResult)
 
-  property("ImplicitCandidate round-trips through upickle"):
+  property("ImplicitCandidate round-trips through circe"):
     roundTrips(genImplicitCandidate)
 
-  property("ImplicitResolution round-trips through upickle"):
+  property("ImplicitResolution round-trips through circe"):
     roundTrips(genImplicitResolution)
 
-  property("ImplicitChainStep round-trips through upickle"):
+  property("ImplicitChainStep round-trips through circe"):
     roundTrips(genImplicitChainStep)
 
-  property("ImplicitChain round-trips through upickle"):
+  property("ImplicitChain round-trips through circe"):
     roundTrips(genImplicitChain)
 
-  property("TypeAtPosition round-trips through upickle"):
+  property("TypeAtPosition round-trips through circe"):
     roundTrips(genTypeAtPosition)
 
-  property("CallEdge round-trips through upickle"):
+  property("CallEdge round-trips through circe"):
     roundTrips(genCallEdge)
 
-  property("CallGraphPath round-trips through upickle"):
+  property("CallGraphPath round-trips through circe"):
     roundTrips(genCallGraphPath)
 
-  property("RenameEdit round-trips through upickle"):
+  property("RenameEdit round-trips through circe"):
     roundTrips(genRenameEdit)
 
-  property("RenamePlan round-trips through upickle"):
+  property("RenamePlan round-trips through circe"):
     roundTrips(genRenamePlan)
 
-  property("MoveImport round-trips through upickle"):
+  property("MoveImport round-trips through circe"):
     roundTrips(genMoveImport)
 
-  property("ExtractBinding round-trips through upickle"):
+  property("ExtractBinding round-trips through circe"):
     roundTrips(genExtractBinding)
 
-  property("DependencyCycle round-trips through upickle"):
+  property("DependencyCycle round-trips through circe"):
     roundTrips(genDependencyCycle)
 
-  property("DimensionMetrics round-trips through upickle"):
+  property("DimensionMetrics round-trips through circe"):
     roundTrips(genDimensionMetrics)
 
-  property("SourceAnnotation round-trips through upickle"):
+  property("SourceAnnotation round-trips through circe"):
     roundTrips(genSourceAnnotation)
 
-  property("DuplicateOccurrence round-trips through upickle"):
+  property("DuplicateOccurrence round-trips through circe"):
     roundTrips(genDuplicateOccurrence)
 
-  property("DuplicationGroup round-trips through upickle"):
+  property("DuplicationGroup round-trips through circe"):
     roundTrips(genDuplicationGroup)
 
-  property("DuplicationsResult round-trips through upickle"):
+  property("DuplicationsResult round-trips through circe"):
     roundTrips(genDuplicationsResult)
 
   // ---------------------------------------------------------------------------
@@ -402,69 +408,69 @@ class ModelsPropertySuite extends munit.ScalaCheckSuite:
 
   property("UsagesResult: definition and reference counts survive serialisation"):
     forAll(genUsagesResult) { r =>
-      val rt = read[UsagesResult](write(r))
+      val rt = roundTrip(r)
       rt.definitions.size == r.definitions.size && rt.references.size == r.references.size
     }
 
   property("MembersResult: declared and inherited counts survive serialisation"):
     forAll(genMembersResult) { r =>
-      val rt = read[MembersResult](write(r))
+      val rt = roundTrip(r)
       rt.declared.size == r.declared.size && rt.inherited.size == r.inherited.size
     }
 
   property("ClassHierarchy: list sizes survive serialisation"):
     forAll(genClassHierarchy) { h =>
-      val rt = read[ClassHierarchy](write(h))
+      val rt = roundTrip(h)
       rt.linearization.size == h.linearization.size && rt.knownSubtypes.size == h.knownSubtypes.size
     }
 
   property("MethodSignature: parameterLists and typeParameters counts survive serialisation"):
     forAll(genMethodSignature) { sig =>
-      val rt = read[MethodSignature](write(sig))
+      val rt = roundTrip(sig)
       rt.parameterLists.size == sig.parameterLists.size &&
       rt.typeParameters.size == sig.typeParameters.size
     }
 
   property("OverloadsResult: overload count survives serialisation"):
     forAll(genOverloadsResult) { r =>
-      val rt = read[OverloadsResult](write(r))
+      val rt = roundTrip(r)
       rt.overloads.size == r.overloads.size
     }
 
   property("ImplicitChain: step count survives serialisation"):
     forAll(genImplicitChain) { c =>
-      val rt = read[ImplicitChain](write(c))
+      val rt = roundTrip(c)
       rt.steps.size == c.steps.size
     }
 
   property("ImplicitResolution: candidate count survives serialisation"):
     forAll(genImplicitResolution) { r =>
-      val rt = read[ImplicitResolution](write(r))
+      val rt = roundTrip(r)
       rt.candidates.size == r.candidates.size
     }
 
   property("CallGraphPath: path and edge counts survive serialisation"):
     forAll(genCallGraphPath) { p =>
-      val rt = read[CallGraphPath](write(p))
+      val rt = roundTrip(p)
       rt.path.size == p.path.size && rt.edges.size == p.edges.size
     }
 
   property("RenamePlan: editCount always equals edits.size after round-trip"):
     forAll(genRenamePlan) { plan =>
-      val rt = read[RenamePlan](write(plan))
+      val rt = roundTrip(plan)
       rt.editCount == rt.edits.size
     }
 
   property("DuplicationsResult: group count survives serialisation"):
     forAll(genDuplicationsResult) { r =>
-      val rt = read[DuplicationsResult](write(r))
+      val rt = roundTrip(r)
       rt.groups.size == r.groups.size
     }
 
-  property("SymbolKind values all round-trip through the ReadWriter"):
+  property("SymbolKind values all round-trip through the circe codec"):
     forAll(Gen.oneOf(SymbolKind.values.toSeq)) { kind =>
       val ref = SymbolRef("s#", "S", kind)
-      read[SymbolRef](write(ref)).kind == kind
+      roundTrip(ref).kind == kind
     }
 
   property("DimensionMetrics: instability is in [0.0, 1.0]"):

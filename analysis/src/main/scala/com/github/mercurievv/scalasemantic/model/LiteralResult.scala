@@ -1,13 +1,11 @@
 package com.github.mercurievv.scalasemantic.model
 
-import upickle.default.*
-
 /** The nearest definition enclosing a literal (spec 2026-09-25-purrism-loop-and-memorisation-design
   * §1). It is what lets a caller judge a CONSTRUCT rather than a line: a table that memorises test
   * inputs is one `val` or one `def`, whatever its length. `kind` is one of `def`, `val`, `var`,
   * `object`, `class`, `trait`, `enum`, `given`; `line` is the definition's own 0-based start line.
   */
-final case class Enclosing(kind: String, name: String, line: Int) derives ReadWriter
+final case class Enclosing(kind: String, name: String, line: Int)
 
 /** One literal the source text contains. Syntax only.
   *
@@ -23,7 +21,7 @@ final case class Literal(
     kind: String,
     value: String,
     enclosing: Option[Enclosing]
-) derives ReadWriter
+)
 
 /** Every literal of one file's requested ranges, in source order. `omitted` counts the literals the
   * 2,000-per-file bound dropped. `error` is set — with `literals` empty — when the file could not
@@ -35,7 +33,7 @@ final case class FileLiterals(
     literals: List[Literal],
     omitted: Int,
     error: Option[String]
-) derives ReadWriter
+)
 
 /** The wire result: one entry per file asked about. */
-final case class LiteralResult(files: List[FileLiterals]) derives ReadWriter
+final case class LiteralResult(files: List[FileLiterals])
