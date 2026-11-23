@@ -112,6 +112,31 @@ class TypedInputSuite extends munit.FunSuite:
     assert(!usages.obj.contains("definitions"), "include trims sections")
     assert(usages("references").arr.size <= 1)
 
+  test("the graph, position and text-search tools derive their inputSchema too"):
+    val expected: Map[String, (Set[String], Set[String])] = Map(
+      "call_path" -> (Set("from", "to") -> Set("from", "to", "detailed")),
+      "method_call_hierarchy" -> (Set("symbol") -> Set("symbol", "direction", "depth")),
+      "trace_implicit_chain" -> (Set("type") -> Set("type", "appliedType")),
+      "type_at_position" ->
+        (Set("uri", "line", "character") -> Set("uri", "line", "character", "source")),
+      "search_text" ->
+        (Set("query") -> Set("query", "regex", "caseSensitive", "pathFilter", "limit"))
+    )
+    expected.foreach: (name, shape) =>
+      val s = allTools.find(_.name == name).getOrElse(fail(s"no $name")).inputSchema
+      assertEquals(s("required").arr.map(_.str).toSet, shape._1, name)
+      assertEquals(s("properties").obj.keySet.toSet, shape._2, name)
+      assert(s("properties").obj.values.forall(_("description").str.nonEmpty), name)
+
+  test("type_at_position and search_text still answer, and reject a missing required argument"):
+    def call(name: String, args: (String, ujson.Value)*): ujson.Value =
+      allTools.find(_.name == name).getOrElse(fail(s"no $name")).run(ujson.Obj.from(args))
+    val hits = call("search_text", "query" -> "TypedTool", "limit" -> 2)
+    assert(hits("hits").arr.size <= 2 && hits("hits").arr.nonEmpty)
+    val miss = intercept[RuntimeException](call("type_at_position", "uri" -> "A.scala"))
+    assert(miss.getMessage.contains("type_at_position: invalid arguments"), miss.getMessage)
+    assert(miss.getMessage.contains("line"), miss.getMessage)
+
   test("JsonBridge keeps integers integral and nesting intact"):
     val j = JsonBridge.toCirce(
       ujson.Obj("a" -> 2, "b" -> 2.5, "c" -> ujson.Arr(true, ujson.Null, "x"), "d" -> ujson.Obj())

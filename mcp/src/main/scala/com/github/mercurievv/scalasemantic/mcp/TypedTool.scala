@@ -40,6 +40,16 @@ object TypedTool:
       enc: Encoder[Out],
       outSchema: Schema[Out]
   ): Tool =
+    withArgs[In](name, description)(in => encode(run(in)))
+      .copy(outputSchema = Some(OutputSchema.of[Out]))
+
+  /** Input-typed tool whose result is still built by hand (its `outputSchema`, if any, is attached
+    * separately — see `SourceToolSchemas`).
+    */
+  def withArgs[In](name: String, description: String)(run: In => ujson.Value)(using
+      dec: Decoder[In],
+      inSchema: Schema[In]
+  ): Tool =
     val inputSchema = OutputSchema.emit(inSchema)
     val declared: Set[String] =
       inputSchema.obj.get("properties").map(_.obj.keySet.toSet).getOrElse(Set.empty)
@@ -48,9 +58,7 @@ object TypedTool:
       inputSchema = inputSchema,
       run = args =>
         warnUnknownArgs(name, args, declared)
-        decodeArgs[In](name, args).fold(McpToolsSupport.error, in => encode(run(in)))
-      ,
-      outputSchema = Some(OutputSchema.of[Out])
+        decodeArgs[In](name, args).fold(McpToolsSupport.error, run)
     )
 
   def encode[A](a: A)(using enc: Encoder[A]): ujson.Value =
