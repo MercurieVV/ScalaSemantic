@@ -429,41 +429,40 @@ private[mcp] object McpToolsSupport:
       root: java.nio.file.Path,
       uri: DocumentUri,
       range: SourceRange,
-      a: ujson.Value
+      a: ViewOpts
   ): Option[ujson.Value] =
     val file = root.resolve(uri.value)
     if !java.nio.file.Files.isRegularFile(file) then None
     else
       val rawText = java.nio.file.Files.readString(file)
       val rawLines0 = rawText.split("\n", -1).toIndexedSeq
-      val docs = argStr(a, "docs")
-      val lines = if docs == "strip" then az.stripComments(rawLines0) else rawLines0
-      val detail = argDetail(a, "detail")
-      annotationsOf(az, root, uri, rawText, lines, detail).map { (engine, pcFallback, allAnns) =>
-        val symbolsOn = argBool(a, "symbols", false)
-        val legendSymbols = if symbolsOn then engine.symbolLegend(uri) else Nil
-        val fmt = argFormat(a, "format")
-        val explode = symbolsOn && (fmt == SourceFormat.Compilable || fmt == SourceFormat.Diff)
-        val displayLines = if explode then engine.explodeImports(uri, lines) else lines
-        val start = range.startLine
-        val endExclusive = math.min(range.endLine, rawLines0.length)
-        val slicedRaw = lines.slice(start, endExclusive)
-        val slicedDisplay = displayLines.slice(start, endExclusive)
-        val slicedAnns = allAnns
-          .filter(ann => ann.line >= start && ann.line < endExclusive)
-          .map(ann => ann.copy(line = ann.line - start))
-        val res = SourceView.result(
-          uri.value,
-          slicedRaw,
-          slicedDisplay,
-          slicedAnns,
-          fmt,
-          argBool(a, "annotationsOnly", false),
-          legendSymbols,
-          lineOffset = start,
-          sentinel = argBool(a, "sentinel", false)
-        )
-        if pcFallback then ujson.Obj.from(res.obj.toSeq ++ pcFallbackFields(uri.value)) else res
+      val lines = if a.docsMode == "strip" then az.stripComments(rawLines0) else rawLines0
+      annotationsOf(az, root, uri, rawText, lines, a.detailValue).map {
+        (engine, pcFallback, allAnns) =>
+          val symbolsOn = a.symbolsOn
+          val legendSymbols = if symbolsOn then engine.symbolLegend(uri) else Nil
+          val fmt = a.formatValue
+          val explode = symbolsOn && (fmt == SourceFormat.Compilable || fmt == SourceFormat.Diff)
+          val displayLines = if explode then engine.explodeImports(uri, lines) else lines
+          val start = range.startLine
+          val endExclusive = math.min(range.endLine, rawLines0.length)
+          val slicedRaw = lines.slice(start, endExclusive)
+          val slicedDisplay = displayLines.slice(start, endExclusive)
+          val slicedAnns = allAnns
+            .filter(ann => ann.line >= start && ann.line < endExclusive)
+            .map(ann => ann.copy(line = ann.line - start))
+          val res = SourceView.result(
+            uri.value,
+            slicedRaw,
+            slicedDisplay,
+            slicedAnns,
+            fmt,
+            a.annotationsOnlyOn,
+            legendSymbols,
+            lineOffset = start,
+            sentinel = a.sentinelOn
+          )
+          if pcFallback then ujson.Obj.from(res.obj.toSeq ++ pcFallbackFields(uri.value)) else res
       }
 
   /** Enriched source for exactly `range` of `uri`, splicing the compiler's insertions directly into
@@ -481,24 +480,22 @@ private[mcp] object McpToolsSupport:
       root: java.nio.file.Path,
       uri: DocumentUri,
       range: SourceRange,
-      a: ujson.Value
+      a: ViewOpts
   ): Option[ujson.Value] =
     val file = root.resolve(uri.value)
     if !java.nio.file.Files.isRegularFile(file) then None
     else
       val rawText = java.nio.file.Files.readString(file)
       val rawLines0 = rawText.split("\n", -1).toIndexedSeq
-      val docs = argStr(a, "docs")
-      val lines = if docs == "strip" then az.stripComments(rawLines0) else rawLines0
-      val detail = argDetail(a, "detail")
-      annotationsOf(az, root, uri, rawText, lines, detail).map { (_, pcFallback, allAnns) =>
+      val lines = if a.docsMode == "strip" then az.stripComments(rawLines0) else rawLines0
+      annotationsOf(az, root, uri, rawText, lines, a.detailValue).map { (_, pcFallback, allAnns) =>
         val start = range.startLine
         val endExclusive = math.min(range.endLine, rawLines0.length)
         val slicedRaw = lines.slice(start, endExclusive)
         val byLine = allAnns
           .filter(ann => ann.line >= start && ann.line < endExclusive)
           .groupBy(_.line - start)
-        val annotationsOnly = argBool(a, "annotationsOnly", false)
+        val annotationsOnly = a.annotationsOnlyOn
         val renderedLines = slicedRaw.zipWithIndex.collect {
           case (line, i) if !annotationsOnly || byLine.contains(i) =>
             val ln = i + 1 + start
@@ -1910,7 +1907,7 @@ private[mcp] object McpToolsGroupC:
         }
       ),
       toolDef(
-        tool(
+        TypedTool.withArgs[DocumentOutlineArgs](
           "document_outline",
           "USE INSTEAD OF reading a whole file. A structural map of a Scala file: its types and members " +
             "nested by scope, each with kind, 0-based definition line, and a signature rendered from the " +
@@ -1923,57 +1920,30 @@ private[mcp] object McpToolsGroupC:
             "compiled SemanticDB. Without `source`, a file that exists on disk but has no compiled " +
             "SemanticDB entry falls back to the presentation compiler automatically (marked " +
             "`pcFallback`). (The server must have been started with a classpath for `source` to " +
-            "take effect.)",
-          List(
-            (
-              "uri",
-              "string",
-              "document uri as it appears in SemanticDB (path relative to project root)"
-            ),
-            (
-              "source",
-              "string",
-              "current full text of the file at `uri`; enables the live PC overlay"
-            ),
-            ("query", "string", "keep declarations whose name contains this, case-insensitive"),
-            ("symbol", "string", "keep the declaration with exactly this SemanticDB symbol"),
-            (
-              "includeParents",
-              "boolean",
-              "keep the enclosing scopes of a match as context (default true)"
-            ),
-            (
-              "maxDepth",
-              "integer",
-              "levels of nesting to keep below each match (1 = the match alone)"
-            ),
-            ("kind", "string", "keep only this kind, e.g. CLASS, TRAIT, OBJECT, METHOD")
-          ),
-          List("uri")
+            "take effect.)"
         ) { a =>
-          val uri = argUri(a, "uri")
+          val uri = validatedArg(DocumentUri.from(a.uri))
           // PC-only category: an outline is a single-file structural question, so the buffer is
           // queried on its own rather than overlaid on the whole index. With `source`, the given
           // text is authoritative (liveSource). Without it, the compiled index answers when it has
           // the file; an on-disk-but-unindexed file falls back to the PC automatically (pcFallback),
           // so a never-compiled file still outlines instead of a bare `found: false`.
-          val sourceOpt = a.obj.get("source").map(_.str)
           val explicit =
-            sourceOpt.flatMap(src => az.bufferOnly(root.resolve(uri.value).toUri, src, uri.value))
+            a.source.flatMap(src => az.bufferOnly(root.resolve(uri.value).toUri, src, uri.value))
           val autoFallback =
             if explicit.isDefined || az.isDocumentIndexed(uri) then None
             else diskPcAnalyzer(az, root, uri)
           val engine = explicit.orElse(autoFallback).getOrElse(az)
-          val query = a.obj.get("query").map(_.str)
-          val symbol = a.obj.get("symbol").map(_.str)
-          val kind = a.obj.get("kind").map(_.str)
-          val maxDepth = a.obj.get("maxDepth").map(_ => argPositiveInt(a, "maxDepth", 1).value)
+          val query = a.query
+          val symbol = a.symbol
+          val kind = a.kind
+          val maxDepth = a.maxDepth.map(d => validatedArg(PositiveInt.from(d, "maxDepth")).value)
           val narrowed = query.nonEmpty || symbol.nonEmpty || kind.nonEmpty || maxDepth.nonEmpty
           engine.outlineFiltered(
             uri,
             query,
             symbol,
-            argBool(a, "includeParents", true),
+            a.includeParents.getOrElse(true),
             maxDepth,
             kind
           ) match
@@ -1998,7 +1968,7 @@ private[mcp] object McpToolsGroupC:
         }
       ),
       toolDef(
-        tool(
+        TypedTool.withArgs[AnnotatedSourceArgs](
           "annotated_source",
           "READ A SCALA FILE THIS WAY — use instead of cat/head/sed/Read for *.scala. Returns the file's " +
             "source with the compiler's invisible insertions made explicit inline: the implicit " +
@@ -2031,37 +2001,16 @@ private[mcp] object McpToolsGroupC:
             "just written (both in stripped form, so it shows your edit, not the annotations), " +
             "plus `changed` — false when the write was a no-op. Pass `baseHash` " +
             "(the `sha256` field from an earlier read of this `uri`) to reject the write if the file " +
-            "changed on disk since — omit it only when you accept overwriting a concurrent change.",
-          (
-            "uri",
-            "string",
-            "document uri as it appears in SemanticDB (path relative to project root)"
-          )
-            :: (
-              "write",
-              "string",
-              "the file's edited full text — switches this tool to WRITE mode: /*SEM:...:SEM*/ blocks are " +
-                "stripped and the result is saved to uri. Send the buffer you read, edited in place, " +
-                "with its /*SEM:...:SEM*/ blocks still where they were — stripping them yourself is " +
-                "unnecessary work on lines your edit does not concern. Omit to read instead."
-            )
-            :: (
-              "baseHash",
-              "string",
-              "write mode only: the `sha256` from an earlier read of this uri — the write is rejected " +
-                "if the file no longer matches (a concurrent edit happened)."
-            )
-            :: SourceView.params,
-          List("uri")
+            "changed on disk since — omit it only when you accept overwriting a concurrent change."
         ) { a =>
-          val uri = argUri(a, "uri")
+          val uri = validatedArg(DocumentUri.from(a.uri))
           val file = root.resolve(uri.value)
           if !java.nio.file.Files.isRegularFile(file) then notFoundUri(uri.value)
           else
-            a.obj.get("write") match
-              case Some(ujson.Str(edited)) =>
+            a.write match
+              case Some(edited) =>
                 val currentHash = sha256Hex(java.nio.file.Files.readAllBytes(file).nn)
-                val baseHash = argStr(a, "baseHash")
+                val baseHash = a.baseHash.getOrElse("")
                 if baseHash.nonEmpty && baseHash != currentHash then
                   error(
                     s"annotated_source write rejected: '${uri.value}' changed on disk since " +
@@ -2104,15 +2053,13 @@ private[mcp] object McpToolsGroupC:
                 val rawBytes = java.nio.file.Files.readAllBytes(file).nn
                 val rawText = new String(rawBytes, java.nio.charset.StandardCharsets.UTF_8).nn
                 val rawLines = rawText.split("\n", -1).toIndexedSeq
-                val docs = argStr(a, "docs")
-                val lines = if docs == "strip" then az.stripComments(rawLines) else rawLines
-                val detail = argDetail(a, "detail")
-                annotationsOf(az, root, uri, rawText, lines, detail) match
+                val lines = if a.docsMode == "strip" then az.stripComments(rawLines) else rawLines
+                annotationsOf(az, root, uri, rawText, lines, a.detailValue) match
                   case None                             => notFoundUri(uri.value)
                   case Some((engine, pcFallback, anns)) =>
-                    val symbolsOn = argBool(a, "symbols", false)
+                    val symbolsOn = a.symbolsOn
                     val symbols = if symbolsOn then engine.symbolLegend(uri) else Nil
-                    val fmt = argFormat(a, "format")
+                    val fmt = a.formatValue
                     // import-explosion is the compilable rendering of symbols=on (and its diff):
                     // desugar wildcard / `given` imports into explicit ones so no name enters scope
                     // invisibly.
@@ -2126,9 +2073,9 @@ private[mcp] object McpToolsGroupC:
                       displayLines,
                       anns,
                       fmt,
-                      argBool(a, "annotationsOnly", false),
+                      a.annotationsOnlyOn,
                       symbols,
-                      sentinel = argBool(a, "sentinel", false)
+                      sentinel = a.sentinelOn
                     )
                     // SemanticDB records the MD5 of the text it was compiled from, so a file edited
                     // since that compile is detectable exactly — and the annotations then describe
@@ -2161,7 +2108,7 @@ private[mcp] object McpToolsGroupC:
         }
       ),
       toolDef(
-        tool(
+        TypedTool.withArgs[SymbolSourceArgs](
           "symbol_source",
           "The source of ONE symbol's definition (a method's signature+body, a class's full body, a " +
             "val's initializer) — not the whole file. Accepts a SemanticDB symbol OR a friendlier " +
@@ -2170,12 +2117,9 @@ private[mcp] object McpToolsGroupC:
             "identically to `annotated_source` — same `format`/`annotationsOnly`/`symbols`/`docs`/" +
             "`detail` args and output shape — but the `source` is sliced to just the definition's " +
             "lines, with the gutter kept at the file's real (absolute) 1-based line numbers so callers " +
-            "can jump straight to the real file.",
-          ("symbol", "string", "SemanticDB symbol OR dotted FQN of the definition")
-            :: SourceView.params,
-          List("symbol")
+            "can jump straight to the real file."
         ) { a =>
-          val raw = argStr(a, "symbol")
+          val raw = a.symbol
           resolveSymbolOrFqn(az, raw) match
             case None              => notFound(raw)
             case Some((sym, note)) =>
@@ -2189,7 +2133,7 @@ private[mcp] object McpToolsGroupC:
         }
       ),
       toolDef(
-        tool(
+        TypedTool.withArgs[SourceAroundPositionArgs](
           "source_around_position",
           "The enriched source of the definition ENCLOSING a source position — like `symbol_source` " +
             "but keyed by `file`+`line`+`column` (0-based) instead of a symbol, for when you have a " +
@@ -2200,16 +2144,10 @@ private[mcp] object McpToolsGroupC:
             "±15-line window (noted in `legend`) when no enclosing definition is found. Enriched " +
             "identically to `annotated_source` — same `format`/`annotationsOnly`/`symbols`/`docs`/" +
             "`detail` args and output shape — with the gutter kept at the file's real (absolute) " +
-            "1-based line numbers.",
-          List(
-            ("file", "string", "document uri (path relative to project root)"),
-            ("line", "integer", "0-based line of the position"),
-            ("column", "integer", "0-based column of the position")
-          ) ++ SourceView.params,
-          List("file", "line", "column")
+            "1-based line numbers."
         ) { a =>
-          val uri = argUri(a, "file")
-          val position = argPosition(a, "line", "column")
+          val uri = validatedArg(DocumentUri.from(a.file))
+          val position = validatedArg(SourcePosition.from(a.line, a.column))
           az.enclosingDefinitionRange(uri, position) match
             case Some((_, range)) =>
               renderRange(az, root, uri, range, a) match
@@ -2662,7 +2600,7 @@ private[mcp] object McpToolsGroupD:
         }
       ),
       toolDef(
-        tool(
+        TypedTool.withArgs[SourceRangesArgs](
           "source_ranges",
           "Zoom in on exact line ranges across many files/symbols in ONE call, with the " +
             "compiler's inferred types/implicits woven directly into the code (not just noted " +
@@ -2683,34 +2621,13 @@ private[mcp] object McpToolsGroupD:
             "inferred type parameter — is inserted right into the text at the exact spot it " +
             "belongs, instead of a separate note far from where it applies. A target or range that " +
             "can't be resolved comes back with `found: false` and an `error` explaining why, " +
-            "without failing the other targets in the same query.",
-          List(
-            (
-              "query",
-              "string",
-              "`target[startLine-endLine;...];target2[startLine-endLine]` — see description"
-            ),
-            (
-              "annotationsOnly",
-              "boolean",
-              "return only the lines that carry an annotation, not the whole range (default false)"
-            ),
-            ("docs", "string", "keep (default) | strip — drop comments for a leaner token view"),
-            (
-              "detail",
-              "string",
-              "terse | full (default) — merge multiple insertions at one call site into one note"
-            )
-          ),
-          List("query")
+            "without failing the other targets in the same query."
         ) { a =>
-          val query = argStr(a, "query")
+          val query = a.query
           RangeSelector.parse(query) match
             case Left(err)      => error(s"source_ranges: $err")
             case Right(entries) =>
-              val argsWithDefaultDetail =
-                if a.obj.contains("detail") then a
-                else ujson.Obj.from(a.obj.toSeq ++ Seq("detail" -> ujson.Str("full")))
+              val argsWithDefaultDetail = a.copy(detail = a.detail.orElse(Some("full")))
               val results = entries.flatMap { entry =>
                 resolveRangeTarget(az, root, entry.target) match
                   case None =>
