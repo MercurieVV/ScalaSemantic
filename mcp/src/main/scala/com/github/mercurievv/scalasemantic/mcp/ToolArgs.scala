@@ -95,3 +95,50 @@ final case class ResolveImplicitsArgs(
     @description("the wanted type's symbol, e.g. pkg/Show#") `type`: String
 ) derives Decoder,
       Schema
+
+final case class TraceImplicitChainArgs(
+    @description("the wanted type's symbol") `type`: String,
+    @description(
+      "optional concrete wanted type, e.g. `Show[List[Int]]`; returns one resolved tree when unambiguous"
+    )
+    appliedType: Option[String]
+) derives Decoder,
+      Schema
+
+final case class CallPathArgs(
+    @description("caller method symbol") from: String,
+    @description("callee method symbol") to: String,
+    @description("include call-site edge locations (default false)") detailed: Option[Boolean]
+) derives Decoder,
+      Schema
+
+final case class CallHierarchyArgs(
+    @description("method symbol") symbol: String,
+    @description(
+      "\"callers\" (incoming — who calls this) or \"callees\" (outgoing — what this calls); default \"callees\""
+    )
+    direction: Option[String],
+    @description("how many levels to expand (default 3)") depth: Option[Int]
+) derives Decoder,
+      Schema
+
+final case class TypeAtPositionArgs(
+    @description("document uri as it appears in SemanticDB (path relative to project root)")
+    uri: String,
+    @description("0-based line") line: Int,
+    @description("0-based column") character: Int,
+    @description("current full text of the file at `uri`; enables the live PC overlay")
+    source: Option[String]
+) derives Decoder,
+      Schema
+
+final case class SearchTextArgs(
+    @description("text (or regex, with `regex: true`) to search for") query: String,
+    @description("treat `query` as a regex instead of a literal string (default false)")
+    regex: Option[Boolean],
+    @description("match case-sensitively (default false)") caseSensitive: Option[Boolean],
+    @description("glob on document uri; `*` matches any chars (substring match)")
+    pathFilter: Option[String],
+    @description("max hits to return across all files (default 200)") limit: Option[Int]
+) derives Decoder,
+      Schema

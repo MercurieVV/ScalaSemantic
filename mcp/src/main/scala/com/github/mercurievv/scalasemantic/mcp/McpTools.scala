@@ -1397,7 +1397,7 @@ private[mcp] object McpToolsGroupB:
         }
       ),
       toolDef(
-        tool(
+        TypedTool.withArgs[TypeAtPositionArgs](
           "type_at_position",
           "The most specific symbol and its type at a 0-based (line, character) in a document — also the " +
             "way to turn a source location into a symbol string for the other tools. Pass `source` with " +
@@ -1405,30 +1405,15 @@ private[mcp] object McpToolsGroupB:
             "presentation compiler regenerates SemanticDB in memory, error-tolerant. Without `source` it " +
             "reads the last compiled SemanticDB, and falls back to the presentation compiler for a file " +
             "that exists on disk but was never compiled into the index (marked `pcFallback`). (`source` " +
-            "needs the server started with a classpath.)",
-          List(
-            (
-              "uri",
-              "string",
-              "document uri as it appears in SemanticDB (path relative to project root)"
-            ),
-            ("line", "integer", "0-based line"),
-            ("character", "integer", "0-based column"),
-            (
-              "source",
-              "string",
-              "current full text of the file at `uri`; enables the live PC overlay"
-            )
-          ),
-          List("uri", "line", "character")
+            "needs the server started with a classpath.)"
         ) { a =>
-          val uri = argUri(a, "uri")
+          val uri = validatedArg(DocumentUri.from(a.uri))
           // PC-only category: a position in one file is fully answered by the PC's regenerated document,
           // so with `source` we query THAT alone — not an overlay on the (stale-for-this-file) disk
           // index. `uri` is the index-form (relative) key; the PC needs the absolute on-disk path.
           // Without `source`, the compiled index answers when it has the file; an on-disk-but-unindexed
           // file falls back to the PC automatically (marking the answer `pcFallback`).
-          val (engine, pcFallback) = a.obj.get("source").map(_.str) match
+          val (engine, pcFallback) = a.source match
             case Some(src) =>
               (az.bufferOnly(root.resolve(uri.value).toUri, src, uri.value).getOrElse(az), false)
             case None =>
@@ -1437,7 +1422,7 @@ private[mcp] object McpToolsGroupB:
                 diskPcAnalyzer(az, root, uri) match
                   case Some(pc) => (pc, true)
                   case None     => (az, false)
-          engine.typeAtPosition(uri, argPosition(a, "line", "character")) match
+          engine.typeAtPosition(uri, validatedArg(SourcePosition.from(a.line, a.character))) match
             case None    => jobj(Some("found" -> ujson.Bool(false)))
             case Some(t) =>
               val base = jobj(
@@ -1715,28 +1700,16 @@ private[mcp] object McpToolsGroupB:
         }
       ),
       toolDef(
-        TypedTool[ImplicitChainResult](
+        TypedTool.of[TraceImplicitChainArgs, ImplicitChainResult](
           "trace_implicit_chain",
           "The givens that produce a type, plus the implicit dependencies they transitively pull in — " +
-            "follows implicit resolution across givens, step by step.",
-          List(
-            ("type", "string", "the wanted type's symbol"),
-            (
-              "appliedType",
-              "string",
-              "optional concrete wanted type, e.g. `Show[List[Int]]`; returns one resolved tree when unambiguous"
-            )
-          ),
-          List("type")
+            "follows implicit resolution across givens, step by step."
         ) { a =>
-          val typeSymbol = argTypeSymbol(a, "type")
-          val chain = az.traceImplicitChain(
-            typeSymbol,
-            a.obj.get("appliedType").map(_.str).filter(_.nonEmpty)
-          )
+          val typeSymbol = validatedArg(TypeSymbol.from(a.`type`))
+          val chain = az.traceImplicitChain(typeSymbol, a.appliedType.filter(_.nonEmpty))
           ImplicitChainResult(
             `type` = typeSymbol.value,
-            appliedType = a.obj.get("appliedType").map(_.str),
+            appliedType = a.appliedType,
             steps = chain.steps.toList.map(st =>
               ImplicitStepOut(
                 st.target.displayName,
@@ -1749,55 +1722,42 @@ private[mcp] object McpToolsGroupB:
         }
       ),
       toolDef(
-        TypedTool[CallPathResult](
+        TypedTool.of[CallPathArgs, CallPathResult](
           "call_path",
           "The shortest call path from one method to another, with the call-site edges that realize it " +
             "(pass `detailed` for edge locations). Use for reachability / how A reaches B — for direct " +
-            "callers of a single method, use find_usages.",
-          List(
-            ("from", "string", "caller method symbol"),
-            ("to", "string", "callee method symbol"),
-            ("detailed", "boolean", "include call-site edge locations (default false)")
-          ),
-          List("from", "to")
+            "callers of a single method, use find_usages."
         ) { a =>
-          val p = az.callPath(argMethodSymbol(a, "from"), argMethodSymbol(a, "to"))
+          val p = az.callPath(
+            validatedArg(MethodSymbol.from(a.from)),
+            validatedArg(MethodSymbol.from(a.to))
+          )
           val reachable = p.path.nonEmpty
           CallPathResult(
             from = p.from.displayName,
             to = p.to.displayName,
             reachable = reachable,
             path = Option.when(reachable)(p.path.toList.map(_.displayName)),
-            edges = Option.when(argBool(a, "detailed", false) && p.edges.nonEmpty)(
+            edges = Option.when(a.detailed.getOrElse(false) && p.edges.nonEmpty)(
               p.edges.toList.map(e => s"${e.from.displayName}->${e.to.displayName}@${loc(e.at)}")
             )
           )
         }
       ),
       toolDef(
-        TypedTool[CallHierarchyResult](
+        TypedTool.of[CallHierarchyArgs, CallHierarchyResult](
           "method_call_hierarchy",
           "The call hierarchy for a method — callers (incoming) or callees (outgoing) — as a hierarchical " +
             "tree. `direction` is \"callers\" (who calls this method, transitively) or \"callees\" (what this " +
             "method calls, transitively). `depth` controls how many levels to expand (default 3). Cycles " +
             "are broken: a recursive call appears as a leaf with no further children. Use `call_path` to " +
-            "find a shortest path between two specific methods.",
-          List(
-            ("symbol", "string", "method symbol"),
-            (
-              "direction",
-              "string",
-              "\"callers\" (incoming — who calls this) or \"callees\" (outgoing — what this calls); default \"callees\""
-            ),
-            ("depth", "integer", "how many levels to expand (default 3)")
-          ),
-          List("symbol")
+            "find a shortest path between two specific methods."
         ) { a =>
-          val symbol = argMethodSymbol(a, "symbol")
-          val direction = argStr(a, "direction") match
-            case "callers" => "callers"
-            case _         => "callees"
-          val depth = argPositiveInt(a, "depth", 3)
+          val symbol = validatedArg(MethodSymbol.from(a.symbol))
+          val direction = a.direction match
+            case Some("callers") => "callers"
+            case _               => "callees"
+          val depth = validatedArg(PositiveInt.from(a.depth.getOrElse(3), "depth"))
           val h = az.callHierarchy(symbol, depth, direction)
           CallHierarchyResult(
             symbol = h.symbol,
@@ -2380,36 +2340,20 @@ private[mcp] object McpToolsGroupD:
         }
       ),
       toolDef(
-        tool(
+        TypedTool.withArgs[SearchTextArgs](
           "search_text",
           "Scoped plain-text/regex search over `.scala` files under the project root — the sanctioned " +
             "in-MCP replacement for shelling out to grep/rg. SemanticDB carries no comment/trivia model, " +
             "so this is NOT symbol-aware: it does not resolve renames, re-exports, or inferred/implicit " +
             "uses, and can over-match comments/strings/unrelated identifiers, same as grep. Use " +
             "find_symbol/find_usages for identifiers; reach for this only for string literals, " +
-            "comments, or other non-symbol text.",
-          List(
-            ("query", "string", "text (or regex, with `regex: true`) to search for"),
-            (
-              "regex",
-              "boolean",
-              "treat `query` as a regex instead of a literal string (default false)"
-            ),
-            ("caseSensitive", "boolean", "match case-sensitively (default false)"),
-            (
-              "pathFilter",
-              "string",
-              "glob on document uri; `*` matches any chars (substring match)"
-            ),
-            ("limit", "integer", "max hits to return across all files (default 200)")
-          ),
-          List("query")
+            "comments, or other non-symbol text."
         ) { a =>
-          val query = argStr(a, "query")
-          val useRegex = argBool(a, "regex", false)
-          val caseSensitive = argBool(a, "caseSensitive", false)
-          val keep = mcpGlobMatcher(a.obj.get("pathFilter").map(_.str))
-          val limit = argPositiveInt(a, "limit", 200).value
+          val query = a.query
+          val useRegex = a.regex.getOrElse(false)
+          val caseSensitive = a.caseSensitive.getOrElse(false)
+          val keep = mcpGlobMatcher(a.pathFilter)
+          val limit = validatedArg(PositiveInt.from(a.limit.getOrElse(200), "limit")).value
           val patternText = if useRegex then query else java.util.regex.Pattern.quote(query)
           val flags = if caseSensitive then 0 else java.util.regex.Pattern.CASE_INSENSITIVE
           val pattern =
