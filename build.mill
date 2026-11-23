@@ -269,9 +269,6 @@ object analysis extends Common with SonatypeCentralPublishModule {
   def unmanagedClasspath = Task { Seq(stainlessJar()) }
   object test extends CommonTests {
     def unmanagedClasspath = Task { Seq(stainlessJar()) }
-    // The golden and property suites serialize models, and the wire shape lives in `wire`
-    // (which itself depends on analysis main): a test-only edge, so no cycle.
-    def moduleDeps = super.moduleDeps ++ Seq(wire)
   }
 
   // build.sbt `stainlessVerify` task — shells scripts/stainless-verify.sh.
@@ -296,7 +293,13 @@ object wire extends Common with SonatypeCentralPublishModule {
     mvn"io.circe::circe-core:${V.circe}",
     mvn"com.softwaremill.sttp.tapir::tapir-core:${V.tapir}"
   )
-  object test extends CommonTests
+  // The golden and property suites serialize the analysis models, so they live here and reuse the
+  // analysis fixtures/generators (wire.test -> analysis.test, never the other way: that would be a
+  // module cycle, which AnalyzerStructureSuite rejects).
+  object test extends CommonTests {
+    def moduleDeps = super.moduleDeps ++ Seq(analysis.test)
+    def unmanagedClasspath = Task { Seq(analysis.stainlessJar()) }
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -16,8 +16,8 @@ class PlanToolSchemaSuite extends munit.FunSuite:
   private val root: Path = Paths.get(".")
   private val tools: List[Tool] = Mcp.toolsFor(Analyzer(SemanticIndex.fromProject(".")), root)
   private val Parts =
-    "mcp/src/main/scala/com/github/mercurievv/scalasemantic/mcp/ToolResultParts.scala"
-  private val Sym = "com/github/mercurievv/scalasemantic/mcp/NotFoundResult#"
+    "wire/src/main/scala/com/github/mercurievv/scalasemantic/wire/api/ToolResultParts.scala"
+  private val Sym = "com/github/mercurievv/scalasemantic/wire/api/NotFoundResult#"
 
   private def check(name: String, args: (String, J.V)*): Json =
     val t = tools.find(_.name == name).getOrElse(fail(s"no $name"))

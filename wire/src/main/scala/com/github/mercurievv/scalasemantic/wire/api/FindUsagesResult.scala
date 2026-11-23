@@ -1,4 +1,4 @@
-package com.github.mercurievv.scalasemantic.mcp
+package com.github.mercurievv.scalasemantic.wire.api
 
 import io.circe.Encoder
 import sttp.tapir.Schema
@@ -37,8 +37,8 @@ final case class FindUsagesResult(
       Schema
 
 /** A reference hit as it goes on the wire: `uri:line:col` plus context lines when present. */
-private[mcp] def usageHitOut(hit: com.github.mercurievv.scalasemantic.model.UsageHit): UsageHitOut =
+def usageHitOut(hit: com.github.mercurievv.scalasemantic.model.UsageHit): UsageHitOut =
   UsageHitOut(
-    McpToolsSupport.loc(hit.location),
+    Locations.format(hit.location),
     Option.when(hit.context.nonEmpty)(hit.context.toList)
   )

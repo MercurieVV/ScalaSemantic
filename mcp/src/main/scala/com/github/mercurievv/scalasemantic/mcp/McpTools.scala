@@ -14,6 +14,7 @@ import com.github.mercurievv.scalasemantic.model.FileContracts
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
 import com.github.mercurievv.scalasemantic.wire.AnalysisCodecs.given
+import com.github.mercurievv.scalasemantic.wire.api.*
 import io.circe.Json
 
 import scala.jdk.CollectionConverters.*
@@ -409,8 +410,7 @@ private[mcp] object McpToolsSupport:
         )
       }
 
-  private[mcp] def loc(l: Location): String =
-    s"${l.uri}:${l.range.start.line}:${l.range.start.character}"
+  private[mcp] def loc(l: Location): String = Locations.format(l)
 
   /** Enriched source for exactly `range` of `uri` — the shared slice+render path behind
     * `symbol_source` and `source_around_position`: read the file, compute the WHOLE document's

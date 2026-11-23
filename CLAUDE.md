@@ -16,8 +16,8 @@ Mill modules (layer per module; `pc` and `launcher` omitted here), package base 
 ```
 core/      …​.semanticdb   SemanticIndex — loads/indexes *.semanticdb (no JSON, no MCP)
 analysis/  …​.analysis, …​.model   Analyzer + plain result models (JSON-free); dependsOn core
-wire/      …​.wire      circe codecs + tapir schemas of the analysis models; dependsOn analysis
-mcp/       …​.mcp, Main    stdio JSON-RPC server + entrypoint; dependsOn analysis (test->test too)
+wire/      …​.wire, …​.wire.api   the API contract: tool argument + result types (api), circe codecs and tapir schemas; dependsOn analysis
+mcp/       …​.mcp, Main    stdio JSON-RPC server, tool logic, entrypoint; dependsOn analysis, wire (test->test too)
 ```
 SemanticDB is emitted per module under `out/<module>/compile.dest/classes/META-INF/semanticdb/**`.
 Dogfood tests load `SemanticIndex.fromProject(".")` (repo root) so they see every module's output;
@@ -36,7 +36,7 @@ rename-plan, move-plan, extract-method-plan.
 
 ## Conventions
 - Symbol strings follow SemanticDB grammar (descriptors end in `#` type, `.` term, `/` package, `(...)` method disambig).
-- Result types are plain case classes; their circe `Encoder`/`Decoder` and tapir `Schema` are derived once in the `wire` module (analysis models) or beside the tool (typed results), never mirrored.
+- Domain (`analysis.model`) is JSON-free. The API (`wire.api`: per-tool argument and result types, deliberately compact projections of the domain) owns its circe `Encoder`/`Decoder` and tapir `Schema`, each derived once; `mcp` only builds them.
 - Validate every feature by dogfooding against this repo's own SemanticDB.
 - New scripts under `scripts/` should preferably be written as scala-cli scripts (`.sc`, `#!/usr/bin/env scala-cli`
   shebang, `//> using scala 3.8.4`), not shell — see `scripts/smoke-tests-local-run/smoke-test-mill.sc` or `scripts/compare_grep.sc` for

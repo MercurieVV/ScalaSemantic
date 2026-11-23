@@ -3,6 +3,7 @@ package com.github.mercurievv.scalasemantic.mcp
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
 import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import com.github.mercurievv.scalasemantic.wire.api.*
 import io.circe.Json
 
 import java.nio.file.Path
@@ -24,7 +25,7 @@ class MembersResolveImplicitsSchemaSuite extends munit.FunSuite:
     assertEquals(SchemaConformance.violations(schemaOf(name), res), Nil)
 
   // A case class: declares accessors/copy, inherits from Product/Equals/Object.
-  private val LookupType = "com/github/mercurievv/scalasemantic/mcp/FindUsagesResult#"
+  private val LookupType = "com/github/mercurievv/scalasemantic/wire/api/FindUsagesResult#"
 
   // ---- members -----------------------------------------------------------------------------
 
@@ -74,7 +75,7 @@ class MembersResolveImplicitsSchemaSuite extends munit.FunSuite:
     conforms("members", missing)
     val many = call(
       "members",
-      "symbol" -> "mcp/src/main/scala/com/github/mercurievv/scalasemantic/mcp/ToolResultParts.scala"
+      "symbol" -> "wire/src/main/scala/com/github/mercurievv/scalasemantic/wire/api/ToolResultParts.scala"
     )
     assert(many("candidates").arr.size > 1 && many("note").str.nonEmpty)
     conforms("members", many)

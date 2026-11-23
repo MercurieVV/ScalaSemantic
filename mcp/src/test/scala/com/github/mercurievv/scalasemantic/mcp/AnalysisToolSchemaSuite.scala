@@ -19,7 +19,7 @@ class AnalysisToolSchemaSuite extends munit.FunSuite:
   private val root: Path = Paths.get(".")
   private val tools: List[Tool] = Mcp.toolsFor(Analyzer(SemanticIndex.fromProject(".")), root)
   private val Parts =
-    "mcp/src/main/scala/com/github/mercurievv/scalasemantic/mcp/ToolResultParts.scala"
+    "wire/src/main/scala/com/github/mercurievv/scalasemantic/wire/api/ToolResultParts.scala"
 
   private def tool(name: String): Tool = tools.find(_.name == name).getOrElse(fail(s"no $name"))
 

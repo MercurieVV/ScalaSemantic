@@ -171,13 +171,13 @@ class TypedInputSuite extends munit.FunSuite:
     assert(e.getMessage.contains("line"), e.getMessage)
     val src = call(
       "annotated_source",
-      "uri" -> "mcp/src/main/scala/com/github/mercurievv/scalasemantic/mcp/ToolArgs.scala",
+      "uri" -> "wire/src/main/scala/com/github/mercurievv/scalasemantic/wire/api/ToolArgs.scala",
       "format" -> "plain"
     )
     assert(src("source").str.contains("final case class FindSymbolArgs"))
     val outline = call(
       "document_outline",
-      "uri" -> "mcp/src/main/scala/com/github/mercurievv/scalasemantic/mcp/ToolArgs.scala",
+      "uri" -> "wire/src/main/scala/com/github/mercurievv/scalasemantic/wire/api/ToolArgs.scala",
       "query" -> "Args",
       "maxDepth" -> 1
     )
@@ -227,7 +227,7 @@ class TypedInputSuite extends munit.FunSuite:
       allTools.find(_.name == name).getOrElse(fail(s"no $name")).run(J.obj(args*))
     val plan = call(
       "rename_plan",
-      "symbol" -> "com/github/mercurievv/scalasemantic/mcp/NotFoundResult#",
+      "symbol" -> "com/github/mercurievv/scalasemantic/wire/api/NotFoundResult#",
       "newName" -> "Gone"
     )
     assert(plan("editCount").num > 0)
@@ -235,7 +235,7 @@ class TypedInputSuite extends munit.FunSuite:
       "batch_rename_plan",
       "renames" -> J.arr(
         J.obj(
-          "symbol" -> "com/github/mercurievv/scalasemantic/mcp/NotFoundResult#",
+          "symbol" -> "com/github/mercurievv/scalasemantic/wire/api/NotFoundResult#",
           "newName" -> "Gone"
         )
       )

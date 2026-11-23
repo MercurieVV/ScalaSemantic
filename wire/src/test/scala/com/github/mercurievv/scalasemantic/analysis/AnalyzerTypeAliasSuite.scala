@@ -13,7 +13,7 @@ import java.nio.file.Paths
 /** Golden test for type-alias / opaque-type signatures in `document_outline`, dogfooded against
   * this repo's own SemanticDB.
   *
-  * Regenerate by deleting `analysis/src/test/resources/golden/type_alias_signatures.json` and
+  * Regenerate by deleting `wire/src/test/resources/golden/type_alias_signatures.json` and
   * re-running the suite (see [[AnalyzerGoldenSuite]] for the same protocol).
   */
 class AnalyzerTypeAliasSuite extends munit.FunSuite:
@@ -22,7 +22,7 @@ class AnalyzerTypeAliasSuite extends munit.FunSuite:
   private val az = Analyzer(index)
 
   private val goldenPath = Paths.get(
-    "analysis/src/test/resources/golden/type_alias_signatures.json"
+    "wire/src/test/resources/golden/type_alias_signatures.json"
   )
 
   /** Every `Kind.TYPE` outline entry of the file whose uri ends with `suffix`, flattened, as

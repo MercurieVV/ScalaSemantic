@@ -1,5 +1,6 @@
 package com.github.mercurievv.scalasemantic.mcp
 
+import com.github.mercurievv.scalasemantic.wire.api.*
 import io.circe.Json
 
 /** Output schemas of the typed tools, served on demand instead of riding along in every

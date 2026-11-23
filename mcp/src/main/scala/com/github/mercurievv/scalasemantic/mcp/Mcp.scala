@@ -4,6 +4,7 @@ import com.github.mercurievv.scalasemantic.analysis.Analyzer
 import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.pc.PresentationCompilerBackend
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import com.github.mercurievv.scalasemantic.wire.api.*
 import io.circe.Json
 
 import java.nio.file.Files

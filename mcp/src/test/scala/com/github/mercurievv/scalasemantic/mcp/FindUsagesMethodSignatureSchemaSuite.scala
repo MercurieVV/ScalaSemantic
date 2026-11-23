@@ -25,7 +25,7 @@ class FindUsagesMethodSignatureSchemaSuite extends munit.FunSuite:
     assertEquals(SchemaConformance.violations(schemaOf(name), res), Nil)
 
   private val Loc = "com/github/mercurievv/scalasemantic/mcp/McpToolsSupport.loc()."
-  private val CaseClass = "com/github/mercurievv/scalasemantic/mcp/NotFoundResult#"
+  private val CaseClass = "com/github/mercurievv/scalasemantic/wire/api/NotFoundResult#"
   private val FindUsagesKeys = Set(
     "symbol",
     "name",

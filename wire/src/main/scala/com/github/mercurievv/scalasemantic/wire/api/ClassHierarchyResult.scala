@@ -1,4 +1,4 @@
-package com.github.mercurievv.scalasemantic.mcp
+package com.github.mercurievv.scalasemantic.wire.api
 
 import com.github.mercurievv.scalasemantic.model.SymbolRef
 import io.circe.Encoder

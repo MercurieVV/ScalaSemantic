@@ -1,11 +1,5 @@
-package com.github.mercurievv.scalasemantic.mcp
+package com.github.mercurievv.scalasemantic.wire.api
 
-import com.github.mercurievv.scalasemantic.model.ContractResult
-import com.github.mercurievv.scalasemantic.model.HoleContextResult
-import com.github.mercurievv.scalasemantic.model.LiteralResult
-import com.github.mercurievv.scalasemantic.model.ReferenceResult
-import com.github.mercurievv.scalasemantic.wire.AnalysisCodecs.given
-import io.circe.Json
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.description
 
@@ -165,25 +159,3 @@ final case class SourceRangesResult(
     @description("the query as given") query: String,
     @description("one entry per requested range, in order") results: List[RangeAnswer]
 ) derives Schema
-
-object AnalysisToolSchemas:
-
-  private def schema[A](using s: Schema[A]): Json = OutputSchema.of[A]
-
-  private[mcp] val schemaOf: Map[String, Json] =
-    Map(
-      "structure" -> schema[StructureResult],
-      "value_flow" -> schema(using
-        Alternatives.of(List(Schema.derived[ValueFlowOut], Schema.derived[PositionMissing]))
-      ),
-      "smart_code_duplications" -> schema[DuplicationsResult],
-      "source_ranges" -> schema[SourceRangesResult],
-      "literal_tokens" -> schema[LiteralResult],
-      "contract_clauses" -> schema[ContractResult],
-      "resolve_references" -> schema[ReferenceResult],
-      "hole_context" -> schema(using
-        Alternatives.of(
-          List(summon[Schema[HoleContextResult]], Schema.derived[NotFoundResult])
-        )
-      )
-    )

@@ -1,4 +1,4 @@
-package com.github.mercurievv.scalasemantic.mcp
+package com.github.mercurievv.scalasemantic.wire.api
 
 import sttp.tapir.Schema
 import sttp.tapir.Schema.SName
@@ -21,22 +21,24 @@ import sttp.tapir.SchemaType
   */
 private object RecursiveSchemaDerivation:
 
-  private def selfRef[A](simpleName: String): Schema[A] =
-    Schema(SchemaType.SRef[A](SName(s"com.github.mercurievv.scalasemantic.mcp.$simpleName")))
+  // The name is the class's own, so moving the type between packages cannot desynchronise it from
+  // the name tapir derives for the same type (a mismatch silently turns the `$ref` into a full copy).
+  private def selfRef[A](using ct: scala.reflect.ClassTag[A]): Schema[A] =
+    Schema(SchemaType.SRef[A](SName(ct.runtimeClass.getName)))
 
   val callNode: Schema[CallNodeOut] =
     given Schema[Option[List[CallNodeOut]]] =
-      selfRef[CallNodeOut]("CallNodeOut").asIterable[List].asOption
+      selfRef[CallNodeOut].asIterable[List].asOption
     Schema.derived[CallNodeOut]
 
   val implicitTree: Schema[ImplicitTreeOut] =
     given Schema[Option[List[ImplicitTreeOut]]] =
-      selfRef[ImplicitTreeOut]("ImplicitTreeOut").asIterable[List].asOption
+      selfRef[ImplicitTreeOut].asIterable[List].asOption
     Schema.derived[ImplicitTreeOut]
 
   val outlineEntry: Schema[OutlineEntryOut] =
     given Schema[Option[List[OutlineEntryOut]]] =
-      selfRef[OutlineEntryOut]("OutlineEntryOut").asIterable[List].asOption
+      selfRef[OutlineEntryOut].asIterable[List].asOption
     Schema.derived[OutlineEntryOut]
 
 object OutlineSchemas:

@@ -24,7 +24,7 @@ class ClassHierarchyFindOverloadsSchemaSuite extends munit.FunSuite:
   private def conforms(name: String, res: Json): Unit =
     assertEquals(SchemaConformance.violations(schemaOf(name), res), Nil)
 
-  private val Lookup = "com/github/mercurievv/scalasemantic/mcp/Lookup#"
+  private val Lookup = "com/github/mercurievv/scalasemantic/wire/api/Lookup#"
   private val HierarchyKeys = Set(
     "symbol",
     "name",

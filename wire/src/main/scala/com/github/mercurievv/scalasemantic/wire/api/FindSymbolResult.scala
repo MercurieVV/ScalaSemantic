@@ -1,4 +1,4 @@
-package com.github.mercurievv.scalasemantic.mcp
+package com.github.mercurievv.scalasemantic.wire.api
 
 import io.circe.Encoder
 import sttp.tapir.Schema

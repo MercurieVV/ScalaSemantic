@@ -1,6 +1,5 @@
-package com.github.mercurievv.scalasemantic.mcp
+package com.github.mercurievv.scalasemantic.wire.api
 
-import io.circe.Json
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.description
 
@@ -67,17 +66,3 @@ final case class ExtractMethodPlanResult(
     returns: Option[List[String]],
     @description("the extracted method's return type") returnType: String
 ) derives Schema
-
-object PlanToolSchemas:
-
-  private def schema[A](using s: Schema[A]): Json = OutputSchema.of[A]
-
-  private[mcp] val schemaOf: Map[String, Json] =
-    Map(
-      "rename_plan" -> schema[RenamePlanResult],
-      "batch_rename_plan" -> schema[BatchRenamePlanResult],
-      "move_plan" -> schema[MovePlanResult],
-      "extract_method_plan" -> schema(using
-        Alternatives.of(List(Schema.derived[ExtractMethodPlanResult], Schema.derived[UriNotFound]))
-      )
-    )

@@ -1,4 +1,4 @@
-package com.github.mercurievv.scalasemantic.mcp
+package com.github.mercurievv.scalasemantic.wire.api
 
 import com.github.mercurievv.scalasemantic.model.CallHierarchyNode
 import com.github.mercurievv.scalasemantic.model.ImplicitTree
@@ -36,7 +36,7 @@ object CallNodeOut:
     CallNodeOut(
       n.method.symbol,
       n.method.displayName,
-      n.at.map(McpToolsSupport.loc),
+      n.at.map(Locations.format),
       Option.when(n.children.nonEmpty)(n.children.toList.map(from))
     )
 

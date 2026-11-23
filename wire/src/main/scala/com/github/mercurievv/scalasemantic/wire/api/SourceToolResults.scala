@@ -1,6 +1,5 @@
-package com.github.mercurievv.scalasemantic.mcp
+package com.github.mercurievv.scalasemantic.wire.api
 
-import io.circe.Json
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.description
 import sttp.tapir.SchemaType
@@ -94,44 +93,3 @@ final case class OutlineEntryOut(
     @description("SemanticDB symbol string") symbol: String,
     @description("nested declarations") children: Option[List[OutlineEntryOut]]
 )
-
-object Alternatives:
-  /** An untagged union: the wire value is exactly one of the alternatives' own objects. */
-  def of(alts: List[Schema[?]]): Schema[Any] =
-    Schema(SchemaType.SCoproduct[Any](alts, None)(_ => None))
-
-/** Attaches the `outputSchema` of the tools whose bodies still build JSON by hand. */
-object SourceToolSchemas:
-
-  private def schema[A](using s: Schema[A]): Json = OutputSchema.of[A]
-
-  private val schemaOf: Map[String, Json] =
-    import OutlineSchemas.given
-    val notFound = Schema.derived[NotFoundResult]
-    val uriNotFound = Schema.derived[UriNotFound]
-    val sourceView = Schema.derived[SourceViewResult]
-    Map(
-      "type_at_position" -> schema(using
-        Alternatives.of(List(Schema.derived[PositionHit], Schema.derived[PositionMissing]))
-      ),
-      "search_text" -> schema[SearchTextResult],
-      "document_outline" -> schema(using
-        Alternatives.of(List(Schema.derived[DocumentOutlineResult], uriNotFound))
-      ),
-      "annotated_source" -> schema(using
-        Alternatives.of(List(sourceView, Schema.derived[SourceWriteResult], uriNotFound))
-      ),
-      "symbol_source" -> schema(using Alternatives.of(List(sourceView, notFound, uriNotFound))),
-      "source_around_position" -> schema(using Alternatives.of(List(sourceView, uriNotFound)))
-    )
-
-  private lazy val all: Map[String, Json] =
-    schemaOf ++ PlanToolSchemas.schemaOf ++ AnalysisToolSchemas.schemaOf
-
-  def attach(tools: List[Tool]): List[Tool] =
-    tools.map(t =>
-      all
-        .get(t.name)
-        .filter(_ => t.outputSchema.isEmpty)
-        .fold(t)(s => t.copy(outputSchema = Some(s)))
-    )

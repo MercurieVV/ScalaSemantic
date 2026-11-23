@@ -1,4 +1,4 @@
-package com.github.mercurievv.scalasemantic.mcp
+package com.github.mercurievv.scalasemantic.wire.api
 
 import io.circe.Encoder
 import sttp.tapir.Schema
@@ -54,3 +54,8 @@ object Lookup:
         None
       )(_ => None)
     )
+
+/** How a source location is written on the wire: the compact `uri:line:col` string (0-based). */
+object Locations:
+  def format(l: com.github.mercurievv.scalasemantic.model.Location): String =
+    s"${l.uri}:${l.range.start.line}:${l.range.start.character}"
