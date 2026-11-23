@@ -1128,38 +1128,21 @@ private[mcp] object McpToolsGroupA:
   def tools(az: Analyzer, root: java.nio.file.Path): List[Tool] =
     List(
       toolDef(
-        TypedTool[FindSymbolResult](
+        TypedTool.of[FindSymbolArgs, FindSymbolResult](
           "find_symbol",
           "Resolve a plain or partial name (e.g. 'Animal', 'show') to the SemanticDB symbol strings the " +
             "other tools require — start here whenever you have a name rather than a symbol. Ranked " +
             "exact > prefix > substring. Narrow with `exact` (name equality only), `kind` (TRAIT, CLASS, " +
-            "METHOD, OBJECT, …) and `pathFilter` (glob on the symbol's definition uri).",
-          List(
-            ("query", "string", "simple or partial name to search for"),
-            ("limit", "integer", "max results (default 50)"),
-            (
-              "exact",
-              "boolean",
-              "match the display name exactly, case-insensitive (default false)"
-            ),
-            ("kind", "string", "keep only this SymbolInformation kind, e.g. TRAIT, CLASS, METHOD"),
-            ("pathFilter", "string", "glob on the symbol's definition uri; `*` matches any chars"),
-            (
-              "metrics",
-              "boolean",
-              "badge each result type with its structural layer/centrality/inCycle (default false)"
-            )
-          ),
-          List("query")
+            "METHOD, OBJECT, …) and `pathFilter` (glob on the symbol's definition uri)."
         ) { a =>
-          val q = argStr(a, "query")
-          val withMetrics = argBool(a, "metrics", false)
+          val q = a.query
+          val withMetrics = a.metrics.getOrElse(false)
           val results = az.findSymbol(
             q,
-            argPositiveInt(a, "limit", 50),
-            argBool(a, "exact", false),
-            a.obj.get("kind").map(_.str),
-            a.obj.get("pathFilter").map(_.str)
+            validatedArg(PositiveInt.from(a.limit.getOrElse(50), "limit")),
+            a.exact.getOrElse(false),
+            a.kind,
+            a.pathFilter
           )
           FindSymbolResult(
             query = q,

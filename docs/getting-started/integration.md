@@ -280,6 +280,17 @@ only code that parses results (programmatic tool calling, code-mode) needs them.
 Set `SCALASEMANTIC_STRUCTURED=1` (or `-Dscalasemantic.structured=true`) to also advertise `outputSchema` in
 `tools/list` and return `structuredContent` next to the text block. Off by default: it duplicates every result.
 
+## Arguments
+
+Tools are migrating to typed arguments (`find_symbol` first): the tool's `inputSchema` is derived from
+the argument type, a field is `required` exactly when it has no default, and a missing or mistyped
+argument fails with one message naming the field (`find_symbol: invalid arguments: \`limit\`: …`).
+
+An argument a tool does not declare is **ignored**, never an error. To see which ones were ignored,
+start the server with `SCALASEMANTIC_WARN_UNKNOWN_ARGS=1` (or `-Dscalasemantic.warnUnknownArgs=true`):
+one line per call is written to the server log (`warning: find_symbol ignored unknown argument(s): …`).
+The shared `fields`, `countOnly` and `limit` arguments are never reported.
+
 ## Large answers: `fields`, `countOnly`, `limit`
 
 Every tool accepts three extra arguments that shape its result. They are described once in the server
