@@ -23,8 +23,15 @@ perf=()
 # Conventional-Commit subject: type(scope)!: description. Kept in a var so bash parses it as a regex.
 cc_re='^([a-z]+)(\(([^)]*)\))?(!)?:[[:space:]]+(.*)$'
 
+seen=$'\n' # newline-delimited subjects already emitted (bash 3.2: no associative arrays)
+
 while IFS= read -r subject; do
   [[ -z "$subject" ]] && continue
+  # The same change can appear twice (original commit + its squashed PR, which only adds " (#NN)"):
+  # keep the first, which is the newest.
+  key=$(printf '%s' "$subject" | sed -E 's/ \(#[0-9]+\)$//')
+  case "$seen" in *$'\n'"$key"$'\n'*) continue ;; esac
+  seen="$seen$key"$'\n'
   if [[ "$subject" =~ $cc_re ]]; then
     type="${BASH_REMATCH[1]}"
     scope="${BASH_REMATCH[3]}"

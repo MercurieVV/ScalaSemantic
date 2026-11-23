@@ -1,0 +1,5 @@
+[mcp_servers.scala-semantic]
+command = "./scalasemantic-mcp.sh"
+args = ["serve", "."]
+startup_timeout_sec = 60
+tool_timeout_sec = 60

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "scala-semantic": {
+      "command": "./scalasemantic-mcp.sh",
+      "args": ["serve", "."],
+      "timeout": 60000
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "scala-semantic": {
+      "command": "./scalasemantic-mcp.sh",
+      "args": ["serve", "."],
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
