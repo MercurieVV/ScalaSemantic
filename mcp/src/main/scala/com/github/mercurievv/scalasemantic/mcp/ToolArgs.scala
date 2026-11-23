@@ -264,3 +264,98 @@ final case class DocumentOutlineArgs(
     @description("keep only this kind, e.g. CLASS, TRAIT, OBJECT, METHOD") kind: Option[String]
 ) derives Decoder,
       Schema
+
+final case class RenamePlanArgs(
+    @description("the symbol to rename") symbol: String,
+    @description("the new simple name") newName: String
+) derives Decoder,
+      Schema
+
+final case class RenameEntryArgs(
+    @description("the symbol to rename") symbol: String,
+    @description("the new simple name") newName: String
+) derives Decoder,
+      Schema
+
+final case class BatchRenamePlanArgs(
+    @description("list of {symbol: string, newName: string} entries to rename in one batch")
+    renames: List[RenameEntryArgs]
+) derives Decoder,
+      Schema
+
+final case class MovePlanArgs(
+    @description("the symbol to move") symbol: String,
+    @description("destination package symbol, e.g. `com/foo/bar/`") newOwner: String
+) derives Decoder,
+      Schema
+
+final case class ExtractMethodPlanArgs(
+    @description("document uri (path relative to project root)") uri: String,
+    @description("0-based start line of the selection") startLine: Int,
+    @description("0-based start column of the selection") startCharacter: Int,
+    @description("0-based end line of the selection (exclusive end)") endLine: Int,
+    @description("0-based end column of the selection (exclusive)") endCharacter: Int,
+    @description("name for the extracted method (default `extracted`)")
+    methodName: Option[String],
+    @description("current full text of the file at `uri`; enables the live PC overlay")
+    source: Option[String]
+) derives Decoder,
+      Schema
+
+final case class StructureArgs(
+    @description(
+      "rank symbols by: afferent | efferent | instability | layer | centrality | sccSize (default afferent)"
+    )
+    sort: Option[String],
+    @description(
+      "which graph's metrics per symbol: combined | extends | typeRef | memberType | call | implicit (default combined)"
+    )
+    dimension: Option[String],
+    @description("glob on a type's module (e.g. `core`, `*mcp*`) to scope the list")
+    pathFilter: Option[String],
+    @description("max symbols to return (default 30)") limit: Option[Int],
+    @description("include the per-dimension Ca/Ce/instability breakdown (default false)")
+    detailed: Option[Boolean],
+    @description(
+      "include a `mermaid` string field rendering `moduleEdges` as a `graph TD` diagram (default false)"
+    )
+    graph: Option[Boolean]
+) derives Decoder,
+      Schema
+
+final case class ValueFlowArgs(
+    @description("SemanticDB symbol of the val/binding/parameter to trace")
+    symbol: Option[String],
+    @description(
+      "document uri (relative to project root); with `line`/`column`, an alternative to `symbol`"
+    )
+    file: Option[String],
+    @description("0-based line of the binding (with `file` + `column`)") line: Option[Int],
+    @description("0-based column of the binding (with `file` + `line`)") column: Option[Int],
+    @description("max flow hops to follow from the root (default 5)") maxDepth: Option[Int],
+    @description(
+      "do not expand a flow into a binding of a different (widened) type (default true)"
+    )
+    stopOnTypeWidening: Option[Boolean]
+) derives Decoder,
+      Schema
+
+final case class SmartCodeDuplicationsArgs(
+    @description("minimum number of AST nodes to consider (default 15)") minSize: Option[Int],
+    @description("glob on the document uri; `*` matches any chars") pathFilter: Option[String],
+    @description(
+      "when true, also return `groupsSource`: each group's occurrences with their duplicated " +
+        "source lines as a gutter-numbered `snippet` (default false)"
+    )
+    showSource: Option[Boolean]
+) derives Decoder,
+      Schema
+
+final case class HoleContextArgs(
+    @description("document uri as it appears in SemanticDB (path relative to project root)")
+    uri: String,
+    @description("0-based line") line: Int,
+    @description("0-based column") character: Int,
+    @description("current full text of the file at `uri`") source: Option[String]
+) derives Decoder,
+      Schema

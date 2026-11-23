@@ -181,6 +181,69 @@ class TypedInputSuite extends munit.FunSuite:
     )
     assert(outline("filtered").bool && outline("outline").arr.nonEmpty)
 
+  test("the plan and analysis tools derive their inputSchema from typed arguments"):
+    val expected: Map[String, (Set[String], Set[String])] = Map(
+      "rename_plan" -> (Set("symbol", "newName") -> Set("symbol", "newName")),
+      "batch_rename_plan" -> (Set("renames") -> Set("renames")),
+      "move_plan" -> (Set("symbol", "newOwner") -> Set("symbol", "newOwner")),
+      "extract_method_plan" ->
+        (Set("uri", "startLine", "startCharacter", "endLine", "endCharacter") ->
+          Set(
+            "uri",
+            "startLine",
+            "startCharacter",
+            "endLine",
+            "endCharacter",
+            "methodName",
+            "source"
+          )),
+      "structure" ->
+        (Set.empty[String] ->
+          Set("sort", "dimension", "pathFilter", "limit", "detailed", "graph")),
+      "value_flow" ->
+        (Set.empty[String] ->
+          Set("symbol", "file", "line", "column", "maxDepth", "stopOnTypeWidening")),
+      "smart_code_duplications" ->
+        (Set.empty[String] -> Set("minSize", "pathFilter", "showSource")),
+      "hole_context" ->
+        (Set("uri", "line", "character") -> Set("uri", "line", "character", "source"))
+    )
+    expected.foreach: (name, shape) =>
+      val s = allTools.find(_.name == name).getOrElse(fail(s"no $name")).inputSchema
+      val required = s.obj.get("required").map(_.arr.map(_.str).toSet).getOrElse(Set.empty)
+      assertEquals(required, shape._1, name)
+      assertEquals(s("properties").obj.keySet.toSet, shape._2, name)
+      assert(s("properties").obj.values.forall(_("description").str.nonEmpty), name)
+    val items = allTools
+      .find(_.name == "batch_rename_plan")
+      .getOrElse(fail("no batch_rename_plan"))
+      .inputSchema("properties")("renames")("items")
+    assertEquals(items("required").arr.map(_.str).toSet, Set("symbol", "newName"))
+
+  test("plan tools still plan, and name the missing field when called wrongly"):
+    def call(name: String, args: (String, ujson.Value)*): ujson.Value =
+      allTools.find(_.name == name).getOrElse(fail(s"no $name")).run(ujson.Obj.from(args))
+    val plan = call(
+      "rename_plan",
+      "symbol" -> "com/github/mercurievv/scalasemantic/mcp/NotFoundResult#",
+      "newName" -> "Gone"
+    )
+    assert(plan("editCount").num > 0)
+    val batch = call(
+      "batch_rename_plan",
+      "renames" -> ujson.Arr(
+        ujson.Obj(
+          "symbol" -> "com/github/mercurievv/scalasemantic/mcp/NotFoundResult#",
+          "newName" -> "Gone"
+        )
+      )
+    )
+    assertEquals(batch("perSymbol").arr.size, 1)
+    val e = intercept[RuntimeException](call("move_plan", "symbol" -> "x/Y#"))
+    assert(e.getMessage.contains("move_plan: invalid arguments"), e.getMessage)
+    assert(e.getMessage.contains("newOwner"), e.getMessage)
+    assertEquals(call("value_flow")("found").bool, false)
+
   test("JsonBridge keeps integers integral and nesting intact"):
     val j = JsonBridge.toCirce(
       ujson.Obj("a" -> 2, "b" -> 2.5, "c" -> ujson.Arr(true, ujson.Null, "x"), "d" -> ujson.Obj())
