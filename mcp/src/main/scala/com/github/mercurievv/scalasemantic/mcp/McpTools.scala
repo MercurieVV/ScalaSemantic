@@ -1432,7 +1432,7 @@ private[mcp] object McpToolsGroupB:
         }
       ),
       toolDef(
-        tool(
+        TypedTool.withArgs[ResolveReferencesArgs](
           "resolve_references",
           "Every name the given LINE RANGES of the given files refer to, and whether it resolves — " +
             "the deterministic check for hallucinated symbols. Each row carries the name as written, " +
@@ -1465,25 +1465,17 @@ private[mcp] object McpToolsGroupB:
             "`origin` and the file-level `error` as explicit JSON `null` when absent, so parse " +
             "defensively. At most 200 rows per file: UNRESOLVED rows are never dropped, resolved " +
             "ones fill what is left in source order, and `omitted` counts only the resolved rows " +
-            "that did not fit.",
-          List(
-            (
-              "files",
-              "array",
-              "objects: {uri: string, ranges: [[startLine, endLineExclusive], …], source?: string}"
-            )
-          ),
-          List("files")
+            "that did not fit."
         ) { a =>
-          val entries = a.obj.get("files").toList.flatMap(_.arr)
+          val entries = a.files
           if entries.isEmpty then
             error("resolve_references: `files` must hold at least one {uri, ranges} object")
           else
             val results = entries.map { entry =>
-              val uri = argUri(entry, "uri")
+              val uri = validatedArg(DocumentUri.from(entry.uri))
               val file = root.resolve(uri.value)
-              val ranges = argRanges(entry)
-              val (code, fromDisk) = entry.obj.get("source").map(_.str) match
+              val ranges = entry.rangePairs
+              val (code, fromDisk) = entry.source match
                 case Some(src) => (Some(src), false)
                 case None      => (readFileText(file), true)
               code match
@@ -1539,7 +1531,7 @@ private[mcp] object McpToolsGroupB:
         }
       ),
       toolDef(
-        tool(
+        TypedTool.withArgs[LiteralTokensArgs](
           "literal_tokens",
           "Every LITERAL in the given line ranges of the given files — the syntax fact behind a " +
             "memorisation check that compares production literals with test literals. Syntax only: " +
@@ -1555,25 +1547,17 @@ private[mcp] object McpToolsGroupB:
             "returned, including 0 and 1. OUTPUT: `files` holds {uri, literals, omitted, error} " +
             "per requested file; `error` is null on success, and names the problem (no source, " +
             "does not parse) with `literals` empty otherwise. At most 2000 literals per file, " +
-            "`omitted` counting the rest.",
-          List(
-            (
-              "files",
-              "array",
-              "objects: {uri: string, ranges?: [[startLine, endLineExclusive], …], source?: string}"
-            )
-          ),
-          List("files")
+            "`omitted` counting the rest."
         ) { a =>
-          val entries = a.obj.get("files").toList.flatMap(_.arr)
+          val entries = a.files
           if entries.isEmpty then
             error("literal_tokens: `files` must hold at least one {uri} object")
           else
             val answers = entries.map { entry =>
-              val uri = argUri(entry, "uri")
-              val ranges = argRanges(entry)
+              val uri = validatedArg(DocumentUri.from(entry.uri))
+              val ranges = entry.rangePairs
               val text =
-                entry.obj.get("source").map(_.str).orElse(readFileText(root.resolve(uri.value)))
+                entry.source.orElse(readFileText(root.resolve(uri.value)))
               text match
                 case None =>
                   FileLiterals(
@@ -1588,7 +1572,7 @@ private[mcp] object McpToolsGroupB:
         }
       ),
       toolDef(
-        tool(
+        TypedTool.withArgs[ContractClausesArgs](
           "contract_clauses",
           "Every def's Stainless CONTRACT — its `require`, `ensuring` and `decreases` clauses — the " +
             "syntax fact behind a guard that keeps a human-owned contract from being edited by the " +
@@ -1607,18 +1591,16 @@ private[mcp] object McpToolsGroupB:
             "it. Only defs with at least one clause are listed. Pass `source` for the buffer's text, " +
             "else the on-disk file is read. OUTPUT: `files` holds {uri, defs, error} per requested " +
             "file; `error` is null on success, and names the problem (no source, does not parse) " +
-            "with `defs` empty otherwise.",
-          List(("files", "array", "objects: {uri: string, source?: string}")),
-          List("files")
+            "with `defs` empty otherwise."
         ) { a =>
-          val entries = a.obj.get("files").toList.flatMap(_.arr)
+          val entries = a.files
           if entries.isEmpty then
             error("contract_clauses: `files` must hold at least one {uri} object")
           else
             val answers = entries.map { entry =>
-              val uri = argUri(entry, "uri")
+              val uri = validatedArg(DocumentUri.from(entry.uri))
               val text =
-                entry.obj.get("source").map(_.str).orElse(readFileText(root.resolve(uri.value)))
+                entry.source.orElse(readFileText(root.resolve(uri.value)))
               text match
                 case None =>
                   FileContracts(
