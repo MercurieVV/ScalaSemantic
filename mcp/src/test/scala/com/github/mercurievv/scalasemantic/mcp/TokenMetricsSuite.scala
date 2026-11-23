@@ -228,6 +228,11 @@ class TokenMetricsSuite extends munit.FunSuite:
         s"Skipping token metrics comparison; missing vendor corpus dirs: ${missingVendorCorpusDirs.mkString(", ")}"
       )
 
+    assume(
+      !call("find_usages", J.obj("symbol" -> Animal)).contains("indexEmptyHint"),
+      "Skipping token metrics comparison; SemanticDB index is empty (compile with semanticdb first)"
+    )
+
     val generatedJson = json(queries)
     val generatedTable = markdownTable(queries)
 

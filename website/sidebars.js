@@ -84,6 +84,11 @@ const sidebars = {
           id: 'explanation/scala-semantic-vs-grep',
           label: 'ScalaSemantic vs grep',
         },
+        {
+          type: 'doc',
+          id: 'explanation/code-mode',
+          label: 'Programmatic use and code mode',
+        },
       ],
     },
     {
