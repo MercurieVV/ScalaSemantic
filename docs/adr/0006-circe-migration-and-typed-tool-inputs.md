@@ -125,3 +125,15 @@ The owner's answers to the three open questions, and what they change:
 
 B and W are independent and can interleave; C needs both; the parity test described above is
 written before C.
+
+## Follow-up: where the layers ended up (2026-11-23)
+
+Two changes after the stages above, both driven by the repo's own structure test:
+
+- **`domain` module.** The plain models and validated input types (package `…​.model`) moved out of
+  `analysis` into `domain` (JSON-free and engine-free; `HoleContextMapping`, the one function that
+  read a presentation-compiler type, moved to `analysis`). `wire` depends on `domain`, not on
+  `analysis`, so `analysis` tests can use the codecs without closing a module cycle.
+- **`wire.api`.** The per-tool argument and result types — compact projections of the domain, not
+  copies — moved from `mcp` into `wire.api`, beside the codecs and schemas derived from them. `mcp`
+  is left with the server and tool logic.

@@ -3,6 +3,7 @@ package com.github.mercurievv.scalasemantic.mcp
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
 import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import com.github.mercurievv.scalasemantic.wire.api.*
 import io.circe.Json
 
 import java.nio.file.Path
@@ -24,7 +25,7 @@ class ClassHierarchyFindOverloadsSchemaSuite extends munit.FunSuite:
   private def conforms(name: String, res: Json): Unit =
     assertEquals(SchemaConformance.violations(schemaOf(name), res), Nil)
 
-  private val Lookup = "com/github/mercurievv/scalasemantic/wire/api/Lookup#"
+  private val Lookup = SemSym.typeOf[Lookup[Any]]
   private val HierarchyKeys = Set(
     "symbol",
     "name",

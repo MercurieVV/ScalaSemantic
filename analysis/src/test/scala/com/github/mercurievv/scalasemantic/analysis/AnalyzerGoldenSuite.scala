@@ -27,7 +27,7 @@ class AnalyzerGoldenSuite extends munit.FunSuite:
   private val Animal = "com/github/mercurievv/scalasemantic/fixtures/Animal#"
 
   private val goldenPath = Paths.get(
-    "wire/src/test/resources/golden/find_usages_animal.json"
+    "analysis/src/test/resources/golden/find_usages_animal.json"
   )
 
   test("findUsages for Animal matches golden reference"):

@@ -91,7 +91,7 @@ final class Analyzer(
   ): Option[HoleContextResult] =
     backendFor(docUri).map { backend =>
       val r = backend.holes.at(fileUri, code, offset)
-      HoleContextResult.from(
+      HoleContextMapping.from(
         r,
         sym => symbolDefinitionRange(sym).isDefined,
         sym => definitionExcerpt(root, sym, maxLines = 12)

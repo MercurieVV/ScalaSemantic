@@ -3,6 +3,7 @@ package com.github.mercurievv.scalasemantic.mcp
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
 import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import com.github.mercurievv.scalasemantic.wire.api.*
 import io.circe.Json
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
@@ -94,7 +95,7 @@ class ResultShapingSuite extends ScalaCheckSuite:
 
   private val root: Path = Paths.get(".")
   private val tools: List[Tool] = Mcp.toolsFor(Analyzer(SemanticIndex.fromProject(".")), root)
-  private val Members = "com/github/mercurievv/scalasemantic/wire/api/FindUsagesResult#"
+  private val Members = SemSym.typeOf[FindUsagesResult]
 
   // Straight to the function `tools/call` uses, with this suite's own tool instances: going through
   // `Mcp.handle` would consult the process-global `Mcp` state (`activeTools`), which other suites

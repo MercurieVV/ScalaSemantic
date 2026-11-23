@@ -25,7 +25,7 @@ class MembersResolveImplicitsSchemaSuite extends munit.FunSuite:
     assertEquals(SchemaConformance.violations(schemaOf(name), res), Nil)
 
   // A case class: declares accessors/copy, inherits from Product/Equals/Object.
-  private val LookupType = "com/github/mercurievv/scalasemantic/wire/api/FindUsagesResult#"
+  private val LookupType = SemSym.typeOf[FindUsagesResult]
 
   // ---- members -----------------------------------------------------------------------------
 
@@ -75,7 +75,7 @@ class MembersResolveImplicitsSchemaSuite extends munit.FunSuite:
     conforms("members", missing)
     val many = call(
       "members",
-      "symbol" -> "wire/src/main/scala/com/github/mercurievv/scalasemantic/wire/api/ToolResultParts.scala"
+      "symbol" -> SemSym.mainFile("ToolResultParts.scala")
     )
     assert(many("candidates").arr.size > 1 && many("note").str.nonEmpty)
     conforms("members", many)

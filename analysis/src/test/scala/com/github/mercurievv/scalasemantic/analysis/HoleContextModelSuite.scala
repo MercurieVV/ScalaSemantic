@@ -1,6 +1,5 @@
 package com.github.mercurievv.scalasemantic.analysis
 
-import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.pc.HoleContext as H
 import com.github.mercurievv.scalasemantic.wire.AnalysisCodecs.given
 import io.circe.syntax.*
@@ -22,7 +21,7 @@ class HoleContextModelSuite extends munit.FunSuite:
   )
 
   test("conversion keeps every field and lower-cases the confidence") {
-    val m = HoleContextResult.from(
+    val m = HoleContextMapping.from(
       pcResult,
       _ == "demo/Show#",
       s => if s == "demo/Show#" then Some("trait Show[A]:\n  def show(a: A): String") else None
@@ -33,7 +32,7 @@ class HoleContextModelSuite extends munit.FunSuite:
   }
 
   test("types: project types get source=project and an excerpt, classpath types source=classpath") {
-    val m = HoleContextResult.from(
+    val m = HoleContextMapping.from(
       pcResult,
       _ == "demo/Show#",
       s => if s == "demo/Show#" then Some("trait Show[A]") else None
@@ -46,7 +45,7 @@ class HoleContextModelSuite extends munit.FunSuite:
   }
 
   test("JSON shape: keys named as the spec, confidence unconstrained serialises with empty lists") {
-    val m = HoleContextResult.from(
+    val m = HoleContextMapping.from(
       pcResult.copy(
         expected = Some(H.Expected(None, H.Confidence.Unconstrained, "no type prescribed here")),
         bindings = Nil,
@@ -62,7 +61,7 @@ class HoleContextModelSuite extends munit.FunSuite:
   }
 
   test("a project type whose excerpt cannot be read stays source=project with a null excerpt") {
-    val m = HoleContextResult.from(pcResult, _ == "demo/Show#", _ => None)
+    val m = HoleContextMapping.from(pcResult, _ == "demo/Show#", _ => None)
     val show = m.types.find(_.symbol == "demo/Show#").getOrElse(fail("no Show type"))
     assertEquals(show.source, "project")
     assertEquals(show.excerpt, None)

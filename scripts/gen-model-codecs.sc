@@ -5,7 +5,7 @@
 import java.nio.file.{Files, Path, Paths}
 
 val repo = Paths.get(args(0))
-val models = repo.resolve("analysis/src/main/scala/com/github/mercurievv/scalasemantic/model/Models.scala")
+val models = repo.resolve("domain/src/main/scala/com/github/mercurievv/scalasemantic/model/Models.scala")
 val src = Files.readString(models)
 val caseClass = """(?m)^(?:final )?case class (\w+)""".r
 val names = caseClass.findAllMatchIn(src).map(_.group(1)).toList

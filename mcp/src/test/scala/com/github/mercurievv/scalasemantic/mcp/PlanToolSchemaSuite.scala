@@ -3,6 +3,7 @@ package com.github.mercurievv.scalasemantic.mcp
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
 import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import com.github.mercurievv.scalasemantic.wire.api.*
 import io.circe.Json
 
 import java.nio.file.Path
@@ -16,8 +17,8 @@ class PlanToolSchemaSuite extends munit.FunSuite:
   private val root: Path = Paths.get(".")
   private val tools: List[Tool] = Mcp.toolsFor(Analyzer(SemanticIndex.fromProject(".")), root)
   private val Parts =
-    "wire/src/main/scala/com/github/mercurievv/scalasemantic/wire/api/ToolResultParts.scala"
-  private val Sym = "com/github/mercurievv/scalasemantic/wire/api/NotFoundResult#"
+    SemSym.mainFile("ToolResultParts.scala")
+  private val Sym = SemSym.typeOf[NotFoundResult]
 
   private def check(name: String, args: (String, J.V)*): Json =
     val t = tools.find(_.name == name).getOrElse(fail(s"no $name"))

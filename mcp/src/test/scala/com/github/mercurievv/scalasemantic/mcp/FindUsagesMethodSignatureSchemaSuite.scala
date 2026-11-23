@@ -3,6 +3,7 @@ package com.github.mercurievv.scalasemantic.mcp
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
 import com.github.mercurievv.scalasemantic.mcp.JOps.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import com.github.mercurievv.scalasemantic.wire.api.*
 import io.circe.Json
 
 import java.nio.file.Path
@@ -25,7 +26,7 @@ class FindUsagesMethodSignatureSchemaSuite extends munit.FunSuite:
     assertEquals(SchemaConformance.violations(schemaOf(name), res), Nil)
 
   private val Loc = "com/github/mercurievv/scalasemantic/mcp/McpToolsSupport.loc()."
-  private val CaseClass = "com/github/mercurievv/scalasemantic/wire/api/NotFoundResult#"
+  private val CaseClass = SemSym.typeOf[NotFoundResult]
   private val FindUsagesKeys = Set(
     "symbol",
     "name",
