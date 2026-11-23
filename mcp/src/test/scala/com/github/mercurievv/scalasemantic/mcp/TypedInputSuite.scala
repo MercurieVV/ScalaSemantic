@@ -137,6 +137,50 @@ class TypedInputSuite extends munit.FunSuite:
     assert(miss.getMessage.contains("type_at_position: invalid arguments"), miss.getMessage)
     assert(miss.getMessage.contains("line"), miss.getMessage)
 
+  test("the source tools derive their inputSchema, sharing one wording for the view options"):
+    val view = Set("format", "annotationsOnly", "symbols", "docs", "detail", "sentinel")
+    val expected: Map[String, (Set[String], Set[String])] = Map(
+      "annotated_source" -> (Set("uri") -> (view + "uri" + "write" + "baseHash")),
+      "symbol_source" -> (Set("symbol") -> (view + "symbol")),
+      "source_around_position" ->
+        (Set("file", "line", "column") -> (view + "file" + "line" + "column")),
+      "source_ranges" -> (Set("query") -> Set("query", "annotationsOnly", "docs", "detail")),
+      "document_outline" ->
+        (Set("uri") ->
+          Set("uri", "source", "query", "symbol", "includeParents", "maxDepth", "kind"))
+    )
+    def schema(name: String) =
+      allTools.find(_.name == name).getOrElse(fail(s"no $name")).inputSchema
+    expected.foreach: (name, shape) =>
+      val s = schema(name)
+      assertEquals(s("required").arr.map(_.str).toSet, shape._1, name)
+      assertEquals(s("properties").obj.keySet.toSet, shape._2, name)
+      assert(s("properties").obj.values.forall(_("description").str.nonEmpty), name)
+    List("sentinel", "format", "symbols").foreach: opt =>
+      val texts = List("annotated_source", "symbol_source", "source_around_position")
+        .map(n => schema(n)("properties")(opt)("description").str)
+      assertEquals(texts.distinct.size, 1, s"$opt wording must not drift between tools")
+
+  test("source tools reject a missing required argument by name, and still render"):
+    def call(name: String, args: (String, ujson.Value)*): ujson.Value =
+      allTools.find(_.name == name).getOrElse(fail(s"no $name")).run(ujson.Obj.from(args))
+    val e = intercept[RuntimeException](call("source_around_position", "file" -> "A.scala"))
+    assert(e.getMessage.contains("source_around_position: invalid arguments"), e.getMessage)
+    assert(e.getMessage.contains("line"), e.getMessage)
+    val src = call(
+      "annotated_source",
+      "uri" -> "mcp/src/main/scala/com/github/mercurievv/scalasemantic/mcp/ToolArgs.scala",
+      "format" -> "plain"
+    )
+    assert(src("source").str.contains("final case class FindSymbolArgs"))
+    val outline = call(
+      "document_outline",
+      "uri" -> "mcp/src/main/scala/com/github/mercurievv/scalasemantic/mcp/ToolArgs.scala",
+      "query" -> "Args",
+      "maxDepth" -> 1
+    )
+    assert(outline("filtered").bool && outline("outline").arr.nonEmpty)
+
   test("JsonBridge keeps integers integral and nesting intact"):
     val j = JsonBridge.toCirce(
       ujson.Obj("a" -> 2, "b" -> 2.5, "c" -> ujson.Arr(true, ujson.Null, "x"), "d" -> ujson.Obj())

@@ -2,6 +2,8 @@ package com.github.mercurievv.scalasemantic.mcp
 
 import io.circe.Decoder
 import sttp.tapir.Schema
+import com.github.mercurievv.scalasemantic.model.InputTypes.SourceDetail
+import com.github.mercurievv.scalasemantic.model.InputTypes.SourceFormat
 import sttp.tapir.Schema.annotations.description
 
 // Typed tool arguments (ADR 0006, stage B). One `derives` gives the decoder that reads the request
@@ -140,5 +142,125 @@ final case class SearchTextArgs(
     @description("glob on document uri; `*` matches any chars (substring match)")
     pathFilter: Option[String],
     @description("max hits to return across all files (default 200)") limit: Option[Int]
+) derives Decoder,
+      Schema
+
+/** Descriptions shared by every tool that renders source (one constant per option, so the wording
+  * cannot drift between tools).
+  */
+object ViewDesc:
+  final val Format: String =
+    "annotated (default, gutter + ⟹ notes) | compilable (// ⟹ comments, valid Scala) | plain " +
+      "| diff (unified diff, source → enriched, for green/red rendering)"
+  final val AnnotationsOnly: String =
+    "return only the lines that carry an annotation, not the whole file (default false)"
+  final val Symbols: String =
+    "append a legend mapping each type used to its full package path (default false); with " +
+      "format=compilable it also explodes wildcard/`given` imports into the explicit names used"
+  final val Docs: String = "keep (default) | strip — drop comments for a leaner token view"
+  final val Detail: String =
+    "terse (default) | full — render a merged elaborated expression at each call site"
+  final val Sentinel: String =
+    "append each note as a machine-strippable `/*SEM:...:SEM*/` block comment at the end of its line " +
+      "instead of a `⟹` note (default false). Reversible: " +
+      "`SourceSentinel.strip` (analysis module) removes exactly this block and nothing else — " +
+      "real comments elsewhere on the line survive untouched — so edited-and-annotated text can " +
+      "be stripped back to plain source before it is persisted."
+
+/** The rendering options the source tools share (`format`, `annotationsOnly`, `symbols`, `docs`,
+  * `detail`, `sentinel`); each tool's argument class carries them as its own fields.
+  */
+trait ViewOpts:
+  def format: Option[String]
+  def annotationsOnly: Option[Boolean]
+  def symbols: Option[Boolean]
+  def docs: Option[String]
+  def detail: Option[String]
+  def sentinel: Option[Boolean]
+
+  final def docsMode: String = docs.getOrElse("")
+  final def detailValue: SourceDetail = SourceDetail.from(detail.getOrElse(""))
+  final def formatValue: SourceFormat = SourceFormat.from(format.getOrElse(""))
+  final def symbolsOn: Boolean = symbols.getOrElse(false)
+  final def annotationsOnlyOn: Boolean = annotationsOnly.getOrElse(false)
+  final def sentinelOn: Boolean = sentinel.getOrElse(false)
+
+final case class AnnotatedSourceArgs(
+    @description("document uri as it appears in SemanticDB (path relative to project root)")
+    uri: String,
+    @description(
+      "the file's edited full text — switches this tool to WRITE mode: /*SEM:...:SEM*/ blocks are " +
+        "stripped and the result is saved to uri. Send the buffer you read, edited in place, " +
+        "with its /*SEM:...:SEM*/ blocks still where they were — stripping them yourself is " +
+        "unnecessary work on lines your edit does not concern. Omit to read instead."
+    )
+    write: Option[String],
+    @description(
+      "write mode only: the `sha256` from an earlier read of this uri — the write is rejected " +
+        "if the file no longer matches (a concurrent edit happened)."
+    )
+    baseHash: Option[String],
+    @description(ViewDesc.Format) format: Option[String],
+    @description(ViewDesc.AnnotationsOnly) annotationsOnly: Option[Boolean],
+    @description(ViewDesc.Symbols) symbols: Option[Boolean],
+    @description(ViewDesc.Docs) docs: Option[String],
+    @description(ViewDesc.Detail) detail: Option[String],
+    @description(ViewDesc.Sentinel) sentinel: Option[Boolean]
+) extends ViewOpts derives Decoder, Schema
+
+final case class SymbolSourceArgs(
+    @description("SemanticDB symbol OR dotted FQN of the definition") symbol: String,
+    @description(ViewDesc.Format) format: Option[String],
+    @description(ViewDesc.AnnotationsOnly) annotationsOnly: Option[Boolean],
+    @description(ViewDesc.Symbols) symbols: Option[Boolean],
+    @description(ViewDesc.Docs) docs: Option[String],
+    @description(ViewDesc.Detail) detail: Option[String],
+    @description(ViewDesc.Sentinel) sentinel: Option[Boolean]
+) extends ViewOpts derives Decoder, Schema
+
+final case class SourceAroundPositionArgs(
+    @description("document uri (path relative to project root)") file: String,
+    @description("0-based line of the position") line: Int,
+    @description("0-based column of the position") column: Int,
+    @description(ViewDesc.Format) format: Option[String],
+    @description(ViewDesc.AnnotationsOnly) annotationsOnly: Option[Boolean],
+    @description(ViewDesc.Symbols) symbols: Option[Boolean],
+    @description(ViewDesc.Docs) docs: Option[String],
+    @description(ViewDesc.Detail) detail: Option[String],
+    @description(ViewDesc.Sentinel) sentinel: Option[Boolean]
+) extends ViewOpts derives Decoder, Schema
+
+/** `source_ranges` renders enriched slices only, so it exposes just three of the shared options. */
+final case class SourceRangesArgs(
+    @description("`target[startLine-endLine;...];target2[startLine-endLine]` — see description")
+    query: String,
+    @description(
+      "return only the lines that carry an annotation, not the whole range (default false)"
+    )
+    annotationsOnly: Option[Boolean],
+    @description(ViewDesc.Docs) docs: Option[String],
+    @description(
+      "terse | full (default) — merge multiple insertions at one call site into one note"
+    )
+    detail: Option[String]
+) extends ViewOpts derives Decoder, Schema:
+  val format: Option[String] = None
+  val symbols: Option[Boolean] = None
+  val sentinel: Option[Boolean] = None
+
+final case class DocumentOutlineArgs(
+    @description("document uri as it appears in SemanticDB (path relative to project root)")
+    uri: String,
+    @description("current full text of the file at `uri`; enables the live PC overlay")
+    source: Option[String],
+    @description("keep declarations whose name contains this, case-insensitive")
+    query: Option[String],
+    @description("keep the declaration with exactly this SemanticDB symbol")
+    symbol: Option[String],
+    @description("keep the enclosing scopes of a match as context (default true)")
+    includeParents: Option[Boolean],
+    @description("levels of nesting to keep below each match (1 = the match alone)")
+    maxDepth: Option[Int],
+    @description("keep only this kind, e.g. CLASS, TRAIT, OBJECT, METHOD") kind: Option[String]
 ) derives Decoder,
       Schema
