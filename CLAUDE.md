@@ -7,15 +7,16 @@ MCP server doing deep semantic analysis on Scala projects via SemanticDB — cap
   stryker4s mutation testing are deferred, disabled in CI (`if: false`) until each has a working
   Mill path, see `docs/MILL_MIGRATION.md`)
 - `org.scalameta:scalameta:4.13.9` — SemanticDB protobuf API (`scala.meta.internal.semanticdb`)
-- `com.lihaoyi:upickle:4.2.1` — JSON for MCP wire protocol
+- `io.circe:circe-core/circe-parser:0.14.17` — JSON for the MCP wire protocol; `tapir-core` derives JSON Schema (ADR 0006)
 - `org.scalameta:munit:1.2.3` — tests
 - `semanticdbEnabled := true` — project emits its own SemanticDB; analyzer dogfoods on this repo.
 
 ## Layout
-Three Mill modules (layer per module), package base `com.github.mercurievv.scalasemantic`:
+Mill modules (layer per module; `pc` and `launcher` omitted here), package base `com.github.mercurievv.scalasemantic`:
 ```
 core/      …​.semanticdb   SemanticIndex — loads/indexes *.semanticdb (no JSON, no MCP)
-analysis/  …​.analysis, …​.model   Analyzer + upickle result models; dependsOn core
+analysis/  …​.analysis, …​.model   Analyzer + plain result models (JSON-free); dependsOn core
+wire/      …​.wire      circe codecs + tapir schemas of the analysis models; dependsOn analysis
 mcp/       …​.mcp, Main    stdio JSON-RPC server + entrypoint; dependsOn analysis (test->test too)
 ```
 SemanticDB is emitted per module under `out/<module>/compile.dest/classes/META-INF/semanticdb/**`.
@@ -24,7 +25,7 @@ unforked tests run with cwd = repo root. `mcp` test-depends on `analysis` so fix
 
 ## Architecture
 3 layers: **MCP stdio JSON-RPC** → **analysis engine** → **SemanticIndex**.
-- No Scala MCP SDK exists — JSON-RPC is hand-rolled over stdin/stdout with upickle.
+- No Scala MCP SDK exists — JSON-RPC is hand-rolled over stdin/stdout with circe.
 - Signature rendering is a custom `Type`/`Signature` printer; implicit params detected via `SymbolInformation.Property.IMPLICIT` bitmask.
 - Call graph: edges from `SymbolOccurrence` references within a method's definition range; BFS for path-find.
 
@@ -35,7 +36,7 @@ rename-plan, move-plan, extract-method-plan.
 
 ## Conventions
 - Symbol strings follow SemanticDB grammar (descriptors end in `#` type, `.` term, `/` package, `(...)` method disambig).
-- Result types are `upickle` case classes with derived `ReadWriter`.
+- Result types are plain case classes; their circe `Encoder`/`Decoder` and tapir `Schema` are derived once in the `wire` module (analysis models) or beside the tool (typed results), never mirrored.
 - Validate every feature by dogfooding against this repo's own SemanticDB.
 - New scripts under `scripts/` should preferably be written as scala-cli scripts (`.sc`, `#!/usr/bin/env scala-cli`
   shebang, `//> using scala 3.8.4`), not shell — see `scripts/smoke-tests-local-run/smoke-test-mill.sc` or `scripts/compare_grep.sc` for

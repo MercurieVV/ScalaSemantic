@@ -1,6 +1,6 @@
 # ADR 0006 — Moving the MCP layer from upickle to circe, with typed tool inputs
 
-- **Status:** accepted 2026-11-23 — stage 0 is done; the owner's answers to the open questions are
+- **Status:** accepted 2026-11-23; implemented 2026-11-23 (B typed inputs for 32 of 33 tools, W wire module, C circe `Tool.run`, E upickle removed) — the owner's answers to the open questions are
   recorded under [Decisions taken](#decisions-taken), which also revise the stage list (stage A
   dropped, a `wire` module added)
 - **Date:** 2026-11-23
