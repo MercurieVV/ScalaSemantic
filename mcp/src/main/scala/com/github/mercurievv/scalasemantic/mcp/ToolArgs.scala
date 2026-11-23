@@ -1,9 +1,9 @@
 package com.github.mercurievv.scalasemantic.mcp
 
-import io.circe.Decoder
-import sttp.tapir.Schema
 import com.github.mercurievv.scalasemantic.model.InputTypes.SourceDetail
 import com.github.mercurievv.scalasemantic.model.InputTypes.SourceFormat
+import io.circe.Decoder
+import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.description
 
 // Typed tool arguments (ADR 0006, stage B). One `derives` gives the decoder that reads the request
@@ -149,18 +149,18 @@ final case class SearchTextArgs(
   * cannot drift between tools).
   */
 object ViewDesc:
-  final val Format: String =
+  inline val Format =
     "annotated (default, gutter + ⟹ notes) | compilable (// ⟹ comments, valid Scala) | plain " +
       "| diff (unified diff, source → enriched, for green/red rendering)"
-  final val AnnotationsOnly: String =
+  inline val AnnotationsOnly =
     "return only the lines that carry an annotation, not the whole file (default false)"
-  final val Symbols: String =
+  inline val Symbols =
     "append a legend mapping each type used to its full package path (default false); with " +
       "format=compilable it also explodes wildcard/`given` imports into the explicit names used"
-  final val Docs: String = "keep (default) | strip — drop comments for a leaner token view"
-  final val Detail: String =
+  inline val Docs = "keep (default) | strip — drop comments for a leaner token view"
+  inline val Detail =
     "terse (default) | full — render a merged elaborated expression at each call site"
-  final val Sentinel: String =
+  inline val Sentinel =
     "append each note as a machine-strippable `/*SEM:...:SEM*/` block comment at the end of its line " +
       "instead of a `⟹` note (default false). Reversible: " +
       "`SourceSentinel.strip` (analysis module) removes exactly this block and nothing else — " +
