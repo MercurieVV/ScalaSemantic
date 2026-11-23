@@ -21,7 +21,40 @@ object SchemaConformance:
           .getOrElse(ujson.Obj("type" -> "unresolved-ref"))
       case None => s
 
+  /** Adds the `["T", "null"]` union and the bare `{"type": "null"}` to what [[checkOne]] covers. */
   private def check(
+      root: ujson.Value,
+      node: ujson.Value,
+      v: ujson.Value,
+      at: String,
+      extra: Set[String]
+  ): List[String] =
+    val s = resolve(root, node)
+    s.obj.get("type") match
+      case Some(ts: ujson.Arr) =>
+        val names = ts.arr.toList.map(_.str)
+        if v == ujson.Null && names.contains("null") then Nil
+        else
+          val tries = names
+            .filterNot(_ == "null")
+            .map(n =>
+              check(
+                root,
+                ujson.Obj.from(s.obj.toList.map {
+                  case ("type", _) => "type" -> ujson.Str(n)
+                  case other       => other
+                }),
+                v,
+                at,
+                extra
+              )
+            )
+          if tries.exists(_.isEmpty) then Nil else List(s"$at: matches no type of $names")
+      case Some(ujson.Str("null")) =>
+        if v == ujson.Null then Nil else List(s"$at: expected null")
+      case _ => checkOne(root, node, v, at, extra)
+
+  private def checkOne(
       root: ujson.Value,
       node: ujson.Value,
       v: ujson.Value,
@@ -47,7 +80,10 @@ object SchemaConformance:
                     props.get(k) match
                       case Some(ps)                  => check(root, ps, x, s"$at.$k", Set.empty)
                       case None if extra.contains(k) => Nil
-                      case None                      => List(s"$at: undeclared '$k'")
+                      case None                      =>
+                        s.obj.get("additionalProperties") match
+                          case Some(vs) => check(root, vs, x, s"$at.$k", Set.empty)
+                          case None     => List(s"$at: undeclared '$k'")
               case _ => List(s"$at: expected object")
           case Some("array") =>
             v match
