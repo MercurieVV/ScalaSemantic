@@ -1632,7 +1632,7 @@ private[mcp] object McpToolsGroupB:
         }
       ),
       toolDef(
-        tool(
+        TypedTool.withArgs[HoleContextArgs](
           "hole_context",
           "Typed-hole context: the type the compiler expects at a 0-based (line, character) — a `???` " +
             "or any expression — with `confidence` (`exact` when the enclosing code prescribes it, " +
@@ -1644,30 +1644,19 @@ private[mcp] object McpToolsGroupB:
             "`types` (the expected type's definitions; project types carry an excerpt). Pass " +
             "`source` with the file's CURRENT text (uncompiled is fine); without it the on-disk file is " +
             "read (marked `pcFallback`). Needs the server started with a classpath. Use it one hole at a " +
-            "time — see the typed-holes skill.",
-          List(
-            (
-              "uri",
-              "string",
-              "document uri as it appears in SemanticDB (path relative to project root)"
-            ),
-            ("line", "integer", "0-based line"),
-            ("character", "integer", "0-based column"),
-            ("source", "string", "current full text of the file at `uri`")
-          ),
-          List("uri", "line", "character")
+            "time — see the typed-holes skill."
         ) { a =>
-          val uri = argUri(a, "uri")
+          val uri = validatedArg(DocumentUri.from(a.uri))
           val file = root.resolve(uri.value)
           // As for `type_at_position`: the pcFallback hint says the file has no compiled entry,
           // so it is only true for a disk read of a uri the index does not know.
-          val (code, fromDisk) = a.obj.get("source").map(_.str) match
+          val (code, fromDisk) = a.source match
             case Some(src) => (Some(src), false)
             case None      => (readFileText(file), !az.isDocumentIndexed(uri))
           code match
             case None => notFound(s"no source: pass `source` or make ${uri.value} exist on disk")
             case Some(text) =>
-              val pos = argPosition(a, "line", "character")
+              val pos = validatedArg(SourcePosition.from(a.line, a.character))
               val offset = offsetOf(text, pos.lineValue, pos.characterValue)
               az.holeContext(root, file.toUri, text, uri.value, offset) match
                 case None =>
@@ -1773,7 +1762,7 @@ private[mcp] object McpToolsGroupC:
   def tools(az: Analyzer, root: java.nio.file.Path): List[Tool] =
     List(
       toolDef(
-        tool(
+        TypedTool.withArgs[StructureArgs](
           "structure",
           "Whole-project dependency metrics from the symbol graph — use to judge what matters and where " +
             "to start. Per in-project type: afferent coupling Ca (fan-in = how many depend on it), " +
@@ -1786,45 +1775,16 @@ private[mcp] object McpToolsGroupC:
             "and `moduleEdges` (the module coupling surface; edges marked CYCLE are mutual-dependency " +
             "violations). High centrality / Ca, low instability / layer = core to " +
             "understand first. A cyclic node shares its cycle's layer (intra-cycle order undefined) and " +
-            "is marked `inCycle` — never given a faked layer.",
-          List(
-            (
-              "sort",
-              "string",
-              "rank symbols by: afferent | efferent | instability | layer | centrality | sccSize (default afferent)"
-            ),
-            (
-              "dimension",
-              "string",
-              "which graph's metrics per symbol: combined | extends | typeRef | memberType | call | implicit (default combined)"
-            ),
-            (
-              "pathFilter",
-              "string",
-              "glob on a type's module (e.g. `core`, `*mcp*`) to scope the list"
-            ),
-            ("limit", "integer", "max symbols to return (default 30)"),
-            (
-              "detailed",
-              "boolean",
-              "include the per-dimension Ca/Ce/instability breakdown (default false)"
-            ),
-            (
-              "graph",
-              "boolean",
-              "include a `mermaid` string field rendering `moduleEdges` as a `graph TD` diagram (default false)"
-            )
-          ),
-          Nil
+            "is marked `inCycle` — never given a faked layer."
         ) { a =>
           val res = az.structure()
-          val dim = argDimension(a, "dimension")
-          val sortKey = argSort(a, "sort")
+          val dim = validatedArg(StructureDimension.from(a.dimension.getOrElse("")))
+          val sortKey = validatedArg(StructureSort.from(a.sort.getOrElse("")))
           val ranked = az.rankedStructureSymbols(
             dim,
             sortKey,
-            argPositiveInt(a, "limit", 30),
-            a.obj.get("pathFilter").map(_.str)
+            validatedArg(PositiveInt.from(a.limit.getOrElse(30), "limit")),
+            a.pathFilter
           )
           val rankedSymbols = ranked.map(_._1.symbol).toSet
           val dependencies = res.dependencies.filter(e =>
@@ -1877,7 +1837,7 @@ private[mcp] object McpToolsGroupC:
                   Some("centrality" -> ujson.Num(round3(m.centrality))),
                   opt(m.inCycle, "inCycle" -> ujson.Bool(true)),
                   opt(
-                    argBool(a, "detailed", false),
+                    a.detailed.getOrElse(false),
                     "perDimension" -> ujson.Obj.from(s.perDimension.toList.sortBy(_._1).map {
                       (d, dm) =>
                         d -> (jobj(
@@ -1900,7 +1860,7 @@ private[mcp] object McpToolsGroupC:
               })
             ),
             opt(
-              argBool(a, "graph", false),
+              a.graph.getOrElse(false),
               "mermaid" -> ujson.Str(structureMermaid(res.moduleEdges))
             )
           )
@@ -2186,19 +2146,17 @@ private[mcp] object McpToolsGroupD:
   def tools(az: Analyzer, root: java.nio.file.Path): List[Tool] =
     List(
       toolDef(
-        tool(
+        TypedTool.withArgs[RenamePlanArgs](
           "rename_plan",
           "The precise edits to rename a symbol everywhere it is used. Returns every compiler-resolved " +
             "occurrence of the name (definitions + references) as `uri:line:col-col` ranges to replace " +
             "with the new name — no grep over-match (comments, strings, unrelated same-named identifiers " +
-            "are never touched). The server is read-only: apply the returned edits yourself.",
-          List(
-            ("symbol", "string", "the symbol to rename"),
-            ("newName", "string", "the new simple name")
-          ),
-          List("symbol", "newName")
+            "are never touched). The server is read-only: apply the returned edits yourself."
         ) { a =>
-          val p = az.renamePlan(argSymbol(a, "symbol"), argIdentifier(a, "newName"))
+          val p = az.renamePlan(
+            validatedArg(SemanticDbSymbol.from(a.symbol)),
+            validatedArg(ScalaIdentifier.from(a.newName))
+          )
           jobj(
             Some("symbol" -> ujson.Str(p.symbol)),
             Some("rename" -> ujson.Str(s"${p.fromName} -> ${p.toName}")),
@@ -2214,28 +2172,16 @@ private[mcp] object McpToolsGroupD:
         }
       ),
       toolDef(
-        tool(
+        TypedTool.withArgs[BatchRenamePlanArgs](
           "batch_rename_plan",
           "Renames multiple symbols in one request by running `rename_plan` once per entry, then " +
             "detecting conflicts across the results. IMPORTANT LIMITATION: conflict detection only " +
             "catches literal edit-range overlaps (two requested renames touching the same source span) " +
             "— it does NOT detect two different symbols being renamed to the same `newName` (a semantic " +
             "collision at a shared call site), which remains the caller's responsibility. The server is " +
-            "read-only: apply the returned edits yourself.",
-          List(
-            (
-              "renames",
-              "array",
-              "list of {symbol: string, newName: string} entries to rename in one batch"
-            )
-          ),
-          List("renames")
+            "read-only: apply the returned edits yourself."
         ) { a =>
-          val requests = a.obj
-            .get("renames")
-            .map(_.arr.toList)
-            .getOrElse(Nil)
-            .map(r => RenameRequest(r.obj("symbol").str, r.obj("newName").str))
+          val requests = a.renames.map(r => RenameRequest(r.symbol, r.newName))
           val plan = az.batchRenamePlan(requests)
           def editStr(e: RenameEdit): String =
             s"${e.uri}:${e.range.start.line}:${e.range.start.character}-${e.range.end.character}"
@@ -2338,7 +2284,7 @@ private[mcp] object McpToolsGroupD:
         }
       ),
       toolDef(
-        tool(
+        TypedTool.withArgs[MovePlanArgs](
           "move_plan",
           "The edits to move a top-level definition (class/object/trait/def/val) to another package " +
             "while keeping every call and usage compiling — not just the definition itself. Three parts: " +
@@ -2346,14 +2292,12 @@ private[mcp] object McpToolsGroupD:
             "`reference` to it across the project (so you can confirm nothing is missed); and the per-file " +
             "`imports` to add/remove, since the move changes the symbol's fully-qualified name (a file " +
             "already in the destination package needs none). `newOwner` is the destination package symbol, " +
-            "e.g. `com/foo/bar/`; the simple name is unchanged. Read-only — apply the edits yourself.",
-          List(
-            ("symbol", "string", "the symbol to move"),
-            ("newOwner", "string", "destination package symbol, e.g. `com/foo/bar/`")
-          ),
-          List("symbol", "newOwner")
+            "e.g. `com/foo/bar/`; the simple name is unchanged. Read-only — apply the edits yourself."
         ) { a =>
-          val p = az.movePlan(argSymbol(a, "symbol"), argPackageSymbol(a, "newOwner"))
+          val p = az.movePlan(
+            validatedArg(SemanticDbSymbol.from(a.symbol)),
+            validatedArg(PackageSymbol.from(a.newOwner))
+          )
           jobj(
             Some("symbol" -> ujson.Str(p.symbol)),
             Some("move" -> ujson.Str(s"${p.fromFqn} -> ${p.toFqn}")),
@@ -2376,7 +2320,7 @@ private[mcp] object McpToolsGroupD:
         }
       ),
       toolDef(
-        tool(
+        TypedTool.withArgs[ExtractMethodPlanArgs](
           "extract_method_plan",
           "The edits to extract a selected source range into a new method — both the new method AND the " +
             "call that replaces the selection. From the compiler's resolved symbols/types in the range: " +
@@ -2386,33 +2330,23 @@ private[mcp] object McpToolsGroupD:
             "exact; an inferred local val whose type SemanticDB did not record renders as `?` for you to " +
             "fill. Give the selection as start/end line+character (0-based, end exclusive). Pass `source` " +
             "(the file's CURRENT text) to analyse a buffer edited since — or never — compiled (needs a " +
-            "classpath-started server). Read-only — apply the edits yourself.",
-          List(
-            ("uri", "string", "document uri (path relative to project root)"),
-            ("startLine", "integer", "0-based start line of the selection"),
-            ("startCharacter", "integer", "0-based start column of the selection"),
-            ("endLine", "integer", "0-based end line of the selection (exclusive end)"),
-            ("endCharacter", "integer", "0-based end column of the selection (exclusive)"),
-            ("methodName", "string", "name for the extracted method (default `extracted`)"),
-            (
-              "source",
-              "string",
-              "current full text of the file at `uri`; enables the live PC overlay"
-            )
-          ),
-          List("uri", "startLine", "startCharacter", "endLine", "endCharacter")
+            "classpath-started server). Read-only — apply the edits yourself."
         ) { a =>
-          val uri = argUri(a, "uri")
-          val name = argIdentifier(a, "methodName", "extracted")
+          val uri = validatedArg(DocumentUri.from(a.uri))
+          val name = validatedArg(
+            ScalaIdentifier.from(a.methodName.filter(_.nonEmpty).getOrElse("extracted"))
+          )
           // PC-only: extraction is a single-file analysis, so when `source` is given query the PC's
           // regenerated document alone rather than overlaying the (stale-for-this-file) disk index.
-          val engine = a.obj.get("source").map(_.str) match
+          val engine = a.source match
             case Some(src) =>
               az.bufferOnly(root.resolve(uri.value).toUri, src, uri.value).getOrElse(az)
             case None => az
           engine.extractMethodPlan(
             uri,
-            argRange(a),
+            validatedArg(
+              SourceRange.from(a.startLine, a.startCharacter, a.endLine, a.endCharacter)
+            ),
             name
           ) match
             case None    => notFoundUri(uri.value)
@@ -2435,7 +2369,7 @@ private[mcp] object McpToolsGroupD:
         }
       ),
       toolDef(
-        tool(
+        TypedTool.withArgs[ValueFlowArgs](
           "value_flow",
           "Trace how the value held by a val/binding/parameter propagates through the codebase — a BFS " +
             "over the value's references that follows it across method boundaries (into a RENAMED " +
@@ -2449,40 +2383,25 @@ private[mcp] object McpToolsGroupD:
             "| type_widened | discarded | external_boundary | implicit_boundary — the last when a value " +
             "consumed as an implicit argument has no further in-project references) and `truncatedAt` " +
             "(nodes cut by `maxDepth`). Identify the start binding by `symbol`, or by `file` + `line` + " +
-            "`column` (0-based) for a source position.",
-          List(
-            ("symbol", "string", "SemanticDB symbol of the val/binding/parameter to trace"),
-            (
-              "file",
-              "string",
-              "document uri (relative to project root); with `line`/`column`, an alternative to `symbol`"
-            ),
-            ("line", "integer", "0-based line of the binding (with `file` + `column`)"),
-            ("column", "integer", "0-based column of the binding (with `file` + `line`)"),
-            ("maxDepth", "integer", "max flow hops to follow from the root (default 5)"),
-            (
-              "stopOnTypeWidening",
-              "boolean",
-              "do not expand a flow into a binding of a different (widened) type (default true)"
-            )
-          ),
-          Nil
+            "`column` (0-based) for a source position."
         ) { a =>
           val symOpt: Option[SemanticDbSymbol] =
-            a.obj.get("symbol").map(_.str).filter(_.nonEmpty) match
-              case Some(_) => Some(argSymbol(a, "symbol"))
+            a.symbol.filter(_.nonEmpty) match
+              case Some(s) => Some(validatedArg(SemanticDbSymbol.from(s)))
               case None    =>
-                a.obj.get("file").map(_.str).filter(_.nonEmpty).flatMap { _ =>
-                  az.typeAtPosition(argUri(a, "file"), argPosition(a, "line", "column"))
-                    .flatMap(t => SemanticDbSymbol.from(t.symbol).toOption)
+                a.file.filter(_.nonEmpty).flatMap { f =>
+                  az.typeAtPosition(
+                    validatedArg(DocumentUri.from(f)),
+                    validatedArg(SourcePosition.from(a.line.getOrElse(0), a.column.getOrElse(0)))
+                  ).flatMap(t => SemanticDbSymbol.from(t.symbol).toOption)
                 }
           symOpt match
             case None      => jobj(Some("found" -> ujson.Bool(false)))
             case Some(sym) =>
               val r = az.valueFlow(
                 sym,
-                argPositiveInt(a, "maxDepth", 5),
-                argBool(a, "stopOnTypeWidening", true)
+                validatedArg(PositiveInt.from(a.maxDepth.getOrElse(5), "maxDepth")),
+                a.stopOnTypeWidening.getOrElse(true)
               )
               def nodeJson(n: ValueFlowNode): ujson.Value =
                 jobj(
@@ -2527,28 +2446,17 @@ private[mcp] object McpToolsGroupD:
         }
       ),
       toolDef(
-        tool(
+        TypedTool.withArgs[SmartCodeDuplicationsArgs](
           "smart_code_duplications",
           "Analyze code duplications (clones) across the project or scoped by path. Normalizes ASTs " +
             "by abstracting over variable/internal names, literal values, and types, reporting identical " +
             "structures. Excludes nested blocks that are already reported as part of a larger clone group. " +
             "Pass `showSource: true` to also get the duplicated source lines for every occurrence " +
-            "(as a `groupsSource` field), gutter-numbered like `annotated_source`'s `plain` format.",
-          List(
-            ("minSize", "integer", "minimum number of AST nodes to consider (default 15)"),
-            ("pathFilter", "string", "glob on the document uri; `*` matches any chars"),
-            (
-              "showSource",
-              "boolean",
-              "when true, also return `groupsSource`: each group's occurrences with their duplicated " +
-                "source lines as a gutter-numbered `snippet` (default false)"
-            )
-          ),
-          List()
+            "(as a `groupsSource` field), gutter-numbered like `annotated_source`'s `plain` format."
         ) { a =>
-          val minSize = argPositiveInt(a, "minSize", 15)
-          val pathFilter = a.obj.get("pathFilter").map(_.str)
-          val showSource = argBool(a, "showSource", false)
+          val minSize = validatedArg(PositiveInt.from(a.minSize.getOrElse(15), "minSize"))
+          val pathFilter = a.pathFilter
+          val showSource = a.showSource.getOrElse(false)
           val res = az.analyzeDuplications(root, minSize, pathFilter)
           jobj(
             Some("groupsCount" -> ujson.Num(res.groups.size)),
