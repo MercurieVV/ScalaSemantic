@@ -733,6 +733,7 @@
   "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.the plan and analysis tools derive their inputSchema from typed arguments",
   "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.the source tools derive their inputSchema, sharing one wording for the view options",
   "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.the symbol-lookup tools derive their inputSchema from typed arguments",
+  "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.the workspace tools and output_schema derive their inputSchema too",
   "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.type_at_position and search_text still answer, and reject a missing required argument",
   "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.unknown arguments are ignored, and shared shaping arguments are not unknown",
   "com.github.mercurievv.scalasemantic.mcp.TypedInputSuite.unknown arguments are logged only when the warning is switched on",

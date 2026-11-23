@@ -277,6 +277,27 @@ class TypedInputSuite extends munit.FunSuite:
     )
     assertEquals(ok("files")(0)("literals")(0)("value").str, "42")
 
+  test("the workspace tools and output_schema derive their inputSchema too"):
+    val expected: Map[String, (Set[String], Set[String])] = Map(
+      "set_workspace_root" -> (Set("path") -> Set("path")),
+      "refresh_workspace" -> (Set.empty[String] -> Set("path", "compile")),
+      "output_schema" -> (Set.empty[String] -> Set("tool"))
+    )
+    expected.foreach: (name, shape) =>
+      val s = allTools.find(_.name == name).getOrElse(fail(s"no $name")).inputSchema
+      val required = s.obj.get("required").map(_.arr.map(_.str).toSet).getOrElse(Set.empty)
+      assertEquals(required, shape._1, name)
+      assertEquals(s("properties").obj.keySet.toSet, shape._2, name)
+    val e = intercept[RuntimeException](
+      allTools.find(_.name == "set_workspace_root").getOrElse(fail("none")).run(ujson.Obj())
+    )
+    assert(e.getMessage.contains("set_workspace_root: invalid arguments"), e.getMessage)
+    val one = allTools
+      .find(_.name == "output_schema")
+      .getOrElse(fail("none"))
+      .run(ujson.Obj("tool" -> "find_symbol"))
+    assert(one.obj.nonEmpty)
+
   test("JsonBridge keeps integers integral and nesting intact"):
     val j = JsonBridge.toCirce(
       ujson.Obj("a" -> 2, "b" -> 2.5, "c" -> ujson.Arr(true, ujson.Null, "x"), "d" -> ujson.Obj())

@@ -22,7 +22,7 @@ class CallGraphSchemaSuite extends munit.FunSuite:
     assertEquals(SchemaConformance.violations(schemaOf(name), res), Nil)
 
   private val Pkg = "com/github/mercurievv/scalasemantic/mcp/"
-  private val Caller = Pkg + "OutputSchemaResources.tool()." // calls McpToolsSupport.tool directly
+  private val Caller = Pkg + "TypedTool.withArgs()." // calls McpToolsSupport.tool directly
   private val Callee = Pkg + "McpToolsSupport.tool()."
 
   // ---- call_path ---------------------------------------------------------------------------
@@ -35,7 +35,7 @@ class CallGraphSchemaSuite extends munit.FunSuite:
   test("call_path: a direct call is reachable, with the path (edges only when detailed)"):
     val res = call("call_path", "from" -> Caller, "to" -> Callee)
     assertEquals(res("reachable").bool, true)
-    assertEquals(res("path").arr.toList.map(_.str), List("tool", "tool"))
+    assertEquals(res("path").arr.toList.map(_.str), List("withArgs", "tool"))
     assert(!res.obj.contains("edges"))
     conforms("call_path", res)
     val detailed = call("call_path", "from" -> Caller, "to" -> Callee, "detailed" -> true)
