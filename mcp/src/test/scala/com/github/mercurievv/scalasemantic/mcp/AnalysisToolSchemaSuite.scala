@@ -16,6 +16,10 @@ import java.nio.file.Paths
   */
 class AnalysisToolSchemaSuite extends munit.FunSuite:
 
+  // `structure` with a call graph over the whole repo takes 30-40s on a CI runner (munit default: 30s).
+  override val munitTimeout: scala.concurrent.duration.Duration =
+    scala.concurrent.duration.Duration(180, "s")
+
   private val root: Path = Paths.get(".")
   private val tools: List[Tool] = Mcp.toolsFor(Analyzer(SemanticIndex.fromProject(".")), root)
   private val Parts =
