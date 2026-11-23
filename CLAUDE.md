@@ -3,9 +3,7 @@
 MCP server doing deep semantic analysis on Scala projects via SemanticDB — capabilities beyond standard LSP/Metals.
 
 ## Stack
-- Scala 3.8.4, Mill 1.1.7 (build tool; `build.sbt`/`project/` deleted — Sonatype publish and
-  stryker4s mutation testing are deferred, disabled in CI (`if: false`) until each has a working
-  Mill path, see `docs/MILL_MIGRATION.md`)
+- Scala 3.8.4, Mill 1.1.7 (build tool; `build.sbt`/`project/` deleted; Maven Central publish is Mill-native via `SonatypeCentralPublishModule`, see `docs/MILL_MIGRATION.md`)
 - `org.scalameta:scalameta:4.13.9` — SemanticDB protobuf API (`scala.meta.internal.semanticdb`)
 - `io.circe:circe-core/circe-parser:0.14.17` — JSON for the MCP wire protocol; `tapir-core` derives JSON Schema (ADR 0006)
 - `org.scalameta:munit:1.2.3` — tests
@@ -67,9 +65,7 @@ When using Claude/agentic workflows to organize project tasks:
 ./mill mcp.runMain com.github.mercurievv.scalasemantic.mcpServer <root>  # start the server
 ```
 `scalafixAll` is NOT in `prePush` right now — no Mill 1.x build of `mill-scalafix` exists yet
-(see `docs/MILL_MIGRATION.md` §2). `build.sbt`/`project/` are gone; do not use `sbt` at all —
-the CI `publish` job (`sbt-ci-release`) and `mutation.yml` (stryker4s) are both gated `if: false`
-pending a Mill 1.x path for each.
+(see `docs/MILL_MIGRATION.md` §2). `build.sbt`/`project/` are gone; do not use `sbt` at all.
 
 Agent worktrees live at `./.worktrees/<branch>`. See `scripts/worktree-new.sh`.
 
@@ -89,7 +85,7 @@ those parameters.
 PR-based: branch protection on master, squash-merge PRs with **Conventional-Commit titles**
 (`feat:`, `fix:`, `perf:`, `feat(scope)!:` for breaking; `docs/refactor/test/chore/ci/build/style`
 for everything else). Version is the git tag (`vX.Y.Z`); pushing a tag publishes to Maven Central
-via `sbt-ci-release`.
+via Mill (`SonatypeCentralPublishModule/publishAll`, signed with the `PGP_*` secrets).
 
 Cut a release on demand: `scripts/bump-{fix,minor,major}.sh` tags the latest `origin/master` commit
 and pushes the tag (no opt-in — pushing is unconditional). The tag push drives CI: Maven publish +
