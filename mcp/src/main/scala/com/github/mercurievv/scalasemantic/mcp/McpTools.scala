@@ -12,7 +12,7 @@ import com.github.mercurievv.scalasemantic.model.ContractResult
 import com.github.mercurievv.scalasemantic.model.FileContracts
 import com.github.mercurievv.scalasemantic.model.InputTypes.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
-import upickle.default.ReadWriter
+import com.github.mercurievv.scalasemantic.wire.AnalysisCodecs.given
 
 import scala.jdk.CollectionConverters.*
 import scala.meta.internal.semanticdb.Scala.*
@@ -20,7 +20,7 @@ import scala.meta.internal.semanticdb.Scala.*
 /** One `search_text` hit: a plain (not symbol-resolved) match of the query on `line` (0-based) of
   * `uri`, with the full matching line's text.
   */
-private[mcp] case class SearchTextHit(uri: String, line: Int, text: String) derives ReadWriter
+private[mcp] case class SearchTextHit(uri: String, line: Int, text: String)
 
 /** The analysis tools exposed over MCP, with token-lean JSON rendering.
   *
@@ -1458,11 +1458,11 @@ private[mcp] object McpToolsGroupB:
             "ascription is checked normally. A missing name spelled like one of those is not reported; " +
             "the surrounding signature and the rest of the right-hand side still are. " +
             "OUTPUT: `files` holds one entry per requested file, in one of three shapes — " +
-            "(a) {uri, references, omitted, error: null} (the normal answer; `pcFallback: true` is " +
+            "(a) {uri, references, omitted} (the normal answer, no `error` key; `pcFallback: true` is " +
             "added when the text came from disk and the file is not indexed), " +
             "(b) {uri, error: \"no presentation compiler\"} with NO `references`/`omitted` key, " +
-            "(c) {uri, references: [], omitted: 0, error: \"no source: …\"}. Rows carry `symbol`, " +
-            "`origin` and the file-level `error` as explicit JSON `null` when absent, so parse " +
+            "(c) {uri, references: [], omitted: 0, error: \"no source: …\"}. Rows omit `symbol` and " +
+            "`origin` when absent (an unresolved name), so parse " +
             "defensively. At most 200 rows per file: UNRESOLVED rows are never dropped, resolved " +
             "ones fill what is left in source order, and `omitted` counts only the resolved rows " +
             "that did not fit."
@@ -1515,7 +1515,7 @@ private[mcp] object McpToolsGroupB:
                         true
                       )
                     case Some(res) =>
-                      val base = upickle.default.writeJs(res)
+                      val base = TypedTool.encode(res)
                       val json =
                         if fromDisk && !az.isDocumentIndexed(uri) then
                           ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
@@ -1541,11 +1541,11 @@ private[mcp] object McpToolsGroupB:
             "literal written two ways compares equal (0x10 and 16 are both \"16\", 1_000 is " +
             "\"1000\", string escapes resolved; an interpolation contributes its literal parts), " +
             "and `enclosing` {kind, name, line}: the nearest enclosing def/val/var/object/class/" +
-            "trait/enum/given, or null when none encloses it. `ranges` are [startLine, " +
+            "trait/enum/given (absent when none encloses it). `ranges` are [startLine, " +
             "endLineExclusive], 0-based; absent or empty means the whole file. Pass `source` for " +
             "the buffer's text, else the on-disk file is read. No policy: every literal is " +
             "returned, including 0 and 1. OUTPUT: `files` holds {uri, literals, omitted, error} " +
-            "per requested file; `error` is null on success, and names the problem (no source, " +
+            "per requested file; `error` is absent on success, and names the problem (no source, " +
             "does not parse) with `literals` empty otherwise. At most 2000 literals per file, " +
             "`omitted` counting the rest."
         ) { a =>
@@ -1568,7 +1568,7 @@ private[mcp] object McpToolsGroupB:
                   )
                 case Some(t) => LiteralTokens.forFile(uri.value, t, ranges)
             }
-            upickle.default.writeJs(LiteralResult(answers))
+            TypedTool.encode(LiteralResult(answers))
         }
       ),
       toolDef(
@@ -1586,11 +1586,11 @@ private[mcp] object McpToolsGroupB:
             "e.g. `K.f(a: Int, b: String)` (an extension's receiver first), then `#1`, `#2`, … in " +
             "source order), `line` (0-based, the first annotation's line for an annotated def), " +
             "`requires` (list), " +
-            "`ensuring` and `decreases` (clause or null). A clause is {text, shape}: `shape` hashes " +
+            "`ensuring` and `decreases` (each a clause, absent when there is none). A clause is {text, shape}: `shape` hashes " +
             "the clause's syntax tree, so reformatting keeps it and any edit to the clause changes " +
             "it. Only defs with at least one clause are listed. Pass `source` for the buffer's text, " +
             "else the on-disk file is read. OUTPUT: `files` holds {uri, defs, error} per requested " +
-            "file; `error` is null on success, and names the problem (no source, does not parse) " +
+            "file; `error` is absent on success, and names the problem (no source, does not parse) " +
             "with `defs` empty otherwise."
         ) { a =>
           val entries = a.files
@@ -1610,7 +1610,7 @@ private[mcp] object McpToolsGroupB:
                   )
                 case Some(t) => ContractClauses.forFile(uri.value, t)
             }
-            upickle.default.writeJs(ContractResult(answers))
+            TypedTool.encode(ContractResult(answers))
         }
       ),
       toolDef(
@@ -1647,7 +1647,7 @@ private[mcp] object McpToolsGroupB:
                       "classpath (see README → classpath)"
                   )
                 case Some(r) =>
-                  val base = upickle.default.writeJs(r)
+                  val base = TypedTool.encode(r)
                   if fromDisk then ujson.Obj.from(base.obj.toSeq ++ pcFallbackFields(uri.value))
                   else base
         }

@@ -25,11 +25,9 @@
             "ensuring": {
               "text": "r => r >= 0",
               "shape": "53f9576a64489fba"
-            },
-            "decreases": null
+            }
           }
-        ],
-        "error": null
+        ]
       }
     ]
   }

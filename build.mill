@@ -282,6 +282,23 @@ object analysis extends Common with SonatypeCentralPublishModule {
 }
 
 // ---------------------------------------------------------------------------------------------
+// wire — the JSON wire shape of the analysis models: circe encoders + tapir schemas, derived once
+// (ADR 0006). analysis/core stay JSON-free; mcp depends on this for what goes on the wire.
+// ---------------------------------------------------------------------------------------------
+object wire extends Common with SonatypeCentralPublishModule {
+  def id = "wire"
+  def artifactName = "scalasemantic-wire"
+  def publishVersion = build.publishVersion()
+  def pomSettings = commonPom("scalasemantic-wire")
+  def moduleDeps = Seq(analysis)
+  def mvnDeps = Seq(
+    mvn"io.circe::circe-core:${V.circe}",
+    mvn"com.softwaremill.sttp.tapir::tapir-core:${V.tapir}"
+  )
+  object test extends CommonTests
+}
+
+// ---------------------------------------------------------------------------------------------
 // launcher — jar-side setup/config dispatcher used by the shell launcher and mcp entrypoint.
 // ---------------------------------------------------------------------------------------------
 object launcher extends Common with SonatypeCentralPublishModule {
@@ -300,7 +317,7 @@ object mcp extends Common with SonatypeCentralPublishModule with BuildInfo {
   def artifactName = "scalasemantic-mcp"
   def publishVersion = build.publishVersion()
   def pomSettings = commonPom("scalasemantic-mcp")
-  def moduleDeps = Seq(analysis, build.launcher)
+  def moduleDeps = Seq(analysis, wire, build.launcher)
   def mvnDeps = Seq(
     mvn"com.lihaoyi::upickle:${V.upickle}",
     mvn"io.circe::circe-core:${V.circe}",
@@ -641,7 +658,7 @@ def commonPom(name: String) = PomSettings(
 // Rewrite every first-party module's sources to native Scala 3 style in one shot. Run manually,
 // review the diff, commit — never wired into prePush/CI (see `Common.rewriteToScala3Style`).
 def rewriteToScala3StyleAll() = Task.Command {
-  Task.traverse(Seq(core, pc, analysis, mcp))(_.rewriteToScala3Style())()
+  Task.traverse(Seq(core, pc, analysis, wire, mcp))(_.rewriteToScala3Style())()
 }
 
 // build.sbt `compatGoldenAll` alias — regenerate golden for every compat Scala version.
@@ -1760,6 +1777,7 @@ def scalaSemanticModules(root: os.Path): Seq[ScalaSemanticModuleMetadata.Module]
     ScalaSemanticModuleMetadata.Module("core", core.moduleDir, root / "out" / "core"),
     ScalaSemanticModuleMetadata.Module("pc", pc.moduleDir, root / "out" / "pc"),
     ScalaSemanticModuleMetadata.Module("analysis", analysis.moduleDir, root / "out" / "analysis"),
+    ScalaSemanticModuleMetadata.Module("wire", wire.moduleDir, root / "out" / "wire"),
     ScalaSemanticModuleMetadata.Module("mcp", mcp.moduleDir, root / "out" / "mcp")
   )
 
@@ -1801,6 +1819,12 @@ def scalaSemanticWriteClasspath() = Task.Command {
       baseDir = analysis.moduleDir,
       scalaVersion = analysis.scalaVersion(),
       classpath = analysis.compile().classes.path +: analysis.compileClasspath().map(_.path)
+    ),
+    ScalaSemanticClasspathMetadata.Module(
+      id = "wire",
+      baseDir = wire.moduleDir,
+      scalaVersion = wire.scalaVersion(),
+      classpath = wire.compile().classes.path +: wire.compileClasspath().map(_.path)
     ),
     ScalaSemanticClasspathMetadata.Module(
       id = "mcp",

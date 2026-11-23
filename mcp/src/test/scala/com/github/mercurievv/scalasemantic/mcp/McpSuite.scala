@@ -148,12 +148,12 @@ class McpSuite extends munit.FunSuite:
     )
     val file = r("files")(0)
     assertEquals(file("uri").str, "K.scala")
-    assert(file("error").isNull, file.toString)
+    assert(!file.obj.contains("error"), file.toString)
     val d = file("defs")(0)
     assertEquals(d("key").str, "K.f")
     assertEquals(d("requires")(0)("text").str, "require(x > 0)")
     assertEquals(d("ensuring")("text").str, "r => r > 0")
-    assert(d("decreases").isNull, d.toString)
+    assert(!d.obj.contains("decreases"), d.toString)
   }
 
   test("contract_clauses: a missing file is a per-file error, the others still answer") {

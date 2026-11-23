@@ -412,13 +412,12 @@
   "com.github.mercurievv.scalasemantic.analysis.graph.StructureMetricsSuite.stronglyConnectedComponents groups a cycle, isolates acyclic nodes",
   "com.github.mercurievv.scalasemantic.analysis.graph.StructureMetricsSuite.typeRefGraph: type definition RHS occurrence creates an edge even when bounds are empty",
   "com.github.mercurievv.scalasemantic.mcp.AnalysisToolSchemaSuite.contract_clauses conforms: a file with contracts, a file with none, a missing file",
-  "com.github.mercurievv.scalasemantic.mcp.AnalysisToolSchemaSuite.literal_tokens conforms, including a file that is missing (error is non-null)",
-  "com.github.mercurievv.scalasemantic.mcp.AnalysisToolSchemaSuite.nullable-option schemas accept null where the wire writes it",
-  "com.github.mercurievv.scalasemantic.mcp.AnalysisToolSchemaSuite.resolve_references and hole_context schemas accept the models as the tools write them",
+  "com.github.mercurievv.scalasemantic.mcp.AnalysisToolSchemaSuite.literal_tokens conforms, including a file that is missing (error present, no nulls)",
   "com.github.mercurievv.scalasemantic.mcp.AnalysisToolSchemaSuite.schemas stay small",
   "com.github.mercurievv.scalasemantic.mcp.AnalysisToolSchemaSuite.smart_code_duplications conforms, with and without source",
   "com.github.mercurievv.scalasemantic.mcp.AnalysisToolSchemaSuite.source_ranges conforms: a slice, an unknown target and an empty range",
   "com.github.mercurievv.scalasemantic.mcp.AnalysisToolSchemaSuite.structure conforms: default, and detailed with graph and a path filter",
+  "com.github.mercurievv.scalasemantic.mcp.AnalysisToolSchemaSuite.the models, encoded by the wire module, conform to the schemas the tools declare",
   "com.github.mercurievv.scalasemantic.mcp.AnalysisToolSchemaSuite.value_flow conforms: a traced binding, and nothing to trace",
   "com.github.mercurievv.scalasemantic.mcp.AnnotatedSourcePcFallbackSuite.a file with a compiled index entry does not take the PC fallback",
   "com.github.mercurievv.scalasemantic.mcp.AnnotatedSourcePcFallbackSuite.a file with no compiled SemanticDB entry falls back to the presentation compiler",
@@ -866,5 +865,9 @@
   "com.github.mercurievv.scalasemantic.semanticdb.SemanticIndexSuite.ownerChain runs outermost-first down to the symbol",
   "com.github.mercurievv.scalasemantic.testing.PropertyDemoSuite.MethodSignature round-trips through upickle with reusable generators",
   "com.github.mercurievv.scalasemantic.testing.PropertyDemoSuite.coupling reports exactly the generated graph nodes",
-  "com.github.mercurievv.scalasemantic.testing.PropertyDemoSuite.rangeContains accepts generated points inside generated ranges"
+  "com.github.mercurievv.scalasemantic.testing.PropertyDemoSuite.rangeContains accepts generated points inside generated ranges",
+  "com.github.mercurievv.scalasemantic.wire.AnalysisCodecsSuite.contract_clauses and resolve_references encode with their model field names",
+  "com.github.mercurievv.scalasemantic.wire.AnalysisCodecsSuite.hole_context encodes the `type` and `match` fields under their own names",
+  "com.github.mercurievv.scalasemantic.wire.AnalysisCodecsSuite.literal_tokens: an absent enclosing/error is an absent key, present values keep their names",
+  "com.github.mercurievv.scalasemantic.wire.AnalysisCodecsSuite.schemas are derived from the same types: optional fields are the Options"
 ]

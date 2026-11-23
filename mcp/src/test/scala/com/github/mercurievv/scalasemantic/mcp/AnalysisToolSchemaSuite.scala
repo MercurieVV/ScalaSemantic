@@ -1,14 +1,16 @@
 package com.github.mercurievv.scalasemantic.mcp
 
 import com.github.mercurievv.scalasemantic.analysis.Analyzer
+import com.github.mercurievv.scalasemantic.model.*
 import com.github.mercurievv.scalasemantic.semanticdb.SemanticIndex
+import com.github.mercurievv.scalasemantic.wire.AnalysisCodecs.given
 
 import java.nio.file.Path
 import java.nio.file.Paths
 
-/** The analysis tools' `outputSchema` (types in `AnalysisToolResults`) against their real answers,
-  * from this suite's own tool instances (never `Mcp.handle`). Tools that write an analysis-module
-  * model write an absent `Option` as `null`; those schemas must accept it.
+/** The analysis tools' `outputSchema` (types in `AnalysisToolResults`, models via the `wire`
+  * module) against their real answers, from this suite's own tool instances (never `Mcp.handle`).
+  * An absent optional is an absent key on the wire — never an explicit `null`.
   */
 class AnalysisToolSchemaSuite extends munit.FunSuite:
 
@@ -26,6 +28,12 @@ class AnalysisToolSchemaSuite extends munit.FunSuite:
     res
 
   private def file(fields: (String, ujson.Value)*): ujson.Value = ujson.Obj.from(fields)
+
+  private def hasNull(v: ujson.Value): Boolean = v match
+    case ujson.Null   => true
+    case a: ujson.Arr => a.arr.toList.exists(hasNull)
+    case o: ujson.Obj => o.value.toList.exists((_, x) => hasNull(x))
+    case _            => false
 
   /** The answer, skipping the test when the tool needs a presentation compiler this server lacks;
     * any other failure (including a schema violation) still fails the test.
@@ -73,18 +81,20 @@ class AnalysisToolSchemaSuite extends munit.FunSuite:
     assertEquals(miss("results")(0)("found").bool, false)
     check("source_ranges", "query" -> s"$Parts[90000-90001]")
 
-  test("literal_tokens conforms, including a file that is missing (error is non-null)"):
+  test("literal_tokens conforms, including a file that is missing (error present, no nulls)"):
     val res = check(
       "literal_tokens",
       "files" -> ujson.Arr(file("uri" -> Parts), file("uri" -> "no/such/File.scala"))
     )
     assert(res("files")(0)("literals").arr.nonEmpty)
+    assert(!res("files")(0).obj.contains("error"), "error is absent on success, not null")
     assert(res("files")(1)("error").strOpt.isDefined)
+    assert(!hasNull(res), "an absent optional is an absent key")
 
   test("contract_clauses conforms: a file with contracts, a file with none, a missing file"):
     val src =
       "object A:\n  def f(x: Int): Int =\n    require(x > 0)\n    x\n  .ensuring(_ > 0)\n"
-    check(
+    val res = check(
       "contract_clauses",
       "files" -> ujson.Arr(
         file("uri" -> "A.scala", "source" -> src),
@@ -92,6 +102,7 @@ class AnalysisToolSchemaSuite extends munit.FunSuite:
         file("uri" -> "no/such/File.scala")
       )
     )
+    assert(!hasNull(res), "an absent optional is an absent key")
 
   test("resolve_references conforms, with a resolved range and a missing file"):
     val outcome = scala.util.Try(
@@ -105,39 +116,18 @@ class AnalysisToolSchemaSuite extends munit.FunSuite:
     )
     val res = unlessNoPc(outcome)
     assert(res("files")(0)("references").arr.nonEmpty)
+    assert(!hasNull(res), "an absent optional is an absent key")
 
   test("hole_context conforms (needs the presentation compiler; skipped without a classpath)"):
     val src = "object A:\n  def f(x: Int): String = ???\n"
     val outcome = scala.util.Try(
       check("hole_context", "uri" -> "A.scala", "line" -> 1, "character" -> 27, "source" -> src)
     )
-    val _ = unlessNoPc(outcome)
+    val res = unlessNoPc(outcome)
+    assert(!hasNull(res), "an absent optional is an absent key")
 
-  test("nullable-option schemas accept null where the wire writes it"):
-    val schema = tool("literal_tokens").outputSchema.getOrElse(fail("no schema"))
-    val withNull = ujson.Obj(
-      "files" -> ujson.Arr(
-        ujson.Obj(
-          "uri" -> "x",
-          "literals" -> ujson.Arr(
-            ujson.Obj(
-              "line" -> 1,
-              "character" -> 2,
-              "kind" -> "int",
-              "value" -> "1",
-              "enclosing" -> ujson.Null
-            )
-          ),
-          "omitted" -> 0,
-          "error" -> ujson.Null
-        )
-      )
-    )
-    assertEquals(SchemaConformance.violations(schema, withNull), Nil)
-
-  test("resolve_references and hole_context schemas accept the models as the tools write them"):
-    import com.github.mercurievv.scalasemantic.model.*
-    val refs = upickle.default.writeJs(
+  test("the models, encoded by the wire module, conform to the schemas the tools declare"):
+    val refs = TypedTool.encode(
       ReferenceResult(
         List(
           FileReferences(
@@ -150,7 +140,7 @@ class AnalysisToolSchemaSuite extends munit.FunSuite:
         )
       )
     )
-    val hole = upickle.default.writeJs(
+    val hole = TypedTool.encode(
       HoleContextResult(
         found = false,
         why = Some("no hole"),
@@ -163,9 +153,26 @@ class AnalysisToolSchemaSuite extends munit.FunSuite:
         omitted = HoleOmitted(0, 0, 0, 0)
       )
     )
-    List("resolve_references" -> refs, "hole_context" -> hole).foreach: (name, wire) =>
-      val schema = tool(name).outputSchema.getOrElse(fail(s"$name has no schema"))
-      assertEquals(SchemaConformance.violations(schema, wire), Nil, ujson.write(wire).take(300))
+    val lits = TypedTool.encode(
+      LiteralResult(
+        List(
+          FileLiterals(
+            "x",
+            List(
+              Literal(1, 2, "int", "1", None),
+              Literal(3, 4, "int", "2", Some(Enclosing("val", "v", 3)))
+            ),
+            0,
+            None
+          )
+        )
+      )
+    )
+    List("resolve_references" -> refs, "hole_context" -> hole, "literal_tokens" -> lits).foreach:
+      (name, wire) =>
+        val schema = tool(name).outputSchema.getOrElse(fail(s"$name has no schema"))
+        assertEquals(SchemaConformance.violations(schema, wire), Nil, ujson.write(wire).take(300))
+        assert(!hasNull(wire), name)
 
   test("schemas stay small"):
     List(

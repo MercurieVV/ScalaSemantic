@@ -674,7 +674,6 @@ object Wiring:
 ```json
 {
   "found": true,
-  "why": null,
   "hole": {"kind": "???", "text": "???"},
   "expected": {"type": "Config", "confidence": "exact", "why": "result type of def config"},
   "bindings": [
@@ -731,11 +730,10 @@ not start).* On a scratch file with one good and one bad reference (`trimm` is a
         },
         {
           "line": 3, "character": 26, "name": "trimm", "kind": "term", "role": "use",
-          "resolved": false, "symbol": null, "origin": null, "suggestions": []
+          "resolved": false, "suggestions": []
         }
       ],
-      "omitted": 0,
-      "error": null
+      "omitted": 0
     }
   ]
 }
@@ -749,7 +747,7 @@ index would surface it.
 (plus `"pcFallback": true` when the text was read from disk and the file is not in the index),
 `{"uri": …, "error": "no presentation compiler"}` with no `references`/`omitted` keys, or
 `{"uri": …, "references": [], "omitted": 0, "error": "no source: …"}`. `symbol`, `origin` and
-`error` are written as explicit `null` when absent. At most 200 rows are returned per file:
+`error` are left out when absent (never written as `null`). At most 200 rows are returned per file:
 **unresolved rows are never dropped**, resolved ones fill what is left in source order, and
 `omitted` counts only the resolved rows that did not fit.
 

@@ -1,34 +1,19 @@
 package com.github.mercurievv.scalasemantic.mcp
 
-import com.github.mercurievv.scalasemantic.model.Clause
-import com.github.mercurievv.scalasemantic.model.Contract
 import com.github.mercurievv.scalasemantic.model.ContractResult
-import com.github.mercurievv.scalasemantic.model.Enclosing
-import com.github.mercurievv.scalasemantic.model.FileContracts
-import com.github.mercurievv.scalasemantic.model.FileLiterals
-import com.github.mercurievv.scalasemantic.model.FileReferences
-import com.github.mercurievv.scalasemantic.model.HoleBinding
 import com.github.mercurievv.scalasemantic.model.HoleContextResult
-import com.github.mercurievv.scalasemantic.model.HoleExpected
-import com.github.mercurievv.scalasemantic.model.HoleGiven
-import com.github.mercurievv.scalasemantic.model.HoleMarker
-import com.github.mercurievv.scalasemantic.model.HoleOmitted
-import com.github.mercurievv.scalasemantic.model.HoleProducer
-import com.github.mercurievv.scalasemantic.model.HoleType
-import com.github.mercurievv.scalasemantic.model.Literal
 import com.github.mercurievv.scalasemantic.model.LiteralResult
-import com.github.mercurievv.scalasemantic.model.Reference
 import com.github.mercurievv.scalasemantic.model.ReferenceResult
+import com.github.mercurievv.scalasemantic.wire.AnalysisCodecs.given
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.description
 
 // Wire shapes of the analysis tools. Schema-only, like `SourceToolResults`: the tools keep their
 // own serialisation and `AnalysisToolSchemaSuite` validates real answers against these types.
 //
-// Two serialisations meet here. The hand-built tools (`structure`, `value_flow`, …) drop absent
-// optionals. The tools that write an analysis-module model (`literal_tokens`, `contract_clauses`,
-// `hole_context`, `resolve_references`) write an absent `Option` as an explicit `null`, so their
-// schemas go through [[NullableOptionals]].
+// The tools that return an analysis-module model as it is (`literal_tokens`, `contract_clauses`,
+// `resolve_references`, `hole_context`) take its schema from the `wire` module, the same derivation
+// that encodes the result — nothing is mirrored here.
 
 /** `structure`: one module of the rollup. */
 final case class StructureModule(
@@ -180,72 +165,9 @@ final case class SourceRangesResult(
     @description("one entry per requested range, in order") results: List[RangeAnswer]
 ) derives Schema
 
-/** Makes every optional property of a schema also accept `null` — for the tools that write an
-  * absent `Option` as an explicit `null` instead of dropping it.
-  */
-object NullableOptionals:
-
-  def apply(schema: ujson.Value): ujson.Value = schema match
-    case o: ujson.Obj =>
-      val required: Set[String] = o.value.get("required") match
-        case Some(a: ujson.Arr) => a.arr.toList.flatMap(_.strOpt).toSet
-        case _                  => Set.empty
-      ujson.Obj.from(o.value.toList.map {
-        case ("properties", p: ujson.Obj) =>
-          "properties" -> ujson.Obj.from(
-            p.value.toList.map((k, v) => k -> (if required(k) then apply(v) else orNull(apply(v))))
-          )
-        case (k, v) => k -> apply(v)
-      })
-    case a: ujson.Arr => ujson.Arr.from(a.value.toList.map(apply))
-    case other        => other
-
-  private val Null: ujson.Value = ujson.Obj("type" -> "null")
-
-  private def orNull(v: ujson.Value): ujson.Value = v match
-    case o: ujson.Obj if o.value.contains("oneOf") =>
-      ujson.Obj.from(o.value.toList.map {
-        case ("oneOf", a: ujson.Arr) => "oneOf" -> ujson.Arr.from(a.value.toList ++ List(Null))
-        case other                   => other
-      })
-    case o: ujson.Obj if o.value.get("type").exists(_.strOpt.isDefined) =>
-      ujson.Obj.from(o.value.toList.map {
-        case ("type", t) => "type" -> ujson.Arr(t, ujson.Str("null"))
-        case other       => other
-      })
-    case other => ujson.Obj("oneOf" -> ujson.Arr(other, Null))
-
-/** Schemas of the analysis-module models. Those types carry no tapir instances, so nested types are
-  * derived automatically here (and only here).
-  */
-private object ModelSchemas:
-  // Bottom-up semi-automatic derivation: tapir needs each nested type's schema in scope.
-  given Schema[Enclosing] = Schema.derived
-  given Schema[Literal] = Schema.derived
-  given Schema[FileLiterals] = Schema.derived
-  given Schema[Clause] = Schema.derived
-  given Schema[Contract] = Schema.derived
-  given Schema[FileContracts] = Schema.derived
-  given Schema[Reference] = Schema.derived
-  given Schema[FileReferences] = Schema.derived
-  given Schema[HoleExpected] = Schema.derived
-  given Schema[HoleBinding] = Schema.derived
-  given Schema[HoleProducer] = Schema.derived
-  given Schema[HoleGiven] = Schema.derived
-  given Schema[HoleType] = Schema.derived
-  given Schema[HoleOmitted] = Schema.derived
-  given Schema[HoleMarker] = Schema.derived
-
-  val literals: Schema[LiteralResult] = Schema.derived
-  val contracts: Schema[ContractResult] = Schema.derived
-  val references: Schema[ReferenceResult] = Schema.derived
-  val hole: Schema[HoleContextResult] = Schema.derived
-
 object AnalysisToolSchemas:
 
   private def schema[A](using s: Schema[A]): ujson.Value = OutputSchema.of[A]
-
-  private def nullable[A](using s: Schema[A]): ujson.Value = NullableOptionals(OutputSchema.of[A])
 
   private[mcp] val schemaOf: Map[String, ujson.Value] =
     Map(
@@ -255,14 +177,12 @@ object AnalysisToolSchemas:
       ),
       "smart_code_duplications" -> schema[DuplicationsResult],
       "source_ranges" -> schema[SourceRangesResult],
-      "literal_tokens" -> nullable(using ModelSchemas.literals),
-      "contract_clauses" -> nullable(using ModelSchemas.contracts),
-      "resolve_references" -> nullable(using ModelSchemas.references),
-      "hole_context" -> NullableOptionals(
-        OutputSchema.of(using
-          Alternatives.of(
-            List(ModelSchemas.hole, Schema.derived[NotFoundResult])
-          )
+      "literal_tokens" -> schema[LiteralResult],
+      "contract_clauses" -> schema[ContractResult],
+      "resolve_references" -> schema[ReferenceResult],
+      "hole_context" -> schema(using
+        Alternatives.of(
+          List(summon[Schema[HoleContextResult]], Schema.derived[NotFoundResult])
         )
       )
     )
