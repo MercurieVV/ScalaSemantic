@@ -398,3 +398,23 @@ final case class ContractClausesArgs(
     @description("objects: {uri, source?}") files: List[FileSourceArg]
 ) derives Decoder,
       Schema
+
+final case class SetWorkspaceRootArgs(
+    @description("absolute or relative path to the new workspace root") path: String
+) derives Decoder,
+      Schema
+
+final case class RefreshWorkspaceArgs(
+    @description("absolute or relative path to rebuild; defaults to the current workspace root")
+    path: Option[String],
+    @description(
+      "run the auto-detected build's compile task in this directory before rebuilding the index (default false)"
+    )
+    compile: Option[Boolean]
+) derives Decoder,
+      Schema
+
+final case class OutputSchemaArgs(
+    @description("tool name, e.g. find_usages; omit for every typed tool") tool: Option[String]
+) derives Decoder,
+      Schema

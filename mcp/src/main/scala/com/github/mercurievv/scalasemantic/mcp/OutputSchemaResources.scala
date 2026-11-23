@@ -74,14 +74,12 @@ object OutputSchemaResources:
 
   /** The same data as a tool, for clients that do not support MCP resources. */
   def tool(all: List[Tool]): Tool =
-    McpToolsSupport.tool(
+    TypedTool.withArgs[OutputSchemaArgs](
       "output_schema",
       "Output JSON Schema of typed tools; pass `tool` for one, omit for all (keyed by name). " +
-        "Only needed to write code that parses results.",
-      List(("tool", "string", "tool name, e.g. find_usages; omit for every typed tool")),
-      Nil
+        "Only needed to write code that parses results."
     ) { a =>
-      a.obj.get("tool").map(_.str) match
+      a.tool match
         case None       => ujson.Obj.from(schemas(all))
         case Some(name) => forTool(name, all).fold(McpToolsSupport.error, identity)
     }
