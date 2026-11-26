@@ -185,10 +185,52 @@ class AnalyzerHelpersSuite extends munit.FunSuite:
     val typed = sigInfo("local0", s.SymbolInformation.Kind.LOCAL, "a", s.ValueSignature(IntT))
     val untyped = sigInfo("local1", s.SymbolInformation.Kind.LOCAL, "b", s.NoSignature)
     val lh = AnalyzerHelpers(
-      new SemanticIndex(Vector(s.TextDocument(uri = "l.scala", symbols = Vector(typed, untyped))))
+      new SemanticIndex(Vector(s.TextDocument(uri = "l.scala", symbols = Vector(typed, untyped)))),
+      Map("local0" -> typed, "local1" -> untyped)
     )
     assertEquals(lh.localTypeText("local0"), "Int")
     assertEquals(lh.localTypeText("local1"), "?", "an unascribed local has no recorded type")
+
+  test("a local resolves against its own document, never another file's same-numbered local"):
+    // Local ids restart in every file: `local0` here is a String, in other.scala an Int. The
+    // index-wide table keeps one of them; reading a note's type from it gave a wrong `: Int`.
+    val mine = sigInfo(
+      "local0",
+      s.SymbolInformation.Kind.LOCAL,
+      "name",
+      s.ValueSignature(ref("scala/Predef.String#"))
+    )
+    val theirs = sigInfo("local0", s.SymbolInformation.Kind.LOCAL, "n", s.ValueSignature(IntT))
+    val index = new SemanticIndex(
+      Vector(
+        s.TextDocument(uri = "mine.scala", symbols = Vector(mine)),
+        s.TextDocument(uri = "other.scala", symbols = Vector(theirs))
+      )
+    )
+    assertEquals(AnalyzerHelpers(index, Map("local0" -> mine)).localTypeText("local0"), "String")
+    assertEquals(
+      AnalyzerHelpers(index).localTypeText("local0"),
+      "?",
+      "without the document's locals, a local has no type rather than another file's"
+    )
+
+  // --- renderTree: an inserted `.apply` --------------------------------------
+
+  private def insertedApply(end: Int): s.ApplyTree =
+    s.ApplyTree(
+      s.IdTree("scala/Function1#apply()."),
+      Seq(s.OriginalTree(Some(s.Range(0, 0, 0, end))))
+    )
+
+  test("renderTree keeps the receiver of a compiler-inserted .apply"):
+    // Scala 3 records `xs.lift(2)` as `apply(<xs.lift(2)>)`; rendering only the argument list
+    // gave `apply(2)` and dropped `xs.lift`.
+    val src = "xs.lift(2)"
+    assertEquals(h.renderTree(insertedApply(src.length), Vector(src)), "xs.lift.apply(2)")
+
+  test("renderTree renders nothing for an inserted .apply whose original is not a plain call"):
+    val src = """s"entry (it may not compile)""""
+    assertEquals(h.renderTree(insertedApply(src.length), Vector(src)), "")
 
   // --- linearize de-duplicates a diamond ------------------------------------
 

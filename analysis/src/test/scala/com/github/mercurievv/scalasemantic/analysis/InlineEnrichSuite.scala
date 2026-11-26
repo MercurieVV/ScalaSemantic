@@ -115,3 +115,67 @@ class InlineEnrichSuite extends munit.FunSuite:
       "val labeled: List[Tuple2[Int, String]] = " +
         "nums.map(n => ArrowAssoc[Int](n) -> render[Int](n)(using intShow))"
     )
+
+  // --- placement on real-world shapes (cats-effect, this repo) -------------
+
+  test("a def's inferred result type goes after its parameter lists, not after its name"):
+    val line = "  def set(key: String, value: String) = F.blocking(System.setProperty(key, value))"
+    val anns = List(SourceAnnotation(0, 6, 9, "inferred-type", "type: F[Option[String]]"))
+    assertEquals(
+      InlineEnrich.spliceLine(line, anns),
+      "  def set(key: String, value: String): F[Option[String]] = " +
+        "F.blocking(System.setProperty(key, value))"
+    )
+
+  test("type parameters and several parameter lists are all skipped"):
+    val line = "def render[A](a: A)(using s: Show[A]) = s.show(a)"
+    val anns = List(SourceAnnotation(0, 4, 10, "inferred-type", ": String"))
+    assertEquals(
+      InlineEnrich.spliceLine(line, anns),
+      "def render[A](a: A)(using s: Show[A]): String = s.show(a)"
+    )
+
+  test("a parameter list continuing on the next line trails the type instead of splicing it"):
+    val line = "  def fromAutoCloseable[F[_], A <: AutoCloseable](acquire: F[A])("
+    val anns = List(SourceAnnotation(0, 6, 23, "inferred-type", ": Resource[F, A]"))
+    assertEquals(InlineEnrich.spliceLine(line, anns), line + " ⟹ type: Resource[F, A]")
+
+  test("a call whose range ends on a later line is not spliced into this one"):
+    // `endCharacter` belongs to the closing line; applied here it cut `property(` to `perty(`.
+    val line = """  property("round trip"):"""
+    val anns = List(
+      SourceAnnotation(
+        0,
+        2,
+        5,
+        "full",
+        """property("round trip")(using generate)""",
+        multiLine = true
+      )
+    )
+    assertEquals(
+      InlineEnrich.spliceLine(line, anns),
+      line + """ ⟹ property("round trip")(using generate)"""
+    )
+
+  test("an elaboration of only a using clause never replaces the call it belongs to"):
+    val line = "    val text = a.show"
+    val anns = List(SourceAnnotation(0, 15, 21, "elaborated", "elaborated: (using showInt)"))
+    assertEquals(InlineEnrich.spliceLine(line, anns), line + " ⟹ (using showInt)")
+
+  test("a nested call's elaboration is dropped when the enclosing call's already contains it"):
+    val line = "val x = List(Right(1))"
+    val anns = List(
+      SourceAnnotation(
+        0,
+        8,
+        22,
+        "full",
+        "List.apply[Right[Nothing, Int]](Right.apply[Nothing, Int](1))"
+      ),
+      SourceAnnotation(0, 13, 21, "full", "Right.apply[Nothing, Int](1)")
+    )
+    assertEquals(
+      InlineEnrich.spliceLine(line, anns),
+      "val x = List.apply[Right[Nothing, Int]](Right.apply[Nothing, Int](1))"
+    )

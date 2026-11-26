@@ -547,7 +547,10 @@ object Mcp:
     // is always shut down when the server exits — normally, on EOF, or on an unhandled exception —
     // without a hand-rolled try/finally here.
     stateCache.clear()
-    Mcp.stateFactory.set(path => buildState(path, classpath, currentLog))
+    val explicitClasspath = explicitClasspathSpec(classpath)
+    Mcp.stateFactory.set(path =>
+      buildState(path, classpathSpecFor(rootPath, explicitClasspath, path), currentLog)
+    )
     try
       unresolvedRoot match
         // With an unresolved root there is nothing safe to index: building state over cwd is
@@ -587,7 +590,7 @@ object Mcp:
       args: Json
   ): Either[String, Json] =
     val rootPath = Paths.get(root).toAbsolutePath.nn
-    val builtState = buildState(rootPath, classpath, _ => ())
+    val builtState = buildState(rootPath, explicitClasspathSpec(classpath), _ => ())
     try
       builtState.tools.find(_.name == tool) match
         case Some(t) =>
@@ -695,14 +698,35 @@ object Mcp:
       arg: Option[String],
       rootPath: Path
   ): Option[ResolvedClasspath] =
-    resolveClasspathWithSource(arg, rootPath).map(_.classpath)
+    resolveClasspathWithSource(explicitClasspathSpec(arg), rootPath).map(_.classpath)
 
+  /** The explicit classpath spec: the CLI argument, else `SCALASEMANTIC_CLASSPATH`; blank is
+    * absent.
+    */
+  private[mcp] def explicitClasspathSpec(arg: Option[String]): Option[String] =
+    arg.orElse(Option(System.getenv("SCALASEMANTIC_CLASSPATH"))).map(_.trim).filter(_.nonEmpty)
+
+  /** The classpath spec that governs `root`. An explicit spec describes the build the server was
+    * started on, so it applies to that root only. Any other root (`set_workspace_root` to a
+    * different project) discovers its own metadata; reusing the spec there would run that project's
+    * presentation compiler on the first project's classpath and report the first project's
+    * classpath file.
+    */
+  private[mcp] def classpathSpecFor(
+      startRoot: Path,
+      explicit: Option[String],
+      root: Path
+  ): Option[String] =
+    explicit.filter(_ => root.toAbsolutePath.normalize == startRoot.toAbsolutePath.normalize)
+
+  /** Resolve an already-chosen spec (see [[explicitClasspathSpec]]; no env lookup here), else
+    * discover metadata under `rootPath`.
+    */
   private[mcp] def resolveClasspathWithSource(
-      arg: Option[String],
+      spec: Option[String],
       rootPath: Path
   ): Option[ResolvedClasspathWithSource] =
-    arg
-      .orElse(Option(System.getenv("SCALASEMANTIC_CLASSPATH")))
+    spec
       .map(_.trim)
       .filter(_.nonEmpty) match
       case Some(spec) =>
