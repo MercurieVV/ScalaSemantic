@@ -78,3 +78,52 @@ class SourceSentinelSuite extends munit.FunSuite:
     val lines = Vector("""val marker = "/*SEM:data:SEM*/"""")
     val notes = List(SourceSentinel.Note(0, "type: String"))
     assertEquals(SourceSentinel.strip(SourceSentinel.inject(lines, notes)), lines)
+
+  // #351: a multi-line literal's continuation lines are string content. A block appended there
+  // can't be stripped without guessing, so inject never puts one there and strip never takes one.
+  private val tripleQuoted = Vector(
+    "val content: String =",
+    "  \"\"\"|// Generated header",
+    "     |import sbt._",
+    "     |\"\"\".stripMargin"
+  )
+
+  test("a note for a line inside a multi-line string moves to the line the string closes on"):
+    val out =
+      SourceSentinel.inject(tripleQuoted, List(SourceSentinel.Note(1, "elaborated: augmentString")))
+    assertEquals(out.take(3), tripleQuoted.take(3))
+    assertEquals(out(3), "     |\"\"\".stripMargin /*SEM:elaborated: augmentString:SEM*/")
+    assertEquals(SourceSentinel.strip(out), tripleQuoted)
+
+  test("strip keeps a marker that is data on a continuation line of a multi-line string"):
+    val lines = Vector("val s = \"\"\"first", "  /*SEM:data:SEM*/ second", "  \"\"\"")
+    assertEquals(SourceSentinel.strip(lines), lines)
+
+  test("strip removes a block that a stray quote in a line comment would have hidden"):
+    val lines = Vector("val x = 1 // it's \"quoted /*SEM:type: Int:SEM*/")
+    assertEquals(SourceSentinel.strip(lines), Vector("val x = 1 // it's \"quoted"))
+
+  test("strip removes a block after a quote character literal"):
+    val lines = Vector("val q = '\"' /*SEM:type: Char:SEM*/")
+    assertEquals(SourceSentinel.strip(lines), Vector("val q = '\"'"))
+
+  test("a payload holding comment delimiters stays one block and still round-trips"):
+    val lines = Vector("val r = raw\"a*/b\".r")
+    val out = SourceSentinel.inject(lines, List(SourceSentinel.Note(0, "augmentString(a*/b /* c)")))
+    assertEquals(out, Vector("val r = raw\"a*/b\".r /*SEM:augmentString(a* /b / * c):SEM*/"))
+    assertEquals(SourceSentinel.strip(out), lines)
+
+  test("anchorOf follows a multi-line interpolation to its closing line"):
+    val lines = Vector("val s = s\"\"\"a ${x}", "b", "\"\"\"", "val y = 1")
+    val anchor = SourceSentinel.anchorOf(lines)
+    assertEquals((0 until 4).map(anchor).toList, List(2, 2, 2, 3))
+
+  test("strip keeps a marker quoted inside a doc comment"):
+    val lines = Vector("  /** only `/*SEM:...:SEM*/` blocks are strippable */", "  def f = 1")
+    assertEquals(SourceSentinel.strip(lines), lines)
+
+  test("a note for a line inside a multi-line doc comment moves past the comment's end"):
+    val lines = Vector("/** doc", "  * more", "  */", "def f = 1")
+    val out = SourceSentinel.inject(lines, List(SourceSentinel.Note(0, "x")))
+    assertEquals(out(2), "  */ /*SEM:x:SEM*/")
+    assertEquals(SourceSentinel.strip(out), lines)

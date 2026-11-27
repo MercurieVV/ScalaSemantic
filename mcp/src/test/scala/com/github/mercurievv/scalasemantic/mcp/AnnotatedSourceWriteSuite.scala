@@ -140,3 +140,38 @@ class AnnotatedSourceWriteSuite extends munit.FunSuite:
     assertEquals(res("written").bool, true)
     assertEquals(res("changed").bool, false)
     assertEquals(res("diff").str, "")
+
+  // #350: a source may contain `⟹` itself (this server's own renderer does). Only a `⟹` beyond
+  // the ones on disk is a rendered note.
+  test("write succeeds for a file whose own source contains ⟹"):
+    val root = Files.createTempDirectory("ss-annotated-write-arrow").nn
+    writeFile(root, "Foo.scala", "object Foo:\n  val note = \" ⟹ \"\n")
+    val edited = "object Foo:\n  val note = \" ⟹ \" /*SEM:type: String:SEM*/\n  val n = 2\n"
+    val res = call(root, J.obj("uri" -> "Foo.scala", "write" -> edited))
+    assertEquals(res("written").bool, true)
+    assertEquals(
+      Files.readString(root.resolve("Foo.scala")),
+      "object Foo:\n  val note = \" ⟹ \"\n  val n = 2\n"
+    )
+
+  test("a ⟹ inside a sentinel payload is not a rendered note"):
+    val root = Files.createTempDirectory("ss-annotated-write-payload-arrow").nn
+    writeFile(root, "Foo.scala", "object Foo:\n  def bar = 1\n")
+    val edited = "object Foo:\n  def bar = 1 /*SEM:elaborated: f(\" ⟹ \"):SEM*/\n"
+    val res = call(root, J.obj("uri" -> "Foo.scala", "write" -> edited))
+    assertEquals(res("written").bool, true)
+    assertEquals(Files.readString(root.resolve("Foo.scala")), "object Foo:\n  def bar = 1\n")
+
+  test("write is still refused when a ⟹ note is added to a file that already contains ⟹"):
+    val root = Files.createTempDirectory("ss-annotated-write-arrow-note").nn
+    val original = "object Foo:\n  val note = \" ⟹ \"\n  def bar = 1\n"
+    writeFile(root, "Foo.scala", original)
+    intercept[RuntimeException]:
+      call(
+        root,
+        J.obj(
+          "uri" -> "Foo.scala",
+          "write" -> "object Foo:\n  val note = \" ⟹ \"\n  def bar = 1 // ⟹ type: Int\n"
+        )
+      )
+    assertEquals(Files.readString(root.resolve("Foo.scala")), original)
