@@ -269,14 +269,16 @@ case class OutlineEntry(
   * `character`), `inferred-type-args` (type arguments the compiler inferred for a call, precise
   * `character`), or `inferred-type` (the result/value type of a definition the source left
   * unascribed). `text` is the rendered insertion, e.g. `(using sh)`, `toSeq(…)`, `[String]`, or `:
-  * Future[Int]`.
+  * Future[Int]`. `multiLine`: the annotated span ends on a later line, so `endCharacter` is a
+  * column of that line, not of `line`.
   */
 case class SourceAnnotation(
     line: Int,
     character: Int,
     endCharacter: Int,
     kind: String,
-    text: String
+    text: String,
+    multiLine: Boolean = false
 )
 
 // --- rename plan ------------------------------------------------------------

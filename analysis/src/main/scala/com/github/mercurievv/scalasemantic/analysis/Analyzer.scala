@@ -29,6 +29,16 @@ final class Analyzer(
 ):
 
   private val h = AnalyzerHelpers(index)
+
+  /** Helpers that also resolve `doc`'s own local symbols. Local ids (`local0`, …) restart in every
+    * file, so only the document that defines a local knows its type; the shared [[h]] has no local
+    * information at all rather than another file's.
+    */
+  private def helpersFor(doc: s.TextDocument): AnalyzerHelpers =
+    AnalyzerHelpers(
+      index,
+      doc.symbols.iterator.filter(si => index.isLocal(si.symbol)).map(si => si.symbol -> si).toMap
+    )
   private val backendFor: String => Option[PresentationCompilerBackend] =
     pcSelector.getOrElse(_ => pc)
 
@@ -359,6 +369,7 @@ final class Analyzer(
       detail: SourceDetail = SourceDetail.Terse
   ): Option[List[SourceAnnotation]] =
     index.document(uri.value).map { doc =>
+      val h = helpersFor(doc)
       val synthetic0: List[SourceAnnotation] = detail match {
         case SourceDetail.Terse =>
           val terse = doc.synthetics.iterator.flatMap(h.syntheticAnnotation(_, sourceLines)).toList
@@ -508,6 +519,7 @@ final class Analyzer(
       doc: s.TextDocument,
       sourceLines: IndexedSeq[String]
   ): List[SourceAnnotation] =
+    val h = helpersFor(doc)
     def rangeKey(r: s.Range): (Int, Int, Int) = (r.startLine, r.startCharacter, r.endCharacter)
     def contains(outer: s.Range, inner: s.Range): Boolean =
       outer.startLine <= inner.startLine && outer.endLine >= inner.endLine &&
@@ -545,7 +557,14 @@ final class Analyzer(
               val enclosed = enclosingRanges.exists(parent => parent != r && contains(parent, r))
               val text = h.renderTree(app, sourceLines, typeApps)
               Option.when(!enclosed && text.nonEmpty)(
-                SourceAnnotation(r.startLine, r.startCharacter, r.endCharacter, "full", text)
+                SourceAnnotation(
+                  r.startLine,
+                  r.startCharacter,
+                  r.endCharacter,
+                  "full",
+                  text,
+                  r.endLine != r.startLine
+                )
               )
             case _ => None
         case _ => None
@@ -560,7 +579,14 @@ final class Analyzer(
               val enclosed = enclosingRanges.exists(parent => parent != r && contains(parent, r))
               val text = h.renderTree(app, sourceLines, typeApps)
               Option.when(!enclosed && text.nonEmpty)(
-                SourceAnnotation(r.startLine, r.startCharacter, r.endCharacter, "full", text)
+                SourceAnnotation(
+                  r.startLine,
+                  r.startCharacter,
+                  r.endCharacter,
+                  "full",
+                  text,
+                  r.endLine != r.startLine
+                )
               )
         case _ => None
     }.toList
@@ -735,6 +761,7 @@ final class Analyzer(
     val docUri = uri.value
     val name = methodName.value
     index.document(docUri).map { doc =>
+      val h = helpersFor(doc)
       def inSelection(r: s.Range): Boolean =
         range.contains(r.startLine, r.startCharacter, r.endLine, r.endCharacter)
       def afterSelection(r: s.Range): Boolean =

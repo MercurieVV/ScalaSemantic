@@ -39,10 +39,31 @@ private[scalasemantic] object SbtSemanticdbConfig:
        |  val ids = name.all(ScopeFilter(inAnyProject)).value
        |  val dirs = baseDirectory.all(ScopeFilter(inAnyProject)).value
        |  val versions = scalaVersion.all(ScopeFilter(inAnyProject)).value
-       |  val cps = (Compile / fullClasspath).all(ScopeFilter(inAnyProject)).value
+       |  // Not `fullClasspath`: it depends on `compile`, so writing this metadata on load would
+       |  // compile every project in the build (cross-built JS/Native ones included) before the
+       |  // first query. External jars plus the class directories of the project and of its
+       |  // classpath dependencies need no compilation.
+       |  val refs = thisProjectRef.all(ScopeFilter(inAnyProject)).value
+       |  val externals = (Compile / externalDependencyClasspath).all(ScopeFilter(inAnyProject)).value
+       |  val classDirs = (Compile / classDirectory).all(ScopeFilter(inAnyProject)).value
+       |  val deps = buildDependencies.value
+       |  val classDirOf = refs.zip(classDirs).toMap
+       |  // Only dependencies on this project's Compile configuration (`dependsOn(x)` or a mapping
+       |  // such as "compile->compile;test->test"); a `% Test` dependency is not on its classpath.
+       |  def scalaSemanticOnCompile(dep: ClasspathDep[ProjectRef]): Boolean =
+       |    dep.configuration.forall(_.split(";").exists(_.split("->").head.split(",").map(_.trim).contains("compile")))
+       |  def scalaSemanticCompileDeps(ref: ProjectRef, seen: Set[ProjectRef]): Set[ProjectRef] =
+       |    deps.classpath(ref).filter(scalaSemanticOnCompile).map(_.project).filterNot(seen).foldLeft(seen) {
+       |      (acc, dep) => if (acc(dep)) acc else scalaSemanticCompileDeps(dep, acc + dep)
+       |    }
+       |  val cps: Seq[Seq[File]] = refs.zip(externals).zip(classDirs).map {
+       |    case ((ref, ext), own) =>
+       |      val internal = scalaSemanticCompileDeps(ref, Set.empty).toSeq.flatMap(classDirOf.get).sortBy(_.getPath)
+       |      (own +: internal) ++ ext.map(_.data)
+       |  }
        |  val modules = ids.zip(dirs).zip(versions).zip(cps).map {
        |    case (((id, dir), version), cp) =>
-       |      val classpath = cp.map(_.data).distinct.map { entry =>
+       |      val classpath = cp.distinct.map { entry =>
        |        "        " + scalaSemanticJsonString(scalaSemanticRel(root, entry))
        |      }.mkString(",\n")
        |      "    {\n" +

@@ -12,7 +12,25 @@ import scala.meta.internal.semanticdb as s
   * so [[Analyzer]] delegates to a single instance, keeping the tool methods (the "what") separate
   * from these utilities (the "how").
   */
-private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
+private[analysis] final class AnalyzerHelpers(
+    index: SemanticIndex,
+    locals: Map[String, s.SymbolInformation] = Map.empty
+):
+
+  /** A symbol's information. A local (`local0`, …) resolves only through `locals` — the symbols of
+    * the one document being analysed — because local ids restart in every file and the index-wide
+    * table maps each one to whichever file defined it last.
+    */
+  private def symbolInfo(symbol: String): Option[s.SymbolInformation] =
+    if index.isLocal(symbol) then locals.get(symbol) else index.info(symbol)
+
+  /** A symbol's display name: a local this document defines by its own entry. Any other local falls
+    * back to the index-wide table — the shared helpers render method signatures whose types mention
+    * local types (structural refinements, local classes) without a document at hand, and a name is
+    * far less wrong than an empty type. Types and given resolution stay strict ([[symbolInfo]]).
+    */
+  private def nameOf(symbol: String): String =
+    locals.get(symbol).map(_.displayName).getOrElse(index.displayName(symbol))
 
   // --- document outline -----------------------------------------------------
 
@@ -28,7 +46,7 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
   )
 
   def includeInOutline(symbol: String): Boolean =
-    !index.isLocal(symbol) && index.info(symbol).exists { si =>
+    !index.isLocal(symbol) && symbolInfo(symbol).exists { si =>
       outlineKinds.contains(si.kind) && si.displayName.nonEmpty && si.displayName != "<init>"
     }
 
@@ -124,15 +142,15 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
     * `Ordering.Int` val) tells the reader nothing — render `Show[A]` / `Ordering[Int]` instead.
     */
   private def givenDisplay(symbol: String): String =
-    val name = index.displayName(symbol)
+    val name = nameOf(symbol)
     val uninformative = name.isEmpty || name.contains('$') || name.headOption.exists(_.isUpper)
     if !uninformative then name
     else
-      val tpe = renderType(index.info(symbol).map(valueType).getOrElse(s.Type.Empty))
+      val tpe = renderType(symbolInfo(symbol).map(valueType).getOrElse(s.Type.Empty))
       if tpe.nonEmpty then tpe
       else
         // stdlib givens (`Ordering.Int`) carry no indexed signature — synthesize `Owner[Name]`.
-        val owner = index.displayName(index.owner(symbol))
+        val owner = nameOf(index.owner(symbol))
         if owner.nonEmpty && name.nonEmpty then s"$owner[$name]" else name
 
   /** The call a synthetic's function applies to, for anchoring a type-args note: `render`, `a.map`,
@@ -184,13 +202,25 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
             t.arguments.map(renderUsingArg(_, sourceLines, typeApps)).filter(_.nonEmpty)
           s"$base${usingArgs.mkString("(using ", ", ", ")")}"
         else
-          val renderedArgs = t.arguments match
+          t.arguments match
+            // Scala 3 records an inserted `.apply` as `apply(<the original call>)`: `f(2)` with
+            // `f` a function value is `apply(f(2))`. Its callee is the original text before the
+            // argument list, so it renders as `f.apply(2)`, keeping the receiver.
+            case Seq(orig: s.OriginalTree) if base == "apply" =>
+              // Only a plain path (`f`, `xs.lift`, `Note`) is a callee: an interpolated string's
+              // `StringContext.apply` has the literal itself as its "original call", and its first
+              // `(` is literal text, so no faithful rendering exists — none is better than a wrong one.
+              val (callee, call) = originalText(orig.range, sourceLines, typeApps).span(_ != '(')
+              val plainPath =
+                callee.nonEmpty && callee.forall(c => c.isLetterOrDigit || "_$.".contains(c))
+              if call.isEmpty then s"$base${args.mkString("(", ", ", ")")}"
+              else if plainPath then s"$callee.$base$call"
+              else ""
             case Seq(orig: s.OriginalTree) =>
               originalText(orig.range, sourceLines, typeApps).dropWhile(_ != '(') match
-                case ""   => args.mkString("(", ", ", ")")
-                case call => call
-            case _ => args.mkString("(", ", ", ")")
-          s"$base$renderedArgs"
+                case ""   => s"$base${args.mkString("(", ", ", ")")}"
+                case call => s"$base$call"
+            case _ => s"$base${args.mkString("(", ", ", ")")}"
       case t: s.TypeApplyTree =>
         val base = renderTree(t.function, sourceLines, typeApps)
         val args = t.typeArguments.map(renderType).filter(_.nonEmpty)
@@ -199,7 +229,7 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
         val base = renderTree(t.qualifier, sourceLines, typeApps)
         val name = t.id.map(renderTree(_, sourceLines, typeApps)).getOrElse("")
         if base.isEmpty then name else s"$base.$name"
-      case t: s.IdTree       => index.displayName(t.symbol)
+      case t: s.IdTree       => nameOf(t.symbol)
       case t: s.OriginalTree =>
         originalText(t.range, sourceLines, typeApps)
       case _ => ""
@@ -270,14 +300,19 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
   ): Option[SourceAnnotation] =
     if occ.role != s.SymbolOccurrence.Role.DEFINITION then None
     else
-      index
-        .info(occ.symbol)
+      symbolInfo(occ.symbol)
         .filter(si => annotatedDefKinds.contains(si.kind) && si.displayName != "<init>")
         .flatMap { si =>
-          val tpe = si.signature match
+          val declared = si.signature match
             case m: s.MethodSignature => m.returnType
             case v: s.ValueSignature  => v.tpe
             case _                    => s.Type.Empty
+          // Scala 3 records a parameterless def (`def cancel = …`) as a value of by-name type; the
+          // `=>` is how it is called, not part of its result type, and `def cancel: => T` is no
+          // valid ascription.
+          val tpe = declared match
+            case s.ByNameType(t) => t
+            case t               => t
           val rendered = renderType(tpe)
           val r = occ.range.getOrElse(s.Range.defaultInstance)
           val line = sourceLines.lift(r.startLine).getOrElse("")
@@ -423,14 +458,14 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
 
   /** A local symbol's display name (locals carry no descriptor, so fall back to the index). */
   def localName(symbol: String): String =
-    index.info(symbol).map(_.displayName).filter(_.nonEmpty).getOrElse(symbol)
+    symbolInfo(symbol).map(_.displayName).filter(_.nonEmpty).getOrElse(symbol)
 
   /** A local's rendered type, or `?` when SemanticDB recorded none — Scala leaves the inferred type
     * of an unascribed local val Empty, so the caller must supply it (the binding name is always
     * exact).
     */
   def localTypeText(symbol: String): String =
-    val rendered = renderType(index.info(symbol).map(valueType).getOrElse(s.Type.Empty))
+    val rendered = renderType(symbolInfo(symbol).map(valueType).getOrElse(s.Type.Empty))
     if rendered.isEmpty then "?" else rendered
 
   // --- path / glob predicates -----------------------------------------------
@@ -473,7 +508,7 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
 
   /** Depth-first transitive parents (excluding `symbol` itself), de-duplicated by first sight. */
   def linearize(symbol: String): List[String] =
-    def parentsOf(sym: String): List[String] = index.info(sym).map(directParents).getOrElse(Nil)
+    def parentsOf(sym: String): List[String] = symbolInfo(sym).map(directParents).getOrElse(Nil)
     @annotation.tailrec
     def loop(queue: List[String], seen: Set[String], acc: List[String]): List[String] =
       queue match
@@ -509,7 +544,7 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
     val k = info.kind
     isImplicit(info) &&
     (k == s.SymbolInformation.Kind.OBJECT || k == s.SymbolInformation.Kind.METHOD) &&
-    !index.info(index.owner(info.symbol)).exists(isImplicit)
+    !symbolInfo(index.owner(info.symbol)).exists(isImplicit)
 
   /** The type an implicit instance provides: a given object's first non-Object parent, or a given
     * def/val's result type (unwrapping the synthetic self-class a `given ... with` emits).
@@ -525,11 +560,11 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
     * with the interface that class extends; otherwise return `tpe` unchanged.
     */
   def unwrapSelfClass(tpe: s.Type, givenName: String): s.Type =
-    val isSelfClass = parentSymbol(tpe).exists(sym => index.displayName(sym) == givenName)
+    val isSelfClass = parentSymbol(tpe).exists(sym => nameOf(sym) == givenName)
     if !isSelfClass then tpe
     else
       parentSymbol(tpe)
-        .flatMap(index.info)
+        .flatMap(symbolInfo)
         .map(_.signature)
         .collect { case c: s.ClassSignature => c.parents.find(notObject) }
         .flatten
@@ -566,8 +601,7 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
 
   /** Member symbols declared in a type's `ClassSignature.declarations` scope. */
   def declarationSymbols(symbol: String): List[String] =
-    index
-      .info(symbol)
+    symbolInfo(symbol)
       .flatMap(_.signature match
         case c: s.ClassSignature => Some(scopeInfos(c.declarations).map(_.symbol).toList)
         case _                   => None)
@@ -599,7 +633,7 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
     */
   def isCaseLike(symbol: String): Boolean =
     classSymbolOf(symbol).exists { cls =>
-      index.info(cls).exists(si => (si.properties & s.SymbolInformation.Property.CASE.value) != 0)
+      symbolInfo(cls).exists(si => (si.properties & s.SymbolInformation.Property.CASE.value) != 0)
     }
 
   /** Symbols generated for a product record, each labelled by how it relates to the class, in a
@@ -616,7 +650,7 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
         companion.map("companion" -> _).toList
           ++ constructors.map("constructors" -> _)
           ++ decls.filter(named("copy")).map("copy" -> _)
-          ++ decls.filter(s => paramNames.contains(index.displayName(s))).map("accessors" -> _)
+          ++ decls.filter(s => paramNames.contains(nameOf(s))).map("accessors" -> _)
           ++ companion.toList.flatMap(declarationSymbols).collect {
             case s if named("apply")(s)   => "apply" -> s
             case s if named("unapply")(s) => "unapply" -> s
@@ -629,7 +663,7 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
     */
   private def constructorParamNames(constructors: List[String]): Set[String] =
     constructors
-      .flatMap(index.info)
+      .flatMap(symbolInfo)
       .collect { case si =>
         si.signature match
           case m: s.MethodSignature =>
@@ -641,13 +675,13 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
       .flatten
       .toSet
 
-  private def named(name: String)(symbol: String): Boolean = index.displayName(symbol) == name
+  private def named(name: String)(symbol: String): Boolean = nameOf(symbol) == name
 
   private def known(symbol: String): Boolean =
-    index.info(symbol).isDefined || index.occurrencesOf(symbol).nonEmpty
+    symbolInfo(symbol).isDefined || index.occurrencesOf(symbol).nonEmpty
 
   def memberInfo(member: String, declaredIn: String): MemberInfo =
-    MemberInfo(member, index.displayName(member), kindName(member), symbolRef(declaredIn))
+    MemberInfo(member, nameOf(member), kindName(member), symbolRef(declaredIn))
 
   /** Whether the 0-based `(line, character)` position lies inside the half-open range `r`
     * (inclusive of start, exclusive of end). Thin `s.Range` adapter over the formally-verified
@@ -675,10 +709,10 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
 
   /** A symbol's type as text: a method's return, a value's type, else the symbol's own name. */
   def typeString(symbol: String): String =
-    index.info(symbol).map(_.signature) match
+    symbolInfo(symbol).map(_.signature) match
       case Some(m: s.MethodSignature) => renderType(m.returnType)
       case Some(v: s.ValueSignature)  => renderType(v.tpe)
-      case _                          => index.displayName(symbol)
+      case _                          => nameOf(symbol)
 
   def location(uri: String, range: Option[s.Range]): Location =
     val r = range.getOrElse(s.Range.defaultInstance)
@@ -688,10 +722,10 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
     )
 
   def symbolRef(symbol: String): SymbolRef =
-    SymbolRef(symbol, index.displayName(symbol), kindName(symbol))
+    SymbolRef(symbol, nameOf(symbol), kindName(symbol))
 
   def kindName(symbol: String): SymbolKind =
-    SymbolKind.from(index.info(symbol).map(_.kind.toString).getOrElse("UNKNOWN"))
+    SymbolKind.from(symbolInfo(symbol).map(_.kind.toString).getOrElse("UNKNOWN"))
 
   def parentSymbol(tpe: s.Type): Option[String] =
     tpe match
@@ -702,7 +736,7 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
   def scopeInfos(scope: Option[s.Scope]): Seq[s.SymbolInformation] =
     scope.toSeq.flatMap { sc =>
       if sc.hardlinks.nonEmpty then sc.hardlinks
-      else sc.symlinks.flatMap(index.info)
+      else sc.symlinks.flatMap(symbolInfo)
     }
 
   def valueType(info: s.SymbolInformation): s.Type =
@@ -731,11 +765,11 @@ private[analysis] final class AnalyzerHelpers(index: SemanticIndex):
   def renderType(tpe: s.Type): String =
     tpe match
       case s.TypeRef(_, sym, args) =>
-        val base = index.displayName(sym)
+        val base = nameOf(sym)
         if args.isEmpty then base else args.map(renderType).mkString(s"$base[", ", ", "]")
-      case s.SingleType(_, sym)    => s"${index.displayName(sym)}.type"
-      case s.ThisType(sym)         => s"${index.displayName(sym)}.this"
-      case s.SuperType(_, sym)     => index.displayName(sym)
+      case s.SingleType(_, sym)    => s"${nameOf(sym)}.type"
+      case s.ThisType(sym)         => s"${nameOf(sym)}.this"
+      case s.SuperType(_, sym)     => nameOf(sym)
       case s.ByNameType(t)         => s"=> ${renderType(t)}"
       case s.RepeatedType(t)       => s"${renderType(t)}*"
       case s.WithType(ts)          => ts.map(renderType).mkString(" with ")
