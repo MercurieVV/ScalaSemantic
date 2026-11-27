@@ -263,7 +263,9 @@ private[mcp] object McpToolsSupport:
         lineOffset: Int,
         sentinel: Boolean
     ): String =
-      val byLine = anns.groupBy(_.line)
+      // The diff's `+` side is compilable Scala: a note never trails a line inside a literal.
+      val anchor = SourceSentinel.anchorOf(rawLines)
+      val byLine = anns.groupBy(a => anchor(a.line))
       val legendLines: List[String] =
         if symbols.isEmpty then Nil
         else "" :: "// symbols:" :: symbols.map((n, fqn) => s"//   $n → $fqn")
@@ -337,7 +339,12 @@ private[mcp] object McpToolsSupport:
         lineOffset: Int,
         sentinel: Boolean
     ): String =
-      val byLine = anns.groupBy(_.line)
+      // A note appended to a line that ends inside a multi-line literal would become string content,
+      // so the formats meant to stay valid Scala move it to the line the literal closes on.
+      val anchor =
+        if sentinel || fmt == SourceFormat.Compilable then SourceSentinel.anchorOf(lines)
+        else identity[Int]
+      val byLine = anns.groupBy(a => anchor(a.line))
       // `plain` shows no notes, so `annotationsOnly` would be empty — ignore it there.
       val onlyAnnotated = fmt != SourceFormat.Plain && annotationsOnly
       val gutter = fmt != SourceFormat.Compilable // a line-number gutter is not valid Scala
@@ -709,15 +716,21 @@ private[mcp] object McpToolsSupport:
   /** True when a buffer offered to `annotated_source`'s write mode is a rendered VIEW rather than a
     * writable buffer: it still carries `⟹` notes, or the read-only line-number gutter. Neither is
     * strippable — only `/*SEM:...:SEM*/` blocks are — so persisting such text would write the
-    * annotations into the source. The gutter test demands EVERY non-blank line be numbered, so
-    * ordinary code that merely starts with a digit is not mistaken for one.
+    * annotations into the source. `stripped` is the buffer with its sentinel blocks already
+    * removed, so a `⟹` inside a block's payload does not count. A `⟹` is a note only beyond the
+    * ones `onDisk` already holds: a source may contain the character itself (in a string, a doc
+    * comment), and refusing every write of such a file would leave it uneditable. The gutter test
+    * demands EVERY non-blank line be numbered, so ordinary code that merely starts with a digit is
+    * not mistaken for one.
     */
-  private[mcp] def carriesRenderedAnnotations(edited: String): Boolean =
-    val lines = edited.split("\n", -1).nn.toIndexedSeq.map(l => Option(l).getOrElse(""))
+  private[mcp] def carriesRenderedAnnotations(stripped: String, onDisk: String): Boolean =
+    val lines = stripped.split("\n", -1).nn.toIndexedSeq.map(l => Option(l).getOrElse(""))
     val gutterLine = "^\\s*\\d+\\s{2}.*$".r
     val meaningful = lines.filter(_.trim.nonEmpty)
-    lines.exists(_.contains("⟹")) ||
+    noteArrows(stripped) > noteArrows(onDisk) ||
     (meaningful.sizeIs > 1 && meaningful.forall(l => gutterLine.matches(l)))
+
+  private def noteArrows(text: String): Int = text.count(_ == '⟹')
 
   /** Resolve a tool's `symbol` argument that accepts EITHER a raw SemanticDB symbol (e.g.
     * `com/ollo/SuperClass#method().`) OR a friendlier dotted FQN (e.g.
@@ -1946,32 +1959,30 @@ private[mcp] object McpToolsGroupC:
           else
             a.write match
               case Some(edited) =>
-                val currentHash = sha256Hex(java.nio.file.Files.readAllBytes(file).nn)
+                val previousBytes = java.nio.file.Files.readAllBytes(file).nn
+                val currentHash = sha256Hex(previousBytes)
                 val baseHash = a.baseHash.getOrElse("")
+                // What the file said before this call, in the same stripped form the write
+                // persists, so the diff shows the agent's edit and never the annotations.
+                val previous =
+                  new String(previousBytes, java.nio.charset.StandardCharsets.UTF_8).nn
+                val stripped =
+                  SourceSentinel.strip(edited.split("\n", -1).toIndexedSeq).mkString("\n")
                 if baseHash.nonEmpty && baseHash != currentHash then
                   error(
                     s"annotated_source write rejected: '${uri.value}' changed on disk since " +
                       "baseHash was read (concurrent edit) — read it again and retry"
                   )
-                else if carriesRenderedAnnotations(edited) then
+                else if carriesRenderedAnnotations(stripped, previous) then
                   error(
                     s"annotated_source write rejected: '${uri.value}' still carries rendered " +
-                      "annotations — `⟹` notes or the read-only line-number gutter. Only " +
-                      "`/*SEM:...:SEM*/` blocks are strippable, so writing this would persist the " +
-                      "annotations into the source. Re-read with format=\"compilable\", " +
-                      "sentinel=true and edit that buffer."
+                      "annotations — `⟹` notes (more `⟹` than the file on disk holds) or the " +
+                      "read-only line-number gutter. Only `/*SEM:...:SEM*/` blocks are " +
+                      "strippable, so writing this would persist the annotations into the source. " +
+                      "Re-read with format=\"compilable\", sentinel=true and edit that buffer."
                   )
                 else
-                  val stripped =
-                    SourceSentinel.strip(edited.split("\n", -1).toIndexedSeq).mkString("\n")
                   val strippedBytes = stripped.getBytes(java.nio.charset.StandardCharsets.UTF_8).nn
-                  // What the file said before this call, in the same stripped form the write
-                  // persists, so the diff shows the agent's edit and never the annotations.
-                  val previous =
-                    new String(
-                      java.nio.file.Files.readAllBytes(file).nn,
-                      java.nio.charset.StandardCharsets.UTF_8
-                    ).nn
                   val _ = java.nio.file.Files.write(file, strippedBytes)
                   val diff = SourceDiff.unified(
                     uri.value,
