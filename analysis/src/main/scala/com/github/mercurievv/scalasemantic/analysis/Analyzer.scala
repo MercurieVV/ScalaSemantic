@@ -378,7 +378,13 @@ final class Analyzer(
           val elaboratedLines = elaborated.map(_.line).toSet
           terse.filterNot(a => elaboratedLines.contains(a.line)) ++ elaborated
         case SourceDetail.Full =>
-          fullAnnotations(doc, sourceLines)
+          // Full merges the insertions at a call site into one note. A line with no call site to
+          // merge into keeps its terse notes (an inferred type argument such as `F.pure[String]`),
+          // the mirror of Terse keeping the elaborated note where one exists.
+          val full = fullAnnotations(doc, sourceLines)
+          val fullLines = full.map(_.line).toSet
+          val terse = doc.synthetics.iterator.flatMap(h.syntheticAnnotation(_, sourceLines)).toList
+          terse.filterNot(a => fullLines.contains(a.line)) ++ full
       }
       // Drop the redundant `(using …)` a given/def forwards into its OWN construction: the note
       // lands on the definition's header (at or before its name), and that using-param is already
@@ -540,32 +546,113 @@ final class Analyzer(
               }
         case _ => None
     }.toMap
+    // Only a single-line call absorbs the calls nested in it: its merged note re-renders the whole
+    // expression on that line. A multi-line call's note trails its first line and shows only its
+    // own insertion (`(using generate)` for a test whose body is the block argument), so absorbing
+    // there would erase every note in the body.
     val enclosingRanges = doc.synthetics.iterator.flatMap { syn =>
       syn.tree match
         case app: s.ApplyTree =>
           app.function match
-            case _: s.OriginalTree => syn.range
+            case _: s.OriginalTree => syn.range.filter(r => r.startLine == r.endLine)
             case _                 => None
         case _ => None
     }.toList
+    def spanKey(r: s.Range): (Int, Int, Int, Int) =
+      (r.startLine, r.startCharacter, r.endLine, r.endCharacter)
+    // Scala 3 records an implicit conversion's using clause as a synthetic of its own on the
+    // converted expression: `a.show` is `toShow[A](a)` plus `a(using S)`, both on `a`. Composed
+    // they are the one call the compiler made, `toShow[A](a)(using S)`; apart, the using clause
+    // splices onto the bare receiver (`a(using Show[A]).show`).
+    val conversions: Map[(Int, Int, Int, Int), s.ApplyTree] = doc.synthetics.iterator.flatMap {
+      syn =>
+        (syn.tree, syn.range) match
+          case (app: s.ApplyTree, Some(r)) =>
+            (app.function, app.arguments) match
+              case (_: s.OriginalTree, _)                                   => None
+              case (_, Seq(orig: s.OriginalTree)) if orig.range.contains(r) =>
+                Some(spanKey(r) -> app)
+              case _ => None
+          case _ => None
+    }.toMap
+    // Every using clause recorded on a span, in synthetic order. With a conversion on the span the
+    // last one is the conversion's own; the earlier ones belong to the converted receiver
+    // (`Resource.make(a)(b)` takes `(using asyncForIO)` before `toFunctorOps` wraps it).
+    val usingsBySpan: Map[(Int, Int, Int, Int), List[s.ApplyTree]] = doc.synthetics.iterator
+      .flatMap { syn =>
+        syn.tree match
+          case app: s.ApplyTree =>
+            app.function match
+              case orig: s.OriginalTree if orig.range == syn.range =>
+                syn.range.map(r => spanKey(r) -> app)
+              case _ => None
+          case _ => None
+      }
+      .toList
+      .groupMap(_._1)(_._2)
+    def usingSpans(k: (Int, Int, Int, Int)): Boolean = usingsBySpan.contains(k)
+
+    /** The one call a conversion and the using clauses on its span make, as a single tree; `None`
+      * for a clause folded into the span's last one.
+      */
+    def composedCall(r: s.Range, app: s.ApplyTree): Option[s.Tree] =
+      (conversions.get(spanKey(r)), usingsBySpan.get(spanKey(r))) match
+        case (Some(conv), Some(us)) =>
+          Option.when(us.lastOption.contains(app)) {
+            val receiver = us
+              .dropRight(1)
+              .foldLeft[s.Tree](app.function)((acc, u) => s.ApplyTree(acc, u.arguments))
+            s.ApplyTree(conv.copy(arguments = Seq(receiver)), app.arguments)
+          }
+        case _ => Some(app)
+    def headSymbol(tree: s.Tree): Option[String] =
+      tree match
+        case t: s.IdTree        => Some(t.symbol)
+        case t: s.TypeApplyTree => headSymbol(t.function)
+        case t: s.SelectTree    => t.id.map(_.symbol)
+        case a: s.ApplyTree     => headSymbol(a.function)
+        case _                  => None
+    // Scala 3 sometimes also records a conversion applied to a call's argument as an application of
+    // the bare callee (`real`, not the whole `real("name")` span) to the conversion with its
+    // converted argument missing: `real(testOptionsFromString(generate))` beside the exact
+    // `testOptionsFromString("name")(using generate)` on the argument itself. That record is a
+    // degraded duplicate, so it is dropped.
+    def restatesInnerConversion(r: s.Range, app: s.ApplyTree): Boolean =
+      app.function match
+        case orig: s.OriginalTree if !orig.range.contains(r) =>
+          val inner = conversions.iterator
+            .collect {
+              case ((sl, sc, el, ec), conv) if contains(r, s.Range(sl, sc, el, ec)) =>
+                headSymbol(conv)
+            }
+            .flatten
+            .toSet
+          app.arguments.exists(arg =>
+            arg match
+              case a: s.ApplyTree => headSymbol(a).exists(inner)
+              case _              => false
+          )
+        case _ => false
     val usingCalls = doc.synthetics.iterator.flatMap { syn =>
       syn.tree match
         case app: s.ApplyTree =>
           app.function match
-            case _: s.OriginalTree =>
+            case _: s.OriginalTree if !syn.range.exists(r => restatesInnerConversion(r, app)) =>
               val r = syn.range.getOrElse(s.Range.defaultInstance)
               val enclosed = enclosingRanges.exists(parent => parent != r && contains(parent, r))
-              val text = h.renderTree(app, sourceLines, typeApps)
-              Option.when(!enclosed && text.nonEmpty)(
-                SourceAnnotation(
-                  r.startLine,
-                  r.startCharacter,
-                  r.endCharacter,
-                  "full",
-                  text,
-                  r.endLine != r.startLine
+              composedCall(r, app).flatMap { composed =>
+                val text = h.renderTree(composed, sourceLines, typeApps)
+                Option.when(!enclosed && text.nonEmpty)(
+                  SourceAnnotation(
+                    r.startLine,
+                    r.startCharacter,
+                    r.endCharacter,
+                    "full",
+                    text,
+                    r.endLine != r.startLine
+                  )
                 )
-              )
+              }
             case _ => None
         case _ => None
     }.toList
@@ -577,8 +664,10 @@ final class Analyzer(
             case _                 =>
               val r = syn.range.getOrElse(s.Range.defaultInstance)
               val enclosed = enclosingRanges.exists(parent => parent != r && contains(parent, r))
+              // Already rendered as part of its using clause's note.
+              val composedAway = conversions.contains(spanKey(r)) && usingSpans(spanKey(r))
               val text = h.renderTree(app, sourceLines, typeApps)
-              Option.when(!enclosed && text.nonEmpty)(
+              Option.when(!enclosed && !composedAway && text.nonEmpty)(
                 SourceAnnotation(
                   r.startLine,
                   r.startCharacter,

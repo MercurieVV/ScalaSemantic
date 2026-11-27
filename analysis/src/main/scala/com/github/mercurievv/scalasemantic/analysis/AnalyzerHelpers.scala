@@ -315,8 +315,8 @@ private[analysis] final class AnalyzerHelpers(
             case t               => t
           val rendered = renderType(tpe)
           val r = occ.range.getOrElse(s.Range.defaultInstance)
-          val line = sourceLines.lift(r.startLine).getOrElse("")
-          if rendered.isEmpty || alreadyAscribed(line, r.startCharacter) then None
+          if rendered.isEmpty || ascribedInSignature(sourceLines, r.startLine, r.startCharacter)
+          then None
           else
             Some(
               SourceAnnotation(
@@ -344,6 +344,29 @@ private[analysis] final class AnalyzerHelpers(
           case ')' | ']'         => scan(i + 1, depth - 1)
           case _                 => scan(i + 1, depth)
     nameStart >= 0 && nameStart < line.length && scan(nameStart, 0)
+
+  /** [[alreadyAscribed]] for a signature that may continue past its first line: a parameter or
+    * type-parameter list still open at the end of a line carries the scan on to the next, so
+    * `def serve(\n  root: Path\n): Unit =` counts as ascribed. A line that ends outside every group
+    * ends the signature, as it does in Scala. A `//` comment ends the line's scan.
+    */
+  def ascribedInSignature(lines: IndexedSeq[String], lineNo: Int, nameStart: Int): Boolean =
+    @annotation.tailrec
+    def scan(l: Int, i: Int, depth: Int): Boolean =
+      lines.lift(l) match
+        case None                                                       => false
+        case Some(line) if i >= line.length || line.startsWith("//", i) =>
+          if depth > 0 && l - lineNo < AnalyzerHelpers.MaxSignatureLines then scan(l + 1, 0, depth)
+          else false
+        case Some(line) =>
+          line.charAt(i) match
+            case '=' if depth == 0 => false
+            case ':' if depth == 0 => true
+            case '(' | '['         => scan(l, i + 1, depth + 1)
+            case ')' | ']'         => depth > 0 && scan(l, i + 1, depth - 1)
+            case _                 => scan(l, i + 1, depth)
+    lines.lift(lineNo).exists(line => nameStart >= 0 && nameStart < line.length) &&
+    scan(lineNo, nameStart, 0)
 
   // --- move plan ------------------------------------------------------------
 
@@ -780,7 +803,33 @@ private[analysis] final class AnalyzerHelpers(
       case s.UniversalType(_, t)   => renderType(t)
       case s.StructuralType(t, _)  => renderType(t)
       case s.ConstantType(c)       => renderConstant(c)
+      case l: s.LambdaType         => renderLambda(l)
       case _                       => ""
+
+  /** A Scala 3 type lambda, as a higher-kinded type argument carries it: `IO` passed for `F[_]` is
+    * recorded as `[A] =>> IO[A]`. Rendered as the bare constructor when the lambda only eta-expands
+    * one (`IO`, `Kleisli[F, Universe, *]` stays a lambda), otherwise as `[A] =>> T`. Never empty
+    * when its result type renders, so an argument list never shows a blank slot.
+    */
+  private def renderLambda(l: s.LambdaType): String =
+    val params: Seq[(String, String)] = l.parameters.toSeq.flatMap(sc =>
+      if sc.hardlinks.nonEmpty then sc.hardlinks.map(p => p.symbol -> p.displayName)
+      else sc.symlinks.map(p => p -> nameOf(p))
+    )
+    val body = renderType(l.returnType)
+    l.returnType match
+      case s.TypeRef(_, sym, args)
+          if params.nonEmpty && args.map(typeRefSymbol) == params.map((p, _) => Some(p)) =>
+        nameOf(sym)
+      case _ if body.isEmpty => ""
+      case _                 =>
+        val names = params.map((_, n) => if n.isEmpty then "_" else n)
+        if names.isEmpty then body else names.mkString("[", ", ", s"] =>> $body")
+
+  private def typeRefSymbol(t: s.Type): Option[String] =
+    t match
+      case s.TypeRef(_, sym, Nil) => Some(sym)
+      case _                      => None
 
   /** Compact signature-suffix rendering of a type-alias / opaque-type / abstract-type declaration.
     *
@@ -821,6 +870,13 @@ private[analysis] final class AnalyzerHelpers(
       case _                    => ""
 
 private[analysis] object AnalyzerHelpers:
+
+  /** How many lines a definition's signature may span before
+    * [[AnalyzerHelpers.ascribedInSignature]] gives up: far beyond any real parameter list, small
+    * enough that an unbalanced bracket in a string cannot send the scan through the rest of the
+    * file.
+    */
+  val MaxSignatureLines: Int = 200
 
   /** The Levenshtein distance between `a` and `b` when it is at most `max`, else `None`. Callers
     * that rank near-misses need the distance itself, not just a yes/no: sorting suggestions by

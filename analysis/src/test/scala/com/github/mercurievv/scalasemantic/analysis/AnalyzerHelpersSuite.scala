@@ -412,3 +412,66 @@ class AnalyzerHelpersSuite extends munit.FunSuite:
         AnalyzerHelpers.maskWithin(AnalyzerHelpers.charMask(a), AnalyzerHelpers.charMask(b), 2),
         s"$a / $b"
       )
+
+  // --- #353: higher-kinded type arguments --------------------------------------------------------
+
+  private def lambda(params: (String, String)*)(body: s.Type): s.Type =
+    s.LambdaType(
+      Some(
+        s.Scope(hardlinks =
+          params.map((sym, name) => s.SymbolInformation(symbol = sym, displayName = name))
+        )
+      ),
+      body
+    )
+
+  test("renderType: a type lambda that only eta-expands a constructor renders as the constructor"):
+    // `Console.make[IO]`: SemanticDB records the `IO` passed for `F[_]` as `[A] =>> IO[A]`.
+    val io = lambda("[A]" -> "A")(ref("cats/effect/IO#", ref("[A]")))
+    assertEquals(h.renderType(io), "IO")
+    assertEquals(h.renderType(ref("cats/effect/std/Console#", io)), "Console[IO]")
+
+  test("renderType: a partially applied constructor keeps its lambda, never an empty slot"):
+    val resourceIO =
+      lambda("[A]" -> "A")(ref("cats/effect/kernel/Resource#", ref("cats/effect/IO#"), ref("[A]")))
+    assertEquals(h.renderType(resourceIO), "[A] =>> Resource[IO, A]")
+    assertEquals(
+      h.renderType(
+        ref("cats/effect/kernel/Outcome#", resourceIO, ref("java/lang/Throwable#"), IntT)
+      ),
+      "Outcome[[A] =>> Resource[IO, A], Throwable, Int]"
+    )
+
+  test("renderType: a lambda whose arguments are not its parameters in order is not a constructor"):
+    val flipped = lambda("[A]" -> "A", "[B]" -> "B")(ref("scala/Tuple2#", ref("[B]"), ref("[A]")))
+    assertEquals(h.renderType(flipped), "[A, B] =>> Tuple2[B, A]")
+
+  // --- #354: ascriptions on a later line of the signature -----------------------------------------
+
+  test("ascribedInSignature follows an open parameter list to the ascription on a later line"):
+    val lines = IndexedSeq(
+      "  def serve(",
+      "      root: Path,",
+      "      log: Logger",
+      "  ): Unit =",
+      "    run()"
+    )
+    assert(h.ascribedInSignature(lines, 0, 6))
+
+  test("ascribedInSignature: a multi-line signature without an ascription is not ascribed"):
+    val lines = IndexedSeq("  def serve(", "      root: Path", "  ) =", "    run(root)")
+    assert(!h.ascribedInSignature(lines, 0, 6))
+
+  test("ascribedInSignature: type parameters spanning lines, then the result type"):
+    val lines = IndexedSeq("def f[", "    A: Show", "](a: A): String = a.show")
+    assert(h.ascribedInSignature(lines, 0, 4))
+
+  test("ascribedInSignature ends the signature at a line that closes every group"):
+    // The body's `:` on the next line is not the definition's ascription.
+    val lines = IndexedSeq("val x =", "  y: Int")
+    assert(!h.ascribedInSignature(lines, 0, 4))
+    assert(!h.ascribedInSignature(IndexedSeq("def f(a: Int) // a: note"), 0, 4))
+
+  test("ascribedInSignature agrees with alreadyAscribed on a one-line signature"):
+    for line <- List("val x: Int = 1", "val x = 1", "def f(a: Int) = a", "def f[T]: T = x") do
+      assertEquals(h.ascribedInSignature(IndexedSeq(line), 0, 4), h.alreadyAscribed(line, 4), line)
